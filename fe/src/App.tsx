@@ -1,32 +1,56 @@
+import { useEffect }         from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Provider }          from "react-redux";
+import { store }             from "./store";
+import { useAppDispatch }    from "./store/hooks"
+import { restoreSessionThunk } from "./store/authSlice";
+import ProtectedRoute        from "./routes/ProtectedRoute";
+import LoginPage             from "./views/auth/LoginPage";
+import RegisterPage          from "./views/auth/RegisterPage";
+
+/** Khôi phục session một lần khi app khởi động */
+function AppRoutes() {
+  const dispatch = useAppDispatch();
+
+  useEffect(() => {
+    dispatch(restoreSessionThunk());
+  }, [dispatch]);
+
+  return (
+    <Routes>
+      {/* Public */}
+      <Route path="/auth/login" element={<LoginPage />} />
+
+      {/* Cần đăng nhập */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <div className="p-8 text-gray-500">Dashboard — sẽ làm sau</div>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Chỉ admin / manager */}
+          <Route
+      path="/auth/register"
+      element={<RegisterPage />}
+    />
+      <Route path="*" element={<Navigate to="/auth/login" replace />} />
+    </Routes>
+  );  
+}
+
 export default function App() {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        height: "100vh",
-        flexDirection: "column",
-        gap: "20px",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <h1>🎉 Dự Án Upload Ảnh</h1>
-      <p style={{ fontSize: "18px", color: "#666" }}>
-        Backend API: <strong>POST /api/upload</strong>
-      </p>
-      <p
-        style={{
-          fontSize: "14px",
-          color: "#999",
-          maxWidth: "600px",
-          textAlign: "center",
-        }}
-      >
-        Dự án này là một ứng dụng upload ảnh đơn giản.
-        <br />
-        Backend chạy trên port 5000, chỉ giữ lại chức năng upload.
-      </p>
-    </div>
+    <Provider store={store}>
+      <BrowserRouter future={{
+    v7_startTransition: true,
+  }}
+>
+      
+        <AppRoutes />
+      </BrowserRouter>
+    </Provider>
   );
 }
