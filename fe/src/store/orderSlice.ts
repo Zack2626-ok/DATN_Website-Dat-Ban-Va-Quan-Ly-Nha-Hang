@@ -159,7 +159,7 @@ const orderSlice = createSlice({
     error: null,
   } as OrderState,
   reducers: {
-    createOrder: (state, action: PayloadAction<Omit<Order, "createdAt">> ) => {
+    createOrder: (state, action: PayloadAction<Omit<Order, "createdAt">>) => {
       const newOrder: Order = {
         ...action.payload,
         createdAt: new Date().toISOString(),

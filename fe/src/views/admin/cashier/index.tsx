@@ -65,7 +65,7 @@ export const CashierPOS: React.FC = () => {
 
     dispatch(updateOrderStatus({ id: activeOrder.id, status: ORDER_STATUS.PAID }));
     dispatch(releaseTableToCleaning({ id: selectedTableId }));
-    
+
     setLastPaidTable(selectedTable?.name || "Bàn");
     setPaymentSuccess(true);
     setSelectedTableId(null);
@@ -81,7 +81,7 @@ export const CashierPOS: React.FC = () => {
           <h3 className="text-lg font-black font-display text-slate-900">Danh sách Bàn Đang Phục Vụ</h3>
           <p className="text-xs text-slate-500 mt-0.5">Chọn bàn cần thanh toán dưới đây</p>
         </div>
-        
+
         {/* Horizontal table picker */}
         <div className="flex flex-wrap gap-2">
           {occupiedTables.length === 0 ? (
@@ -98,11 +98,10 @@ export const CashierPOS: React.FC = () => {
                     setSelectedTableId(table.id);
                     setPaymentSuccess(false);
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold font-display tracking-wide border transition-all cursor-pointer ${
-                    isSelected
+                  className={`px-4 py-2 rounded-xl text-xs font-bold font-display tracking-wide border transition-all cursor-pointer ${isSelected
                       ? "bg-[#e8f1ff] border-[#0f62fe] text-[#0f62fe] shadow-xs"
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   {table.name} ({table.status === TABLE_STATUS.CLEANING ? "Chờ dọn" : "Đang ăn"})
                 </button>
@@ -128,7 +127,7 @@ export const CashierPOS: React.FC = () => {
 
       {selectedTable && activeOrder ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          
+
           {/* Card 1: Hóa đơn chi tiết */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col gap-5 shadow-2xs">
             <div className="border-b border-slate-100 pb-4">
@@ -164,7 +163,7 @@ export const CashierPOS: React.FC = () => {
                 <span>Tạm tính</span>
                 <span className="font-bold text-slate-900">{(subtotal * 1000).toLocaleString("vi-VN")} vnđ</span>
               </div>
-              
+
               <div className="flex justify-between text-xs font-semibold text-slate-500">
                 <span>Thuế (10%)</span>
                 <span className="font-bold text-slate-900">{(tax * 1000).toLocaleString("vi-VN")} vnđ</span>
@@ -204,21 +203,19 @@ export const CashierPOS: React.FC = () => {
             <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-xl">
               <button
                 onClick={() => setSplitMode("equal")}
-                className={`py-2 text-xs font-bold font-display rounded-lg transition-all cursor-pointer ${
-                  splitMode === "equal"
+                className={`py-2 text-xs font-bold font-display rounded-lg transition-all cursor-pointer ${splitMode === "equal"
                     ? "bg-white text-slate-800 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
-                }`}
+                  }`}
               >
                 Chia đều
               </button>
               <button
                 onClick={() => setSplitMode("items")}
-                className={`py-2 text-xs font-bold font-display rounded-lg transition-all cursor-pointer ${
-                  splitMode === "items"
+                className={`py-2 text-xs font-bold font-display rounded-lg transition-all cursor-pointer ${splitMode === "items"
                     ? "bg-white text-slate-800 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
-                }`}
+                  }`}
               >
                 Tách theo món
               </button>

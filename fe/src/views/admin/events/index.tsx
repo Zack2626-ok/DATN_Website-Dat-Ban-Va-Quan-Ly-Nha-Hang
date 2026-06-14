@@ -22,14 +22,14 @@ export const EventsManagement: React.FC = () => {
             {/* Simple Visual Calendar Grid */}
             <div className="flex flex-col gap-3">
               <div className="flex justify-between items-center text-xs font-bold px-1">
-                <span>June 2026</span>
+                <span>Tháng 6, 2026</span>
                 <div className="flex gap-2">
                   <button className="p-1 hover:bg-slate-100 rounded text-slate-400 font-bold">&lt;</button>
                   <button className="p-1 hover:bg-slate-100 rounded text-slate-400 font-bold">&gt;</button>
                 </div>
               </div>
               <div className="grid grid-cols-7 text-center text-[10px] font-bold text-slate-400 pb-1 border-b border-slate-100">
-                <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                <span>CN</span><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span>
               </div>
               <div className="grid grid-cols-7 text-center text-xs gap-y-2.5 font-semibold text-slate-700">
                 <span className="text-slate-300">31</span>
@@ -58,11 +58,11 @@ export const EventsManagement: React.FC = () => {
             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-50 pb-2">Sảnh còn trống</h4>
             <div className="flex flex-col gap-2.5">
               {[
-                "Grand Ballroom",
-                "Conference Hall A",
-                "Conference Hall B",
-                "Private Dining Room",
-                "Garden Terrace"
+                "Sảnh Lớn (Grand Ballroom)",
+                "Phòng Hội Nghị A (Conference A)",
+                "Phòng Hội Nghị B (Conference B)",
+                "Phòng Ăn Riêng VIP",
+                "Sân Vườn Garden Terrace"
               ].map((hall) => (
                 <div key={hall} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs">
                   <span className="font-bold text-slate-700">{hall}</span>
@@ -97,22 +97,22 @@ export const EventsManagement: React.FC = () => {
             <div className="p-5 border border-slate-200/80 rounded-xl flex flex-col gap-4 shadow-2xs hover:shadow-xs transition-shadow">
               <div className="flex justify-between items-start">
                 <div>
-                  <h5 className="font-bold text-sm text-slate-900">Birthday Party - Chen Family</h5>
+                  <h5 className="font-bold text-sm text-slate-900">Tiệc Sinh Nhật - Gia Đình Chen</h5>
                   <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-200/50 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider inline-block mt-1">
-                    Birthday
+                    Sinh nhật
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-400 font-semibold">Nháp</span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-slate-600 font-medium">
                 <div>📅 Thứ 6, 12 thg 6, 2026</div>
-                <div>📍 Private Dining Room</div>
+                <div>📍 Phòng Ăn Riêng VIP</div>
                 <div>👥 30 khách</div>
               </div>
               <div className="flex justify-between items-center border-t border-slate-100 pt-3 text-xs">
                 <div className="flex gap-4">
-                  <span>Đặt cọc: <strong className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-black">Chưa thanh toán</strong> <span className="font-extrabold ml-1">$500</span></span>
-                  <span>Tổng tiền: <strong className="text-admin-primary font-black">$2,500</strong></span>
+                  <span>Đặt cọc: <strong className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-black">Chưa thanh toán</strong> <span className="font-extrabold ml-1">12.500.000 vnđ</span></span>
+                  <span>Tổng tiền: <strong className="text-admin-primary font-black">62.500.000 vnđ</strong></span>
                 </div>
                 <div className="flex gap-1.5">
                   <button className="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg font-bold text-[10px] text-slate-600 cursor-pointer">Chỉnh sửa</button>
@@ -125,22 +125,22 @@ export const EventsManagement: React.FC = () => {
             <div className="p-5 border border-slate-200/80 rounded-xl flex flex-col gap-4 shadow-2xs hover:shadow-xs transition-shadow">
               <div className="flex justify-between items-start">
                 <div>
-                  <h5 className="font-bold text-sm text-slate-900">Johnson Family Reunion</h5>
+                  <h5 className="font-bold text-sm text-slate-900">Họp Mặt Gia Đình Johnson</h5>
                   <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-200/50 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider inline-block mt-1">
-                    Family Event
+                    Sự kiện Gia đình
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-400 font-semibold">Nháp</span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs text-slate-600 font-medium">
                 <div>📅 Thứ 7, 4 thg 7, 2026</div>
-                <div>📍 Conference Hall B</div>
+                <div>📍 Phòng Hội Nghị B</div>
                 <div>👥 80 khách</div>
               </div>
               <div className="flex justify-between items-center border-t border-slate-100 pt-3 text-xs">
                 <div className="flex gap-4">
-                  <span>Đặt cọc: <strong className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-black">Chưa thanh toán</strong> <span className="font-extrabold ml-1">$1,500</span></span>
-                  <span>Tổng tiền: <strong className="text-admin-primary font-black">$7,000</strong></span>
+                  <span>Đặt cọc: <strong className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100 font-black">Chưa thanh toán</strong> <span className="font-extrabold ml-1">37.500.000 vnđ</span></span>
+                  <span>Tổng tiền: <strong className="text-admin-primary font-black">175.000.000 vnđ</strong></span>
                 </div>
                 <div className="flex gap-1.5">
                   <button className="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg font-bold text-[10px] text-slate-600 cursor-pointer">Chỉnh sửa</button>

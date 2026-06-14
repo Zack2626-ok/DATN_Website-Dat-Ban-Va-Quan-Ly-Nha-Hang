@@ -49,7 +49,7 @@ export const HomeView: React.FC = () => {
   // Cart State
   const [cart, setCart] = useState<{ item: any; quantity: number }[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  
+
   // Checkout Form State
   const [checkoutName, setCheckoutName] = useState("");
   const [checkoutPhone, setCheckoutPhone] = useState("");
@@ -57,7 +57,7 @@ export const HomeView: React.FC = () => {
   const [checkoutEmail, setCheckoutEmail] = useState("");
   const [checkoutNote, setCheckoutNote] = useState("");
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
-  
+
   // Checkout Success / Payment QR Modal State
   const [placedOrderInfo, setPlacedOrderInfo] = useState<{
     id: string;
@@ -86,6 +86,11 @@ export const HomeView: React.FC = () => {
     if (selectedZone === "All") return tables;
     return tables.filter((table) => table.zone === selectedZone);
   }, [tables, selectedZone]);
+
+  const selectedTableObj = useMemo(() => {
+    if (!bookingTable) return null;
+    return tables.find((t) => t.id === bookingTable.id) || null;
+  }, [tables, bookingTable]);
 
   const handleOpenBooking = (tableId: string, tableName: string) => {
     const table = tables.find((t) => t.id === tableId);
@@ -124,7 +129,7 @@ export const HomeView: React.FC = () => {
       })
     );
 
-    setSuccessBooking(`${bookingTable.name} has been successfully reserved for ${name} at ${time}.`);
+    setSuccessBooking(`${bookingTable.name} đã được đặt bàn thành công cho khách hàng ${name} vào lúc ${time}.`);
     setBookingTable(null);
 
     // Reset Form
@@ -166,7 +171,7 @@ export const HomeView: React.FC = () => {
 
     setIsSubmittingOrder(true);
     const orderId = "ord_del_" + Math.random().toString(36).substr(2, 9);
-    
+
     const orderItems = cart.map((c) => ({
       menuItemId: c.item.id,
       name: c.item.name,
@@ -189,7 +194,7 @@ export const HomeView: React.FC = () => {
 
     try {
       const resultAction = await dispatch(placeOrder(orderPayload));
-      
+
       if (placeOrder.fulfilled.match(resultAction)) {
         const payload = resultAction.payload as any;
         setPlacedOrderInfo({
@@ -197,7 +202,7 @@ export const HomeView: React.FC = () => {
           totalAmount: payload.totalAmount,
           receiptUrl: payload.receiptUrl,
         });
-        
+
         // Reset Cart and Checkout states
         setCart([]);
         setCheckoutName("");
@@ -223,29 +228,29 @@ export const HomeView: React.FC = () => {
       <section id="hero" className="relative px-6 md:px-12 py-20 md:py-32 flex flex-col md:flex-row items-center gap-12 max-w-7xl mx-auto w-full">
         <div className="flex-1 flex flex-col items-start gap-6 animate-slide-in">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-brand-primary font-bold tracking-wider">
-            <Award size={14} /> 3 Michelin Stars Gastronomy
+            <Award size={14} /> Ẩm thực đạt 3 Sao Michelin
           </div>
           <h2 className="text-4xl md:text-6xl font-extrabold font-display leading-[1.1] tracking-tight text-white">
-            Artisanal Dining <br />
+            Trải Nghiệm Ẩm Thực <br />
             <span className="bg-gradient-to-r from-brand-primary via-brand-secondary to-white bg-clip-text text-transparent">
-              Elevated For Connoisseurs
+              Đẳng Cấp Cho Giới Sành Điệu
             </span>
           </h2>
           <p className="text-zinc-400 text-lg max-w-xl leading-relaxed">
-            Enter a sanctuary of premium flavors where every recipe is a poem and every table holds an unforgettable gourmet adventure. Located in the heart of Saigon.
+            Bước vào thánh đường của những hương vị thượng hạng, nơi mỗi công thức nấu ăn là một bài thơ và mỗi bàn tiệc mang đến hành trình ẩm thực khó quên giữa lòng Sài Gòn.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
             <a
               href="#reserve"
               className="px-8 py-4 bg-brand-primary hover:bg-brand-primary-hover text-brand-dark font-extrabold tracking-widest rounded-xl transition-all shadow-lg text-center cursor-pointer"
             >
-              BOOK YOUR TABLE
+              ĐẶT BÀN NGAY
             </a>
             <a
               href="#menu"
               className="px-8 py-4 border border-white/10 hover:border-white/30 hover:bg-white/5 text-white font-extrabold tracking-widest rounded-xl transition-all text-center cursor-pointer"
             >
-              EXPLORE CURATED MENU
+              KHÁM PHÁ THỰC ĐƠN
             </a>
           </div>
         </div>
@@ -276,9 +281,9 @@ export const HomeView: React.FC = () => {
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div className="flex flex-col gap-2">
-              <span className="text-brand-primary font-bold text-sm tracking-widest uppercase">Gastronomic Masterpieces</span>
+              <span className="text-brand-primary font-bold text-sm tracking-widest uppercase">Kiệt Tác Ẩm Thực</span>
               <h3 className="text-3xl md:text-4xl font-extrabold font-display tracking-tight text-white">
-                Chef's Seasonal Menu
+                Thực Đơn Theo Mùa Của Bếp Trưởng
               </h3>
             </div>
             {/* Categories */}
@@ -287,11 +292,10 @@ export const HomeView: React.FC = () => {
                 <button
                   key={cat.value}
                   onClick={() => setActiveCategory(cat.value)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider transition-all cursor-pointer ${
-                    activeCategory === cat.value
+                  className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider transition-all cursor-pointer ${activeCategory === cat.value
                       ? "bg-brand-primary text-brand-dark shadow-[0_4px_12px_rgba(197,168,128,0.2)]"
                       : "bg-white/5 text-zinc-400 hover:text-white border border-white/5 hover:border-white/10"
-                  }`}
+                    }`}
                 >
                   {cat.label}
                 </button>
@@ -304,9 +308,8 @@ export const HomeView: React.FC = () => {
             {filteredMenu.map((item) => (
               <div
                 key={item.id}
-                className={`group glass rounded-2xl border border-white/5 overflow-hidden flex flex-col transition-all duration-300 hover:border-white/15 hover:shadow-xl ${
-                  !item.inStock ? "opacity-60" : ""
-                }`}
+                className={`group glass rounded-2xl border border-white/5 overflow-hidden flex flex-col transition-all duration-300 hover:border-white/15 hover:shadow-xl ${!item.inStock ? "opacity-60" : ""
+                  }`}
               >
                 {/* Image Showcase */}
                 <div className="relative aspect-[16/10] overflow-hidden">
@@ -316,7 +319,7 @@ export const HomeView: React.FC = () => {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                  
+
                   {/* Badges on Image */}
                   <div className="absolute top-4 left-4 flex gap-2">
                     {item.isBestSeller && (
@@ -330,11 +333,11 @@ export const HomeView: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  
+
                   {!item.inStock && (
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center">
                       <span className="px-4 py-2 border border-rose-500/40 bg-rose-500/10 text-rose-400 text-xs font-black tracking-widest uppercase rounded-lg">
-                        Temporary Out of Stock
+                        Tạm thời hết hàng
                       </span>
                     </div>
                   )}
@@ -358,7 +361,7 @@ export const HomeView: React.FC = () => {
 
                   <div className="flex items-center justify-between border-t border-white/5 pt-4">
                     <span className="text-xs text-zinc-500 capitalize">
-                      Category: <strong className="text-zinc-300 font-semibold">{item.category}</strong>
+                      Danh mục: <strong className="text-zinc-300 font-semibold">{item.category}</strong>
                     </span>
                     {item.inStock ? (
                       <button
@@ -385,12 +388,12 @@ export const HomeView: React.FC = () => {
         <div className="flex flex-col gap-12">
           {/* Header */}
           <div className="text-center max-w-2xl mx-auto flex flex-col gap-3">
-            <span className="text-brand-primary font-bold text-sm tracking-widest uppercase">Interactive Booking</span>
+            <span className="text-brand-primary font-bold text-sm tracking-widest uppercase">Đặt Bàn Trực Tuyến</span>
             <h3 className="text-3xl md:text-4xl font-extrabold font-display tracking-tight text-white">
-              Choose Your Dining Table
+              Lựa Chọn Vị Trí Bàn
             </h3>
             <p className="text-zinc-400 text-sm">
-              Explore our live table mapping layout. Pick your preferred dining ambiance (Tầng 1, Tầng 2, Sân vườn). Live table status is synced instantly.
+              Khám phá sơ đồ bàn trực tiếp của chúng tôi. Lựa chọn không gian ẩm thực yêu thích của bạn (Tầng 1, Tầng 2, Sân vườn). Trạng thái bàn được đồng bộ hóa ngay lập tức.
             </p>
           </div>
 
@@ -399,15 +402,15 @@ export const HomeView: React.FC = () => {
             <div className="glass bg-emerald-500/10 border border-emerald-500/30 p-5 rounded-2xl flex items-start gap-4 max-w-3xl mx-auto w-full animate-fade-in">
               <CheckCircle className="text-emerald-400 shrink-0 mt-0.5" size={20} />
               <div className="flex-1 flex flex-col gap-1">
-                <h4 className="text-sm font-bold text-emerald-300">Reservation Confirmed!</h4>
+                <h4 className="text-sm font-bold text-emerald-300">Đặt bàn thành công!</h4>
                 <p className="text-xs text-zinc-300">{successBooking}</p>
-                <p className="text-[10px] text-zinc-400 mt-1">Our host will call you shortly to confirm dinner details. You can view this reservation at the host station.</p>
+                <p className="text-[10px] text-zinc-400 mt-1">Nhân viên của chúng tôi sẽ gọi điện xác nhận chi tiết đặt bàn của bạn sớm nhất. Bạn có thể xem thông tin đặt bàn tại quầy tiếp đón.</p>
               </div>
               <button
                 onClick={() => setSuccessBooking(null)}
                 className="text-xs font-bold text-emerald-400 hover:text-white cursor-pointer"
               >
-                Dismiss
+                Đóng
               </button>
             </div>
           )}
@@ -420,11 +423,10 @@ export const HomeView: React.FC = () => {
                 <button
                   key={zone}
                   onClick={() => setSelectedZone(zone)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider transition-all cursor-pointer ${
-                    selectedZone === zone
+                  className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider transition-all cursor-pointer ${selectedZone === zone
                       ? "bg-brand-primary text-brand-dark font-extrabold"
                       : "bg-white/5 text-zinc-400 border border-white/5 hover:border-white/10"
-                  }`}
+                    }`}
                 >
                   {zone === "All" ? "Tất cả khu vực" : zone}
                 </button>
@@ -437,25 +439,25 @@ export const HomeView: React.FC = () => {
                 <span className="w-3.5 h-3.5 rounded-md bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 </span>
-                <span>Available (Click to book)</span>
+                <span>Bàn trống (Click để đặt)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-md bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                 </span>
-                <span>Reserved (Not available)</span>
+                <span>Đã đặt trước</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-md bg-rose-500/20 border border-rose-500/30 flex items-center justify-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
                 </span>
-                <span>Dining / Occupied</span>
+                <span>Đang dùng bữa</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3.5 h-3.5 rounded-md bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                 </span>
-                <span>Cleaning</span>
+                <span>Đang dọn dẹp</span>
               </div>
             </div>
           </div>
@@ -469,21 +471,20 @@ export const HomeView: React.FC = () => {
                   table.status === TABLE_STATUS.AVAILABLE
                     ? "border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-400 hover:bg-emerald-500/10 hover:shadow-lg hover:shadow-emerald-500/5"
                     : table.status === TABLE_STATUS.RESERVED
-                    ? "border-amber-500/30 bg-amber-500/5 cursor-not-allowed opacity-80"
-                    : table.status === TABLE_STATUS.OCCUPIED
-                    ? "border-rose-500/30 bg-rose-500/5 cursor-not-allowed opacity-80"
-                    : "border-blue-500/30 bg-blue-500/5 cursor-not-allowed opacity-80";
+                      ? "border-amber-500/30 bg-amber-500/5 cursor-not-allowed opacity-80"
+                      : table.status === TABLE_STATUS.OCCUPIED
+                        ? "border-rose-500/30 bg-rose-500/5 cursor-not-allowed opacity-80"
+                        : "border-blue-500/30 bg-blue-500/5 cursor-not-allowed opacity-80";
 
                 return (
                   <div
                     key={table.id}
                     onClick={() => isAvailable && handleOpenBooking(table.id, table.name)}
-                    className={`relative p-6 border rounded-2xl flex flex-col items-center justify-center gap-3 transition-all duration-300 ${statusColor} ${
-                      isAvailable ? "cursor-pointer" : ""
-                    }`}
+                    className={`relative p-6 border rounded-2xl flex flex-col items-center justify-center gap-3 transition-all duration-300 ${statusColor} ${isAvailable ? "cursor-pointer" : ""
+                      }`}
                   >
                     <div className="absolute top-3 right-3 text-[10px] font-bold text-zinc-500 bg-white/5 px-2 py-0.5 rounded-md">
-                      {table.seats} Seats
+                      {table.seats} Chỗ
                     </div>
 
                     <div className="text-zinc-500 text-[10px] tracking-widest uppercase font-semibold">
@@ -491,21 +492,20 @@ export const HomeView: React.FC = () => {
                     </div>
 
                     <div
-                      className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-dashed ${
-                        table.status === TABLE_STATUS.AVAILABLE
+                      className={`w-14 h-14 rounded-full flex items-center justify-center border-2 border-dashed ${table.status === TABLE_STATUS.AVAILABLE
                           ? "border-emerald-500/30 text-emerald-400"
                           : table.status === TABLE_STATUS.RESERVED
-                          ? "border-amber-500/30 text-amber-400"
-                          : table.status === TABLE_STATUS.OCCUPIED
-                          ? "border-rose-500/30 text-rose-400"
-                          : "border-blue-500/30 text-blue-400"
-                      }`}
+                            ? "border-amber-500/30 text-amber-400"
+                            : table.status === TABLE_STATUS.OCCUPIED
+                              ? "border-rose-500/30 text-rose-400"
+                              : "border-blue-500/30 text-blue-400"
+                        }`}
                     >
                       <span className="font-display font-black text-sm">T-{table.name.split(" ").pop()}</span>
                     </div>
 
                     <div className="font-bold text-sm text-white">{table.name}</div>
-                    
+
                     <Badge status={table.status} type="table" className="mt-1" />
                   </div>
                 );
@@ -522,27 +522,27 @@ export const HomeView: React.FC = () => {
             <div className="w-12 h-12 rounded-xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary">
               <Award size={24} />
             </div>
-            <h4 className="text-xl font-bold font-display text-white">World Class Chefs</h4>
+            <h4 className="text-xl font-bold font-display text-white">Đầu Bếp Đẳng Cấp Thế Giới</h4>
             <p className="text-zinc-400 text-sm leading-relaxed">
-              Curated by chefs trained in Michelin-starred Parisian kitchens, combining local organic Vietnamese ingredients with classic French culinary philosophies.
+              Được chế biến bởi các đầu bếp tu nghiệp từ các nhà hàng Paris gắn sao Michelin danh tiếng, kết hợp nguyên liệu hữu cơ địa phương với tinh hoa ẩm thực Pháp cổ điển.
             </p>
           </div>
           <div className="flex flex-col gap-4">
             <div className="w-12 h-12 rounded-xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary">
               <MapPin size={24} />
             </div>
-            <h4 className="text-xl font-bold font-display text-white">Bespoke Ambiance</h4>
+            <h4 className="text-xl font-bold font-display text-white">Không Gian Sang Trọng</h4>
             <p className="text-zinc-400 text-sm leading-relaxed">
-              Enjoy custom lighting, carefully selected French jazz, private VIP booths, and window seats looking out over the glittering cityscape.
+              Tận hưởng không gian ấm cúng với ánh sáng dịu nhẹ thiết kế riêng, nhạc Jazz Pháp tuyển chọn, các phòng VIP riêng tư và bàn cạnh cửa kính ngắm nhìn toàn cảnh thành phố lung linh.
             </p>
           </div>
           <div className="flex flex-col gap-4">
             <div className="w-12 h-12 rounded-xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary">
               <BookOpen size={24} />
             </div>
-            <h4 className="text-xl font-bold font-display text-white">Simulated Real-time Integration</h4>
+            <h4 className="text-xl font-bold font-display text-white">Đồng Bộ Thời Gian Thực</h4>
             <p className="text-zinc-400 text-sm leading-relaxed">
-              Our dashboard is fully reactive. Staff instantly see table reservation triggers, order submissions, and meal preparations in the backend workstation.
+              Hệ thống quản lý của chúng tôi hoạt động trực tiếp theo thời gian thực. Nhân viên phục vụ và nhà bếp sẽ ngay lập tức nhìn thấy các yêu cầu đặt bàn và gọi món.
             </p>
           </div>
         </div>
@@ -552,22 +552,22 @@ export const HomeView: React.FC = () => {
       <Modal
         isOpen={bookingTable !== null}
         onClose={() => setBookingTable(null)}
-        title={`Reserve ${bookingTable?.name || ""}`}
+        title={`Đặt bàn ${bookingTable?.name || ""}`}
         size="md"
       >
         <form onSubmit={handleConfirmBooking} className="flex flex-col gap-5">
           <div className="text-xs text-zinc-400 bg-white/5 p-3 rounded-lg border border-white/5">
-            <strong>Table Guidelines:</strong> Seating capacity is up to <strong>{guests} guests</strong>. Selected tables are held for 15 minutes past the booking schedule.
+            <strong>Hướng dẫn đặt bàn:</strong> Sức chứa bàn tối đa là <strong>{selectedTableObj?.seats || 4} khách</strong>. Bàn đã chọn sẽ được giữ tối đa 15 phút so với thời gian hẹn đặt bàn.
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Full Name *</label>
+            <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Họ và tên *</label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><User size={16} /></span>
               <input
                 type="text"
                 required
-                placeholder="e.g. John Doe"
+                placeholder="Ví dụ: Nguyễn Văn A"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-brand-primary"
@@ -577,13 +577,13 @@ export const HomeView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Phone Number *</label>
+              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Số điện thoại *</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Phone size={16} /></span>
                 <input
                   type="tel"
                   required
-                  placeholder="e.g. 0901234567"
+                  placeholder="Ví dụ: 0901234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-brand-primary"
@@ -592,12 +592,12 @@ export const HomeView: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Email Address</label>
+              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Địa chỉ Email</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Mail size={16} /></span>
                 <input
                   type="email"
-                  placeholder="e.g. john@example.com"
+                  placeholder="Ví dụ: name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-brand-primary"
@@ -608,13 +608,13 @@ export const HomeView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Guests Count</label>
+              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Số lượng khách</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Users size={16} /></span>
                 <input
                   type="number"
                   min={1}
-                  max={guests}
+                  max={selectedTableObj?.seats || 4}
                   value={guests}
                   onChange={(e) => setGuests(parseInt(e.target.value) || 1)}
                   className="w-full bg-white/5 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-brand-primary"
@@ -623,7 +623,7 @@ export const HomeView: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Date</label>
+              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Ngày đặt bàn</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Calendar size={16} /></span>
                 <input
@@ -635,12 +635,12 @@ export const HomeView: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Time Slot</label>
+              <label className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Giờ đặt bàn</label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500"><Clock size={16} /></span>
                 <input
                   type="text"
-                  placeholder="e.g. 19:30"
+                  placeholder="Ví dụ: 19:30"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-brand-primary"
@@ -655,13 +655,13 @@ export const HomeView: React.FC = () => {
               onClick={() => setBookingTable(null)}
               className="px-5 py-2.5 text-xs font-bold bg-white/5 border border-white/10 hover:bg-white/10 text-zinc-300 rounded-lg transition-colors cursor-pointer"
             >
-              CANCEL
+              HỦY BỎ
             </button>
             <button
               type="submit"
               className="px-6 py-2.5 text-xs font-extrabold bg-brand-primary hover:bg-brand-primary-hover text-brand-dark rounded-lg transition-colors cursor-pointer"
             >
-              CONFIRM RESERVATION
+              XÁC NHẬN ĐẶT BÀN
             </button>
           </div>
         </form>
@@ -690,9 +690,8 @@ export const HomeView: React.FC = () => {
 
       {/* Cart Drawer Panel */}
       <div
-        className={`fixed top-0 right-0 h-full w-full max-w-md bg-brand-dark-light border-l border-white/5 shadow-2xl z-50 flex flex-col transition-transform duration-300 transform ${
-          isCartOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed top-0 right-0 h-full w-full max-w-md bg-brand-dark-light border-l border-white/5 shadow-2xl z-50 flex flex-col transition-transform duration-300 transform ${isCartOpen ? "translate-x-0" : "translate-x-full"
+          }`}
       >
         {/* Drawer Header */}
         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-brand-dark">
@@ -755,7 +754,7 @@ export const HomeView: React.FC = () => {
               {/* Checkout Form */}
               <form onSubmit={handleCheckoutSubmit} className="flex flex-col gap-4 border-t border-white/5 pt-5 mt-auto">
                 <span className="text-[10px] font-bold text-brand-primary uppercase tracking-widest mb-1">Thông tin giao hàng</span>
-                
+
                 {/* Name */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Họ và tên *</label>
@@ -868,7 +867,7 @@ export const HomeView: React.FC = () => {
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Cổng thanh toán điện tử</span>
               </div>
               <h5 className="font-bold text-xs text-slate-700">Quét mã QR sau để thanh toán nhanh qua Ngân hàng</h5>
-              
+
               {/* QR Image Box */}
               <div className="w-36 h-36 border border-slate-250 bg-white p-2 rounded-xl flex items-center justify-center shadow-xs">
                 <img

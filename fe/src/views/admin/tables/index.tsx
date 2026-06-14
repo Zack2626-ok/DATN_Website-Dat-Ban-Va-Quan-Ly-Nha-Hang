@@ -24,7 +24,7 @@ export const WaiterTableMap: React.FC = () => {
   const [cart, setCart] = useState<{ menuItemId: string; name: string; price: number; quantity: number }[]>([]);
 
   const selectedTable = useMemo(() => tables.find((t) => t.id === selectedTableId) || null, [tables, selectedTableId]);
-  
+
   const activeOrder = useMemo(() => {
     if (!selectedTable || !selectedTable.currentOrderId) return null;
     return orders.find((o) => o.id === selectedTable.currentOrderId) || null;
@@ -96,8 +96,8 @@ export const WaiterTableMap: React.FC = () => {
       {/* Table Maps */}
       <div className="lg:col-span-2 flex flex-col gap-6">
         <div className="flex justify-between items-center">
-          <h3 className="text-lg font-bold text-admin-text-main font-display">Floor Map Status</h3>
-          <span className="text-xs text-admin-text-sub">Select any table to administer order actions</span>
+          <h3 className="text-lg font-bold text-admin-text-main font-display">Sơ đồ trạng thái bàn</h3>
+          <span className="text-xs text-admin-text-sub">Chọn một bàn để thực hiện các thao tác quản lý đơn hàng</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-2xl border border-admin-border">
@@ -107,10 +107,10 @@ export const WaiterTableMap: React.FC = () => {
               table.status === TABLE_STATUS.AVAILABLE
                 ? "bg-[#e8f5e9] border-[#a5d6a7] text-[#2e7d32]"
                 : table.status === TABLE_STATUS.RESERVED
-                ? "bg-[#fffde7] border-[#fff59d] text-[#f57f17]"
-                : table.status === TABLE_STATUS.OCCUPIED
-                ? "bg-[#ffebee] border-[#ef9a9a] text-[#c62828]"
-                : "bg-[#e3f2fd] border-[#90caf9] text-[#1565c0]";
+                  ? "bg-[#fffde7] border-[#fff59d] text-[#f57f17]"
+                  : table.status === TABLE_STATUS.OCCUPIED
+                    ? "bg-[#ffebee] border-[#ef9a9a] text-[#c62828]"
+                    : "bg-[#e3f2fd] border-[#90caf9] text-[#1565c0]";
 
             const order = orders.find((o) => o.id === table.currentOrderId);
             const priceLabel = order ? `${(order.totalAmount * 1000).toLocaleString("vi-VN")} vnđ` : null;
@@ -125,13 +125,12 @@ export const WaiterTableMap: React.FC = () => {
               <div
                 key={table.id}
                 onClick={() => setSelectedTableId(table.id)}
-                className={`p-4 border rounded-2xl flex flex-col items-center gap-1.5 cursor-pointer transition-all ${statusColor} ${
-                  isSelected ? "ring-2 ring-admin-primary scale-102 shadow-xs" : "hover:scale-[1.01] shadow-2xs"
-                }`}
+                className={`p-4 border rounded-2xl flex flex-col items-center gap-1.5 cursor-pointer transition-all ${statusColor} ${isSelected ? "ring-2 ring-admin-primary scale-102 shadow-xs" : "hover:scale-[1.01] shadow-2xs"
+                  }`}
               >
                 <span className="text-[12px] font-extrabold font-display">{table.name}</span>
                 <span className="text-[10px] font-semibold opacity-85">{table.seats} chỗ</span>
-                {priceLabel && <span className="text-[11px] font-black my-0.5">{priceLabel}</span>}
+                {priceLabel && <span className="text-[11px] font-extrabold my-0.5">{priceLabel}</span>}
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white/60 border border-current/10 mt-1">
                   {VietnameseLabels[table.status]}
                 </span>
@@ -158,12 +157,12 @@ export const WaiterTableMap: React.FC = () => {
             {selectedTable.status === TABLE_STATUS.AVAILABLE && (
               <div className="flex flex-col gap-4 text-center py-6">
                 <Utensils size={36} className="text-slate-400 mx-auto" />
-                <h5 className="font-bold text-sm text-admin-text-main">Table is empty</h5>
-                <p className="text-xs text-admin-text-sub">Add walk-in guests or create order dishes directly.</p>
-                
+                <h5 className="font-bold text-sm text-admin-text-main">Bàn trống</h5>
+                <p className="text-xs text-admin-text-sub">Thêm khách dùng tại chỗ hoặc tạo đơn gọi món trực tiếp.</p>
+
                 <div className="flex flex-col gap-2.5 mt-2">
                   <div className="flex items-center justify-between text-xs px-2 text-admin-text-sub font-semibold">
-                    <span>Guest Seating Count:</span>
+                    <span>Số lượng khách ngồi:</span>
                     <input
                       type="number"
                       min={1}
@@ -173,7 +172,7 @@ export const WaiterTableMap: React.FC = () => {
                       className="w-16 bg-slate-50 border border-admin-border rounded py-1 px-2 text-center focus:outline-none text-admin-text-main focus:border-admin-primary"
                     />
                   </div>
-                  
+
                   <button
                     onClick={() => {
                       setCart([]);
@@ -181,7 +180,7 @@ export const WaiterTableMap: React.FC = () => {
                     }}
                     className="w-full py-2.5 bg-admin-primary text-white text-xs font-bold tracking-widest rounded-lg hover:bg-admin-primary-hover cursor-pointer font-display transition-colors"
                   >
-                    OPEN ORDER CART
+                    MỞ GIỎ GỌI MÓN
                   </button>
                 </div>
               </div>
@@ -190,16 +189,16 @@ export const WaiterTableMap: React.FC = () => {
             {selectedTable.status === TABLE_STATUS.RESERVED && (
               <div className="flex flex-col gap-4 text-center py-6">
                 <Clock size={36} className="text-amber-500/80 mx-auto" />
-                <h5 className="font-bold text-sm text-admin-text-main">Table is Reserved</h5>
+                <h5 className="font-bold text-sm text-admin-text-main">Bàn đã được đặt trước</h5>
                 <p className="text-xs text-admin-text-sub">
-                  Customer booked this table. Wait for arrival.
+                  Khách hàng đã đặt bàn này trực tuyến. Đang chờ khách đến.
                 </p>
-                
+
                 {activeOrder && (
                   <div className="text-left bg-slate-50 p-3 rounded-lg border border-admin-border text-xs flex flex-col gap-1.5 mt-2 text-admin-text-sub font-medium">
-                    <div><strong>Guest Name:</strong> {activeOrder.customerName}</div>
-                    <div><strong>Phone:</strong> {activeOrder.customerPhone}</div>
-                    <div><strong>Capacity:</strong> {activeOrder.guestCount} guests</div>
+                    <div><strong>Tên khách hàng:</strong> {activeOrder.customerName}</div>
+                    <div><strong>Số điện thoại:</strong> {activeOrder.customerPhone}</div>
+                    <div><strong>Sức chứa yêu cầu:</strong> {activeOrder.guestCount} khách</div>
                   </div>
                 )}
 
@@ -211,19 +210,19 @@ export const WaiterTableMap: React.FC = () => {
                   }}
                   className="w-full py-2.5 bg-emerald-500 text-black text-xs font-bold tracking-widest rounded-lg hover:bg-emerald-400 cursor-pointer font-display mt-2"
                 >
-                  CHECK-IN ARRIVAL (OCCUPY)
+                  XÁC NHẬN KHÁCH ĐẾN (SỬ DỤNG BÀN)
                 </button>
               </div>
             )}
 
             {selectedTable.status === TABLE_STATUS.OCCUPIED && (
               <div className="flex flex-col gap-4">
-                <h5 className="font-bold text-sm text-admin-primary">Active Dishes Bill</h5>
+                <h5 className="font-bold text-sm text-admin-primary">Hóa đơn món đang dùng</h5>
                 {activeOrder ? (
                   <div className="flex flex-col gap-3">
                     <div className="max-h-[180px] overflow-y-auto pr-1 flex flex-col gap-2 scrollbar">
                       {activeOrder.items.length === 0 ? (
-                        <p className="text-xs text-zinc-500 italic py-2">No dishes placed yet. Open catalog to order.</p>
+                        <p className="text-xs text-zinc-500 italic py-2">Chưa gọi món nào. Vui lòng mở danh mục thực đơn.</p>
                       ) : (
                         activeOrder.items.map((item, index) => (
                           <div key={index} className="flex justify-between items-center text-xs bg-slate-50 p-2.5 rounded-lg border border-admin-border">
@@ -235,9 +234,9 @@ export const WaiterTableMap: React.FC = () => {
                         ))
                       )}
                     </div>
-                    
+
                     <div className="flex justify-between items-center text-sm font-bold border-t border-admin-border pt-3 text-admin-text-main">
-                      <span>Total Amount:</span>
+                      <span>Tổng tiền:</span>
                       <span className="text-admin-primary">{(activeOrder.totalAmount * 1000).toLocaleString("vi-VN")} vnđ</span>
                     </div>
 
@@ -253,11 +252,11 @@ export const WaiterTableMap: React.FC = () => {
                       }}
                       className="w-full py-2.5 border border-admin-border hover:border-admin-primary/60 text-admin-text-main hover:text-admin-primary text-xs font-bold rounded-lg hover:bg-slate-50 cursor-pointer mt-2 font-display transition-colors"
                     >
-                      ADD EXTRA DISHES
+                      GỌI THÊM MÓN
                     </button>
                   </div>
                 ) : (
-                  <p className="text-xs text-rose-400 font-bold">Error: Occupied table lacks active order.</p>
+                  <p className="text-xs text-rose-400 font-bold">Lỗi: Bàn đang hoạt động nhưng thiếu thông tin đơn hàng.</p>
                 )}
               </div>
             )}
@@ -265,13 +264,13 @@ export const WaiterTableMap: React.FC = () => {
             {selectedTable.status === TABLE_STATUS.CLEANING && (
               <div className="flex flex-col gap-4 text-center py-6">
                 <RefreshCw size={36} className="text-blue-500 animate-spin mx-auto" />
-                <h5 className="font-bold text-sm text-admin-text-main">Table is being cleaned</h5>
-                <p className="text-xs text-admin-text-sub">Staff is sanitizing the dining zone.</p>
+                <h5 className="font-bold text-sm text-admin-text-main">Bàn đang được dọn dẹp</h5>
+                <p className="text-xs text-admin-text-sub">Nhân viên đang vệ sinh và sát khuẩn khu vực bàn ăn.</p>
                 <button
                   onClick={() => handleCompleteCleaning(selectedTable.id)}
                   className="w-full py-2.5 bg-blue-500 hover:bg-blue-400 text-black text-xs font-bold tracking-widest rounded-lg cursor-pointer mt-2 font-display"
                 >
-                  MARK AS CLEAN & AVAILABLE
+                  ĐÁNH DẤU SẠCH & SẴN SÀNG
                 </button>
               </div>
             )}
@@ -279,8 +278,8 @@ export const WaiterTableMap: React.FC = () => {
         ) : (
           <div className="text-center py-16 text-slate-400">
             <Grid size={40} className="mx-auto text-zinc-700 mb-3" />
-            <h5 className="font-bold text-sm text-slate-700">No Table Selected</h5>
-            <p className="text-xs mt-1">Select a table from the floor map to review active order bills or place items.</p>
+            <h5 className="font-bold text-sm text-slate-700">Chưa chọn bàn</h5>
+            <p className="text-xs mt-1">Chọn một bàn bất kỳ trên sơ đồ để xem thông tin hóa đơn hoặc thực hiện gọi món.</p>
           </div>
         )}
       </div>
@@ -289,23 +288,22 @@ export const WaiterTableMap: React.FC = () => {
       <Modal
         isOpen={isOrderingModalOpen}
         onClose={() => setIsOrderingModalOpen(false)}
-        title={activeOrder ? `Sửa hóa đơn ${selectedTable?.name || ""}` : `Tạo đơn cho ${selectedTable?.name || ""}`}
+        title={activeOrder ? `Sửa hóa đơn ${selectedTable?.name || ""}` : `Tạo đơn gọi món cho ${selectedTable?.name || ""}`}
         size="lg"
         theme="light"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Menu Catalog */}
           <div className="flex flex-col gap-4">
-            <h4 className="text-sm font-bold text-admin-primary border-b border-slate-100 pb-2 font-display">Dish Menu Selection</h4>
-            
+            <h4 className="text-sm font-bold text-admin-primary border-b border-slate-100 pb-2 font-display">Danh mục món ăn</h4>
+
             <div className="flex flex-col gap-2.5 max-h-[350px] overflow-y-auto pr-1 scrollbar">
               {menu.map((item) => (
                 <div
                   key={item.id}
                   onClick={() => item.inStock && handleAddToCart(item)}
-                  className={`flex items-center gap-3 p-2 border rounded-xl cursor-pointer transition-all hover:bg-slate-100 bg-slate-50 border-slate-100 ${
-                    item.inStock ? "" : "opacity-50 cursor-not-allowed"
-                  }`}
+                  className={`flex items-center gap-3 p-2 border rounded-xl cursor-pointer transition-all hover:bg-slate-100 bg-slate-50 border-slate-100 ${item.inStock ? "" : "opacity-50 cursor-not-allowed"
+                    }`}
                 >
                   <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover" />
                   <div className="flex-1 flex flex-col min-w-0">
@@ -313,9 +311,9 @@ export const WaiterTableMap: React.FC = () => {
                     <span className="text-[10px] text-admin-text-sub font-semibold">{(item.price * 1000).toLocaleString("vi-VN")} vnđ</span>
                   </div>
                   {item.inStock ? (
-                    <span className="text-[10px] text-admin-primary font-bold bg-admin-primary-light px-2 py-0.5 rounded border border-admin-primary/20">Add +</span>
+                    <span className="text-[10px] text-admin-primary font-bold bg-admin-primary-light px-2 py-0.5 rounded border border-admin-primary/20">Thêm +</span>
                   ) : (
-                    <span className="text-[10px] text-rose-500 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Out Stock</span>
+                    <span className="text-[10px] text-rose-500 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Hết hàng</span>
                   )}
                 </div>
               ))}
@@ -326,19 +324,19 @@ export const WaiterTableMap: React.FC = () => {
           <div className="p-4 rounded-xl border border-admin-border bg-slate-50 flex flex-col justify-between gap-4">
             <div className="flex flex-col gap-3">
               <h4 className="text-sm font-bold text-admin-text-main border-b border-admin-border pb-2 flex justify-between font-display">
-                <span>Selected Items</span>
-                <span className="text-admin-text-sub text-xs">{cart.length} items</span>
+                <span>Món đã chọn</span>
+                <span className="text-admin-text-sub text-xs">{cart.length} món</span>
               </h4>
 
               <div className="flex flex-col gap-2.5 max-h-[200px] overflow-y-auto pr-1 scrollbar">
                 {cart.length === 0 ? (
-                  <p className="text-xs text-admin-text-sub italic text-center py-8">Cart is empty. Click items in the catalog to add them.</p>
+                  <p className="text-xs text-admin-text-sub italic text-center py-8">Giỏ hàng trống. Nhấp chọn món từ thực đơn bên trái để thêm.</p>
                 ) : (
                   cart.map((item, index) => (
                     <div key={index} className="flex justify-between items-center text-xs bg-white p-2.5 rounded-lg border border-admin-border">
                       <div className="flex flex-col">
                         <span className="font-bold text-admin-text-main">{item.name}</span>
-                        <span className="text-[10px] text-admin-text-sub">{(item.price * 1000).toLocaleString("vi-VN")} vnđ mỗi món</span>
+                        <span className="text-[10px] text-admin-text-sub">{(item.price * 1000).toLocaleString("vi-VN")} vnđ/món</span>
                       </div>
                       <span className="font-bold text-admin-primary">x{item.quantity}</span>
                     </div>
@@ -349,8 +347,8 @@ export const WaiterTableMap: React.FC = () => {
 
             <div className="flex flex-col gap-3 pt-3 border-t border-admin-border">
               <div className="flex justify-between text-sm font-bold text-admin-text-main">
-                <span>Estimated Total:</span>
-                <span className="text-admin-primary font-black">
+                <span>Tổng tạm tính:</span>
+                <span className="text-admin-primary font-extrabold">
                   {(cart.reduce((sum, i) => sum + i.price * i.quantity, 0) * 1000).toLocaleString("vi-VN")} vnđ
                 </span>
               </div>
@@ -361,7 +359,7 @@ export const WaiterTableMap: React.FC = () => {
                   onClick={() => setIsOrderingModalOpen(false)}
                   className="flex-1 py-2 text-xs font-bold bg-white border border-admin-border hover:bg-slate-100 text-slate-700 rounded-lg cursor-pointer transition-colors"
                 >
-                  Close
+                  Đóng
                 </button>
                 {activeOrder ? (
                   <button
@@ -369,7 +367,7 @@ export const WaiterTableMap: React.FC = () => {
                     disabled={cart.length === 0}
                     className="flex-1 py-2 text-xs font-bold bg-admin-primary text-white rounded-lg hover:bg-admin-primary-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
-                    ADD TO BILL
+                    THÊM VÀO HÓA ĐƠN
                   </button>
                 ) : (
                   <button
@@ -377,7 +375,7 @@ export const WaiterTableMap: React.FC = () => {
                     disabled={cart.length === 0}
                     className="flex-1 py-2 text-xs font-bold bg-admin-primary text-white rounded-lg hover:bg-admin-primary-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
-                    SUBMIT TO KITCHEN
+                    GỬI ĐƠN XUỐNG BẾP
                   </button>
                 )}
               </div>

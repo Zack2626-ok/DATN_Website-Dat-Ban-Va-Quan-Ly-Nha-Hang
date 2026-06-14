@@ -134,13 +134,13 @@ export const ManagerDashboard: React.FC = () => {
 
               {/* X axis labels */}
               <div className="absolute -bottom-6 left-0 w-full flex justify-between text-[10px] font-bold text-slate-400 px-1.5">
-                <span>Mon</span>
-                <span>Tue</span>
-                <span>Wed</span>
-                <span>Thu</span>
-                <span>Fri</span>
-                <span>Sat</span>
-                <span>Sun</span>
+                <span>Thứ 2</span>
+                <span>Thứ 3</span>
+                <span>Thứ 4</span>
+                <span>Thứ 5</span>
+                <span>Thứ 6</span>
+                <span>Thứ 7</span>
+                <span>Chủ nhật</span>
               </div>
             </div>
           </div>

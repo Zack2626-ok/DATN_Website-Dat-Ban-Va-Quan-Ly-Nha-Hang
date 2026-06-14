@@ -48,10 +48,10 @@ export const LoyaltyPointsDemo: React.FC = () => {
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black font-display text-white">Nguyễn Văn An</h3>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
-                  GOLD MEMBER
+                  HỘI VIÊN VÀNG
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[9px] font-black tracking-wider flex items-center gap-0.5">
-                  <Flame size={8} /> Streak 12 ngày
+                  <Flame size={8} /> Ghé thăm 12 ngày liên tiếp
                 </span>
               </div>
               <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1 font-semibold">
@@ -85,10 +85,10 @@ export const LoyaltyPointsDemo: React.FC = () => {
                 />
               </div>
               <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
-                <span>{points}/2,500 điểm</span>
+                <span>{points}/2.500 điểm</span>
                 <div className="flex items-center gap-1">
                   <span className="bg-slate-800 text-slate-200 border border-slate-700 px-1.5 py-0.5 rounded uppercase text-[8px] font-black">
-                    PLATINUM — 2,500đ
+                    BẠCH KIM — 2.500 điểm
                   </span>
                   <span>Còn {(2500 - points > 0) ? (2500 - points) : 0} điểm</span>
                 </div>
@@ -202,7 +202,7 @@ export const LoyaltyPointsDemo: React.FC = () => {
                     </span>
                   </div>
                   <span className="px-2.5 py-1 bg-purple-50 border border-purple-100 text-purple-700 text-[10px] font-black uppercase rounded-lg tracking-wide">
-                    Takeaway
+                    Mang đi
                   </span>
                 </div>
 
@@ -229,9 +229,9 @@ export const LoyaltyPointsDemo: React.FC = () => {
           {activeSubTab === "history" && (
             <div className="flex flex-col gap-3.5 max-h-[300px] overflow-y-auto pr-1">
               {[
-                { date: "2026-06-10", guests: 4, zone: "VIP Zone", bill: "1,450,000đ", pts: "+145đ" },
-                { date: "2026-06-04", guests: 2, zone: "Window Zone", bill: "680,000đ", pts: "+68đ" },
-                { date: "2026-05-28", guests: 6, zone: "Garden Zone", bill: "2,100,000đ", pts: "+210đ" },
+                { date: "2026-06-10", guests: 4, zone: "Khu VIP", bill: "1.450.000đ", pts: "+145 điểm" },
+                { date: "2026-06-04", guests: 2, zone: "Khu Cửa Sổ", bill: "680.000đ", pts: "+68 điểm" },
+                { date: "2026-05-28", guests: 6, zone: "Khu Sân Vườn", bill: "2.100.000đ", pts: "+210 điểm" },
               ].map((h, i) => (
                 <div key={i} className="flex justify-between items-center text-xs p-4 bg-slate-50 rounded-2xl border border-slate-150 shadow-2xs">
                   <div className="flex flex-col gap-1 font-semibold text-slate-600">

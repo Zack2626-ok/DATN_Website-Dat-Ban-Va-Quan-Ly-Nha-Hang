@@ -20,7 +20,7 @@ export const ClientMenuDemo: React.FC = () => {
     return menuItems.filter((item) => {
       const matchesCategory =
         activeCategory === "all" || item.category === activeCategory;
-      
+
       const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
@@ -79,10 +79,10 @@ export const ClientMenuDemo: React.FC = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in text-slate-800">
-      
+
       {/* Menu Catalog Panel */}
       <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 flex flex-col gap-5 shadow-2xs">
-        
+
         {/* Header client info */}
         <div className="flex justify-between items-center border-b border-slate-100 pb-4">
           <div>
@@ -126,11 +126,10 @@ export const ClientMenuDemo: React.FC = () => {
             <button
               key={cat.key}
               onClick={() => setActiveCategory(cat.key)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold font-display tracking-wide transition-all cursor-pointer ${
-                activeCategory === cat.key
+              className={`px-4 py-2 rounded-xl text-xs font-bold font-display tracking-wide transition-all cursor-pointer ${activeCategory === cat.key
                   ? "bg-slate-900 text-white shadow-2xs"
                   : "bg-slate-50 text-slate-500 hover:text-slate-800 border border-slate-200/60 hover:bg-slate-100"
-              }`}
+                }`}
             >
               {cat.label}
             </button>

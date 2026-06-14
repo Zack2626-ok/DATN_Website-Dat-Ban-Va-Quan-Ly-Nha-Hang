@@ -116,13 +116,13 @@ export const MenuManagement: React.FC = () => {
               {/* Option 1 */}
               <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-700">Meat Doneness</span>
+                  <span className="font-bold text-slate-700">Độ chín của thịt</span>
                   <button className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer">
                     <Trash size={12} />
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {["Rare", "Medium Rare", "Medium", "Well Done"].map((val) => (
+                  {["Tái (Rare)", "Tái vừa (Medium Rare)", "Chín vừa (Medium)", "Chín kỹ (Well Done)"].map((val) => (
                     <span key={val} className="px-2.5 py-1 bg-white border border-slate-200 rounded text-[10px] text-slate-600 font-semibold shadow-2xs">
                       {val}
                     </span>
@@ -133,13 +133,13 @@ export const MenuManagement: React.FC = () => {
               {/* Option 2 */}
               <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-700">Size</span>
+                  <span className="font-bold text-slate-700">Kích cỡ (Size)</span>
                   <button className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer">
                     <Trash size={12} />
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {["Regular", "Large"].map((val) => (
+                  {["Thường (Regular)", "Lớn (Large)"].map((val) => (
                     <span key={val} className="px-2.5 py-1 bg-white border border-slate-200 rounded text-[10px] text-slate-600 font-semibold shadow-2xs">
                       {val}
                     </span>
@@ -150,13 +150,13 @@ export const MenuManagement: React.FC = () => {
               {/* Option 3 */}
               <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-700">Extra Toppings</span>
+                  <span className="font-bold text-slate-700">Topping thêm</span>
                   <button className="text-rose-500 hover:text-rose-700 p-1 cursor-pointer">
                     <Trash size={12} />
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {["Extra Bacon", "Extra Cheese", "Avocado", "Fried Egg"].map((val) => (
+                  {["Thêm thịt xông khói", "Thêm phô mai", "Thêm bơ quả", "Thêm trứng ốp la"].map((val) => (
                     <span key={val} className="px-2.5 py-1 bg-white border border-slate-200 rounded text-[10px] text-slate-600 font-semibold shadow-2xs">
                       {val}
                     </span>

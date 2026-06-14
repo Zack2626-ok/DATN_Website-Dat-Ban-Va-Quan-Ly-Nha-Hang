@@ -49,11 +49,11 @@ export const ChefKitchenQueue: React.FC = () => {
 
   return (
     <div className="bg-[#0b1329] text-slate-100 p-6 rounded-2xl shadow-xl border border-slate-800 flex flex-col gap-6 select-none">
-      
+
       {/* KDS Header */}
       <div className="flex justify-between items-center border-b border-slate-800 pb-4">
         <div>
-          <h3 className="text-xl font-black font-display text-white tracking-wide">Màn hình Bếp (KDS)</h3>
+          <h3 className="text-xl font-bold font-display text-white">Màn hình Bếp (KDS)</h3>
           <p className="text-xs text-slate-400 mt-1">Hệ thống hiển thị đơn hàng cho nhà bếp</p>
         </div>
         <div className="flex items-center gap-4 text-xs font-semibold">
@@ -68,12 +68,12 @@ export const ChefKitchenQueue: React.FC = () => {
 
       {/* Kanban Board */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        
+
         {/* Column 1: Chờ nấu */}
         <div className="flex flex-col gap-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Chờ nấu</span>
-            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] font-black text-slate-300">
+            <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Chờ nấu</span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] font-semibold text-slate-300">
               {columns.waiting.length}
             </span>
           </div>
@@ -93,7 +93,7 @@ export const ChefKitchenQueue: React.FC = () => {
                   >
                     <div className="flex flex-col gap-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-black text-white">{order.tableName}</span>
+                        <span className="text-xs font-bold text-white">{order.tableName}</span>
                         <span className={`text-[10px] font-bold flex items-center gap-1 ${isDelayed ? "text-rose-500 animate-pulse" : "text-emerald-500"}`}>
                           <Clock size={10} /> {timeStr}
                         </span>
@@ -107,21 +107,21 @@ export const ChefKitchenQueue: React.FC = () => {
                               <span>{item.name}</span>
                               <span className="text-blue-400">x{item.quantity}</span>
                             </div>
-                            
+
                             {/* Options/Modifiers Mock */}
                             {item.name.toLowerCase().includes("bò") && (
                               <div className="flex flex-wrap gap-1.5 mt-0.5">
-                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-black px-1.5 py-0.5 rounded">
+                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded">
                                   Chín vừa
                                 </span>
-                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-black px-1.5 py-0.5 rounded">
+                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded">
                                   Ít ớt chuông
                                 </span>
                               </div>
                             )}
                             {item.name.toLowerCase().includes("gỏi") && (
                               <div className="flex flex-wrap gap-1.5 mt-0.5">
-                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-black px-1.5 py-0.5 rounded">
+                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded">
                                   Nhiều thính
                                 </span>
                               </div>
@@ -133,7 +133,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                     <button
                       onClick={() => handleStartCooking(order.id)}
-                      className="w-full py-2 bg-[#0f62fe] hover:bg-blue-600 text-white rounded-lg text-[10px] font-black tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-colors"
+                      className="w-full py-2 bg-[#0f62fe] hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-colors"
                     >
                       <Play size={11} /> Bắt đầu nấu
                     </button>
@@ -147,8 +147,8 @@ export const ChefKitchenQueue: React.FC = () => {
         {/* Column 2: Đang nấu */}
         <div className="flex flex-col gap-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Đang nấu</span>
-            <span className="px-2 py-0.5 rounded-full bg-orange-500 text-[10px] font-black text-white">
+            <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Đang nấu</span>
+            <span className="px-2 py-0.5 rounded-full bg-orange-500 text-[10px] font-semibold text-white">
               {columns.cooking.length}
             </span>
           </div>
@@ -168,7 +168,7 @@ export const ChefKitchenQueue: React.FC = () => {
                   >
                     <div className="flex flex-col gap-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-black text-white">{order.tableName}</span>
+                        <span className="text-xs font-bold text-white">{order.tableName}</span>
                         <span className={`text-[10px] font-bold flex items-center gap-1 ${isDelayed ? "text-rose-500 animate-pulse" : "text-emerald-500"}`}>
                           <Clock size={10} /> {timeStr}
                         </span>
@@ -191,20 +191,20 @@ export const ChefKitchenQueue: React.FC = () => {
                               </span>
                               <span className="text-blue-400">x{item.quantity}</span>
                             </div>
-                            
+
                             {item.name.toLowerCase().includes("cá hồi") && (
                               <div className="flex flex-wrap gap-1.5 mt-0.5">
-                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-black px-1.5 py-0.5 rounded">
+                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded">
                                   Nhiều sốt chanh leo
                                 </span>
                               </div>
                             )}
                             {item.name.toLowerCase().includes("bò") && (
                               <div className="flex flex-wrap gap-1.5 mt-0.5">
-                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-black px-1.5 py-0.5 rounded">
+                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded">
                                   Chín kỹ
                                 </span>
-                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-black px-1.5 py-0.5 rounded">
+                                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-bold px-1.5 py-0.5 rounded">
                                   Thêm hành tây
                                 </span>
                               </div>
@@ -216,7 +216,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                     <button
                       onClick={() => handleFinishCooking(order.id)}
-                      className="w-full py-2 bg-[#0f62fe] hover:bg-blue-600 text-white rounded-lg text-[10px] font-black tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-colors"
+                      className="w-full py-2 bg-[#0f62fe] hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-colors"
                     >
                       <Check size={11} /> Nấu xong
                     </button>
@@ -230,8 +230,8 @@ export const ChefKitchenQueue: React.FC = () => {
         {/* Column 3: Sẵn sàng */}
         <div className="flex flex-col gap-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
           <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Sẵn sàng</span>
-            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-[10px] font-black text-white">
+            <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Sẵn sàng</span>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-[10px] font-semibold text-white">
               {columns.ready.length}
             </span>
           </div>
@@ -251,7 +251,7 @@ export const ChefKitchenQueue: React.FC = () => {
                   >
                     <div className="flex flex-col gap-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-black text-white">{order.tableName}</span>
+                        <span className="text-xs font-bold text-white">{order.tableName}</span>
                         <span className={`text-[10px] font-bold flex items-center gap-1 ${isDelayed ? "text-rose-500 animate-pulse" : "text-emerald-500"}`}>
                           <Clock size={10} /> {timeStr}
                         </span>
@@ -273,7 +273,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                     <button
                       onClick={() => handleDeliver(order.id)}
-                      className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-black tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-colors"
+                      className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-bold tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-colors"
                     >
                       <Check size={11} /> Đã giao
                     </button>

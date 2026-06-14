@@ -201,7 +201,7 @@ export const AdminLayout: React.FC = () => {
       <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-admin-border flex flex-col shrink-0">
         {/* Logo brand */}
         <div className="p-6 border-b border-admin-border flex items-center gap-3 bg-white">
-          <Link to="/" className="font-display font-black text-xl text-admin-primary tracking-tight hover:opacity-85 transition-all">
+          <Link to="/" className="font-display font-bold text-xl text-admin-primary tracking-tight hover:opacity-85 transition-all">
             ResManager
           </Link>
         </div>
@@ -210,19 +210,28 @@ export const AdminLayout: React.FC = () => {
         <div className="p-4 border-b border-admin-border flex flex-col gap-2 bg-slate-50/50">
           <span className="text-[10px] font-bold text-admin-text-sub tracking-wider uppercase px-2">Phân quyền demo</span>
           <div className="grid grid-cols-2 gap-1.5">
-            {(["admin", "manager", "waiter", "chef", "cashier"] as UserRole[]).map((role) => (
-              <button
-                key={role}
-                onClick={() => handleRoleChange(role)}
-                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
-                  activeRole === role
-                    ? "bg-admin-primary text-white shadow-[0_2px_8px_rgba(15,98,254,0.15)]"
-                    : "bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-200"
-                }`}
-              >
-                {role}
-              </button>
-            ))}
+            {(["admin", "manager", "waiter", "chef", "cashier"] as UserRole[]).map((role) => {
+              const roleLabels: { [key in UserRole]: string } = {
+                admin: "Quản trị",
+                manager: "Quản lý",
+                waiter: "Phục vụ",
+                chef: "Bếp",
+                cashier: "Thu ngân",
+              };
+              return (
+                <button
+                  key={role}
+                  onClick={() => handleRoleChange(role)}
+                  className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    activeRole === role
+                      ? "bg-admin-primary text-white shadow-[0_2px_8px_rgba(15,98,254,0.15)]"
+                      : "bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-200"
+                  }`}
+                >
+                  {roleLabels[role]}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -286,7 +295,7 @@ export const AdminLayout: React.FC = () => {
             {/* Notification bell */}
             <div className="w-8 h-8 rounded-full bg-slate-100/80 border border-slate-200/60 flex items-center justify-center text-slate-500 relative cursor-pointer hover:bg-slate-200/60 transition-colors">
               <Bell size={14} />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-[8px] font-black text-white flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-[8px] font-bold text-white flex items-center justify-center">
                 3
               </span>
             </div>
@@ -294,9 +303,15 @@ export const AdminLayout: React.FC = () => {
             {/* User Profile avatar & Role Display */}
             <div className="flex items-center gap-3">
               <div className="text-right flex flex-col items-end">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Tài khoản</span>
-                <span className="text-[11px] font-black text-slate-700 mt-1 capitalize font-mono bg-slate-100 border border-slate-250/70 px-2 py-0.5 rounded shadow-2xs">
-                  role: {activeRole}
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Tài khoản</span>
+                <span className="text-[11px] text-slate-700 mt-1 font-semibold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded shadow-2xs">
+                  Quyền: {{
+                    admin: "Quản trị",
+                    manager: "Quản lý",
+                    waiter: "Phục vụ",
+                    chef: "Bếp",
+                    cashier: "Thu ngân",
+                  }[activeRole]}
                 </span>
               </div>
               <div className="w-8 h-8 rounded-full bg-slate-100/80 border border-slate-200/60 flex items-center justify-center text-slate-500 cursor-pointer hover:bg-slate-200/60 transition-colors">
@@ -317,7 +332,13 @@ export const AdminLayout: React.FC = () => {
               </div>
               <h3 className="text-xl font-bold font-display text-admin-text-main mb-2">Từ chối truy cập</h3>
               <p className="text-admin-text-sub text-xs leading-relaxed mb-6">
-                Vai trò của bạn (<strong className="text-rose-500 capitalize">{activeRole}</strong>) không có quyền xem khu vực quản trị này. Vui lòng chuyển vai trò sang manager ở sidebar để tiếp tục.
+                Vai trò của bạn (<strong className="text-rose-500">{{
+                  admin: "Quản trị",
+                  manager: "Quản lý",
+                  waiter: "Phục vụ",
+                  chef: "Bếp",
+                  cashier: "Thu ngân",
+                }[activeRole]}</strong>) không có quyền xem khu vực quản trị này. Vui lòng chuyển vai trò sang Quản lý ở sidebar để tiếp tục.
               </p>
               <button
                 onClick={() => handleRoleChange("manager")}

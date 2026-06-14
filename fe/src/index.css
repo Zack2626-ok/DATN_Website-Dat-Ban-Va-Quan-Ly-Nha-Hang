@@ -1,7 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Syne:wght@400..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..900&display=swap');
 @import "tailwindcss";
 
 @theme {
+  --font-display: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-sans: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+
   --color-brand-primary: #c5a880; /* Elegant Warm Gold/Champagne */
   --color-brand-primary-hover: #b3946b;
   --color-brand-secondary: #e2ba7d;
@@ -26,17 +29,12 @@
   --color-admin-text-sub: #475569;
 }
 
-:root {
-  --font-display: "Syne", sans-serif;
-  --font-body: "DM Sans", sans-serif;
-}
-
 * {
   box-sizing: border-box;
 }
 
 body {
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   background-color: #0a0a0f;
   color: #f0efe8;
   min-height: 100vh;

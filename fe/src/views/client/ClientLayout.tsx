@@ -24,10 +24,10 @@ export const ClientLayout: React.FC = () => {
         </Link>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-semibold tracking-wider text-zinc-300">
-          <Link to="/" className="hover:text-brand-primary transition-colors">HOME</Link>
-          <a href="#menu" className="hover:text-brand-primary transition-colors">CURATED MENU</a>
-          <a href="#reserve" className="hover:text-brand-primary transition-colors">TABLE MAP</a>
-          <a href="#about" className="hover:text-brand-primary transition-colors">THE EXPERIENCE</a>
+          <Link to="/" className="hover:text-brand-primary transition-colors">TRANG CHỦ</Link>
+          <a href="#menu" className="hover:text-brand-primary transition-colors">THỰC ĐƠN</a>
+          <a href="#reserve" className="hover:text-brand-primary transition-colors">SƠ ĐỒ BÀN</a>
+          <a href="#about" className="hover:text-brand-primary transition-colors">TRẢI NGHIỆM</a>
         </nav>
 
         <div className="flex items-center gap-4">
@@ -35,13 +35,13 @@ export const ClientLayout: React.FC = () => {
             to="/admin"
             className="px-4 py-2 text-xs font-bold tracking-widest text-brand-primary border border-brand-primary/30 rounded-lg hover:bg-brand-primary/10 hover:border-brand-primary/60 transition-all uppercase cursor-pointer"
           >
-            Staff Portal
+            Quản trị viên
           </Link>
           <a
             href="#reserve"
             className="px-5 py-2 text-xs font-bold tracking-widest text-brand-dark bg-brand-primary rounded-lg hover:bg-brand-primary-hover shadow-[0_4px_20px_rgba(197,168,128,0.25)] transition-all uppercase cursor-pointer"
           >
-            Reserve Table
+            Đặt bàn
           </a>
         </div>
       </header>
@@ -56,7 +56,7 @@ export const ClientLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="flex flex-col items-center md:items-start gap-2">
             <h2 className="text-lg font-black font-display tracking-widest text-brand-primary">L'AMBROISIE</h2>
-            <p className="text-zinc-500 text-xs">© 2026 L'Ambroisie Culinary Group. All rights reserved.</p>
+            <p className="text-zinc-500 text-xs">© 2026 Tập đoàn Ẩm thực L'Ambroisie. Mọi quyền được bảo lưu.</p>
           </div>
           <div className="flex gap-6 text-sm text-zinc-400">
             <span className="flex items-center gap-1.5"><Phone size={14} /> +84 28 3829 4000</span>
