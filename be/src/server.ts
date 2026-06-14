@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import path from "path";
 
 import uploadRoutes from "./routes/upload.routes";
-
+import authRoutes from "./routes/auth.routes";
 // Tải biến môi trường từ file .env
 dotenv.config();
 
@@ -31,6 +31,8 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 // === ĐỊNH TUYẾN (ROUTES) ===
 // API upload ảnh: POST /api/upload
 app.use("/api/upload", uploadRoutes);
+// API auth: đăng nhập, đăng ký, lấy thông tin user hiện tại
+app.use("/api/auth", authRoutes);
 
 // === KIỂM TRA SERVER HOẠT ĐỘNG ===
 // Endpoint để check server có hoạt động không
