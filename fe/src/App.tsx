@@ -1,16 +1,54 @@
-import { Provider } from "react-redux";
-import { BrowserRouter } from "react-router-dom";
-import { store } from "./store";
-import { AppRoutes } from "./routes";
+import { useEffect }         from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Provider }          from "react-redux";
+import { store }             from "./store";
+import { useAppDispatch }    from "./store/hooks"
+import { restoreSessionThunk } from "./store/authSlice";
+import ProtectedRoute        from "./routes/ProtectedRoute";
+import LoginPage             from "./views/auth/LoginPage";
+import RegisterPage          from "./views/auth/RegisterPage";
 
-/**
- * App - Root node of the restaurant application.
- * Wraps children with Redux state container and Router navigation bindings.
- */
+/** Khôi phục session một lần khi app khởi động */
+function AppRoutes() {
+  const dispatch = useAppDispatch();
+
+  useEffect(() => {
+    dispatch(restoreSessionThunk());
+  }, [dispatch]);
+
+  return (
+    <Routes>
+      {/* Public */}
+      <Route path="/auth/login" element={<LoginPage />} />
+
+      {/* Cần đăng nhập */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <div className="p-8 text-gray-500">Dashboard — sẽ làm sau</div>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Chỉ admin / manager */}
+          <Route
+      path="/auth/register"
+      element={<RegisterPage />}
+    />
+      <Route path="*" element={<Navigate to="/auth/login" replace />} />
+    </Routes>
+  );  
+}
+
 export default function App() {
   return (
     <Provider store={store}>
-      <BrowserRouter>
+      <BrowserRouter future={{
+    v7_startTransition: true,
+  }}
+>
+      
         <AppRoutes />
       </BrowserRouter>
     </Provider>

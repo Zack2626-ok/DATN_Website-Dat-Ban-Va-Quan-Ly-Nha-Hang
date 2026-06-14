@@ -4,11 +4,12 @@ import dotenv from "dotenv";
 import path from "path";
 
 import uploadRoutes from "./routes/upload.routes";
+import authRoutes from "./routes/auth.routes";
 import orderRoutes from "./routes/order.routes";
 import { initDb } from "./utils/db";
 
-// Tải biến môi trường từ file .env
-dotenv.config();
+// Tải biến môi trường từ file v
+dotenv.config();.en
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -42,6 +43,8 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 // === ĐỊNH TUYẾN (ROUTES) ===
 // API upload ảnh: POST /api/upload
 app.use("/api/upload", uploadRoutes);
+// API auth: đăng nhập, đăng ký, lấy thông tin user hiện tại
+app.use("/api/auth", authRoutes);
 
 // API đơn hàng: POST/GET/PATCH /api/orders
 app.use("/api/orders", orderRoutes);
