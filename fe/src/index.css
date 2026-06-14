@@ -1,8 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..900&display=swap');
 @import "tailwindcss";
 
-:root {
-  --font-display: "Syne", sans-serif;
-  --font-body: "DM Sans", sans-serif;
+@theme {
+  --font-display: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-sans: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+
+  --color-brand-primary: #c5a880; /* Elegant Warm Gold/Champagne */
+  --color-brand-primary-hover: #b3946b;
+  --color-brand-secondary: #e2ba7d;
+  --color-brand-dark: #07070a;
+  --color-brand-dark-light: #12121a;
+  --color-brand-dark-card: #161622;
+  --color-brand-accent: #a8ff78;
+
+  --color-status-available: #10b981;
+  --color-status-reserved: #f59e0b;
+  --color-status-occupied: #ef4444;
+  --color-status-cleaning: #3b82f6;
+
+  /* Admin Workstation Theme Colors */
+  --color-admin-primary: #0f62fe; /* Professional Royal Blue */
+  --color-admin-primary-hover: #0043ce;
+  --color-admin-primary-light: #e8f1ff;
+  --color-admin-bg: #f8fafc;
+  --color-admin-card: #ffffff;
+  --color-admin-border: #e2e8f0;
+  --color-admin-text-main: #0f172a;
+  --color-admin-text-sub: #475569;
 }
 
 * {
@@ -10,7 +34,7 @@
 }
 
 body {
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
   background-color: #0a0a0f;
   color: #f0efe8;
   min-height: 100vh;
