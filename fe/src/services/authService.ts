@@ -1,15 +1,21 @@
 import api from "./axiosInstance";
-import type { LoginPayload, RegisterPayload, AuthResponse, User } from "../interfaces/auth";
+import type {
+  LoginPayload,
+  RegisterPayload,
+  AuthResponse,
+  User,
+} from "../interfaces/auth";
 
 /**
  * Đăng nhập — lưu token vào localStorage, trả về AuthResponse
  */
 export const loginApi = async (body: LoginPayload): Promise<AuthResponse> => {
-  const res = await api.post<AuthResponse>("/auth/login", body);
-  localStorage.setItem("accessToken", res.data.accessToken);
-  localStorage.setItem("refreshToken", res.data.refreshToken);
+  const res = await api.post<{ data: AuthResponse }>("/auth/login", body);
+  const loginData = res.data.data;
+  localStorage.setItem("accessToken", loginData.accessToken);
+  localStorage.setItem("refreshToken", loginData.refreshToken);
 
-  return res.data;
+  return loginData;
 };
 
 /**
