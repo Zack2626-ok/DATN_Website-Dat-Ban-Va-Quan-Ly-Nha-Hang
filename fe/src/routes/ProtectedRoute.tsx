@@ -1,33 +1,41 @@
-import { Navigate }           from "react-router-dom";
-import { useAppSelector }     from "../store/hooks"
-import type { UserRole }      from "../interfaces/auth";
+import { Navigate } from "react-router-dom";
+import { useAppSelector } from "../store/hooks";
+import type { UserRole } from "../interfaces/auth";
 
 interface Props {
-  children:      React.ReactNode;
-  /** Nếu truyền vào, chỉ các role này mới được truy cập */
+  children: React.ReactNode;
   allowedRoles?: UserRole[];
 }
 
-/**
- * Route guard:
- * - Chưa đăng nhập → redirect /login
- * - Sai role       → redirect /dashboard
- */
 export default function ProtectedRoute({ children, allowedRoles }: Props) {
   const { user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
-  return (
-    <div className="h-screen flex items-center justify-center text-gray-400">
-      Đang tải...
-    </div>
-  );
-}
+    return (
+      <div className="h-screen flex items-center justify-center text-gray-400">
+        Đang tải...
+      </div>
+    );
+  }
 
-  if (!user) return <Navigate to="/auth/login" replace />;
+  // ============ BỎ QUA LOGIN ĐỂ XEM TRƯỚC GIAO DIỆN ============
+  // if (!user) return <Navigate to="/auth/login" replace />;
+  // Đổi role bên dưới để xem giao diện từng actor: admin | manager | waiter | cashier | chef | sales_event
+  const effectiveRole = user?.role || "manager";
+  // ===============================================================
 
-  if (allowedRoles && !allowedRoles.includes(user?.role))
-    return <Navigate to="/dashboard" replace />;
+  if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
+    const roleRoutes: Record<string, string> = {
+      admin: "/admin",
+      manager: "/manager",
+      waiter: "/waiter",
+      cashier: "/cashier",
+      chef: "/chef",
+      sales_event: "/sales",
+    };
+    const fallbackPath = roleRoutes[effectiveRole] || "/";
+    return <Navigate to={fallbackPath} replace />;
+  }
 
   return <>{children}</>;
 }

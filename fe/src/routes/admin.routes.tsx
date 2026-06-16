@@ -1,47 +1,28 @@
 import { Route, Navigate } from "react-router-dom";
+import ProtectedRoute from "./ProtectedRoute";
 import {
   AdminLayout,
-  ManagerDashboard,
-  WaiterTableMap,
-  ChefKitchenQueue,
-  CashierPOS,
-  InventoryControl,
-  MenuManagement,
-  EventsManagement,
-  DeliveryManagement,
-  StaffManagement,
-  SettingsControl,
-  PartyPortalDemo,
-  ClientMenuDemo,
-  LoyaltyPointsDemo,
-  FormDemo,
+  AdminAnalytics,
+  AdminRbac,
+  FinanceReport,
+  LossDebtReport,
+  AdminSettings,
 } from "../views/admin";
 
-/**
- * AdminRoutes - Sub-route tree for the restaurant staff console
- * Routes are guarded based on selected user roles inside AdminLayout
- */
 export const AdminRoutes = () => (
-  <Route path="/admin" element={<AdminLayout />}>
-    {/* Default redirect to Dashboard */}
-    <Route index element={<Navigate to="/admin/dashboard" replace />} />
-    
-    {/* Administrative Consoles */}
-    <Route path="dashboard" element={<ManagerDashboard />} />
-    <Route path="tables" element={<WaiterTableMap />} />
-    <Route path="menu" element={<MenuManagement />} />
-    <Route path="kitchen" element={<ChefKitchenQueue />} />
-    <Route path="cashier" element={<CashierPOS />} />
-    <Route path="inventory" element={<InventoryControl />} />
-    <Route path="events" element={<EventsManagement />} />
-    <Route path="delivery" element={<DeliveryManagement />} />
-    <Route path="staff" element={<StaffManagement />} />
-    <Route path="settings" element={<SettingsControl />} />
-    
-    {/* Client Simulation Consoles */}
-    <Route path="party-portal" element={<PartyPortalDemo />} />
-    <Route path="client-menu" element={<ClientMenuDemo />} />
-    <Route path="loyalty" element={<LoyaltyPointsDemo />} />
-    <Route path="form-demo" element={<FormDemo />} />
+  <Route
+    path="/admin"
+    element={
+      <ProtectedRoute allowedRoles={["admin"]}>
+        <AdminLayout />
+      </ProtectedRoute>
+    }
+  >
+    <Route index element={<Navigate to="/admin/analytics" replace />} />
+    <Route path="analytics" element={<AdminAnalytics />} />
+    <Route path="rbac" element={<AdminRbac />} />
+    <Route path="finance-report" element={<FinanceReport />} />
+    <Route path="loss-debt-report" element={<LossDebtReport />} />
+    <Route path="settings" element={<AdminSettings />} />
   </Route>
 );

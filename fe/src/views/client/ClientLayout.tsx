@@ -1,66 +1,172 @@
-import React from "react";
-import { Outlet, Link } from "react-router-dom";
-import { Phone, Mail } from "lucide-react";
+import React, { useState } from "react";
+import { Outlet, Link, NavLink } from "react-router-dom";
+import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed } from "lucide-react";
+
+const navLinks = [
+  { to: "/menu", label: "Thực đơn" },
+  { to: "/promotions", label: "Ưu đãi" },
+  { to: "/booking", label: "Đặt bàn" },
+];
 
 /**
- * ClientLayout - Shell for public guest views (Header, Footer, and layout structures)
+ * ClientLayout — Shell công khai cho Khách hàng (Module 0)
+ * Navbar + Footer, không dùng Sidebar nội bộ (UI Spec §2)
  */
 export const ClientLayout: React.FC = () => {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navClass = ({ isActive }: { isActive: boolean }) =>
+    `text-sm font-medium transition-colors ${
+      isActive ? "text-blue-700" : "text-gray-600 hover:text-blue-700"
+    }`;
+
   return (
-    <div className="min-h-screen bg-brand-dark flex flex-col relative overflow-hidden">
-      {/* Background Decorative Gradients */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-brand-primary/5 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[150px] pointer-events-none" />
-
-      {/* Luxury Sticky Navbar */}
-      <header className="sticky top-0 z-40 glass border-b border-white/5 px-6 md:px-12 py-4 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-3">
-          <span className="w-9 h-9 rounded-full bg-gradient-to-tr from-brand-primary to-brand-secondary flex items-center justify-center font-display font-bold text-lg text-brand-dark">
-            L
-          </span>
-          <h1 className="text-xl md:text-2xl font-black font-display tracking-widest bg-gradient-to-r from-brand-primary to-white bg-clip-text text-transparent">
-            L'AMBROISIE
-          </h1>
-        </Link>
-
-        <nav className="hidden md:flex items-center gap-8 text-sm font-semibold tracking-wider text-zinc-300">
-          <Link to="/" className="hover:text-brand-primary transition-colors">TRANG CHỦ</Link>
-          <a href="#menu" className="hover:text-brand-primary transition-colors">THỰC ĐƠN</a>
-          <a href="#reserve" className="hover:text-brand-primary transition-colors">SƠ ĐỒ BÀN</a>
-          <a href="#about" className="hover:text-brand-primary transition-colors">TRẢI NGHIỆM</a>
-        </nav>
-
-        <div className="flex items-center gap-4">
-          <Link
-            to="/admin"
-            className="px-4 py-2 text-xs font-bold tracking-widest text-brand-primary border border-brand-primary/30 rounded-lg hover:bg-brand-primary/10 hover:border-brand-primary/60 transition-all uppercase cursor-pointer"
-          >
-            Quản trị viên
+    <div className="flex min-h-screen flex-col bg-gray-50 text-gray-700">
+      {/* Navbar */}
+      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white shadow-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-700 text-white">
+              <UtensilsCrossed size={18} />
+            </span>
+            <span className="text-xl font-bold text-gray-700">ResManager</span>
           </Link>
-          <a
-            href="#reserve"
-            className="px-5 py-2 text-xs font-bold tracking-widest text-brand-dark bg-brand-primary rounded-lg hover:bg-brand-primary-hover shadow-[0_4px_20px_rgba(197,168,128,0.25)] transition-all uppercase cursor-pointer"
+
+          <nav className="hidden items-center gap-8 md:flex">
+            {navLinks.map((link) => (
+              <NavLink key={link.to} to={link.to} className={navClass}>
+                {link.label}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div className="hidden items-center gap-3 md:flex">
+            <Link
+              to="/admin"
+              className="rounded-lg border border-blue-700/30 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+            >
+              Quản trị viên
+            </Link>
+            <Link
+              to="/booking"
+              className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
+            >
+              Đặt bàn ngay
+            </Link>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setMobileOpen((v) => !v)}
+            className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+            aria-label="Mở menu"
           >
-            Đặt bàn
-          </a>
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </div>
+
+        {mobileOpen && (
+          <div className="border-t border-gray-200 bg-white px-4 py-4 md:hidden">
+            <nav className="flex flex-col gap-1">
+              {navLinks.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    `rounded-lg px-3 py-2.5 text-sm font-medium ${
+                      isActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"
+                    }`
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              ))}
+              <Link
+                to="/admin"
+                onClick={() => setMobileOpen(false)}
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Quản trị viên
+              </Link>
+            </nav>
+          </div>
+        )}
       </header>
 
-      {/* Dynamic Content View */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1">
         <Outlet />
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto bg-brand-dark border-t border-white/5 px-6 md:px-12 py-12 w-full text-center">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="flex flex-col items-center md:items-start gap-2">
-            <h2 className="text-lg font-black font-display tracking-widest text-brand-primary">L'AMBROISIE</h2>
-            <p className="text-zinc-500 text-xs">© 2026 Tập đoàn Ẩm thực L'Ambroisie. Mọi quyền được bảo lưu.</p>
+      <footer className="border-t border-gray-200 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-700 text-white">
+                  <UtensilsCrossed size={16} />
+                </span>
+                <span className="font-bold text-gray-700">ResManager</span>
+              </div>
+              <p className="mt-3 text-sm text-gray-500">
+                Hệ thống quản lý nhà hàng & đặt bàn trực tuyến — trải nghiệm ẩm thực hiện đại.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-gray-700">Liên kết</h4>
+              <ul className="mt-3 space-y-2 text-sm text-gray-500">
+                <li>
+                  <Link to="/menu" className="hover:text-blue-700">
+                    Thực đơn
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/promotions" className="hover:text-blue-700">
+                    Ưu đãi & Combo
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/booking" className="hover:text-blue-700">
+                    Đặt bàn online
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-gray-700">Liên hệ</h4>
+              <ul className="mt-3 space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <Phone size={14} className="shrink-0 text-blue-700" />
+                  028 3829 4000
+                </li>
+                <li className="flex items-center gap-2">
+                  <Mail size={14} className="shrink-0 text-blue-700" />
+                  contact@resmanager.vn
+                </li>
+                <li className="flex items-start gap-2">
+                  <MapPin size={14} className="mt-0.5 shrink-0 text-blue-700" />
+                  123 Nguyễn Huệ, Quận 1, TP.HCM
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-gray-700">Giờ mở cửa</h4>
+              <ul className="mt-3 space-y-2 text-sm text-gray-500">
+                <li className="flex items-center gap-2">
+                  <Clock size={14} className="shrink-0 text-blue-700" />
+                  T2 – CN: 10:00 – 22:00
+                </li>
+                <li className="pl-6">Happy Hour: 17:00 – 19:00</li>
+              </ul>
+            </div>
           </div>
-          <div className="flex gap-6 text-sm text-zinc-400">
-            <span className="flex items-center gap-1.5"><Phone size={14} /> +84 28 3829 4000</span>
-            <span className="flex items-center gap-1.5"><Mail size={14} /> contact@lambroisie.com</span>
+
+          <div className="mt-10 border-t border-gray-200 pt-6 text-center text-sm text-gray-400">
+            © 2026 ResManager. Mọi quyền được bảo lưu.
           </div>
         </div>
       </footer>

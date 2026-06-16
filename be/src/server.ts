@@ -9,7 +9,7 @@ import orderRoutes from "./routes/order.routes";
 import { initDb } from "./utils/db";
 
 // Tải biến môi trường từ file v
-dotenv.config();.en
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
