@@ -1,9 +1,11 @@
 import React from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { Bell, Database, Search, User } from "lucide-react";
-import { useAppSelector } from "../../store/hooks";
+import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
+import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
+import { X } from "lucide-react";
 
 export interface NavLinkItem {
   to: string;
@@ -24,8 +26,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   homeLink,
 }) => {
   const location = useLocation();
+  const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
+  const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || actorRole;
+
+  // Clear search query on route changes to prevent query leakage
+  React.useEffect(() => {
+    dispatch(clearSearchQuery());
+  }, [location.pathname, dispatch]);
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 text-gray-700 md:flex-row">
@@ -81,8 +90,19 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             <input
               type="text"
               placeholder="Tìm kiếm..."
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-blue-700 focus:outline-none"
+              value={searchQuery}
+              onChange={(e) => dispatch(setSearchQuery(e.target.value))}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-8 text-sm focus:border-blue-700 focus:outline-none"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => dispatch(clearSearchQuery())}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
           <div className="ml-auto flex items-center gap-4">
             <button type="button" className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">

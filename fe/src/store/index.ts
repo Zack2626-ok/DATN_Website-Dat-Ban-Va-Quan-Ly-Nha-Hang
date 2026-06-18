@@ -4,6 +4,8 @@ import orderReducer from "./orderSlice";
 import inventoryReducer from "./inventorySlice";
 import menuReducer from "./menuSlice";
 import tableReducer from "./tableSlice";
+import kdsReducer from "./kdsSlice";
+import uiReducer from "./uiSlice";
 
 export const store = configureStore({
   reducer: {
@@ -12,6 +14,8 @@ export const store = configureStore({
     inventory: inventoryReducer,
     menu: menuReducer,
     tables: tableReducer,
+    kds: kdsReducer,
+    ui: uiReducer,
   },
 });
 

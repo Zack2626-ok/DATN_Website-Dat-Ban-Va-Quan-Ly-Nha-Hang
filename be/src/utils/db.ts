@@ -22,14 +22,14 @@ export interface Order {
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
-let connectionPool: mysql.Pool | null = null;
-let useFallback = false;
+export let connectionPool: mysql.Pool | null = null;
+export let useFallback = false;
 
 const JSON_DB_DIR = path.join(process.cwd(), "src", "database");
 const JSON_DB_PATH = path.join(JSON_DB_DIR, "db.json");
 
 // Helper to load fallback JSON database
-const loadJsonDb = (): { orders: Order[] } => {
+export const loadJsonDb = (): { orders: Order[] } => {
   if (!fs.existsSync(JSON_DB_DIR)) {
     fs.mkdirSync(JSON_DB_DIR, { recursive: true });
   }
@@ -47,7 +47,7 @@ const loadJsonDb = (): { orders: Order[] } => {
 };
 
 // Helper to save fallback JSON database
-const saveJsonDb = (data: { orders: Order[] }) => {
+export const saveJsonDb = (data: { orders: Order[] }) => {
   if (!fs.existsSync(JSON_DB_DIR)) {
     fs.mkdirSync(JSON_DB_DIR, { recursive: true });
   }

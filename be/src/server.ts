@@ -1,15 +1,17 @@
+import dotenv from "dotenv";
+// Tải biến môi trường từ file .env trước khi import các module khác
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 
 import uploadRoutes from "./routes/upload.routes";
 import authRoutes from "./routes/auth.routes";
 import orderRoutes from "./routes/order.routes";
+import kdsRoutes from "./routes/kds.routes";
 import { initDb } from "./utils/db";
 
-// Tải biến môi trường từ file v
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -48,6 +50,8 @@ app.use("/api/auth", authRoutes);
 
 // API đơn hàng: POST/GET/PATCH /api/orders
 app.use("/api/orders", orderRoutes);
+// API KDS: nhà bếp
+app.use("/api/kds", kdsRoutes);
 
 // === KIỂM TRA SERVER HOẠT ĐỘNG ===
 // Endpoint để check server có hoạt động không

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { sendSuccess, sendError } from "../utils/response";
+import { generateToken, verifyToken } from "../utils/jwt";
 
 /**
  * Register a new user (staff account)
@@ -73,11 +74,34 @@ export const loginHandler = async (
     // TODO: Check user exists in database
     // TODO: Verify password
 
-    // Mock response for now
+    // Map roles based on email keywords or exact matches (lowercase to match frontend requirements)
+    let role = "waiter"; // default fallback role
+    const lowerEmail = email.toLowerCase();
+    if (lowerEmail.includes("admin")) {
+      role = "admin";
+    } else if (lowerEmail.includes("manager")) {
+      role = "manager";
+    } else if (lowerEmail.includes("chef")) {
+      role = "chef";
+    } else if (lowerEmail.includes("waiter")) {
+      role = "waiter";
+    } else if (lowerEmail.includes("cashier")) {
+      role = "cashier";
+    } else if (lowerEmail.includes("sales")) {
+      role = "sales_event";
+    }
+
+    // Generate real JWT token containing role
+    const accessToken = generateToken({
+      userId: `user_${Math.random().toString(36).substr(2, 9)}`,
+      email,
+      role,
+    });
+
     const loginResponse = {
-      accessToken: "fake-token-" + Math.random().toString(36).slice(2),
+      accessToken,
       refreshToken: "fake-refresh-" + Math.random().toString(36).slice(2),
-      user: { id: 1, email, role: "ADMIN" },
+      user: { id: 1, email, role },
     };
 
     sendSuccess(res, loginResponse, "Đăng nhập thành công!");
@@ -95,8 +119,24 @@ export const getMeHandler = async (
   res: Response,
 ): Promise<void> => {
   try {
-    // TODO: Get user from token
-    sendSuccess(res, { id: 1, email: "test@example.com", role: "ADMIN" });
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = verifyToken(token);
+        sendSuccess(res, {
+          id: 1,
+          email: decoded.email,
+          role: decoded.role || "waiter",
+        });
+        return;
+      } catch (tokenErr) {
+        console.warn("Invalid token in getMeHandler, falling back to default:", tokenErr);
+      }
+    }
+
+    // Fallback if no valid token
+    sendSuccess(res, { id: 1, email: "test@example.com", role: "admin" });
   } catch (err) {
     sendError(res, `Lỗi lấy thông tin: ${(err as Error).message}`, 500);
   }
