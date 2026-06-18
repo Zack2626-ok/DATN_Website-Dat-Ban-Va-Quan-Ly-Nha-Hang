@@ -1,524 +1,274 @@
 import React, { useState, useMemo } from "react";
-import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { ORDER_STATUS } from "../../../constants/orderStatus";
-import { TABLE_STATUS } from "../../../constants/tableStatus";
 import { Badge } from "../../../components/Badge";
 import { Modal } from "../../../components/Modal";
-import {
-  createOrder,
-  addItemsToOrder,
-  updateOrderStatus,
-} from "../../../store/orderSlice";
-import { occupyTable, makeTableAvailable } from "../../../store/tableSlice";
-import { Utensils, Clock, Grid, RefreshCw } from "lucide-react";
-import type { MenuItem } from "../../../interfaces";
+import { Utensils, Clock, Grid, RefreshCw, MoreVertical } from "lucide-react";
+import AreaSelector from "../../../components/tables/AreaSelector";
+import StatusLegend from "../../../components/tables/StatusLegend";
+import OpenTableModal from "../../../components/tables/OpenTableModal";
+import { MOCK_AREAS, MOCK_TABLES } from "../../../data/mockTables";
+import { Table } from "../../../interfaces/table.interface";
+import { toast } from "react-hot-toast";
 
-/**
- * WaiterTableMap - Renders table grids and action drawers for placing/updating orders
- */
 export const WaiterTableMap: React.FC = () => {
-  const dispatch = useAppDispatch();
-  const tables = useAppSelector((state) => state.tables.tables);
-  const orders = useAppSelector((state) => state.orders.orders);
-  const menu = useAppSelector((state) => state.menu.items);
-
-  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [selectedAreaId, setSelectedAreaId] = useState<number | null>(1);
+  const [selectedTableId, setSelectedTableId] = useState<string | number | null>(null);
   const [isOrderingModalOpen, setIsOrderingModalOpen] = useState(false);
-  const [guestCount, setGuestCount] = useState(2);
-  const [cart, setCart] = useState<
-    { menuItemId: string; name: string; price: number; quantity: number }[]
-  >([]);
+  const [isOpenTableModalOpen, setIsOpenTableModalOpen] = useState(false);
+  
+  // Local state to simulate DB updates for Phase 1/2 UI testing
+  const [tables, setTables] = useState<Table[]>(MOCK_TABLES);
+
+  const areas = MOCK_AREAS;
+
+  const filteredTables = useMemo(() => {
+    return selectedAreaId 
+      ? tables.filter(t => t.area_id === selectedAreaId)
+      : tables;
+  }, [selectedAreaId, tables]);
 
   const selectedTable = useMemo(
-    () => tables.find((t) => t.id === selectedTableId) || null,
+    () => tables.find((t) => t.id.toString() === selectedTableId?.toString()) || null,
     [tables, selectedTableId],
   );
 
+  // Giả lập trạng thái order cho UI
   const activeOrder = useMemo(() => {
-    if (!selectedTable || !selectedTable.currentOrderId) return null;
-    return orders.find((o) => o.id === selectedTable.currentOrderId) || null;
-  }, [orders, selectedTable]);
-
-  const handleAddToCart = (item: MenuItem) => {
-    if (!item.inStock) return;
-    setCart((prev) => {
-      const existing = prev.find((i) => i.menuItemId === item.id);
-      if (existing) {
-        return prev.map((i) =>
-          i.menuItemId === item.id ? { ...i, quantity: i.quantity + 1 } : i,
-        );
-      }
-      return [
-        ...prev,
-        {
-          menuItemId: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: 1,
-        },
-      ];
-    });
-  };
-
-  const handleCreateWaiterOrder = () => {
-    if (!selectedTableId || cart.length === 0) return;
-    const newOrderId = "ord_" + Math.random().toString(36).substr(2, 9);
-    const total = cart.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
-    );
-
-    dispatch(
-      createOrder({
-        id: newOrderId,
-        tableId: selectedTableId,
-        tableName: selectedTable?.name || "",
-        guestCount,
-        items: cart,
-        status: ORDER_STATUS.CONFIRMED,
-        totalAmount: total,
-      }),
-    );
-
-    dispatch(occupyTable({ id: selectedTableId, orderId: newOrderId }));
-    setCart([]);
-    setIsOrderingModalOpen(false);
-  };
-
-  const handleAddMoreItems = () => {
-    if (!activeOrder || cart.length === 0) return;
-    const total = cart.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
-    );
-
-    dispatch(
-      addItemsToOrder({
-        id: activeOrder.id,
-        items: cart,
-        totalAmount: total,
-      }),
-    );
-
-    if (activeOrder.status === ORDER_STATUS.SERVED) {
-      dispatch(
-        updateOrderStatus({
-          id: activeOrder.id,
-          status: ORDER_STATUS.CONFIRMED,
-        }),
-      );
+    if (selectedTable?.status === "serving" || selectedTable?.status === "pending_payment") {
+      return {
+        id: "ord_mock",
+        items: [
+          { name: "Bò lúc lắc", quantity: 1, price: 180 },
+          { name: "Gà nướng", quantity: 2, price: 160 }
+        ],
+        totalAmount: 500,
+        status: selectedTable?.status === "serving" ? ORDER_STATUS.CONFIRMED : ORDER_STATUS.PENDING_PAYMENT,
+        customerName: "Nguyễn Văn A",
+        customerPhone: "0912345678"
+      };
     }
+    return null;
+  }, [selectedTable]);
 
-    setCart([]);
-    setIsOrderingModalOpen(false);
-  };
-
-  const handleCheckInReserved = (tableId: string, orderId: string) => {
-    dispatch(occupyTable({ id: tableId, orderId }));
-  };
-
-  const handleCompleteCleaning = (tableId: string) => {
-    dispatch(makeTableAvailable({ id: tableId }));
+  const handleOpenTable = (data: { guestCount: number; customerName: string; customerPhone: string }) => {
+    if (!selectedTableId) return;
+    
+    // Simulate updating table status in frontend state
+    setTables(prev => prev.map(t => 
+      t.id.toString() === selectedTableId.toString() 
+        ? { ...t, status: 'serving' } 
+        : t
+    ));
+    
+    toast.success(`Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
+    setIsOpenTableModalOpen(false);
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
-      {/* Table Maps */}
+      {/* Cột Trái: Sơ đồ bàn */}
       <div className="lg:col-span-2 flex flex-col gap-6">
         <div className="flex justify-between items-center">
-          <h3 className="text-lg font-bold text-admin-text-main font-display">
-            Sơ đồ trạng thái bàn
-          </h3>
-          <span className="text-xs text-admin-text-sub">
-            Chọn một bàn để thực hiện các thao tác quản lý đơn hàng
-          </span>
+          <div>
+            <h3 className="text-xl font-bold text-gray-800 font-display">
+              Sơ đồ trạng thái bàn
+            </h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Quản lý khu vực và trạng thái phục vụ thời gian thực
+            </p>
+          </div>
+          <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <RefreshCw size={20} className="text-gray-400" />
+          </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-2xl border border-admin-border">
-          {tables.map((table) => {
-            const isSelected = selectedTableId === table.id;
-            const statusColor =
-              table.status === TABLE_STATUS.AVAILABLE
-                ? "bg-[#e8f5e9] border-[#a5d6a7] text-[#2e7d32]"
-                : table.status === TABLE_STATUS.RESERVED
-                  ? "bg-[#fffde7] border-[#fff59d] text-[#f57f17]"
-                  : table.status === TABLE_STATUS.OCCUPIED
-                    ? "bg-[#ffebee] border-[#ef9a9a] text-[#c62828]"
-                    : "bg-[#e3f2fd] border-[#90caf9] text-[#1565c0]";
+        <AreaSelector 
+          areas={areas} 
+          selectedAreaId={selectedAreaId} 
+          onSelectArea={setSelectedAreaId} 
+        />
 
-            const order = orders.find((o) => o.id === table.currentOrderId);
-            const priceLabel = order
-              ? `${(order.totalAmount * 1000).toLocaleString("vi-VN")} vnđ`
-              : null;
-            const VietnameseLabels: { [key: string]: string } = {
-              available: "Trống",
-              reserved: "Đã đặt",
-              occupied: "Đang phục vụ",
-              cleaning: "Chờ thanh toán",
-            };
+        <div className="bg-gray-50/50 p-8 rounded-3xl border border-gray-100 min-h-[500px] shadow-inner">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
+            {filteredTables.map((table) => {
+              const isSelected = selectedTableId?.toString() === table.id.toString();
+              
+              const statusStyles = {
+                empty: "bg-green-50 border-green-200 text-green-700 hover:bg-green-100",
+                reserved: "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100",
+                serving: "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100",
+                pending_payment: "bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100",
+              };
 
-            return (
-              <div
-                key={table.id}
-                onClick={() => setSelectedTableId(table.id)}
-                className={`p-4 border rounded-2xl flex flex-col items-center gap-1.5 cursor-pointer transition-all ${statusColor} ${
-                  isSelected
-                    ? "ring-2 ring-admin-primary scale-102 shadow-xs"
-                    : "hover:scale-[1.01] shadow-2xs"
-                }`}
-              >
-                <span className="text-[12px] font-extrabold font-display">
-                  {table.name}
-                </span>
-                <span className="text-[10px] font-semibold opacity-85">
-                  {table.seats} chỗ
-                </span>
-                {priceLabel && (
-                  <span className="text-[11px] font-extrabold my-0.5">
-                    {priceLabel}
+              const labels = {
+                empty: "Trống",
+                reserved: "Đã đặt",
+                serving: "Đang dùng",
+                pending_payment: "Chờ thanh toán",
+              };
+
+              return (
+                <div
+                  key={table.id}
+                  onClick={() => setSelectedTableId(table.id)}
+                  className={`relative p-5 border-2 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
+                    statusStyles[table.status as keyof typeof statusStyles]
+                  } ${
+                    isSelected ? "ring-4 ring-blue-500/20 border-blue-500 scale-105 shadow-lg" : "shadow-sm border-dashed"
+                  }`}
+                >
+                  <div className="absolute top-2 right-2">
+                    <MoreVertical size={14} className="opacity-30" />
+                  </div>
+                  <span className="text-lg font-black">{table.name}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-tighter opacity-70">
+                    {table.capacity} Chỗ • {labels[table.status as keyof typeof labels]}
                   </span>
-                )}
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white/60 border border-current/10 mt-1">
-                  {VietnameseLabels[table.status]}
-                </span>
-              </div>
-            );
-          })}
+                  {table.status === "serving" && (
+                    <div className="mt-1 px-2 py-0.5 bg-blue-500 text-white text-[9px] font-bold rounded-full">
+                      500.000₫
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+
+        <StatusLegend />
       </div>
 
-      {/* Table Action panel */}
-      <div className="bg-white p-6 rounded-2xl border border-admin-border flex flex-col gap-6 shadow-xs">
-        {selectedTable ? (
-          <div className="flex flex-col gap-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex justify-between items-start border-b border-admin-border pb-4">
-              <div>
-                <h4 className="text-lg font-bold text-admin-text-main">
-                  {selectedTable.name}
-                </h4>
-                <span className="text-xs text-admin-text-sub capitalize">
-                  Khu vực: {selectedTable.zone} ({selectedTable.seats} chỗ)
-                </span>
-              </div>
-              <Badge status={selectedTable.status} type="table" theme="light" />
-            </div>
-
-            {/* Conditional actions */}
-            {selectedTable.status === TABLE_STATUS.AVAILABLE && (
-              <div className="flex flex-col gap-4 text-center py-6">
-                <Utensils size={36} className="text-slate-400 mx-auto" />
-                <h5 className="font-bold text-sm text-admin-text-main">
-                  Bàn trống
-                </h5>
-                <p className="text-xs text-admin-text-sub">
-                  Thêm khách dùng tại chỗ hoặc tạo đơn gọi món trực tiếp.
-                </p>
-
-                <div className="flex flex-col gap-2.5 mt-2">
-                  <div className="flex items-center justify-between text-xs px-2 text-admin-text-sub font-semibold">
-                    <span>Số lượng khách ngồi:</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={selectedTable.seats}
-                      value={guestCount}
-                      onChange={(e) =>
-                        setGuestCount(parseInt(e.target.value) || 1)
-                      }
-                      className="w-16 bg-slate-50 border border-admin-border rounded py-1 px-2 text-center focus:outline-none text-admin-text-main focus:border-admin-primary"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setCart([]);
-                      setIsOrderingModalOpen(true);
-                    }}
-                    className="w-full py-2.5 bg-admin-primary text-white text-xs font-bold tracking-widest rounded-lg hover:bg-admin-primary-hover cursor-pointer font-display transition-colors"
-                  >
-                    MỞ GIỎ GỌI MÓN
-                  </button>
+      {/* Cột Phải: Action Panel */}
+      <div className="lg:col-span-1">
+        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 sticky top-6">
+          {selectedTable ? (
+            <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="flex justify-between items-start pb-4 border-b border-gray-50">
+                <div>
+                  <h4 className="text-2xl font-black text-gray-800">{selectedTable.name}</h4>
+                  <p className="text-xs text-gray-400 font-medium">Sức chứa: {selectedTable.capacity} khách</p>
                 </div>
+                <Badge status={selectedTable.status} type="table" />
               </div>
-            )}
 
-            {selectedTable.status === TABLE_STATUS.RESERVED && (
-              <div className="flex flex-col gap-4 text-center py-6">
-                <Clock size={36} className="text-amber-500/80 mx-auto" />
-                <h5 className="font-bold text-sm text-admin-text-main">
-                  Bàn đã được đặt trước
-                </h5>
-                <p className="text-xs text-admin-text-sub">
-                  Khách hàng đã đặt bàn này trực tuyến. Đang chờ khách đến.
-                </p>
-
-                {activeOrder && (
-                  <div className="text-left bg-slate-50 p-3 rounded-lg border border-admin-border text-xs flex flex-col gap-1.5 mt-2 text-admin-text-sub font-medium">
-                    <div>
-                      <strong>Tên khách hàng:</strong>{" "}
-                      {activeOrder.customerName}
-                    </div>
-                    <div>
-                      <strong>Số điện thoại:</strong>{" "}
-                      {activeOrder.customerPhone}
-                    </div>
-                    <div>
-                      <strong>Sức chứa yêu cầu:</strong>{" "}
-                      {activeOrder.guestCount} khách
-                    </div>
+              {/* Bàn Trống */}
+              {selectedTable.status === "empty" && (
+                <div className="py-8 flex flex-col items-center text-center gap-4">
+                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500">
+                    <Utensils size={32} />
                   </div>
-                )}
+                  <div>
+                    <h5 className="font-bold text-gray-800">Sẵn sàng phục vụ</h5>
+                    <p className="text-xs text-gray-500 px-4 mt-1">Mở bàn mới để bắt đầu gọi món cho khách</p>
+                  </div>
+                  <div className="w-full space-y-3 mt-4">
+                    <button 
+                      onClick={() => setIsOpenTableModalOpen(true)}
+                      className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-wider"
+                    >
+                      BẮT ĐẦU PHỤC VỤ (MỞ BÀN)
+                    </button>
+                    <button className="w-full py-3 border-2 border-gray-100 text-gray-400 rounded-2xl font-bold text-xs hover:bg-gray-50 uppercase">
+                      ĐẶT TRƯỚC BÀN
+                    </button>
+                  </div>
+                </div>
+              )}
 
-                <button
-                  onClick={() => {
-                    if (activeOrder) {
-                      handleCheckInReserved(selectedTable.id, activeOrder.id);
-                    }
-                  }}
-                  className="w-full py-2.5 bg-emerald-500 text-black text-xs font-bold tracking-widest rounded-lg hover:bg-emerald-400 cursor-pointer font-display mt-2"
-                >
-                  XÁC NHẬN KHÁCH ĐẾN (SỬ DỤNG BÀN)
-                </button>
-              </div>
-            )}
-
-            {selectedTable.status === TABLE_STATUS.OCCUPIED && (
-              <div className="flex flex-col gap-4">
-                <h5 className="font-bold text-sm text-admin-primary">
-                  Hóa đơn món đang dùng
-                </h5>
-                {activeOrder ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="max-h-[180px] overflow-y-auto pr-1 flex flex-col gap-2 scrollbar">
-                      {activeOrder.items.length === 0 ? (
-                        <p className="text-xs text-zinc-500 italic py-2">
-                          Chưa gọi món nào. Vui lòng mở danh mục thực đơn.
-                        </p>
-                      ) : (
-                        activeOrder.items.map((item, index) => (
-                          <div
-                            key={index}
-                            className="flex justify-between items-center text-xs bg-slate-50 p-2.5 rounded-lg border border-admin-border"
-                          >
-                            <span className="font-semibold text-admin-text-main">
-                              {item.name}{" "}
-                              <strong className="text-admin-text-sub font-normal">
-                                x{item.quantity}
-                              </strong>
-                            </span>
-                            <span className="font-bold text-admin-text-main">
-                              {(
-                                item.price *
-                                item.quantity *
-                                1000
-                              ).toLocaleString("vi-VN")}{" "}
-                              vnđ
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="flex justify-between items-center text-sm font-bold border-t border-admin-border pt-3 text-admin-text-main">
-                      <span>Tổng tiền:</span>
-                      <span className="text-admin-primary">
-                        {(activeOrder.totalAmount * 1000).toLocaleString(
-                          "vi-VN",
-                        )}{" "}
-                        vnđ
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-admin-text-sub bg-slate-50 p-2.5 rounded-md border border-admin-border flex justify-between items-center font-semibold">
-                      <span>Trạng thái đơn:</span>
-                      <Badge status={activeOrder.status} theme="light" />
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setCart([]);
-                        setIsOrderingModalOpen(true);
-                      }}
-                      className="w-full py-2.5 border border-admin-border hover:border-admin-primary/60 text-admin-text-main hover:text-admin-primary text-xs font-bold rounded-lg hover:bg-slate-50 cursor-pointer mt-2 font-display transition-colors"
+              {/* Đang dùng */}
+              {selectedTable.status === "serving" && activeOrder && (
+                <div className="flex flex-col gap-5">
+                  <h5 className="text-xs font-black text-blue-600 uppercase tracking-widest">Hóa đơn hiện tại</h5>
+                  <div className="space-y-3">
+                    {activeOrder.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <span className="text-sm font-bold text-gray-700">{item.name} <span className="text-gray-400 ml-1">x{item.quantity}</span></span>
+                        <span className="text-sm font-black text-gray-800">{(item.price * item.quantity).toLocaleString()}k</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-4 border-t border-dashed flex justify-between items-end">
+                    <span className="text-sm font-bold text-gray-400">Tổng cộng</span>
+                    <span className="text-2xl font-black text-gray-800">{activeOrder.totalAmount.toLocaleString()}.000₫</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <button className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-gray-50">CHUYỂN BÀN</button>
+                    <button className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-gray-50">GỘP BÀN</button>
+                    <button 
+                      onClick={() => setIsOrderingModalOpen(true)}
+                      className="col-span-2 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
                     >
                       GỌI THÊM MÓN
                     </button>
+                    <button className="col-span-2 py-4 bg-gray-800 text-white rounded-2xl font-black text-sm hover:bg-gray-900 transition-all">THANH TOÁN</button>
                   </div>
-                ) : (
-                  <p className="text-xs text-rose-400 font-bold">
-                    Lỗi: Bàn đang hoạt động nhưng thiếu thông tin đơn hàng.
-                  </p>
-                )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {selectedTable.status === TABLE_STATUS.CLEANING && (
-              <div className="flex flex-col gap-4 text-center py-6">
-                <RefreshCw
-                  size={36}
-                  className="text-blue-500 animate-spin mx-auto"
-                />
-                <h5 className="font-bold text-sm text-admin-text-main">
-                  Bàn đang được dọn dẹp
-                </h5>
-                <p className="text-xs text-admin-text-sub">
-                  Nhân viên đang vệ sinh và sát khuẩn khu vực bàn ăn.
-                </p>
-                <button
-                  onClick={() => handleCompleteCleaning(selectedTable.id)}
-                  className="w-full py-2.5 bg-blue-500 hover:bg-blue-400 text-black text-xs font-bold tracking-widest rounded-lg cursor-pointer mt-2 font-display"
-                >
-                  ĐÁNH DẤU SẠCH & SẴN SÀNG
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-16 text-slate-400">
-            <Grid size={40} className="mx-auto text-zinc-700 mb-3" />
-            <h5 className="font-bold text-sm text-slate-700">Chưa chọn bàn</h5>
-            <p className="text-xs mt-1">
-              Chọn một bàn bất kỳ trên sơ đồ để xem thông tin hóa đơn hoặc thực
-              hiện gọi món.
-            </p>
-          </div>
-        )}
+              {/* Đã đặt */}
+              {selectedTable.status === "reserved" && (
+                <div className="py-8 flex flex-col items-center text-center gap-4">
+                  <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-500">
+                    <Clock size={32} />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-gray-800">Bàn đã đặt trước</h5>
+                    <div className="mt-3 p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-left space-y-1">
+                      <p className="text-[10px] font-bold text-amber-700 uppercase">Khách hàng</p>
+                      <p className="text-sm font-black text-gray-800">Nguyễn Văn A</p>
+                      <p className="text-xs font-medium text-gray-500">Dự kiến: 19:30 • 4 người</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setTables(prev => prev.map(t => 
+                        t.id.toString() === selectedTableId?.toString() 
+                          ? { ...t, status: 'serving' } 
+                          : t
+                      ));
+                      toast.success(`Check-in thành công bàn ${selectedTable.name}`);
+                    }}
+                    className="w-full mt-4 py-4 bg-amber-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-amber-200 hover:bg-amber-600 transition-all"
+                  >
+                    XÁC NHẬN CHECK-IN
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-20 flex flex-col items-center text-center gap-4 text-gray-300">
+              <Grid size={64} strokeWidth={1} />
+              <p className="text-sm font-bold px-10">Vui lòng chọn bàn trên sơ đồ để xem thông tin</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Ordering Modal */}
-      <Modal
-        isOpen={isOrderingModalOpen}
+      {/* Modal Mở bàn */}
+      <OpenTableModal 
+        isOpen={isOpenTableModalOpen}
+        onClose={() => setIsOpenTableModalOpen(false)}
+        onConfirm={handleOpenTable}
+        table={selectedTable}
+      />
+
+      {/* Modal gọi món (Mock) */}
+      <Modal 
+        isOpen={isOrderingModalOpen} 
         onClose={() => setIsOrderingModalOpen(false)}
-        title={
-          activeOrder
-            ? `Sửa hóa đơn ${selectedTable?.name || ""}`
-            : `Tạo đơn gọi món cho ${selectedTable?.name || ""}`
-        }
-        size="lg"
-        theme="light"
+        title="Chọn món cho bàn"
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Menu Catalog */}
-          <div className="flex flex-col gap-4">
-            <h4 className="text-sm font-bold text-admin-primary border-b border-slate-100 pb-2 font-display">
-              Danh mục món ăn
-            </h4>
-
-            <div className="flex flex-col gap-2.5 max-h-[350px] overflow-y-auto pr-1 scrollbar">
-              {menu.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => item.inStock && handleAddToCart(item)}
-                  className={`flex items-center gap-3 p-2 border rounded-xl cursor-pointer transition-all hover:bg-slate-100 bg-slate-50 border-slate-100 ${
-                    item.inStock ? "" : "opacity-50 cursor-not-allowed"
-                  }`}
-                >
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="w-10 h-10 rounded-lg object-cover"
-                  />
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <span className="text-xs font-bold text-admin-text-main truncate">
-                      {item.name}
-                    </span>
-                    <span className="text-[10px] text-admin-text-sub font-semibold">
-                      {(item.price * 1000).toLocaleString("vi-VN")} vnđ
-                    </span>
-                  </div>
-                  {item.inStock ? (
-                    <span className="text-[10px] text-admin-primary font-bold bg-admin-primary-light px-2 py-0.5 rounded border border-admin-primary/20">
-                      Thêm +
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-rose-500 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
-                      Hết hàng
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Checkout Cart drawer */}
-          <div className="p-4 rounded-xl border border-admin-border bg-slate-50 flex flex-col justify-between gap-4">
-            <div className="flex flex-col gap-3">
-              <h4 className="text-sm font-bold text-admin-text-main border-b border-admin-border pb-2 flex justify-between font-display">
-                <span>Món đã chọn</span>
-                <span className="text-admin-text-sub text-xs">
-                  {cart.length} món
-                </span>
-              </h4>
-
-              <div className="flex flex-col gap-2.5 max-h-[200px] overflow-y-auto pr-1 scrollbar">
-                {cart.length === 0 ? (
-                  <p className="text-xs text-admin-text-sub italic text-center py-8">
-                    Giỏ hàng trống. Nhấp chọn món từ thực đơn bên trái để thêm.
-                  </p>
-                ) : (
-                  cart.map((item, index) => (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center text-xs bg-white p-2.5 rounded-lg border border-admin-border"
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-bold text-admin-text-main">
-                          {item.name}
-                        </span>
-                        <span className="text-[10px] text-admin-text-sub">
-                          {(item.price * 1000).toLocaleString("vi-VN")} vnđ/món
-                        </span>
-                      </div>
-                      <span className="font-bold text-admin-primary">
-                        x{item.quantity}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 pt-3 border-t border-admin-border">
-              <div className="flex justify-between text-sm font-bold text-admin-text-main">
-                <span>Tổng tạm tính:</span>
-                <span className="text-admin-primary font-extrabold">
-                  {(
-                    cart.reduce((sum, i) => sum + i.price * i.quantity, 0) *
-                    1000
-                  ).toLocaleString("vi-VN")}{" "}
-                  vnđ
-                </span>
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsOrderingModalOpen(false)}
-                  className="flex-1 py-2 text-xs font-bold bg-white border border-admin-border hover:bg-slate-100 text-slate-700 rounded-lg cursor-pointer transition-colors"
-                >
-                  Đóng
-                </button>
-                {activeOrder ? (
-                  <button
-                    onClick={handleAddMoreItems}
-                    disabled={cart.length === 0}
-                    className="flex-1 py-2 text-xs font-bold bg-admin-primary text-white rounded-lg hover:bg-admin-primary-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                  >
-                    THÊM VÀO HÓA ĐƠN
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleCreateWaiterOrder}
-                    disabled={cart.length === 0}
-                    className="flex-1 py-2 text-xs font-bold bg-admin-primary text-white rounded-lg hover:bg-admin-primary-hover disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                  >
-                    GỬI ĐƠN XUỐNG BẾP
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+        <div className="p-10 text-center space-y-4">
+           <div className="w-20 h-20 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto">
+             <Utensils size={40} />
+           </div>
+           <p className="font-bold text-gray-500">Giao diện gọi món sẽ được triển khai ở Phase tiếp theo.</p>
+           <button 
+             onClick={() => setIsOrderingModalOpen(false)}
+             className="px-6 py-2 bg-gray-800 text-white rounded-lg font-bold"
+           >
+             Đã hiểu
+           </button>
         </div>
       </Modal>
     </div>

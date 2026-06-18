@@ -26,6 +26,7 @@
     "@types/multer": "^1.4.11",
     "@types/node": "^20.12.12",
     "@types/nodemailer": "^8.0.1",
+    "@types/socket.io": "^3.0.1",
     "nodemon": "^3.1.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5"
