@@ -15,14 +15,14 @@ export const WaiterTableMap: React.FC = () => {
   const [selectedTableId, setSelectedTableId] = useState<string | number | null>(null);
   const [isOrderingModalOpen, setIsOrderingModalOpen] = useState(false);
   const [isOpenTableModalOpen, setIsOpenTableModalOpen] = useState(false);
-  
+
   // Local state to simulate DB updates for Phase 1/2 UI testing
   const [tables, setTables] = useState<Table[]>(MOCK_TABLES);
 
   const areas = MOCK_AREAS;
 
   const filteredTables = useMemo(() => {
-    return selectedAreaId 
+    return selectedAreaId
       ? tables.filter(t => t.area_id === selectedAreaId)
       : tables;
   }, [selectedAreaId, tables]);
@@ -42,7 +42,7 @@ export const WaiterTableMap: React.FC = () => {
           { name: "Gà nướng", quantity: 2, price: 160 }
         ],
         totalAmount: 500,
-        status: selectedTable?.status === "serving" ? ORDER_STATUS.CONFIRMED : ORDER_STATUS.PENDING_PAYMENT,
+        status: selectedTable.status === "serving" ? ORDER_STATUS.CONFIRMED : ORDER_STATUS.PENDING_PAYMENT,
         customerName: "Nguyễn Văn A",
         customerPhone: "0912345678"
       };
@@ -52,14 +52,14 @@ export const WaiterTableMap: React.FC = () => {
 
   const handleOpenTable = (data: { guestCount: number; customerName: string; customerPhone: string }) => {
     if (!selectedTableId) return;
-    
+
     // Simulate updating table status in frontend state
-    setTables(prev => prev.map(t => 
-      t.id.toString() === selectedTableId.toString() 
-        ? { ...t, status: 'serving' } 
+    setTables(prev => prev.map(t =>
+      t.id.toString() === selectedTableId.toString()
+        ? { ...t, status: 'serving' }
         : t
     ));
-    
+
     toast.success(`Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
     setIsOpenTableModalOpen(false);
   };
@@ -82,17 +82,17 @@ export const WaiterTableMap: React.FC = () => {
           </button>
         </div>
 
-        <AreaSelector 
-          areas={areas} 
-          selectedAreaId={selectedAreaId} 
-          onSelectArea={setSelectedAreaId} 
+        <AreaSelector
+          areas={areas}
+          selectedAreaId={selectedAreaId}
+          onSelectArea={setSelectedAreaId}
         />
 
         <div className="bg-gray-50/50 p-8 rounded-3xl border border-gray-100 min-h-[500px] shadow-inner">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
             {filteredTables.map((table) => {
               const isSelected = selectedTableId?.toString() === table.id.toString();
-              
+
               const statusStyles = {
                 empty: "bg-green-50 border-green-200 text-green-700 hover:bg-green-100",
                 reserved: "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100",
@@ -111,11 +111,9 @@ export const WaiterTableMap: React.FC = () => {
                 <div
                   key={table.id}
                   onClick={() => setSelectedTableId(table.id)}
-                  className={`relative p-5 border-2 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
-                    statusStyles[table.status as keyof typeof statusStyles]
-                  } ${
-                    isSelected ? "ring-4 ring-blue-500/20 border-blue-500 scale-105 shadow-lg" : "shadow-sm border-dashed"
-                  }`}
+                  className={`relative p-5 border-2 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${statusStyles[table.status as keyof typeof statusStyles]
+                    } ${isSelected ? "ring-4 ring-blue-500/20 border-blue-500 scale-105 shadow-lg" : "shadow-sm border-dashed"
+                    }`}
                 >
                   <div className="absolute top-2 right-2">
                     <MoreVertical size={14} className="opacity-30" />
@@ -162,7 +160,7 @@ export const WaiterTableMap: React.FC = () => {
                     <p className="text-xs text-gray-500 px-4 mt-1">Mở bàn mới để bắt đầu gọi món cho khách</p>
                   </div>
                   <div className="w-full space-y-3 mt-4">
-                    <button 
+                    <button
                       onClick={() => setIsOpenTableModalOpen(true)}
                       className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-wider"
                     >
@@ -194,7 +192,7 @@ export const WaiterTableMap: React.FC = () => {
                   <div className="grid grid-cols-2 gap-3 mt-4">
                     <button className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-gray-50">CHUYỂN BÀN</button>
                     <button className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-gray-50">GỘP BÀN</button>
-                    <button 
+                    <button
                       onClick={() => setIsOrderingModalOpen(true)}
                       className="col-span-2 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
                     >
@@ -219,11 +217,11 @@ export const WaiterTableMap: React.FC = () => {
                       <p className="text-xs font-medium text-gray-500">Dự kiến: 19:30 • 4 người</p>
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => {
-                      setTables(prev => prev.map(t => 
-                        t.id.toString() === selectedTableId?.toString() 
-                          ? { ...t, status: 'serving' } 
+                      setTables(prev => prev.map(t =>
+                        t.id.toString() === selectedTableId?.toString()
+                          ? { ...t, status: 'serving' }
                           : t
                       ));
                       toast.success(`Check-in thành công bàn ${selectedTable.name}`);
@@ -245,7 +243,7 @@ export const WaiterTableMap: React.FC = () => {
       </div>
 
       {/* Modal Mở bàn */}
-      <OpenTableModal 
+      <OpenTableModal
         isOpen={isOpenTableModalOpen}
         onClose={() => setIsOpenTableModalOpen(false)}
         onConfirm={handleOpenTable}
@@ -253,22 +251,22 @@ export const WaiterTableMap: React.FC = () => {
       />
 
       {/* Modal gọi món (Mock) */}
-      <Modal 
-        isOpen={isOrderingModalOpen} 
+      <Modal
+        isOpen={isOrderingModalOpen}
         onClose={() => setIsOrderingModalOpen(false)}
         title="Chọn món cho bàn"
       >
         <div className="p-10 text-center space-y-4">
-           <div className="w-20 h-20 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto">
-             <Utensils size={40} />
-           </div>
-           <p className="font-bold text-gray-500">Giao diện gọi món sẽ được triển khai ở Phase tiếp theo.</p>
-           <button 
-             onClick={() => setIsOrderingModalOpen(false)}
-             className="px-6 py-2 bg-gray-800 text-white rounded-lg font-bold"
-           >
-             Đã hiểu
-           </button>
+          <div className="w-20 h-20 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto">
+            <Utensils size={40} />
+          </div>
+          <p className="font-bold text-gray-500">Giao diện gọi món sẽ được triển khai ở Phase tiếp theo.</p>
+          <button
+            onClick={() => setIsOrderingModalOpen(false)}
+            className="px-6 py-2 bg-gray-800 text-white rounded-lg font-bold"
+          >
+            Đã hiểu
+          </button>
         </div>
       </Modal>
     </div>

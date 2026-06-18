@@ -6,8 +6,7 @@ import {
   MenuManagement,
   ShiftManagement,
 } from "../views/manager";
-import { WaiterTableMap, BookingListPage } from "../views/waiter";
-import WaitlistPage from "../views/waitlist";
+import { WaiterTableMap } from "../views/waiter";
 
 export const ManagerRoutes = () => (
   <Route
@@ -21,8 +20,6 @@ export const ManagerRoutes = () => (
     <Route index element={<Navigate to="/manager/dashboard" replace />} />
     <Route path="dashboard" element={<ManagerDashboard />} />
     <Route path="tables" element={<WaiterTableMap />} />
-    <Route path="bookings" element={<BookingListPage />} />
-    <Route path="waitlist" element={<WaitlistPage />} />
     <Route path="menu" element={<MenuManagement />} />
     <Route path="shifts" element={<ShiftManagement />} />
   </Route>
