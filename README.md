@@ -41,7 +41,18 @@ npm install
 
 # Tạo file .env
 cp .env.example .env
-```
+
+# Nếu bạn muốn dùng MySQL cho backend (khuyên dùng khi làm nhóm)
+# 1. Cài MySQL nếu chưa cài.
+# 2. Mở MySQL shell hoặc client:
+#    mysql -u root -p
+# 3. Tạo database:
+#    CREATE DATABASE todo_app CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+# 4. Nếu cần user riêng:
+#    CREATE USER 'todo_user'@'localhost' IDENTIFIED BY 'your_password';
+#    GRANT ALL PRIVILEGES ON todo_app.* TO 'todo_user'@'localhost';
+#    FLUSH PRIVILEGES;
+# 5. Cập nhật DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME trong .env.
 
 **Chạy Backend:**
 

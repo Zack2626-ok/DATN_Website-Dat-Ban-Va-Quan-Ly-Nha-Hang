@@ -7,13 +7,8 @@ import {
 
 const router = Router();
 
-// Create order
 router.post("/", createOrderHandler);
-
-// Get all orders
 router.get("/", getOrdersHandler);
-
-// Update status
 router.patch("/:id/status", updateOrderStatusHandler);
 
 export default router;

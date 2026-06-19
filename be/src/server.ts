@@ -6,58 +6,74 @@ import path from "path";
 import uploadRoutes from "./routes/upload.routes";
 import authRoutes from "./routes/auth.routes";
 import orderRoutes from "./routes/order.routes";
+import tableRoutes from "./routes/table.routes";
+import menuRoutes from "./routes/menu.routes";
+import inventoryRoutes from "./routes/inventory.routes";
+import paymentRoutes from "./routes/payment.routes";
 import { initDb } from "./utils/db";
+import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
-// Tải biến môi trường từ file v
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const DEFAULT_PORT = 5000;
+const startPort = Number(process.env.PORT) || DEFAULT_PORT;
 
-// Khởi động kết nối database
-initDb().then((isMySqlConnected) => {
-  if (isMySqlConnected) {
-    console.log("Database initialized with MySQL.");
-  } else {
-    console.log("Database initialized with fallback local JSON file.");
-  }
+console.log("Server configuration:", {
+  port: startPort,
+  nodeEnv: process.env.NODE_ENV || "development",
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+  dbHost: process.env.DB_HOST || "localhost",
+  dbName: process.env.DB_NAME || "todo_app",
 });
 
-// === MIDDLEWARES ===
-// Cho phép frontend truy cập API (xử lý CORS)
+const startServer = (port: number): void => {
+  const server = app.listen(port, () => {
+    console.log(`🚀 Server chạy tại http://localhost:${port}`);
+  });
+
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.warn(`⚠️ Cổng ${port} đang được sử dụng. Thử cổng ${port + 1}...`);
+      startServer(port + 1);
+      return;
+    }
+    console.error("Lỗi khởi động server:", error);
+    process.exit(1);
+  });
+};
+
+initDb()
+  .then(() => {
+    console.log("✅ Database mode: MySQL");
+    startServer(startPort);
+  })
+  .catch((err) => {
+    console.error("🔥 Không thể khởi tạo MySQL. Dự án yêu cầu kết nối MySQL thật.", err);
+    process.exit(1);
+  });
+
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
     credentials: true,
   }),
 );
-// Xử lý JSON từ client gửi lên
 app.use(express.json());
-// Xử lý form data từ client gửi lên
 app.use(express.urlencoded({ extended: true }));
-
-// === PHỤC VỤ FILE TĨNH ===
-// Cho phép truy cập các ảnh đã upload qua URL /uploads/...
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
-// === ĐỊNH TUYẾN (ROUTES) ===
-// API upload ảnh: POST /api/upload
 app.use("/api/upload", uploadRoutes);
-// API auth: đăng nhập, đăng ký, lấy thông tin user hiện tại
 app.use("/api/auth", authRoutes);
-
-// API đơn hàng: POST/GET/PATCH /api/orders
 app.use("/api/orders", orderRoutes);
+app.use("/api/tables", tableRoutes);
+app.use("/api/menu", menuRoutes);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/payments", paymentRoutes);
 
-// === KIỂM TRA SERVER HOẠT ĐỘNG ===
-// Endpoint để check server có hoạt động không
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
-
-// === KHỞI ĐỘNG SERVER ===
-app.listen(PORT, () => {
-  console.log(`🚀 Server chạy tại http://localhost:${PORT}`);
-});
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 export default app;
