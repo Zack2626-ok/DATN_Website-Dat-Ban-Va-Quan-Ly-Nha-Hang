@@ -1,11 +1,15 @@
+import dotenv from "dotenv";
+// Tải biến môi trường từ file .env trước khi import các module khác
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 
 import uploadRoutes from "./routes/upload.routes";
 import authRoutes from "./routes/auth.routes";
 import orderRoutes from "./routes/order.routes";
+import kdsRoutes from "./routes/kds.routes";
 import tableRoutes from "./routes/table.routes";
 import menuRoutes from "./routes/menu.routes";
 import inventoryRoutes from "./routes/inventory.routes";
@@ -65,6 +69,8 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/upload", uploadRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/orders", orderRoutes);
+// API KDS: nhà bếp
+app.use("/api/kds", kdsRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);

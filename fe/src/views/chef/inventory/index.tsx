@@ -5,7 +5,7 @@ import {
   setIngredientStockDirect,
 } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle, Plus, Minus } from "lucide-react";
 
 /**
  * InventoryControl - Allows restocking and simulating stock shortages
@@ -13,6 +13,16 @@ import { AlertTriangle, Plus } from "lucide-react";
 export const InventoryControl: React.FC = () => {
   const dispatch = useAppDispatch();
   const inventory = useAppSelector((state) => state.inventory.ingredients);
+  const searchQuery = useAppSelector((state) => state.ui.searchQuery);
+
+  // Lọc nguyên liệu theo ô tìm kiếm chung
+  const filteredInventory = React.useMemo(() => {
+    if (!searchQuery) return inventory;
+    const lowerQuery = searchQuery.toLowerCase();
+    return inventory.filter((ing) =>
+      ing.name.toLowerCase().includes(lowerQuery)
+    );
+  }, [inventory, searchQuery]);
 
   const triggerInventoryMenuSync = () => {
     const stocks: { [name: string]: number } = {};
@@ -22,9 +32,9 @@ export const InventoryControl: React.FC = () => {
     dispatch(syncMenuWithIngredients(stocks));
   };
 
-  const handleRestock = (id: string, amount: number) => {
-    dispatch(restockIngredient({ id, amount }));
-    // Wait a brief tick for Redux update to process, then sync with menu items
+  const handleModifyStock = (id: string, currentStock: number, change: number) => {
+    const newStock = Math.max(0, currentStock + change);
+    dispatch(setIngredientStockDirect({ id, stock: newStock }));
     setTimeout(() => triggerInventoryMenuSync(), 50);
   };
 
@@ -62,7 +72,7 @@ export const InventoryControl: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {inventory.map((ing) => {
+        {filteredInventory.map((ing) => {
           const isLow = ing.stock <= ing.threshold;
           return (
             <div
@@ -89,31 +99,45 @@ export const InventoryControl: React.FC = () => {
                 </span>
               </div>
 
-              <div className="flex items-center gap-4">
-                <span
-                  className={`text-sm font-black tracking-wider ${isLow ? "text-rose-600" : "text-admin-primary"}`}
+              <div className="flex items-center gap-3">
+                {/* Nút trừ */}
+                <button
+                  onClick={() =>
+                    handleModifyStock(ing.id, ing.stock, ing.unit === "kg" ? -0.5 : -50)
+                  }
+                  title="Giảm tồn kho"
+                  disabled={ing.stock <= 0}
+                  className="p-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-950 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
                 >
-                  {ing.stock} {ing.unit}
+                  <Minus size={12} />
+                </button>
+
+                {/* Hiển thị tồn kho */}
+                <span
+                  className={`text-sm font-black tracking-wider min-w-[70px] text-center ${isLow ? "text-rose-600" : "text-[#0f62fe]"}`}
+                >
+                  {ing.stock.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
                 </span>
 
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() =>
-                      handleRestock(ing.id, ing.unit === "kg" ? 5 : 100)
-                    }
-                    title="Nhập kho thêm"
-                    className="p-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-950 hover:bg-slate-200 cursor-pointer transition-colors"
-                  >
-                    <Plus size={12} />
-                  </button>
-                  <button
-                    onClick={() => handleSimulateOutStock(ing.id)}
-                    title="Mô phỏng hết hàng"
-                    className="p-1.5 rounded-lg bg-rose-100/60 border border-rose-200 hover:bg-rose-200 text-rose-600 cursor-pointer transition-colors"
-                  >
-                    <AlertTriangle size={12} />
-                  </button>
-                </div>
+                {/* Nút cộng */}
+                <button
+                  onClick={() =>
+                    handleModifyStock(ing.id, ing.stock, ing.unit === "kg" ? 0.5 : 50)
+                  }
+                  title="Tăng tồn kho"
+                  className="p-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-950 hover:bg-slate-200 cursor-pointer transition-colors"
+                >
+                  <Plus size={12} />
+                </button>
+
+                {/* Nút mô phỏng hết hàng */}
+                <button
+                  onClick={() => handleSimulateOutStock(ing.id)}
+                  title="Mô phỏng hết hàng"
+                  className="p-1.5 rounded-lg bg-rose-100/60 border border-rose-200 hover:bg-rose-200 text-rose-600 cursor-pointer transition-colors ml-1"
+                >
+                  <AlertTriangle size={12} />
+                </button>
               </div>
             </div>
           );
