@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { CalendarDays, Clock, Users, Phone, Mail, CheckCircle, UtensilsCrossed } from "lucide-react";
+import { CalendarDays, Clock, Users, Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, Info } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 /**
- * BookingPage — Trang đặt bàn trực tuyến (Module 0, Actor: Khách hàng)
+ * BookingPage — Trang đặt bàn trực tuyến (Tái thiết kế SaaS Style)
  */
 export const BookingPage: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
@@ -22,202 +23,116 @@ export const BookingPage: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
+    toast.success("Đặt bàn thành công!");
   };
 
   if (submitted) {
     return (
-      <section className="mx-auto max-w-xl py-24 px-4 text-center">
-        <div className="flex justify-center mb-6">
-          <span className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-600">
-            <CheckCircle size={48} />
-          </span>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center animate-fade-in">
+          <div className="h-16 w-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle size={32} />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 font-display">Đặt bàn thành công!</h1>
+          <p className="mt-2 text-sm text-gray-600">Cảm ơn {form.name}, chúng tôi đã nhận yêu cầu.</p>
+          
+          <div className="mt-8 text-left bg-gray-50 rounded-xl p-5 border border-gray-100 space-y-3">
+             <div className="flex justify-between text-sm"><span className="text-gray-500">Ngày:</span> <span className="font-semibold text-gray-900">{form.date}</span></div>
+             <div className="flex justify-between text-sm"><span className="text-gray-500">Giờ:</span> <span className="font-semibold text-gray-900">{form.time}</span></div>
+             <div className="flex justify-between text-sm"><span className="text-gray-500">Số khách:</span> <span className="font-semibold text-gray-900">{form.guests} người</span></div>
+          </div>
+
+          <button
+            onClick={() => { setSubmitted(false); setForm({ name: "", phone: "", email: "", date: "", time: "", guests: "2", note: "" }); }}
+            className="mt-8 w-full py-3 bg-blue-700 text-white rounded-xl font-semibold text-sm hover:bg-blue-800 transition-all"
+          >
+            Quay lại đặt bàn
+          </button>
         </div>
-        <h1 className="text-3xl font-bold text-gray-700">Đặt bàn thành công!</h1>
-        <p className="mt-3 text-gray-500">
-          Cảm ơn bạn <strong>{form.name}</strong> đã đặt bàn. Chúng tôi sẽ liên hệ qua số{" "}
-          <strong>{form.phone}</strong> để xác nhận.
-        </p>
-        <div className="mt-8 rounded-xl border border-gray-200 bg-white p-6 text-left shadow-sm">
-          <h3 className="font-semibold text-gray-700 mb-4">Thông tin đặt bàn:</h3>
-          <ul className="space-y-3 text-sm text-gray-600">
-            <li className="flex items-center gap-3">
-              <CalendarDays size={16} className="text-blue-600" />
-              Ngày: <strong>{form.date}</strong>
-            </li>
-            <li className="flex items-center gap-3">
-              <Clock size={16} className="text-blue-600" />
-              Giờ: <strong>{form.time}</strong>
-            </li>
-            <li className="flex items-center gap-3">
-              <Users size={16} className="text-blue-600" />
-              Số khách: <strong>{form.guests} người</strong>
-            </li>
-          </ul>
-        </div>
-        <button
-          onClick={() => { setSubmitted(false); setForm({ name: "", phone: "", email: "", date: "", time: "", guests: "2", note: "" }); }}
-          className="mt-6 rounded-xl bg-blue-700 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
-        >
-          Đặt thêm bàn khác
-        </button>
-      </section>
+      </div>
     );
   }
 
   return (
-    <>
-      {/* Hero */}
-      <section className="relative bg-gradient-to-r from-blue-800 to-indigo-700 py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          <div className="flex justify-center mb-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 text-white backdrop-blur-sm">
-              <UtensilsCrossed size={28} />
-            </span>
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 py-8">
+        <div className="mx-auto max-w-3xl px-6 flex items-center gap-4">
+          <div className="p-3 bg-blue-50 text-blue-700 rounded-xl">
+            <UtensilsCrossed size={24} />
           </div>
-          <h1 className="text-4xl font-bold text-white sm:text-5xl">Đặt bàn trực tuyến</h1>
-          <p className="mt-3 text-blue-100 text-lg max-w-lg mx-auto">
-            Chọn thời gian phù hợp, chúng tôi sẽ chuẩn bị mọi thứ cho bạn
-          </p>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 font-display">Đặt bàn trực tuyến</h1>
+            <p className="text-xs text-gray-500">Trải nghiệm dịch vụ chuyên nghiệp</p>
+          </div>
         </div>
-      </section>
+      </header>
 
-      {/* Booking Form */}
-      <section className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-gray-200 bg-white p-6 shadow-lg sm:p-10"
-        >
-          <h2 className="text-2xl font-bold text-gray-700 mb-6">Thông tin đặt bàn</h2>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            {/* Họ tên */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Họ và tên *</label>
-              <input
-                required
-                value={form.name}
-                onChange={(e) => setField("name", e.target.value)}
-                placeholder="Nguyễn Văn A"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* SĐT */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Số điện thoại *</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <Phone size={16} />
-                </span>
-                <input
-                  required
-                  type="tel"
-                  value={form.phone}
-                  onChange={(e) => setField("phone", e.target.value)}
-                  placeholder="0912345678"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+      {/* Main Content */}
+      <main className="mx-auto max-w-3xl px-6 mt-8">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* Section 1: Customer */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h2 className="text-lg font-bold text-gray-900 font-display mb-6 border-b border-gray-50 pb-4">Thông tin liên hệ</h2>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Họ và tên *</label>
+                <input required value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Nguyễn Văn A" className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Số điện thoại *</label>
+                <div className="relative">
+                  <Phone size={16} className="absolute left-3 top-3.5 text-gray-400" />
+                  <input required type="tel" value={form.phone} onChange={(e) => setField("phone", e.target.value)} placeholder="0912345678" className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-3 top-3.5 text-gray-400" />
+                  <input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="email@example.com" className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Email */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Email</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <Mail size={16} />
-                </span>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setField("email", e.target.value)}
-                  placeholder="email@example.com"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+          {/* Section 2: Booking */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h2 className="text-lg font-bold text-gray-900 font-display mb-6 border-b border-gray-50 pb-4">Thông tin bàn</h2>
+            <div className="grid gap-6 sm:grid-cols-3">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Ngày *</label>
+                <input required type="date" value={form.date} onChange={(e) => setField("date", e.target.value)} min={new Date().toISOString().split("T")[0]} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
-            </div>
-
-            {/* Ngày */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Ngày *</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <CalendarDays size={16} />
-                </span>
-                <input
-                  required
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setField("date", e.target.value)}
-                  min={new Date().toISOString().split("T")[0]}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            {/* Giờ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Giờ *</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <Clock size={16} />
-                </span>
-                <select
-                  required
-                  value={form.time}
-                  onChange={(e) => setField("time", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
-                >
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Giờ *</label>
+                <select required value={form.time} onChange={(e) => setField("time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                   <option value="">Chọn giờ</option>
-                  {["10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
-                    "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"].map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
+                  {["10:00", "11:00", "12:00", "18:00", "19:00", "20:00"].map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-            </div>
-
-            {/* Số khách */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Số khách *</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                  <Users size={16} />
-                </span>
-                <select
-                  required
-                  value={form.guests}
-                  onChange={(e) => setField("guests", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20].map((n) => (
-                    <option key={n} value={n}>{n} người</option>
-                  ))}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Số khách *</label>
+                <select required value={form.guests} onChange={(e) => setField("guests", e.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                  {[1, 2, 4, 6, 8].map((n) => <option key={n} value={n}>{n} khách</option>)}
                 </select>
               </div>
-            </div>
-
-            {/* Ghi chú */}
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-600 mb-1.5">Ghi chú</label>
-              <textarea
-                value={form.note}
-                onChange={(e) => setField("note", e.target.value)}
-                rows={3}
-                placeholder="Yêu cầu đặc biệt (bàn gần cửa sổ, tiệc sinh nhật...)"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              />
+              <div className="sm:col-span-3">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Ghi chú</label>
+                <textarea value={form.note} onChange={(e) => setField("note", e.target.value)} rows={3} placeholder="Yêu cầu đặc biệt (tiệc sinh nhật, vị trí bàn...)" className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+              </div>
             </div>
           </div>
 
           <button
             type="submit"
-            className="mt-6 w-full rounded-xl bg-blue-700 py-3.5 text-sm font-bold text-white transition-colors hover:bg-blue-800 shadow-lg"
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-700 py-4 text-sm font-bold text-white transition-all hover:bg-blue-800 shadow-sm hover:shadow-md"
           >
-            Xác nhận đặt bàn
+            Xác nhận đặt bàn <ArrowRight size={16} />
           </button>
         </form>
-      </section>
-    </>
+      </main>
+    </div>
   );
 };

@@ -16,8 +16,7 @@ export const ClientLayout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `text-sm font-medium transition-colors ${
-      isActive ? "text-blue-700" : "text-gray-600 hover:text-blue-700"
+    `text-sm font-medium transition-colors ${isActive ? "text-blue-700" : "text-gray-600 hover:text-blue-700"
     }`;
 
   return (
@@ -74,8 +73,7 @@ export const ClientLayout: React.FC = () => {
                   to={link.to}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm font-medium ${
-                      isActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"
+                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"
                     }`
                   }
                 >
