@@ -80,6 +80,12 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
             dot: isLight ? "bg-emerald-500" : "bg-emerald-400",
             label: "Đã thanh toán",
           };
+        case ORDER_STATUS.PENDING_PAYMENT:
+          return {
+            bg: isLight ? "bg-purple-50 border-purple-200 text-purple-700" : "bg-purple-500/10 border-purple-500/20 text-purple-400",
+            dot: isLight ? "bg-purple-500" : "bg-purple-400 animate-bounce",
+            label: "Chờ thanh toán",
+          };
         case ORDER_STATUS.CANCELLED:
           return {
             bg: isLight ? "bg-rose-50 border-rose-200 text-rose-700" : "bg-rose-500/10 border-rose-500/20 text-rose-400",

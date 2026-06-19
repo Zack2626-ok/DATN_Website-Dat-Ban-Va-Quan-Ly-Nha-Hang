@@ -1,0 +1,17 @@
+{
+  "name": "restaurant-management-system",
+  "version": "1.0.0",
+  "description": "Restaurant Management System - Full Stack Application",
+  "scripts": {
+    "dev": "concurrently \"cd be && npm run dev\" \"cd fe && npm run dev\"",
+    "dev:be": "cd be && npm run dev",
+    "dev:fe": "cd fe && npm run dev",
+    "build": "cd be && npm run build && cd ../fe && npm run build",
+    "build:be": "cd be && npm run build",
+    "build:fe": "cd fe && npm run build",
+    "start": "cd be && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
