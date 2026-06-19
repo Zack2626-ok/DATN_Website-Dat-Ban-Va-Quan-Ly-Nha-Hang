@@ -16,8 +16,10 @@
     "lucide-react": "^1.18.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.6.0",
     "react-redux": "^9.3.0",
-    "react-router-dom": "^6.23.1"
+    "react-router-dom": "^6.23.1",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

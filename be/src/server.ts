@@ -7,11 +7,20 @@ import uploadRoutes from "./routes/upload.routes";
 import authRoutes from "./routes/auth.routes";
 import orderRoutes from "./routes/order.routes";
 import { initDb } from "./utils/db";
+import { Server } from "socket.io";
+import http from "http";
 
 // Tải biến môi trường từ file v
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+  },
+});
 const PORT = process.env.PORT || 5000;
 
 // Khởi động kết nối database
@@ -22,6 +31,18 @@ initDb().then((isMySqlConnected) => {
     console.log("Database initialized with fallback local JSON file.");
   }
 });
+
+// === SOCKET.IO ===
+io.on("connection", (socket) => {
+  console.log("🔌 A user connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("🔌 User disconnected:", socket.id);
+  });
+});
+
+// Gắn io vào app để dùng trong các controller nếu cần
+app.set("io", io);
 
 // === MIDDLEWARES ===
 // Cho phép frontend truy cập API (xử lý CORS)
@@ -49,6 +70,7 @@ app.use("/api/auth", authRoutes);
 // API đơn hàng: POST/GET/PATCH /api/orders
 app.use("/api/orders", orderRoutes);
 
+
 // === KIỂM TRA SERVER HOẠT ĐỘNG ===
 // Endpoint để check server có hoạt động không
 app.get("/health", (_req, res) => {
@@ -56,7 +78,7 @@ app.get("/health", (_req, res) => {
 });
 
 // === KHỞI ĐỘNG SERVER ===
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server chạy tại http://localhost:${PORT}`);
 });
 

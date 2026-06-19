@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -46,8 +47,8 @@ export const Modal: React.FC<ModalProps> = ({
 
   const isLight = theme === "light";
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm cursor-pointer"
@@ -56,7 +57,7 @@ export const Modal: React.FC<ModalProps> = ({
 
       {/* Modal Dialog Content */}
       <div
-        className={`relative w-full ${sizeClasses[size]} rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden z-10 border ${
+        className={`relative w-full ${sizeClasses[size]} rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden z-[10000] border ${
           isLight
             ? "bg-white border-slate-200 text-admin-text-main"
             : "glass bg-brand-dark-light/95 border-white/10 text-zinc-200"
@@ -110,4 +111,6 @@ export const Modal: React.FC<ModalProps> = ({
       </div>
     </div>
   );
+
+  return ReactDOM.createPortal(modalContent, document.body);
 };

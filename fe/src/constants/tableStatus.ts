@@ -1,8 +1,8 @@
 export const TABLE_STATUS = {
-  AVAILABLE: "available",
+  AVAILABLE: "empty",
   RESERVED: "reserved",
-  OCCUPIED: "occupied",
-  CLEANING: "cleaning",
+  OCCUPIED: "serving",
+  CLEANING: "pending_payment",
 } as const;
 
 export type TableStatus = (typeof TABLE_STATUS)[keyof typeof TABLE_STATUS];
