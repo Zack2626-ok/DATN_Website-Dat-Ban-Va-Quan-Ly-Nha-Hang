@@ -40,8 +40,6 @@ export interface Order {
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
-export let connectionPool: mysql.Pool | null = null;
-export let useFallback = false;
 const normalizeMenuItem = (row: any): MenuItem => ({
   ...row,
   available: Boolean(row.available),
@@ -53,35 +51,12 @@ const normalizeTable = (row: any): Table => ({
   capacity: Number(row.capacity),
 });
 
-// Helper to load fallback JSON database
-export const loadJsonDb = (): { orders: Order[] } => {
-  if (!fs.existsSync(JSON_DB_DIR)) {
-    fs.mkdirSync(JSON_DB_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(JSON_DB_PATH)) {
-    fs.writeFileSync(JSON_DB_PATH, JSON.stringify({ orders: [] }, null, 2));
-    return { orders: [] };
-  }
-  try {
-    const content = fs.readFileSync(JSON_DB_PATH, "utf8");
-    return JSON.parse(content);
-  } catch (err) {
-    console.error("Error reading JSON DB file, returning empty state:", err);
-    return { orders: [] };
-  }
-};
-
-// Helper to save fallback JSON database
-export const saveJsonDb = (data: { orders: Order[] }) => {
-  if (!fs.existsSync(JSON_DB_DIR)) {
-    fs.mkdirSync(JSON_DB_DIR, { recursive: true });
-  }
-  fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
 const normalizeInventory = (row: any): Inventory => ({
   ...row,
   quantity: Number(row.quantity),
   minQuantity: Number(row.minQuantity),
 });
+
 
 const normalizePayment = (row: any): Payment => ({
   ...row,
