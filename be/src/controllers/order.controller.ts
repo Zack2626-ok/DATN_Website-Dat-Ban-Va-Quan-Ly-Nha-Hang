@@ -3,9 +3,6 @@ import { saveOrder, getOrders, updateOrderStatus, Order } from "../utils/db";
 import { sendOrderReceiptEmail } from "../utils/email";
 import { sendSuccess, sendError } from "../utils/response";
 
-/**
- * Handles creation of new orders
- */
 export const createOrderHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -23,7 +20,6 @@ export const createOrderHandler = async (req: Request, res: Response): Promise<v
       orderType = "delivery",
     } = req.body;
 
-    // Validate request
     if (!items || !Array.isArray(items) || items.length === 0) {
       sendError(res, "Danh sách món ăn đặt hàng trống!", 400);
       return;
@@ -57,10 +53,7 @@ export const createOrderHandler = async (req: Request, res: Response): Promise<v
       orderType,
     };
 
-    // 1. Save to Database
     await saveOrder(newOrder);
-
-    // 2. Trigger Email Confirmation (runs asynchronously or fallbacks safely)
     let receiptUrl = "";
     try {
       receiptUrl = await sendOrderReceiptEmail({
@@ -90,9 +83,6 @@ export const createOrderHandler = async (req: Request, res: Response): Promise<v
   }
 };
 
-/**
- * Handles fetching all orders
- */
 export const getOrdersHandler = async (_req: Request, res: Response): Promise<void> => {
   try {
     const orders = await getOrders();
@@ -103,9 +93,6 @@ export const getOrdersHandler = async (_req: Request, res: Response): Promise<vo
   }
 };
 
-/**
- * Handles updating an order's status
- */
 export const updateOrderStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
