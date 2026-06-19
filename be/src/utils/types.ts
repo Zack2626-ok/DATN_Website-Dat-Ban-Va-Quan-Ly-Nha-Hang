@@ -8,10 +8,14 @@ export interface JwtPayload {
   userId: string;
   email: string;
 <<<<<<< HEAD
+<<<<<<< HEAD
   role?: string;
 =======
   role_name: string;
 >>>>>>> main
+=======
+  role_name: string;
+>>>>>>> 628231b119bcded153dc56433816237b072c9aea
   iat?: number;
   exp?: number;
 }

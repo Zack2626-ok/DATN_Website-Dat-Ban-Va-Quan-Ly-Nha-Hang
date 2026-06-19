@@ -1,18 +1,15 @@
 import bcrypt from "bcrypt";
 import { Request, Response } from "express";
-import { sendSuccess, sendError } from "../utils/response";
-import { generateToken, verifyToken } from "../utils/jwt";
 import { createUser, findUserByEmail, findUserById } from "../utils/db";
+import { generateToken, verifyToken } from "../utils/jwt";
+import { sendError, sendSuccess } from "../utils/response";
 
 const sanitizeUser = (user: any) => {
   const { password, ...rest } = user;
   return rest;
 };
 
-export const registerHandler = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
+export const registerHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { full_name, email, password, role_name, phone } = req.body;
 
@@ -58,10 +55,7 @@ export const registerHandler = async (
   }
 };
 
-export const loginHandler = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
+export const loginHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
@@ -88,27 +82,19 @@ export const loginHandler = async (
       role_name: user.role_name,
     });
 
-    sendSuccess(
-      res,
-      {
-        accessToken,
-        user: sanitizeUser(user),
-      },
-      "Đăng nhập thành công!",
-    );
+    sendSuccess(res, {
+      accessToken,
+      user: sanitizeUser(user),
+    }, "Đăng nhập thành công!");
   } catch (err) {
     console.error("Error in loginHandler:", err);
     sendError(res, `Lỗi đăng nhập: ${(err as Error).message}`, 500);
   }
 };
 
-export const getMeHandler = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
+export const getMeHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-
     if (!authHeader?.startsWith("Bearer ")) {
       sendError(res, "Token không hợp lệ hoặc không tồn tại.", 401);
       return;
@@ -123,11 +109,7 @@ export const getMeHandler = async (
       return;
     }
 
-    sendSuccess(
-      res,
-      sanitizeUser(user),
-      "Lấy thông tin người dùng thành công.",
-    );
+    sendSuccess(res, sanitizeUser(user), "Lấy thông tin người dùng thành công.");
   } catch (err) {
     console.error("Error in getMeHandler:", err);
     sendError(res, `Lỗi lấy thông tin: ${(err as Error).message}`, 401);

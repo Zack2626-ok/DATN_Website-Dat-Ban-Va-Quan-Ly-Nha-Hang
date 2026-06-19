@@ -40,13 +40,12 @@ export interface Order {
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
-
+export let connectionPool: mysql.Pool | null = null;
 export let useFallback = false;
 const normalizeMenuItem = (row: any): MenuItem => ({
   ...row,
   available: Boolean(row.available),
 });
-
 
 const normalizeTable = (row: any): Table => ({
   ...row,
@@ -78,10 +77,6 @@ export const saveJsonDb = (data: { orders: Order[] }) => {
     fs.mkdirSync(JSON_DB_DIR, { recursive: true });
   }
   fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
-};
-
-// Initialize DB (MySQL or Fallback JSON)
-
 const normalizeInventory = (row: any): Inventory => ({
   ...row,
   quantity: Number(row.quantity),
@@ -138,7 +133,7 @@ const createDatabaseTables = async (): Promise<void> => {
       capacity INT NOT NULL,
       status VARCHAR(50) NOT NULL,
       location VARCHAR(255),
-      qrCode VARCHAzR(255),
+      qrCode VARCHAR(255),
       createdAt VARCHAR(50) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
