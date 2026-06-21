@@ -1,6 +1,13 @@
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
-import { WaiterLayout, WaiterTableMap, BookingListPage } from "../views/waiter";
+import {
+  WaiterLayout,
+  WaiterTableMap,
+  BookingListPage,
+  WaitlistPage,
+  OrderPage,
+  OrderTableListPage,
+} from "../views/waiter";
 
 export const WaiterRoutes = () => (
   <Route
@@ -14,5 +21,8 @@ export const WaiterRoutes = () => (
     <Route index element={<Navigate to="/waiter/tables" replace />} />
     <Route path="tables" element={<WaiterTableMap />} />
     <Route path="bookings" element={<BookingListPage />} />
+    <Route path="waitlist" element={<WaitlistPage />} />
+    <Route path="orders" element={<OrderTableListPage />} />
+    <Route path="orders/:tableId" element={<OrderPage />} />
   </Route>
 );
