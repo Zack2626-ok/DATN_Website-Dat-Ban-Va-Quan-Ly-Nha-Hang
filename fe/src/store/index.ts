@@ -1,4 +1,4 @@
-import { configureStore } from "@reduxjs/toolkit";
+import { configureStore, combineReducers } from "@reduxjs/toolkit";
 import authReducer from "./authSlice";
 import orderReducer from "./orderSlice";
 import inventoryReducer from "./inventorySlice";
@@ -21,6 +21,24 @@ const loadState = () => {
   }
 };
 
+const preloadedState = loadState();
+
+const rootReducer = combineReducers({
+  auth: authReducer,
+  orders: orderReducer,
+  inventory: inventoryReducer,
+  menu: menuReducer,
+  tables: tableReducer,
+  kds: kdsReducer,
+  ui: uiReducer,
+  banquet: banquetReducer,
+});
+
+export const store = configureStore({
+  reducer: rootReducer,
+  preloadedState,
+});
+
 // Save state to localStorage
 const saveState = (state: RootState) => {
   try {
@@ -30,22 +48,6 @@ const saveState = (state: RootState) => {
     // ignore write errors
   }
 };
-
-const preloadedState = loadState();
-
-export const store = configureStore({
-  reducer: {
-    auth: authReducer,
-    orders: orderReducer,
-    inventory: inventoryReducer,
-    menu: menuReducer,
-    tables: tableReducer,
-    kds: kdsReducer,
-    ui: uiReducer,
-    banquet: banquetReducer,
-  },
-  preloadedState,
-});
 
 // Subscribe to store changes to save to localStorage
 store.subscribe(() => {

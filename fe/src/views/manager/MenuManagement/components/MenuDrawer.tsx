@@ -23,7 +23,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   const [formData, setFormData] = useState({
     name: "",
     price: 0,
-    kitchen_station: "hot_kitchen" as const,
+    kitchen_station: "hot_kitchen" as "hot_kitchen" | "bar" | "cold_kitchen",
     category_id: "",
     image_url: "",
     is_active: true,

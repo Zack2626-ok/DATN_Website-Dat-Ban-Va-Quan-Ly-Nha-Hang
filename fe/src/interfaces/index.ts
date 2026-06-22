@@ -8,13 +8,17 @@ export interface MenuItem {
   description: string;
   category_id: string | number;
   category_name?: string;
+  category?: string; // For backward compatibility
   image_url?: string;
+  image?: string; // For backward compatibility
   kitchen_station: "hot_kitchen" | "bar" | "cold_kitchen";
   is_active: boolean;
   is_featured: boolean;
   is_deleted?: boolean;
   created_at?: string;
   updated_at?: string;
+  inStock?: boolean; // For backward compatibility
+  available?: boolean; // For backward compatibility
 }
 
 export interface Category {
@@ -34,7 +38,7 @@ export interface Table {
 }
 
 export interface OrderItem {
-  menuItemId: string;
+  menuItemId: string | number;
   name: string;
   price: number;
   quantity: number;

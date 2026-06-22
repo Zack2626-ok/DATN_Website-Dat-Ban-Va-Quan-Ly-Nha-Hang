@@ -1,6 +1,6 @@
 import React from "react";
 import { X, CheckCircle2, XCircle } from "lucide-react";
-import type { MenuItem } from "../../../interfaces";
+import type { MenuItem } from "../../../../interfaces";
 
 interface MenuDetailModalProps {
   isOpen: boolean;
