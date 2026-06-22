@@ -6,6 +6,32 @@ import menuReducer from "./menuSlice";
 import tableReducer from "./tableSlice";
 import kdsReducer from "./kdsSlice";
 import uiReducer from "./uiSlice";
+import banquetReducer from "./banquetSlice";
+
+// Load state from localStorage
+const loadState = () => {
+  try {
+    const serializedState = localStorage.getItem("resmanagerState");
+    if (serializedState === null) {
+      return undefined;
+    }
+    return JSON.parse(serializedState);
+  } catch (err) {
+    return undefined;
+  }
+};
+
+// Save state to localStorage
+const saveState = (state: RootState) => {
+  try {
+    const serializedState = JSON.stringify(state);
+    localStorage.setItem("resmanagerState", serializedState);
+  } catch {
+    // ignore write errors
+  }
+};
+
+const preloadedState = loadState();
 
 export const store = configureStore({
   reducer: {
@@ -16,7 +42,14 @@ export const store = configureStore({
     tables: tableReducer,
     kds: kdsReducer,
     ui: uiReducer,
+    banquet: banquetReducer,
   },
+  preloadedState,
+});
+
+// Subscribe to store changes to save to localStorage
+store.subscribe(() => {
+  saveState(store.getState());
 });
 
 /** Kiểu RootState dùng trong useSelector */

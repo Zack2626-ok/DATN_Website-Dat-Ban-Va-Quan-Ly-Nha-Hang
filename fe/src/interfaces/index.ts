@@ -2,15 +2,26 @@ import type { OrderStatus } from "../constants/orderStatus";
 import type { TableStatus } from "../constants/tableStatus";
 
 export interface MenuItem {
-  id: string;
+  id: string | number;
   name: string;
   price: number;
   description: string;
-  category: string;
-  image: string;
-  isSpicy: boolean;
-  isBestSeller: boolean;
-  inStock: boolean;
+  category_id: string | number;
+  category_name?: string;
+  image_url?: string;
+  kitchen_station: "hot_kitchen" | "bar" | "cold_kitchen";
+  is_active: boolean;
+  is_featured: boolean;
+  is_deleted?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Category {
+  id: string | number;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
 }
 
 export interface Table {
