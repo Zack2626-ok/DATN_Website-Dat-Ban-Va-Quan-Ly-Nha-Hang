@@ -6,7 +6,8 @@ import {
   MenuManagement,
   ShiftManagement,
 } from "../views/manager";
-import { WaiterTableMap } from "../views/waiter";
+import { WaiterTableMap, BookingListPage } from "../views/waiter";
+import WaitlistPage from "../views/waitlist";
 
 export const ManagerRoutes = () => (
   <Route
@@ -22,5 +23,7 @@ export const ManagerRoutes = () => (
     <Route path="tables" element={<WaiterTableMap />} />
     <Route path="menu" element={<MenuManagement />} />
     <Route path="shifts" element={<ShiftManagement />} />
+    <Route path="bookings" element={<BookingListPage />} />
+    <Route path="waitlist" element={<WaitlistPage />} />
   </Route>
 );

@@ -14,6 +14,7 @@ import tableRoutes from "./routes/table.routes";
 import menuRoutes from "./routes/menu.routes";
 import inventoryRoutes from "./routes/inventory.routes";
 import paymentRoutes from "./routes/payment.routes";
+import crudRoutes from "./routes/crud.routes";
 import { initDb } from "./utils/db";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
@@ -75,6 +76,7 @@ app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/crud", crudRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

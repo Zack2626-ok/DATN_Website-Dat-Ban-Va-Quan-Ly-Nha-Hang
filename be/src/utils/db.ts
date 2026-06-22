@@ -4,7 +4,7 @@ import { Table, MenuItem, Inventory, Payment, User } from "./types";
 
 dotenv.config();
 
-let connectionPool: mysql.Pool | null = null;
+export let connectionPool: mysql.Pool | null = null;
 
 const ensurePool = (): mysql.Pool => {
   if (!connectionPool) {
@@ -13,7 +13,7 @@ const ensurePool = (): mysql.Pool => {
   return connectionPool;
 };
 
-const query = async <T = any>(sql: string, params: any[] = []): Promise<T> => {
+export const query = async <T = any>(sql: string, params: any[] = []): Promise<T> => {
   const pool = ensurePool();
   const [rows] = await pool.query(sql, params);
   return rows as T;
@@ -479,3 +479,8 @@ export const getPaymentStatistics = async (startDate?: string, endDate?: string)
   const averageAmount = result.totalPayments > 0 ? result.totalAmount / result.totalPayments : 0;
   return { ...result, averageAmount, dateRange: { startDate: startDate || null, endDate: endDate || null } };
 };
+
+// Stubs for KDS compatibility
+export const useFallback = false;
+export const loadJsonDb = (): any => ({ orders: [] });
+export const saveJsonDb = (db: any): void => {};
