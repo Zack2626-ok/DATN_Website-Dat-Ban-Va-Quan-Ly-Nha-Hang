@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CalendarDays, Clock, Users, Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, Info } from "lucide-react";
+import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 /**

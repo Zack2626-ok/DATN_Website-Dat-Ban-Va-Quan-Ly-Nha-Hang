@@ -5,7 +5,7 @@ import { Table } from '../../interfaces/table.interface';
 import { GuestCounter } from './GuestCounter';
 import { CustomerForm } from './CustomerForm';
 
-interface OpenTableFormData {
+export interface OpenTableFormData {
   guestCount: number;
   customerName: string;
   customerPhone: string;

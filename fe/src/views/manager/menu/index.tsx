@@ -7,7 +7,7 @@ import { useAppSelector } from "../../../store/hooks";
  */
 export const MenuManagement: React.FC = () => {
   const menuItems = useAppSelector((state) => state.menu.items);
-  const [selectedId, setSelectedId] = useState("m1");
+  const [selectedId, setSelectedId] = useState<string | number>(menuItems[0]?.id ?? "1");
   const [search, setSearch] = useState("");
 
   const filtered = menuItems.filter((i) =>
@@ -64,7 +64,7 @@ export const MenuManagement: React.FC = () => {
                   <div className="flex flex-col">
                     <span className="text-xs truncate">{item.name}</span>
                     <span className="text-[10px] text-slate-400 font-semibold">
-                      {item.category}
+                      {item.category ?? item.category_name ?? ""}
                     </span>
                   </div>
                   <span className="text-xs font-extrabold">
@@ -118,7 +118,7 @@ export const MenuManagement: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  value={selectedItem ? selectedItem.category : ""}
+                  value={selectedItem ? selectedItem.category ?? selectedItem.category_name ?? "" : ""}
                   readOnly
                   className="bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs focus:outline-none text-center font-bold"
                 />
