@@ -14,6 +14,10 @@ import tableRoutes from "./routes/table.routes";
 import menuRoutes from "./routes/menu.routes";
 import inventoryRoutes from "./routes/inventory.routes";
 import paymentRoutes from "./routes/payment.routes";
+import bookingRoutes from "./routes/booking.routes";
+import waitlistRoutes from "./routes/waitlist.routes";
+import resmanagerTableRoutes from "./routes/resmanager-table.routes";
+import waiterRoutes from "./routes/waiter.routes";
 import { initDb } from "./utils/db";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
@@ -75,6 +79,11 @@ app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/payments", paymentRoutes);
+// Resmanager schema routes (waiter module)
+app.use("/api/v1/tables", resmanagerTableRoutes);
+app.use("/api/v1/bookings", bookingRoutes);
+app.use("/api/v1/waitlist", waitlistRoutes);
+app.use("/api/v1/waiter", waiterRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

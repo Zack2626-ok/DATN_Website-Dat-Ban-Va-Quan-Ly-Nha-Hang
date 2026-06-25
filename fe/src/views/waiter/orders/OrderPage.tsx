@@ -1,15 +1,27 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle } from "lucide-react";
+import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2 } from "lucide-react";
 import { Modal } from "../../../components/Modal";
-import { MOCK_TABLES } from "../../../data/mockTables";
-import { MOCK_MENU_ITEMS, MENU_CATEGORIES, type MenuCategory, type WaiterMenuItem } from "./mockMenu";
 import { VoidItemModal, type OrderItemStatus } from "./VoidItemModal";
 import { toast } from "react-hot-toast";
+import {
+  getWaiterMenuItems,
+  getWaiterCategories,
+  getOrdersByTable,
+  getOrderItems,
+  addOrderItem,
+  voidOrderItem,
+  sendItemsToKitchen,
+  createOrder,
+  type WaiterMenuItem,
+  type WaiterOrderItem,
+  type WaiterCategory,
+} from "../../../services/waiterService";
+import { getTablesV1 } from "../../../services/tableService";
 
-interface OrderLineItem {
-  id: string;
-  menuItemId: string;
+interface DisplayOrderItem {
+  id: number;
+  menuItemId: number;
   name: string;
   price: number;
   quantity: number;
@@ -32,91 +44,216 @@ const STATUS_LABELS: Record<OrderItemStatus, string> = {
   voided: "✗ Đã hủy",
 };
 
-const INITIAL_ITEMS: OrderLineItem[] = [
-  { id: "oi1", menuItemId: "m3", name: "Bò lúc lắc", price: 265000, quantity: 1, status: "cooking", held: false },
-  { id: "oi2", menuItemId: "m4", name: "Gà nướng mật ong", price: 195000, quantity: 2, status: "pending", held: true },
-];
+const getCurrentUserId = (): number => {
+  try {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return 4;
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.userId || payload.id || 4;
+  } catch {
+    return 4;
+  }
+};
 
-/**
- * Gọi món / Thêm vào order — Hold / Gửi bếp ngay
- */
 export const OrderPage: React.FC = () => {
   const { tableId } = useParams<{ tableId: string }>();
   const navigate = useNavigate();
 
-  const table = MOCK_TABLES.find((t) => t.id.toString() === tableId);
+  // Table info
+  const [table, setTable] = useState<any | null>(null);
+  const [tableLoading, setTableLoading] = useState(true);
 
-  const [category, setCategory] = useState<MenuCategory>("all");
+  // Menu data
+  const [menuItems, setMenuItems] = useState<WaiterMenuItem[]>([]);
+  const [categories, setCategories] = useState<WaiterCategory[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | "all">("all");
   const [search, setSearch] = useState("");
-  const [orderItems, setOrderItems] = useState<OrderLineItem[]>(INITIAL_ITEMS);
+
+  // Order data
+  const [orderId, setOrderId] = useState<number | null>(null);
+  const [orderItems, setOrderItems] = useState<DisplayOrderItem[]>([]);
+  const [orderLoading, setOrderLoading] = useState(true);
+
+  // UI state
   const [addItemTarget, setAddItemTarget] = useState<WaiterMenuItem | null>(null);
   const [addQty, setAddQty] = useState(1);
   const [addNote, setAddNote] = useState("");
-  const [voidTarget, setVoidTarget] = useState<OrderLineItem | null>(null);
+  const [addingItem, setAddingItem] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<DisplayOrderItem | null>(null);
+  const [sending, setSending] = useState(false);
+
+  // Tải thông tin bàn
+  useEffect(() => {
+    if (!tableId) return;
+    setTableLoading(true);
+    getTablesV1()
+      .then((tables) => {
+        const found = tables.find((t) => t.id.toString() === tableId);
+        setTable(found || null);
+      })
+      .catch(() => setTable(null))
+      .finally(() => setTableLoading(false));
+  }, [tableId]);
+
+  // Tải menu và categories
+  useEffect(() => {
+    setMenuLoading(true);
+    Promise.all([getWaiterMenuItems(), getWaiterCategories()])
+      .then(([items, cats]) => {
+        setMenuItems(items);
+        setCategories(cats);
+      })
+      .catch(() => toast.error("Không thể tải thực đơn"))
+      .finally(() => setMenuLoading(false));
+  }, []);
+
+  // Tải order hiện tại của bàn
+  useEffect(() => {
+    if (!tableId) return;
+    setOrderLoading(true);
+    getOrdersByTable(Number(tableId))
+      .then(async (orders) => {
+        if (orders.length === 0) {
+          setOrderId(null);
+          setOrderItems([]);
+          return;
+        }
+        const latest = orders[0];
+        setOrderId(latest.id);
+        const items = await getOrderItems(latest.id);
+        setOrderItems(
+          items.map((i) => ({
+            id: i.id,
+            menuItemId: i.menu_item_id,
+            name: i.item_name,
+            price: Number(i.unit_price),
+            quantity: i.quantity,
+            status: i.status as OrderItemStatus,
+            kitchenNote: i.kitchen_note,
+            held: false,
+          })),
+        );
+      })
+      .catch(() => {
+        setOrderItems([]);
+      })
+      .finally(() => setOrderLoading(false));
+  }, [tableId]);
 
   const filteredMenu = useMemo(() => {
-    return MOCK_MENU_ITEMS.filter((item) => {
-      const matchCat = category === "all" || item.category === category;
+    return menuItems.filter((item) => {
+      const matchCat = selectedCategoryId === "all" || item.category_id === selectedCategoryId;
       const matchSearch = item.name.toLowerCase().includes(search.toLowerCase());
       return matchCat && matchSearch;
     });
-  }, [category, search]);
+  }, [menuItems, selectedCategoryId, search]);
 
   const activeItems = orderItems.filter((i) => i.status !== "voided");
   const total = activeItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const pendingCount = orderItems.filter((i) => i.status === "pending" && !i.held).length;
   const heldCount = orderItems.filter((i) => i.status === "pending" && i.held).length;
 
-  const handleAddToOrder = () => {
+  const handleAddToOrder = async () => {
     if (!addItemTarget) return;
-    const newItem: OrderLineItem = {
-      id: `oi_${Date.now()}`,
-      menuItemId: addItemTarget.id,
-      name: addItemTarget.name,
-      price: addItemTarget.price,
-      quantity: addQty,
-      status: "pending",
-      held: false,
-      kitchenNote: addNote.trim() || undefined,
-    };
-    setOrderItems((prev) => [...prev, newItem]);
-    toast.success(`Đã thêm ${addItemTarget.name} vào order`);
-    setAddItemTarget(null);
-    setAddQty(1);
-    setAddNote("");
+    setAddingItem(true);
+    try {
+      let currentOrderId = orderId;
+      // Nếu chưa có order, tạo mới
+      if (!currentOrderId) {
+        const newOrder = await createOrder({
+          table_id: Number(tableId),
+          created_by: getCurrentUserId(),
+          order_type: "dine_in",
+        });
+        currentOrderId = newOrder.id;
+        setOrderId(currentOrderId);
+      }
+
+      const newItem = await addOrderItem(currentOrderId, {
+        menu_item_id: addItemTarget.id,
+        quantity: addQty,
+        unit_price: addItemTarget.price,
+        kitchen_note: addNote.trim() || undefined,
+      });
+
+      setOrderItems((prev) => [
+        ...prev,
+        {
+          id: newItem.id,
+          menuItemId: addItemTarget.id,
+          name: addItemTarget.name,
+          price: addItemTarget.price,
+          quantity: addQty,
+          status: "pending" as OrderItemStatus,
+          kitchenNote: addNote.trim() || undefined,
+          held: false,
+        },
+      ]);
+
+      toast.success(`Đã thêm ${addItemTarget.name} vào order`);
+      setAddItemTarget(null);
+      setAddQty(1);
+      setAddNote("");
+    } catch {
+      toast.error("Không thể thêm món. Vui lòng thử lại.");
+    } finally {
+      setAddingItem(false);
+    }
   };
 
   const handleHold = () => {
     setOrderItems((prev) =>
-      prev.map((i) =>
-        i.status === "pending" && !i.held ? { ...i, held: true } : i,
-      ),
+      prev.map((i) => (i.status === "pending" && !i.held ? { ...i, held: true } : i)),
     );
     toast.success("Đã hold các món chờ gửi bếp");
   };
 
-  const handleSendToKitchen = () => {
+  const handleSendToKitchen = async () => {
+    if (!orderId) {
+      toast.error("Chưa có order");
+      return;
+    }
     const toSend = orderItems.filter((i) => i.status === "pending" && !i.held);
     if (toSend.length === 0) {
       toast.error("Không có món nào cần gửi bếp");
       return;
     }
-    setOrderItems((prev) =>
-      prev.map((i) =>
-        i.status === "pending" && !i.held ? { ...i, status: "cooking" as OrderItemStatus } : i,
-      ),
-    );
-    toast.success(`Đã gửi ${toSend.length} món xuống bếp`);
-  };
-
-  const handleVoidConfirm = (itemId: string, _reason: string, notifyKds: boolean) => {
-    setOrderItems((prev) =>
-      prev.map((i) => (i.id === itemId ? { ...i, status: "voided" as OrderItemStatus } : i)),
-    );
-    if (notifyKds) {
-      // UI mock — thực tế sẽ emit socket order:item_voided
+    setSending(true);
+    try {
+      await sendItemsToKitchen(orderId, toSend.map((i) => i.id));
+      setOrderItems((prev) =>
+        prev.map((i) =>
+          i.status === "pending" && !i.held ? { ...i, status: "cooking" as OrderItemStatus } : i,
+        ),
+      );
+      toast.success(`Đã gửi ${toSend.length} món xuống bếp`);
+    } catch {
+      toast.error("Không thể gửi món xuống bếp");
+    } finally {
+      setSending(false);
     }
   };
+
+  const handleVoidConfirm = async (itemId: string, reason: string, _notifyKds: boolean) => {
+    try {
+      await voidOrderItem(Number(itemId), reason);
+      setOrderItems((prev) =>
+        prev.map((i) => (i.id.toString() === itemId ? { ...i, status: "voided" as OrderItemStatus } : i)),
+      );
+      toast.success("Đã hủy món");
+    } catch {
+      toast.error("Không thể hủy món");
+    }
+  };
+
+  if (tableLoading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <Loader2 size={28} className="animate-spin text-blue-400" />
+      </div>
+    );
+  }
 
   if (!table) {
     return (
@@ -128,6 +265,12 @@ export const OrderPage: React.FC = () => {
       </div>
     );
   }
+
+  const getImageUrl = (item: WaiterMenuItem): string => {
+    if (!item.image_url) return "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
+    if (item.image_url.startsWith("http")) return item.image_url;
+    return `${import.meta.env.VITE_API_URL?.replace("/api", "")}/uploads/${item.image_url}`;
+  };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -144,7 +287,10 @@ export const OrderPage: React.FC = () => {
             <h1 className="text-2xl font-bold text-gray-900 font-display">
               Gọi món — Bàn {table.name}
             </h1>
-            <p className="text-sm text-gray-500">Order #ord_{table.id} • {table.capacity} chỗ</p>
+            <p className="text-sm text-gray-500">
+              {orderId ? `Order #${orderId}` : "Chưa có order"} • {table.capacity} chỗ
+              {table.area_name && ` • ${table.area_name}`}
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -158,10 +304,10 @@ export const OrderPage: React.FC = () => {
           </button>
           <button
             onClick={handleSendToKitchen}
-            disabled={pendingCount === 0}
+            disabled={pendingCount === 0 || sending}
             className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl font-bold text-sm hover:bg-orange-700 disabled:opacity-50"
           >
-            <Send size={16} />
+            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Gửi bếp ({pendingCount})
           </button>
         </div>
@@ -170,22 +316,32 @@ export const OrderPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Thực đơn */}
         <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
+          {/* Categories */}
           <div className="flex flex-wrap gap-2">
-            {MENU_CATEGORIES.map((cat) => (
+            <button
+              onClick={() => setSelectedCategoryId("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedCategoryId === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              Tất cả
+            </button>
+            {categories.map((cat) => (
               <button
-                key={cat.key}
-                onClick={() => setCategory(cat.key)}
+                key={cat.id}
+                onClick={() => setSelectedCategoryId(cat.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  category === cat.key
+                  selectedCategoryId === cat.id
                     ? "bg-blue-600 text-white"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
               >
-                {cat.label}
+                {cat.name}
               </button>
             ))}
           </div>
 
+          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
             <input
@@ -196,31 +352,52 @@ export const OrderPage: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto">
-            {filteredMenu.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => item.inStock && setAddItemTarget(item)}
-                disabled={!item.inStock}
-                className={`flex flex-col rounded-xl border overflow-hidden text-left transition-all hover:shadow-md ${
-                  item.inStock
-                    ? "border-gray-100 hover:border-blue-200 cursor-pointer"
-                    : "border-gray-100 opacity-50 cursor-not-allowed"
-                }`}
-              >
-                <img src={item.image} alt={item.name} className="w-full h-24 object-cover" />
-                <div className="p-2.5">
-                  <p className="text-xs font-bold text-gray-800 truncate">{item.name}</p>
-                  <p className="text-[10px] font-semibold text-blue-600 mt-0.5">
-                    {item.price.toLocaleString("vi-VN")}₫
-                  </p>
-                  {!item.inStock && (
-                    <span className="text-[9px] text-red-500 font-bold">Hết hàng</span>
-                  )}
+          {/* Menu grid */}
+          {menuLoading ? (
+            <div className="flex justify-center items-center py-16">
+              <Loader2 size={24} className="animate-spin text-blue-400" />
+              <span className="ml-2 text-gray-400 text-sm">Đang tải thực đơn...</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto">
+              {filteredMenu.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => item.is_active && setAddItemTarget(item)}
+                  disabled={!item.is_active}
+                  className={`flex flex-col rounded-xl border overflow-hidden text-left transition-all hover:shadow-md ${
+                    item.is_active
+                      ? "border-gray-100 hover:border-blue-200 cursor-pointer"
+                      : "border-gray-100 opacity-50 cursor-not-allowed"
+                  }`}
+                >
+                  <img
+                    src={getImageUrl(item)}
+                    alt={item.name}
+                    className="w-full h-24 object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
+                    }}
+                  />
+                  <div className="p-2.5">
+                    <p className="text-xs font-bold text-gray-800 truncate">{item.name}</p>
+                    <p className="text-[10px] font-semibold text-blue-600 mt-0.5">
+                      {Number(item.price).toLocaleString("vi-VN")}₫
+                    </p>
+                    {!item.is_active && (
+                      <span className="text-[9px] text-red-500 font-bold">Hết hàng</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+              {filteredMenu.length === 0 && !menuLoading && (
+                <div className="col-span-3 py-10 text-center text-gray-400 text-sm">
+                  Không tìm thấy món phù hợp
                 </div>
-              </button>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Order panel */}
@@ -236,7 +413,11 @@ export const OrderPage: React.FC = () => {
           </div>
 
           <div className="flex-1 space-y-2 max-h-[calc(100vh-360px)] overflow-y-auto">
-            {orderItems.length === 0 ? (
+            {orderLoading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 size={20} className="animate-spin text-blue-400" />
+              </div>
+            ) : orderItems.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-10 italic">Chưa có món trong order</p>
             ) : (
               orderItems.map((item) => (
@@ -259,7 +440,9 @@ export const OrderPage: React.FC = () => {
                       <span className="text-sm font-black text-gray-800">
                         {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                       </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLES[item.status]}`}>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLES[item.status]}`}
+                      >
                         {STATUS_LABELS[item.status]}
                       </span>
                       {item.status !== "voided" && item.status !== "done" && (
@@ -295,7 +478,11 @@ export const OrderPage: React.FC = () => {
       {/* Modal thêm món */}
       <Modal
         isOpen={!!addItemTarget}
-        onClose={() => { setAddItemTarget(null); setAddQty(1); setAddNote(""); }}
+        onClose={() => {
+          setAddItemTarget(null);
+          setAddQty(1);
+          setAddNote("");
+        }}
         title={addItemTarget ? `Thêm: ${addItemTarget.name}` : ""}
         size="sm"
         theme="light"
@@ -303,11 +490,19 @@ export const OrderPage: React.FC = () => {
         {addItemTarget && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <img src={addItemTarget.image} alt="" className="w-16 h-16 rounded-xl object-cover" />
+              <img
+                src={getImageUrl(addItemTarget)}
+                alt=""
+                className="w-16 h-16 rounded-xl object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src =
+                    "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
+                }}
+              />
               <div>
                 <p className="font-bold text-gray-900">{addItemTarget.name}</p>
                 <p className="text-sm text-blue-600 font-bold">
-                  {addItemTarget.price.toLocaleString("vi-VN")}₫
+                  {Number(addItemTarget.price).toLocaleString("vi-VN")}₫
                 </p>
               </div>
             </div>
@@ -338,8 +533,10 @@ export const OrderPage: React.FC = () => {
 
             <button
               onClick={handleAddToOrder}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700"
+              disabled={addingItem}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
             >
+              {addingItem ? <Loader2 size={16} className="animate-spin" /> : null}
               Thêm vào order
             </button>
           </div>
@@ -349,7 +546,7 @@ export const OrderPage: React.FC = () => {
       <VoidItemModal
         isOpen={!!voidTarget}
         onClose={() => setVoidTarget(null)}
-        item={voidTarget}
+        item={voidTarget ? { id: voidTarget.id.toString(), name: voidTarget.name, status: voidTarget.status } : null}
         tableName={table.name}
         onConfirm={handleVoidConfirm}
       />

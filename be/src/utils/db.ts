@@ -479,3 +479,254 @@ export const getPaymentStatistics = async (startDate?: string, endDate?: string)
   const averageAmount = result.totalPayments > 0 ? result.totalAmount / result.totalPayments : 0;
   return { ...result, averageAmount, dateRange: { startDate: startDate || null, endDate: endDate || null } };
 };
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Table Areas & Tables (khớp với SQLQuery1.sql)
+// ============================================================================
+
+export const getTableAreas = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
+};
+
+export const getResmanagerTables = async (areaId?: number): Promise<any[]> => {
+  const sql = areaId
+    ? `SELECT t.*, ta.name AS area_name
+       FROM tables t
+       JOIN table_areas ta ON t.area_id = ta.id
+       WHERE t.is_deleted = 0 AND t.area_id = ?
+       ORDER BY t.area_id, t.row_pos, t.col_pos`
+    : `SELECT t.*, ta.name AS area_name
+       FROM tables t
+       JOIN table_areas ta ON t.area_id = ta.id
+       WHERE t.is_deleted = 0
+       ORDER BY t.area_id, t.row_pos, t.col_pos`;
+  return areaId ? query<any[]>(sql, [areaId]) : query<any[]>(sql);
+};
+
+export const getResmanagerTableById = async (id: number): Promise<any | null> => {
+  const rows = await query<any[]>(
+    `SELECT t.*, ta.name AS area_name
+     FROM tables t
+     JOIN table_areas ta ON t.area_id = ta.id
+     WHERE t.id = ? AND t.is_deleted = 0`,
+    [id],
+  );
+  return rows[0] || null;
+};
+
+export const updateResmanagerTableStatus = async (
+  id: number,
+  status: "empty" | "reserved" | "serving" | "pending_payment",
+): Promise<boolean> => {
+  const result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
+  return result.affectedRows > 0;
+};
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Bookings
+// ============================================================================
+
+export const getBookings = async (): Promise<any[]> => {
+  return query<any[]>(
+    `SELECT b.*, t.name AS table_name, ta.name AS area_name
+     FROM bookings b
+     LEFT JOIN tables t ON b.table_id = t.id
+     LEFT JOIN table_areas ta ON t.area_id = ta.id
+     ORDER BY b.start_time DESC`,
+  );
+};
+
+export const getBookingById = async (id: number): Promise<any | null> => {
+  const rows = await query<any[]>(
+    `SELECT b.*, t.name AS table_name, ta.name AS area_name
+     FROM bookings b
+     LEFT JOIN tables t ON b.table_id = t.id
+     LEFT JOIN table_areas ta ON t.area_id = ta.id
+     WHERE b.id = ?`,
+    [id],
+  );
+  return rows[0] || null;
+};
+
+export const createBooking = async (data: {
+  table_id: number;
+  customer_id?: number | null;
+  guest_name: string;
+  guest_phone: string;
+  party_size: number;
+  start_time: string;
+  end_time: string;
+  guest_note?: string;
+  note?: string;
+}): Promise<any> => {
+  const code = "BK" + Date.now();
+  const result = await query<any>(
+    `INSERT INTO bookings (table_id, customer_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+    [
+      data.table_id,
+      data.customer_id || null,
+      data.guest_name,
+      data.guest_phone,
+      data.party_size,
+      data.start_time,
+      data.end_time,
+      code,
+      data.guest_note || null,
+      data.note || null,
+    ],
+  );
+  return { id: result.insertId, ...data, confirmation_code: code, status: "pending" };
+};
+
+export const updateBookingStatus = async (
+  id: number,
+  status: "pending" | "confirmed" | "cancelled" | "completed",
+): Promise<boolean> => {
+  const result = await query<any>("UPDATE bookings SET status = ? WHERE id = ?", [status, id]);
+  return result.affectedRows > 0;
+};
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Waitlist
+// ============================================================================
+
+export const getWaitlist = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM waitlist ORDER BY joined_at ASC");
+};
+
+export const addToWaitlist = async (data: {
+  guest_name: string;
+  party_size: number;
+  phone?: string;
+}): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO waitlist (guest_name, party_size, phone) VALUES (?, ?, ?)",
+    [data.guest_name, data.party_size, data.phone || null],
+  );
+  return { id: result.insertId, ...data, joined_at: new Date().toISOString(), notified_at: null };
+};
+
+export const notifyWaitlistGuest = async (id: number): Promise<boolean> => {
+  const result = await query<any>("UPDATE waitlist SET notified_at = NOW() WHERE id = ?", [id]);
+  return result.affectedRows > 0;
+};
+
+export const removeFromWaitlist = async (id: number): Promise<boolean> => {
+  const result = await query<any>("DELETE FROM waitlist WHERE id = ?", [id]);
+  return result.affectedRows > 0;
+};
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Menu Items & Categories
+// ============================================================================
+
+export const getResmanagerCategories = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM categories WHERE is_active = 1 ORDER BY sort_order ASC");
+};
+
+export const getResmanagerMenuItems = async (categoryId?: number): Promise<any[]> => {
+  const sql = categoryId
+    ? `SELECT m.*, c.name AS category_name
+       FROM menu_items m
+       JOIN categories c ON m.category_id = c.id
+       WHERE m.is_deleted = 0 AND m.is_active = 1 AND m.category_id = ?
+       ORDER BY c.sort_order, m.name`
+    : `SELECT m.*, c.name AS category_name
+       FROM menu_items m
+       JOIN categories c ON m.category_id = c.id
+       WHERE m.is_deleted = 0 AND m.is_active = 1
+       ORDER BY c.sort_order, m.name`;
+  return categoryId ? query<any[]>(sql, [categoryId]) : query<any[]>(sql);
+};
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Orders & Order Items
+// ============================================================================
+
+export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]> => {
+  return query<any[]>(
+    `SELECT o.*,
+            u.full_name AS waiter_name
+     FROM orders o
+     LEFT JOIN users u ON o.created_by = u.id
+     WHERE o.table_id = ? AND o.status NOT IN ('completed', 'cancelled')
+     ORDER BY o.created_at DESC`,
+    [tableId],
+  );
+};
+
+export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> => {
+  return query<any[]>(
+    `SELECT oi.*, m.name AS item_name, m.image_url, m.price AS unit_price_ref
+     FROM order_items oi
+     JOIN menu_items m ON oi.menu_item_id = m.id
+     WHERE oi.order_id = ? AND oi.status != 'voided'
+     ORDER BY oi.course_number, oi.created_at`,
+    [orderId],
+  );
+};
+
+export const createResmanagerOrder = async (data: {
+  table_id: number | null;
+  customer_id?: number | null;
+  created_by: number;
+  order_type?: "dine_in" | "takeaway" | "delivery";
+  note?: string;
+}): Promise<any> => {
+  const result = await query<any>(
+    `INSERT INTO orders (table_id, customer_id, created_by, order_type, status, note)
+     VALUES (?, ?, ?, ?, 'open', ?)`,
+    [
+      data.table_id,
+      data.customer_id || null,
+      data.created_by,
+      data.order_type || "dine_in",
+      data.note || null,
+    ],
+  );
+  return { id: result.insertId, ...data, status: "open" };
+};
+
+export const addResmanagerOrderItem = async (data: {
+  order_id: number;
+  menu_item_id: number;
+  quantity: number;
+  unit_price: number;
+  seat_number?: number | null;
+  course_number?: number;
+  kitchen_note?: string;
+}): Promise<any> => {
+  const result = await query<any>(
+    `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    [
+      data.order_id,
+      data.menu_item_id,
+      data.quantity,
+      data.unit_price,
+      data.seat_number || null,
+      data.course_number || 1,
+      data.kitchen_note || null,
+    ],
+  );
+  return { id: result.insertId, ...data, status: "pending" };
+};
+
+export const voidResmanagerOrderItem = async (itemId: number, reason: string): Promise<boolean> => {
+  const result = await query<any>(
+    "UPDATE order_items SET status = 'voided', voided_at = NOW(), void_reason = ? WHERE id = ?",
+    [reason, itemId],
+  );
+  return result.affectedRows > 0;
+};
+
+export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]): Promise<boolean> => {
+  if (orderItemIds.length === 0) return false;
+  const placeholders = orderItemIds.map(() => "?").join(",");
+  const result = await query<any>(
+    `UPDATE order_items SET status = 'cooking' WHERE id IN (${placeholders}) AND status = 'pending'`,
+    orderItemIds,
+  );
+  return result.affectedRows > 0;
+};
