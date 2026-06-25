@@ -95,6 +95,9 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
       kitchen_note,
     });
 
+    // Báo Socket.IO có món mới thêm
+    req.app.get("io")?.emit("order:new_item", item);
+
     sendSuccess(res, item, "Thêm món thành công", 201);
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -104,7 +107,7 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
 // Hủy món (void)
 export const voidOrderItemHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { itemId } = req.params;
+    const { orderId, itemId } = req.params;
     const { reason } = req.body;
 
     const success = await db.voidResmanagerOrderItem(Number(itemId), reason || "Waiter cancelled");
@@ -112,6 +115,13 @@ export const voidOrderItemHandler = async (req: Request, res: Response): Promise
       sendError(res, "Không tìm thấy món", 404);
       return;
     }
+
+    // Báo Socket.IO món bị hủy
+    req.app.get("io")?.emit("order:item_voided", {
+      order_id: Number(orderId),
+      item_id: Number(itemId),
+      reason: reason || "Waiter cancelled",
+    });
 
     sendSuccess(res, { itemId }, "Đã hủy món thành công");
   } catch (error) {

@@ -236,8 +236,9 @@ export const OrderPage: React.FC = () => {
   };
 
   const handleVoidConfirm = async (itemId: string, reason: string, _notifyKds: boolean) => {
+    if (!orderId) return;
     try {
-      await voidOrderItem(Number(itemId), reason);
+      await voidOrderItem(orderId, Number(itemId), reason);
       setOrderItems((prev) =>
         prev.map((i) => (i.id.toString() === itemId ? { ...i, status: "voided" as OrderItemStatus } : i)),
       );

@@ -98,10 +98,10 @@ export const addOrderItem = async (
   return response.data.data;
 };
 
-export const voidOrderItem = async (itemId: number, reason: string): Promise<void> => {
-  await api.patch(`/v1/waiter/order-items/${itemId}/void`, { reason });
+export const voidOrderItem = async (orderId: number, itemId: number, reason: string): Promise<void> => {
+  await api.patch(`/v1/waiter/orders/${orderId}/items/${itemId}/void`, { reason });
 };
 
 export const sendItemsToKitchen = async (orderId: number, itemIds: number[]): Promise<void> => {
-  await api.post(`/v1/waiter/orders/${orderId}/send-kitchen`, { item_ids: itemIds });
+  await api.post(`/v1/waiter/orders/${orderId}/send-to-kitchen`, { item_ids: itemIds });
 };
