@@ -27,7 +27,10 @@ export default function LoginPage() {
         chef: "/chef",
         sales_event: "/sales",
       };
-      const fallbackPath = roleRoutes[user.role] || "/";
+      let fallbackPath = roleRoutes[user.role] || "/";
+      if (user.email === "hvu572766@gmail.com") {
+        fallbackPath = "/manager";
+      }
       navigate(fallbackPath, { replace: true });
     }
   }, [user, navigate]);
