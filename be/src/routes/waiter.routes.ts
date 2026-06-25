@@ -21,7 +21,7 @@ router.get("/orders/by-table/:tableId", getOrdersByTableHandler);
 router.get("/orders/:orderId/items", getOrderItemsHandler);
 router.post("/orders", createResmanagerOrderHandler);
 router.post("/orders/:orderId/items", addOrderItemHandler);
-router.patch("/order-items/:itemId/void", voidOrderItemHandler);
-router.post("/orders/:orderId/send-kitchen", sendItemsToKitchenHandler);
+router.patch("/orders/:orderId/items/:itemId/void", voidOrderItemHandler);
+router.post("/orders/:orderId/send-to-kitchen", sendItemsToKitchenHandler);
 
 export default router;
