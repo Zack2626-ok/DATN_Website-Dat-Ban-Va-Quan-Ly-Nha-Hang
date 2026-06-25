@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Utensils, ArrowRight } from "lucide-react";
-import { MOCK_TABLES } from "../../../data/mockTables";
+import { getTablesV1 } from "../../../services/tableService";
 import { Badge } from "../../../components/Badge";
 
 /**
@@ -9,10 +9,24 @@ import { Badge } from "../../../components/Badge";
  */
 export const OrderTableListPage: React.FC = () => {
   const navigate = useNavigate();
+  const [activeTables, setActiveTables] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const activeTables = MOCK_TABLES.filter(
-    (t) => t.status === "serving" || t.status === "pending_payment",
-  );
+  useEffect(() => {
+    getTablesV1()
+      .then((tables) => {
+        const filtered = tables.filter(
+          (t) => t.status === "serving" || t.status === "pending_payment",
+        );
+        setActiveTables(filtered);
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="p-8 text-center text-gray-500 animate-pulse">Đang tải danh sách bàn...</div>;
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">

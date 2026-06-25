@@ -101,21 +101,7 @@ export const BookingListPage: React.FC = () => {
     }
   };
 
-  // Convert status to visual badge text
-  const getBadgeStatusText = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "CONFIRMED"; // Using CONFIRMED badge style for pending (theo thiết kế cũ)
-      case "confirmed":
-        return "RESERVED"; // Using RESERVED style for confirmed
-      case "completed":
-        return "SERVING";
-      case "cancelled":
-        return "CANCELLED";
-      default:
-        return "DRAFT";
-    }
-  };
+  // Badge component already handles booking statuses natively with Vietnamese now
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -209,7 +195,7 @@ export const BookingListPage: React.FC = () => {
                     <td className="px-6 py-4">{b.table_name || "—"}</td>
                     <td className="px-6 py-4">{b.party_size}</td>
                     <td className="px-6 py-4">
-                      <Badge status={getBadgeStatusText(b.status) as any} type="order" theme="light" />
+                      <Badge status={b.status as any} type="booking" theme="light" />
                     </td>
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-2">
@@ -270,7 +256,7 @@ export const BookingListPage: React.FC = () => {
           <div className="space-y-6">
             <div className="p-4 bg-gray-50 rounded-xl border border-admin-border flex justify-between items-center shadow-sm">
               <span className="font-bold text-gray-900 text-lg">#{selectedBooking.confirmation_code}</span>
-              <Badge status={getBadgeStatusText(selectedBooking.status) as any} type="order" theme="light" />
+              <Badge status={selectedBooking.status as any} type="booking" theme="light" />
             </div>
             <div className="grid gap-4 text-sm text-admin-text-main bg-white p-4 rounded-xl border border-admin-border">
               <div className="flex items-center gap-3">
