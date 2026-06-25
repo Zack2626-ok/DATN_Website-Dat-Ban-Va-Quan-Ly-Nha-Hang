@@ -14,7 +14,7 @@ export interface ResmanagerTable {
 }
 
 export const getTableAreas = async (): Promise<TableArea[]> => {
-  const response = await api.get("/v1/table-areas");
+  const response = await api.get("/v1/tables/areas");
   return response.data.data || [];
 };
 
@@ -24,9 +24,9 @@ export const getTables = async (areaId?: number): Promise<ResmanagerTable[]> => 
   return response.data.data || [];
 };
 
-export const getTablesV1 = getTables;
+export const getTablesV1 = getTables;                           
 
-export const updateTableStatus = async (
+export const updateTableStatus = async (                                                                                    
   tableId: number,
   status: "empty" | "reserved" | "serving" | "pending_payment",
 ): Promise<void> => {
