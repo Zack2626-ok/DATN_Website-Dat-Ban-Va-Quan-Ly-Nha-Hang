@@ -14,7 +14,6 @@ import {
   sendItemsToKitchen,
   createOrder,
   type WaiterMenuItem,
-  type WaiterOrderItem,
   type WaiterCategory,
 } from "../../../services/waiterService";
 import { getTablesV1 } from "../../../services/tableService";
@@ -547,7 +546,7 @@ export const OrderPage: React.FC = () => {
       <VoidItemModal
         isOpen={!!voidTarget}
         onClose={() => setVoidTarget(null)}
-        item={voidTarget ? { id: voidTarget.id.toString(), name: voidTarget.name, status: voidTarget.status } : null}
+        item={voidTarget ? { id: voidTarget.id.toString(), name: voidTarget.name, quantity: voidTarget.quantity, status: voidTarget.status } : null}
         tableName={table.name}
         onConfirm={handleVoidConfirm}
       />

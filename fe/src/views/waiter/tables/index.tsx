@@ -485,7 +485,7 @@ export const WaiterTableMap: React.FC = () => {
         isOpen={activeAction === "split"}
         onClose={() => setActiveAction(null)}
         tableName={selectedTable?.name || ""}
-        orderItems={activeOrder?.items || []}
+        orderItems={activeOrder?.items.map(item => ({ ...item, id: item.id.toString() })) || []}
         availableEmptyTables={tables.filter((t) => t.status === "empty")}
         onConfirm={handleSplit}
       />

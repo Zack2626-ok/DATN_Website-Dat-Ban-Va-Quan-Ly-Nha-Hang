@@ -1,5 +1,5 @@
 import api from "./axiosInstance";
-import type { TableArea, Table, AreaResponse, TableResponse } from "../interfaces/table.interface";
+import type { TableArea } from "../interfaces/table.interface";
 
 export interface ResmanagerTable {
   id: number;
