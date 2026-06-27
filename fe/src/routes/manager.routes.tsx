@@ -8,7 +8,7 @@ import {
   BanquetConfig,
 } from "../views/manager";
 import { WaiterTableMap, BookingListPage, WaitlistPage } from "../views/waiter";
-import { AdminRbac } from "../views/admin";
+import UserManagement from "../views/manager/UserManagement";
 
 export const ManagerRoutes = () => (
   <Route
@@ -24,7 +24,7 @@ export const ManagerRoutes = () => (
     <Route path="tables" element={<WaiterTableMap />} />
     <Route path="bookings" element={<BookingListPage />} />
     <Route path="waitlist" element={<WaitlistPage />} />
-    <Route path="staff" element={<AdminRbac />} />
+    <Route path="staff" element={<UserManagement />} />
     <Route path="menu" element={<MenuManagement />} />
     <Route path="shifts" element={<ShiftManagement />} />
     <Route path="events" element={<BanquetConfig />} />

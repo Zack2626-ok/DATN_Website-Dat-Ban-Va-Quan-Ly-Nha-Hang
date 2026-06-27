@@ -3,7 +3,7 @@ import { ORDER_STATUS, OrderStatus } from "../constants/orderStatus";
 import { TABLE_STATUS, TableStatus } from "../constants/tableStatus";
 
 interface BadgeProps {
-  status: OrderStatus | TableStatus;
+  status: OrderStatus | TableStatus | "pending" | "completed";
   type?: "order" | "table" | "booking";
   className?: string;
   theme?: "dark" | "light";

@@ -68,4 +68,28 @@ export interface Ingredient {
   threshold: number; // Alert when stock < threshold
 }
 
-export type UserRole = "admin" | "manager" | "waiter" | "chef" | "cashier";
+export type UserRole = "admin" | "manager" | "waiter" | "chef" | "cashier" | "sales_event";
+
+export interface Role {
+  id: number;
+  name: UserRole;
+  description: string;
+}
+
+export interface User {
+  id: number;
+  role_id: number;
+  full_name: string;
+  email: string;
+  password_hash?: string;
+  phone?: string;
+  avatar_url?: string;
+  status: "active" | "inactive";
+  is_deleted: boolean;
+  deleted_at?: string;
+  last_login?: string;
+  created_at: string;
+  updated_at: string;
+  // For UI: include role object when fetching
+  role?: Role;
+}

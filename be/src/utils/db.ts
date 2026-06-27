@@ -186,22 +186,47 @@ export const initDb = async (): Promise<boolean> => {
 
 // ===== User operations =====
 export const findUserByEmail = async (email: string): Promise<User | null> => {
-  const rows = await query<any[]>("SELECT * FROM users WHERE email = ?", [email]);
+  const rows = await query<any[]>(
+    `SELECT u.id, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.created_at AS createdAt
+     FROM users u
+     JOIN roles r ON u.role_id = r.id
+     WHERE u.email = ? AND u.is_deleted = 0`,
+    [email]
+  );
   return rows[0] ? (rows[0] as User) : null;
 };
 
 export const findUserById = async (id: string): Promise<User | null> => {
-  const rows = await query<any[]>("SELECT * FROM users WHERE id = ?", [id]);
+  const rows = await query<any[]>(
+    `SELECT u.id, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.created_at AS createdAt
+     FROM users u
+     JOIN roles r ON u.role_id = r.id
+     WHERE u.id = ? AND u.is_deleted = 0`,
+    [id]
+  );
   return rows[0] ? (rows[0] as User) : null;
 };
 
+const getRoleId = (roleName: string): number => {
+  const roles: Record<string, number> = {
+    admin: 1,
+    manager: 2,
+    waiter: 3,
+    cashier: 4,
+    chef: 5,
+    sales_event: 6,
+  };
+  return roles[roleName.toLowerCase()] || 3; // fallback to waiter
+};
+
 export const createUser = async (user: Omit<User, "id" | "createdAt">): Promise<User> => {
-  const id = `user_${Date.now()}`;
-  const createdAt = new Date().toISOString();
-  await query(
-    "INSERT INTO users (id, full_name, email, password, role_name, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [id, user.full_name, user.email, user.password, user.role_name, user.phone, createdAt],
+  const roleId = getRoleId(user.role_name);
+  const result = await query<any>(
+    "INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES (?, ?, ?, ?, ?)",
+    [roleId, user.full_name, user.email, user.password, user.phone]
   );
+  const id = result.insertId ? result.insertId.toString() : `user_${Date.now()}`;
+  const createdAt = new Date().toISOString();
   return { id, createdAt, ...user };
 };
 
