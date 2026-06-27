@@ -1,8 +1,21 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { ORDER_STATUS } from "../../../constants/orderStatus";
 import { Badge } from "../../../components/Badge";
-import { Utensils, Clock, Grid, RefreshCw, MoreVertical, Loader2 } from "lucide-react";
+import {
+  Utensils,
+  Clock,
+  Grid,
+  RefreshCw,
+  Loader2,
+  User,
+  Phone,
+  Link2,
+  Split,
+  ArrowRightLeft,
+  Merge,
+  CheckCircle,
+  ShoppingBag,
+} from "lucide-react";
 import AreaSelector from "../../../components/tables/AreaSelector";
 import StatusLegend from "../../../components/tables/StatusLegend";
 import OpenTableModal from "../../../components/tables/OpenTableModal";
@@ -27,7 +40,7 @@ interface ActiveOrderInfo {
 const getCurrentUserId = (): number => {
   try {
     const token = localStorage.getItem("accessToken");
-    if (!token) return 4; // fallback waiter id
+    if (!token) return 4;
     const payload = JSON.parse(atob(token.split(".")[1]));
     return payload.userId || payload.id || 4;
   } catch {
@@ -49,17 +62,17 @@ export const WaiterTableMap: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingOrder, setLoadingOrder] = useState(false);
 
-  // Tải areas và tables từ DB
+  // Tải areas và tables từ DB (kèm extra info: guest, merge, split)
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [areasData, tablesData] = await Promise.all([
         getTableAreas(),
-        getTablesV1(),
+        getTablesV1(), // Bây giờ trả về getResmanagerTablesWithExtra
       ]);
       setAreas(areasData);
-      // Chuyển đổi format từ resmanager sang Table interface
-      const mapped: Table[] = tablesData.map((t: any) => ({
+      // Chuyển đổi format: giữ lại tất cả extra fields
+      const mapped = tablesData.map((t: any) => ({
         id: t.id,
         area_id: t.area_id,
         area_name: t.area_name,
@@ -68,9 +81,17 @@ export const WaiterTableMap: React.FC = () => {
         row_pos: t.row_pos,
         col_pos: t.col_pos,
         status: t.status,
+        // Extra fields
+        guest_name: t.guest_name,
+        guest_phone: t.guest_phone,
+        is_merged_primary: t.is_merged_primary,
+        merged_tables: t.merged_tables,
+        is_merged_child: t.is_merged_child,
+        merged_into: t.merged_into,
+        is_split: t.is_split,
+        split_labels: t.split_labels,
       }));
-      setTables(mapped);
-      // Chọn khu vực đầu tiên mặc định
+      setTables(mapped as Table[]);
       if (areasData.length > 0 && !selectedAreaId) {
         setSelectedAreaId(areasData[0].id);
       }
@@ -93,14 +114,10 @@ export const WaiterTableMap: React.FC = () => {
       setActiveOrder(null);
       return;
     }
-
     setLoadingOrder(true);
     getOrdersByTable(Number(selectedTableId))
       .then(async (orders) => {
-        if (orders.length === 0) {
-          setActiveOrder(null);
-          return;
-        }
+        if (orders.length === 0) { setActiveOrder(null); return; }
         const latestOrder = orders[0];
         const items = await getOrderItems(latestOrder.id);
         const activeItems = items.filter((i) => i.status !== "voided");
@@ -114,7 +131,7 @@ export const WaiterTableMap: React.FC = () => {
             price: Number(i.unit_price),
           })),
           totalAmount: total,
-          status: selectedTable.status === "serving" ? ORDER_STATUS.CONFIRMED : ORDER_STATUS.PENDING_PAYMENT,
+          status: selectedTable.status,
         });
       })
       .catch(() => setActiveOrder(null))
@@ -138,14 +155,19 @@ export const WaiterTableMap: React.FC = () => {
         table_id: Number(selectedTableId),
         created_by: userId,
         order_type: "dine_in",
+        guest_name: data.customerName,
+        guest_phone: data.customerPhone,
+        guest_count: data.guestCount,
       });
-      await updateTableStatus(Number(selectedTableId), "serving");
+      // updateTableStatus được gọi trong BE khi createOrder, nhưng cũng update local state
       setTables((prev) =>
         prev.map((t) =>
-          t.id.toString() === selectedTableId.toString() ? { ...t, status: "serving" } : t,
+          t.id.toString() === selectedTableId.toString()
+            ? { ...t, status: "serving" as const, guest_name: data.customerName, guest_phone: data.customerPhone } as any
+            : t,
         ),
       );
-      toast.success(`Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
+      toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
     } catch (err) {
       toast.error("Không thể mở bàn. Vui lòng thử lại.");
@@ -154,37 +176,17 @@ export const WaiterTableMap: React.FC = () => {
   };
 
   const handleTransfer = async (sourceId: string | number, targetId: string | number) => {
-    try {
-      await updateTableStatus(Number(targetId), "serving");
-      await updateTableStatus(Number(sourceId), "empty");
-      setTables((prev) =>
-        prev.map((t) => {
-          if (t.id.toString() === sourceId.toString()) return { ...t, status: "empty" as const };
-          if (t.id.toString() === targetId.toString()) return { ...t, status: "serving" as const };
-          return t;
-        }),
-      );
-      setSelectedTableId(targetId);
-      toast.success("Chuyển bàn thành công");
-    } catch {
-      toast.error("Không thể chuyển bàn");
-    }
+    // API đã gọi xong trong modal, chỉ cần reload
+    await fetchData();
+    setSelectedTableId(targetId);
   };
 
-  const handleMerge = (_primaryId: string | number, mergeIds: (string | number)[]) => {
-    setTables((prev) =>
-      prev.map((t) =>
-        mergeIds.some((id) => id.toString() === t.id.toString()) ? { ...t, status: "empty" as const } : t,
-      ),
-    );
+  const handleMerge = async () => {
+    await fetchData();
   };
 
-  const handleSplit = (targetTableId: string | number, _itemIds: string[]) => {
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id.toString() === targetTableId.toString() ? { ...t, status: "serving" as const } : t,
-      ),
-    );
+  const handleSplit = async () => {
+    await fetchData();
   };
 
   const goToOrder = () => {
@@ -202,28 +204,19 @@ export const WaiterTableMap: React.FC = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
+      {/* ── Left: Sơ đồ bàn ── */}
       <div className="lg:col-span-2 flex flex-col gap-6">
         <div className="flex justify-between items-center">
           <div>
             <h3 className="text-xl font-bold text-gray-800 font-display">Sơ đồ trạng thái bàn</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              Quản lý khu vực và trạng thái phục vụ thời gian thực
-            </p>
+            <p className="text-xs text-gray-500 mt-1">Quản lý khu vực và trạng thái phục vụ thời gian thực</p>
           </div>
-          <button
-            onClick={fetchData}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-            title="Làm mới"
-          >
+          <button onClick={fetchData} className="p-2 hover:bg-gray-100 rounded-full transition-colors" title="Làm mới">
             <RefreshCw size={20} className="text-gray-400" />
           </button>
         </div>
 
-        <AreaSelector
-          areas={areas}
-          selectedAreaId={selectedAreaId}
-          onSelectArea={setSelectedAreaId}
-        />
+        <AreaSelector areas={areas} selectedAreaId={selectedAreaId} onSelectArea={setSelectedAreaId} />
 
         <div className="bg-gray-50/50 p-8 rounded-3xl border border-gray-100 min-h-[500px] shadow-inner">
           {filteredTables.length === 0 ? (
@@ -233,12 +226,13 @@ export const WaiterTableMap: React.FC = () => {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
               {filteredTables.map((table) => {
+                const tableExt = table as any;
                 const isSelected = selectedTableId?.toString() === table.id.toString();
 
                 const statusStyles = {
-                  empty: "bg-green-50 border-green-200 text-green-700 hover:bg-green-100",
-                  reserved: "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100",
-                  serving: "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100",
+                  empty:           "bg-green-50  border-green-200  text-green-700  hover:bg-green-100",
+                  reserved:        "bg-amber-50  border-amber-200  text-amber-700  hover:bg-amber-100",
+                  serving:         "bg-blue-50   border-blue-200   text-blue-700   hover:bg-blue-100",
                   pending_payment: "bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100",
                 };
 
@@ -246,31 +240,86 @@ export const WaiterTableMap: React.FC = () => {
                   empty: "Trống",
                   reserved: "Đã đặt",
                   serving: "Đang dùng",
-                  pending_payment: "Chờ thanh toán",
+                  pending_payment: "Chờ TT",
                 };
+
+                // Merge/Split badge
+                const isMergedPrimary = tableExt.is_merged_primary;
+                const isMergedChild = tableExt.is_merged_child;
+                const isSplit = tableExt.is_split;
 
                 return (
                   <div
                     key={table.id}
                     onClick={() => setSelectedTableId(table.id)}
-                    className={`relative p-5 border-2 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-200 ${
-                      statusStyles[table.status as keyof typeof statusStyles]
+                    className={`relative p-4 border-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-200 ${
+                      statusStyles[table.status as keyof typeof statusStyles] || statusStyles.empty
                     } ${
                       isSelected
                         ? "ring-4 ring-blue-500/20 border-blue-500 scale-105 shadow-lg"
                         : "shadow-sm border-dashed"
                     }`}
                   >
-                    <div className="absolute top-2 right-2">
-                      <MoreVertical size={14} className="opacity-30" />
-                    </div>
-                    <span className="text-lg font-black">{table.name}</span>
+                    {/* Merge/Split badge — top-left */}
+                    {(isMergedPrimary || isMergedChild || isSplit) && (
+                      <div className="absolute -top-2 -left-2 flex gap-0.5">
+                        {isMergedPrimary && (
+                          <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm">
+                            <Link2 size={8} /> GỘP
+                          </span>
+                        )}
+                        {isMergedChild && (
+                          <span className="bg-indigo-400 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm">
+                            <Merge size={8} /> BỊ GỘP
+                          </span>
+                        )}
+                        {isSplit && (
+                          <span className="bg-violet-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-sm">
+                            <Split size={8} /> TÁCH
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Table name */}
+                    <span className="text-lg font-black mt-1">{table.name}</span>
+
+                    {/* Capacity + Status */}
                     <span className="text-[10px] font-bold uppercase tracking-tighter opacity-70">
                       {table.capacity} Chỗ • {labels[table.status as keyof typeof labels]}
                     </span>
-                    {table.status === "serving" && activeOrder && isSelected && (
-                      <div className="mt-1 px-2 py-0.5 bg-blue-500 text-white text-[9px] font-bold rounded-full">
-                        {activeOrder.totalAmount.toLocaleString("vi-VN")}₫
+
+                    {/* Guest info — hiển thị khi bàn đang phục vụ hoặc reserved */}
+                    {(table.status === "serving" || table.status === "pending_payment") && tableExt.guest_name && (
+                      <div className="w-full mt-1 space-y-0.5">
+                        <div className="flex items-center gap-1 text-[9px] font-bold opacity-80">
+                          <User size={8} />
+                          <span className="truncate max-w-[80px]">{tableExt.guest_name}</span>
+                        </div>
+                        {tableExt.guest_phone && (
+                          <div className="flex items-center gap-1 text-[9px] opacity-60">
+                            <Phone size={8} />
+                            <span>{tableExt.guest_phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {table.status === "reserved" && tableExt.guest_name && (
+                      <div className="w-full mt-0.5 text-[9px] font-bold opacity-70 text-center truncate">
+                        👤 {tableExt.guest_name}
+                      </div>
+                    )}
+
+                    {/* Merged with info */}
+                    {isMergedPrimary && tableExt.merged_tables?.length > 0 && (
+                      <div className="text-[8px] font-bold opacity-60 text-center">
+                        + {tableExt.merged_tables.map((m: any) => m.name).join(", ")}
+                      </div>
+                    )}
+                    {isMergedChild && tableExt.merged_into && (
+                      <div className="text-[8px] font-bold opacity-60 text-center">
+                        → {tableExt.merged_into.name}
                       </div>
                     )}
                   </div>
@@ -280,13 +329,25 @@ export const WaiterTableMap: React.FC = () => {
           )}
         </div>
 
-        <StatusLegend />
+        {/* Legend: thêm merge/split */}
+        <div className="flex flex-wrap gap-3 items-center text-xs text-gray-500">
+          <StatusLegend />
+          <span className="w-px h-4 bg-gray-200" />
+          <span className="flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg font-bold">
+            <Link2 size={10} /> Gộp bàn
+          </span>
+          <span className="flex items-center gap-1 bg-violet-50 text-violet-600 px-2 py-1 rounded-lg font-bold">
+            <Split size={10} /> Tách bàn
+          </span>
+        </div>
       </div>
 
+      {/* ── Right: Chi tiết bàn ── */}
       <div className="lg:col-span-1">
         <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 sticky top-6">
           {selectedTable ? (
-            <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="flex flex-col gap-5 animate-in fade-in slide-in-from-right-4 duration-300">
+              {/* Header */}
               <div className="flex justify-between items-start pb-4 border-b border-gray-50">
                 <div>
                   <h4 className="text-2xl font-black text-gray-800">{selectedTable.name}</h4>
@@ -294,22 +355,54 @@ export const WaiterTableMap: React.FC = () => {
                   {(selectedTable as any).area_name && (
                     <p className="text-xs text-blue-400 font-medium">{(selectedTable as any).area_name}</p>
                   )}
+                  {/* Merge/Split status */}
+                  {(selectedTable as any).is_merged_primary && (
+                    <p className="text-[10px] font-bold text-indigo-600 mt-1">
+                      🔗 Đang gộp với: {((selectedTable as any).merged_tables || []).map((m: any) => m.name).join(", ")}
+                    </p>
+                  )}
+                  {(selectedTable as any).is_merged_child && (selectedTable as any).merged_into && (
+                    <p className="text-[10px] font-bold text-indigo-400 mt-1">
+                      → Gộp vào: {(selectedTable as any).merged_into.name}
+                    </p>
+                  )}
+                  {(selectedTable as any).is_split && (
+                    <p className="text-[10px] font-bold text-violet-600 mt-1">
+                      ✂ Đã tách bàn: {((selectedTable as any).split_labels || []).join(", ")}
+                    </p>
+                  )}
                 </div>
                 <Badge status={selectedTable.status} type="table" />
               </div>
 
+              {/* Guest info (nếu có) */}
+              {((selectedTable as any).guest_name) && (
+                <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 space-y-1.5">
+                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-wider">Thông tin khách</p>
+                  <div className="flex items-center gap-2 text-sm">
+                    <User size={14} className="text-blue-400 shrink-0" />
+                    <span className="font-bold text-gray-800">{(selectedTable as any).guest_name}</span>
+                  </div>
+                  {(selectedTable as any).guest_phone && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone size={14} className="text-blue-400 shrink-0" />
+                      <span className="font-medium text-gray-600">{(selectedTable as any).guest_phone}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── EMPTY ── */}
               {selectedTable.status === "empty" && (
-                <div className="py-8 flex flex-col items-center text-center gap-4">
+                <div className="py-6 flex flex-col items-center text-center gap-4">
                   <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center text-green-500">
                     <Utensils size={32} />
                   </div>
                   <div>
                     <h5 className="font-bold text-gray-800">Sẵn sàng phục vụ</h5>
-                    <p className="text-xs text-gray-500 px-4 mt-1">
-                      Mở bàn mới để bắt đầu gọi món cho khách
-                    </p>
+                    <p className="text-xs text-gray-500 px-4 mt-1">Mở bàn mới để bắt đầu gọi món cho khách</p>
                   </div>
-                  <div className="w-full space-y-3 mt-4">
+                  <div className="w-full space-y-3 mt-2">
                     <button
                       onClick={() => setIsOpenTableModalOpen(true)}
                       className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 uppercase tracking-wider"
@@ -326,8 +419,9 @@ export const WaiterTableMap: React.FC = () => {
                 </div>
               )}
 
+              {/* ── SERVING ── */}
               {selectedTable.status === "serving" && (
-                <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-4">
                   <h5 className="text-xs font-black text-blue-600 uppercase tracking-widest">Hóa đơn hiện tại</h5>
                   {loadingOrder ? (
                     <div className="flex justify-center py-6">
@@ -335,23 +429,23 @@ export const WaiterTableMap: React.FC = () => {
                     </div>
                   ) : activeOrder && activeOrder.items.length > 0 ? (
                     <>
-                      <div className="space-y-3">
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
                         {activeOrder.items.map((item) => (
                           <div
                             key={item.id}
-                            className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100"
+                            className="flex justify-between items-center p-2.5 bg-gray-50 rounded-xl border border-gray-100"
                           >
                             <span className="text-sm font-bold text-gray-700">
-                              {item.name}{" "}
-                              <span className="text-gray-400 ml-1">x{item.quantity}</span>
+                              {item.name}
+                              <span className="text-gray-400 ml-1 font-normal">×{item.quantity}</span>
                             </span>
-                            <span className="text-sm font-black text-gray-800">
+                            <span className="text-sm font-black text-gray-800 shrink-0">
                               {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                             </span>
                           </div>
                         ))}
                       </div>
-                      <div className="pt-4 border-t border-dashed flex justify-between items-end">
+                      <div className="pt-3 border-t border-dashed flex justify-between items-end">
                         <span className="text-sm font-bold text-gray-400">Tổng cộng</span>
                         <span className="text-2xl font-black text-gray-800">
                           {activeOrder.totalAmount.toLocaleString("vi-VN")}₫
@@ -361,37 +455,44 @@ export const WaiterTableMap: React.FC = () => {
                   ) : (
                     <p className="text-sm text-gray-400 text-center py-4">Chưa có món nào</p>
                   )}
-                  <div className="grid grid-cols-2 gap-3 mt-2">
+
+                  {/* Actions */}
+                  <div className="grid grid-cols-3 gap-2 mt-1">
                     <button
                       onClick={() => setActiveAction("transfer")}
-                      className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-gray-50"
+                      className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all flex flex-col items-center gap-1"
                     >
-                      CHUYỂN BÀN
+                      <ArrowRightLeft size={14} />
+                      Chuyển
                     </button>
                     <button
                       onClick={() => setActiveAction("merge")}
-                      className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-gray-50"
+                      className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-all flex flex-col items-center gap-1"
                     >
-                      GỘP BÀN
+                      <Merge size={14} />
+                      Gộp bàn
                     </button>
                     <button
                       onClick={() => setActiveAction("split")}
-                      className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-gray-50"
+                      className="py-3 border-2 border-gray-100 rounded-xl font-bold text-xs hover:bg-violet-50 hover:border-violet-200 hover:text-violet-600 transition-all flex flex-col items-center gap-1"
                     >
-                      TÁCH BÀN
-                    </button>
-                    <button
-                      onClick={goToOrder}
-                      className="col-span-2 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-                    >
-                      GỌI THÊM MÓN
+                      <Split size={14} />
+                      Tách
                     </button>
                   </div>
+                  <button
+                    onClick={goToOrder}
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
+                  >
+                    <ShoppingBag size={16} />
+                    GỌI THÊM MÓN
+                  </button>
                 </div>
               )}
 
+              {/* ── RESERVED ── */}
               {selectedTable.status === "reserved" && (
-                <div className="py-8 flex flex-col items-center text-center gap-4">
+                <div className="py-4 flex flex-col items-center text-center gap-4">
                   <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-500">
                     <Clock size={32} />
                   </div>
@@ -405,46 +506,75 @@ export const WaiterTableMap: React.FC = () => {
                   <button
                     onClick={async () => {
                       try {
-                        await updateTableStatus(Number(selectedTableId), "serving");
-                        setTables((prev) =>
-                          prev.map((t) =>
-                            t.id.toString() === selectedTableId?.toString()
-                              ? { ...t, status: "serving" }
-                              : t,
-                          ),
-                        );
-                        toast.success(`Check-in thành công bàn ${selectedTable.name}`);
+                        const userId = getCurrentUserId();
+                        await createOrder({
+                          table_id: Number(selectedTableId),
+                          created_by: userId,
+                          order_type: "dine_in",
+                          guest_name: (selectedTable as any).guest_name || "",
+                          guest_phone: (selectedTable as any).guest_phone || "",
+                        });
+                        await fetchData();
+                        toast.success(`✅ Check-in thành công bàn ${selectedTable.name}`);
                       } catch {
                         toast.error("Không thể check-in");
                       }
                     }}
-                    className="w-full mt-4 py-4 bg-amber-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-amber-200 hover:bg-amber-600 transition-all"
+                    className="w-full mt-2 py-4 bg-amber-500 text-white rounded-2xl font-black text-sm shadow-lg shadow-amber-200 hover:bg-amber-600 transition-all flex items-center justify-center gap-2"
                   >
+                    <CheckCircle size={16} />
                     XÁC NHẬN CHECK-IN
                   </button>
                 </div>
               )}
 
+              {/* ── PENDING PAYMENT ── */}
               {selectedTable.status === "pending_payment" && (
-                <div className="flex flex-col gap-5">
-                  <h5 className="text-xs font-black text-purple-600 uppercase tracking-widest">Chờ thanh toán</h5>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <h5 className="text-xs font-black text-purple-600 uppercase tracking-widest">Chờ thanh toán</h5>
+                    <span className="animate-pulse w-2 h-2 bg-purple-400 rounded-full" />
+                  </div>
                   {loadingOrder ? (
                     <div className="flex justify-center py-6">
                       <Loader2 size={20} className="animate-spin text-purple-400" />
                     </div>
-                  ) : activeOrder ? (
-                    <div className="pt-4 border-t border-dashed flex justify-between items-end">
-                      <span className="text-sm font-bold text-gray-400">Tổng cộng</span>
-                      <span className="text-2xl font-black text-gray-800">
-                        {activeOrder.totalAmount.toLocaleString("vi-VN")}₫
-                      </span>
-                    </div>
-                  ) : null}
+                  ) : activeOrder && activeOrder.items.length > 0 ? (
+                    <>
+                      {/* Itemized list — giống phần serving */}
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {activeOrder.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex justify-between items-center p-2.5 bg-gray-50 rounded-xl border border-gray-100"
+                          >
+                            <span className="text-sm font-bold text-gray-700">
+                              {item.name}
+                              <span className="text-gray-400 ml-1 font-normal">×{item.quantity}</span>
+                            </span>
+                            <span className="text-sm font-black text-gray-800 shrink-0">
+                              {(item.price * item.quantity).toLocaleString("vi-VN")}₫
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="pt-3 border-t border-dashed flex justify-between items-end">
+                        <span className="text-sm font-bold text-gray-400">Tổng cộng</span>
+                        <span className="text-2xl font-black text-purple-700">
+                          {activeOrder.totalAmount.toLocaleString("vi-VN")}₫
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-400 text-center py-4">Chưa có món nào</p>
+                  )}
+
                   <button
                     onClick={goToOrder}
-                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700"
+                    className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black text-sm hover:bg-purple-700 transition-all flex items-center justify-center gap-2"
                   >
-                    XEM ORDER
+                    <ShoppingBag size={16} />
+                    XEM ORDER / THANH TOÁN
                   </button>
                 </div>
               )}
@@ -458,6 +588,7 @@ export const WaiterTableMap: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Modals ── */}
       <OpenTableModal
         isOpen={isOpenTableModalOpen}
         onClose={() => setIsOpenTableModalOpen(false)}
@@ -471,23 +602,27 @@ export const WaiterTableMap: React.FC = () => {
         sourceTable={selectedTable}
         availableTables={tables}
         onConfirm={handleTransfer}
+        onSuccess={() => { fetchData(); setActiveAction(null); }}
       />
 
       <MergeTableModal
         isOpen={activeAction === "merge"}
         onClose={() => setActiveAction(null)}
-        sourceTable={selectedTable}
+        sourceTable={selectedTable as any}
         availableTables={tables}
         onConfirm={handleMerge}
+        onSuccess={() => { fetchData(); setActiveAction(null); }}
       />
 
       <SplitTableModal
         isOpen={activeAction === "split"}
         onClose={() => setActiveAction(null)}
         tableName={selectedTable?.name || ""}
-        orderItems={activeOrder?.items.map(item => ({ ...item, id: item.id.toString() })) || []}
+        sourceTableId={selectedTable ? Number(selectedTable.id) : undefined}
+        orderItems={activeOrder?.items.map((item) => ({ ...item, id: item.id.toString() })) || []}
         availableEmptyTables={tables.filter((t) => t.status === "empty")}
         onConfirm={handleSplit}
+        onSuccess={() => { fetchData(); setActiveAction(null); }}
       />
     </div>
   );
