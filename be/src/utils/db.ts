@@ -755,3 +755,317 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   );
   return result.affectedRows > 0;
 };
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Tables Enhanced (with guest + merge + split info)
+// ============================================================================
+
+/**
+ * Lấy danh sách bàn kèm thông tin khách hàng, gộp bàn, tách bàn
+ */
+export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any[]> => {
+  // 1) Lấy tất cả bàn cơ bản
+  const tables = await getResmanagerTables(areaId);
+
+  // 2) Lấy active orders kèm thông tin khách (parse từ note)
+  const activeOrders = await query<any[]>(
+    `SELECT o.table_id, o.id AS order_id, o.note AS order_note, o.customer_id,
+            c.name AS customer_name, c.phone AS customer_phone
+     FROM orders o
+     LEFT JOIN customers c ON o.customer_id = c.id
+     WHERE o.status NOT IN ('completed', 'cancelled') AND o.table_id IS NOT NULL`,
+  );
+
+  // 3) Lấy booking sắp tới (pending/confirmed) cho bàn reserved
+  const bookings = await query<any[]>(
+    `SELECT b.table_id, b.guest_name, b.guest_phone, b.party_size, b.start_time
+     FROM bookings b
+     WHERE b.status IN ('pending', 'confirmed')
+     ORDER BY b.start_time ASC`,
+  );
+
+  // 4) Lấy tất cả merge records
+  const merges = await query<any[]>(
+    `SELECT tm.primary_table_id, tm.merged_table_id,
+            tp.name AS primary_name, tm2.name AS merged_name
+     FROM table_merges tm
+     JOIN tables tp  ON tp.id  = tm.primary_table_id
+     JOIN tables tm2 ON tm2.id = tm.merged_table_id`,
+  );
+
+  // 5) Lấy tất cả split records
+  const splits = await query<any[]>(
+    `SELECT ts.parent_table_id, ts.child_label, ts.created_at,
+            t.name AS parent_name
+     FROM table_splits ts
+     JOIN tables t ON t.id = ts.parent_table_id`,
+  );
+
+  return tables.map((table: any) => {
+    // Thông tin order đang chạy
+    const activeOrder = activeOrders.find((o) => o.table_id === table.id);
+
+    // Thông tin khách
+    let guestName: string | null = null;
+    let guestPhone: string | null = null;
+
+    if (activeOrder) {
+      try {
+        const noteData = JSON.parse(activeOrder.order_note || "{}");
+        guestName = noteData.guest_name || activeOrder.customer_name || null;
+        guestPhone = noteData.guest_phone || activeOrder.customer_phone || null;
+      } catch {
+        guestName = activeOrder.customer_name || null;
+        guestPhone = activeOrder.customer_phone || null;
+      }
+    }
+
+    if (!guestName) {
+      // Fallback: lấy từ booking gần nhất của bàn này
+      const booking = bookings.find((b) => b.table_id === table.id);
+      if (booking) {
+        guestName = booking.guest_name;
+        guestPhone = booking.guest_phone;
+      }
+    }
+
+    // Thông tin gộp bàn
+    const mergedInto = merges.find((m) => m.merged_table_id === table.id);
+    const mergedChildren = merges.filter((m) => m.primary_table_id === table.id);
+
+    // Thông tin tách bàn
+    const splitChildren = splits.filter((s) => s.parent_table_id === table.id);
+
+    return {
+      ...table,
+      guest_name: guestName,
+      guest_phone: guestPhone,
+      // Gộp bàn
+      is_merged_primary: mergedChildren.length > 0,
+      merged_tables: mergedChildren.map((m) => ({ id: m.merged_table_id, name: m.merged_name })),
+      is_merged_child: !!mergedInto,
+      merged_into: mergedInto
+        ? { id: mergedInto.primary_table_id, name: mergedInto.primary_name }
+        : null,
+      // Tách bàn
+      is_split: splitChildren.length > 0,
+      split_labels: splitChildren.map((s) => s.child_label),
+    };
+  });
+};
+
+/**
+ * Lấy chỉ những bàn trống (status='empty') — dùng cho dropdown tạo booking
+ * Nếu truyền vào startTime, sẽ loại bỏ những bàn đã được book vào khoảng thời gian đó (VD: chênh nhau trong vòng 2 tiếng).
+ */
+export const getEmptyTablesForBooking = async (startTime?: string): Promise<any[]> => {
+  let queryStr = `
+    SELECT t.*, ta.name AS area_name
+    FROM tables t
+    JOIN table_areas ta ON t.area_id = ta.id
+    WHERE t.is_deleted = 0 AND t.status = 'empty'
+  `;
+  let params: any[] = [];
+
+  if (startTime) {
+    // Nếu có truyền startTime, lấy các bàn trống và KHÔNG có booking trùng giờ
+    // Trùng giờ = booking.start_time < requested.start_time + 2 giờ 
+    //        AND booking.end_time > requested.start_time
+    queryStr += `
+      AND t.id NOT IN (
+        SELECT table_id FROM bookings
+        WHERE status IN ('pending', 'confirmed')
+          AND start_time < DATE_ADD(?, INTERVAL 2 HOUR)
+          AND end_time > ?
+      )
+    `;
+    params.push(startTime, startTime);
+  }
+
+  queryStr += ` ORDER BY t.area_id, t.row_pos, t.col_pos`;
+  return query<any[]>(queryStr, params);
+};
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Merge / Split / Transfer
+// ============================================================================
+
+/**
+ * Gộp bàn:
+ * 1. Di chuyển order_items sang bàn chính.
+ * 2. Cập nhật trạng thái các order bị gộp thành 'cancelled' (hoặc merged)
+ * 3. insert table_merges, update merged tables status → serving
+ */
+export const mergeResmanagerTables = async (
+  primaryTableId: number,
+  mergedTableIds: number[],
+): Promise<boolean> => {
+  if (mergedTableIds.length === 0) return false;
+
+  // Lấy active order của bàn chính
+  const primaryOrders = await query<any[]>(
+    `SELECT id FROM orders WHERE table_id = ? AND status NOT IN ('completed', 'cancelled') ORDER BY created_at DESC LIMIT 1`,
+    [primaryTableId],
+  );
+
+  if (primaryOrders.length > 0) {
+    const primaryOrderId = primaryOrders[0].id;
+
+    // Với mỗi bàn bị gộp, tìm active order của nó
+    for (const mergedId of mergedTableIds) {
+      const mergedOrders = await query<any[]>(
+        `SELECT id FROM orders WHERE table_id = ? AND status NOT IN ('completed', 'cancelled') ORDER BY created_at DESC LIMIT 1`,
+        [mergedId],
+      );
+
+      if (mergedOrders.length > 0) {
+        const mergedOrderId = mergedOrders[0].id;
+        // Di chuyển tất cả order_items sang primary order
+        await query<any>(
+          `UPDATE order_items SET order_id = ? WHERE order_id = ?`,
+          [primaryOrderId, mergedOrderId],
+        );
+        // Hủy hóa đơn của bàn phụ (với ghi chú là đã bị gộp)
+        await query<any>(
+          `UPDATE orders SET status = 'cancelled', note = JSON_SET(COALESCE(note, '{}'), '$.merged_into', ?) WHERE id = ?`,
+          [primaryOrderId, mergedOrderId],
+        );
+      }
+    }
+  }
+
+  // Xóa merge records cũ liên quan
+  const allIds = [primaryTableId, ...mergedTableIds];
+  const placeholders = allIds.map(() => "?").join(",");
+  await query<any>(
+    `DELETE FROM table_merges
+     WHERE primary_table_id IN (${placeholders}) OR merged_table_id IN (${placeholders})`,
+    [...allIds, ...allIds],
+  );
+
+  // Insert merge records mới
+  for (const mergedId of mergedTableIds) {
+    await query<any>(
+      `INSERT INTO table_merges (primary_table_id, merged_table_id) VALUES (?, ?)`,
+      [primaryTableId, mergedId],
+    );
+    // Giữ merged table status = serving (chung với bàn chính)
+    await query<any>(`UPDATE tables SET status = 'serving' WHERE id = ?`, [mergedId]);
+  }
+  return true;
+};
+
+/**
+ * Bỏ gộp bàn: xóa table_merges records, trả merged tables về empty
+ */
+export const unmergeResmanagerTable = async (primaryTableId: number): Promise<boolean> => {
+  // Lấy danh sách merged tables
+  const mergedRows = await query<any[]>(
+    `SELECT merged_table_id FROM table_merges WHERE primary_table_id = ?`,
+    [primaryTableId],
+  );
+
+  // Set merged tables về empty
+  for (const row of mergedRows) {
+    await query<any>(`UPDATE tables SET status = 'empty' WHERE id = ?`, [row.merged_table_id]);
+  }
+
+  // Xóa merge records
+  const result = await query<any>(
+    `DELETE FROM table_merges WHERE primary_table_id = ? OR merged_table_id = ?`,
+    [primaryTableId, primaryTableId],
+  );
+  return result.affectedRows > 0;
+};
+
+/**
+ * Chuyển bàn: cập nhật order.table_id, đổi trạng thái 2 bàn
+ */
+export const transferResmanagerOrder = async (
+  sourceTableId: number,
+  targetTableId: number,
+): Promise<boolean> => {
+  // Cập nhật order sang bàn mới
+  const orderResult = await query<any>(
+    `UPDATE orders SET table_id = ? WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')`,
+    [targetTableId, sourceTableId],
+  );
+
+  if (orderResult.affectedRows === 0) return false;
+
+  // Cập nhật trạng thái bàn
+  await query<any>(`UPDATE tables SET status = 'serving' WHERE id = ?`, [targetTableId]);
+  await query<any>(`UPDATE tables SET status = 'empty' WHERE id = ?`, [sourceTableId]);
+
+  // Xóa bất kỳ merge records liên quan đến source table
+  await query<any>(
+    `DELETE FROM table_merges WHERE primary_table_id = ? OR merged_table_id = ?`,
+    [sourceTableId, sourceTableId],
+  );
+
+  return true;
+};
+
+/**
+ * Tách bàn: tạo order mới cho target table, move selected items sang order mới
+ */
+export const splitResmanagerTable = async (
+  parentTableId: number,
+  childLabel: string,
+  targetTableId: number,
+  itemIds: number[],
+): Promise<{ success: boolean; newOrderId?: number }> => {
+  // Lấy order gốc
+  const orders = await query<any[]>(
+    `SELECT * FROM orders WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')
+     ORDER BY created_at DESC LIMIT 1`,
+    [parentTableId],
+  );
+  if (orders.length === 0) return { success: false };
+  const originalOrder = orders[0];
+
+  // Tạo order mới cho target table
+  const newOrderResult = await query<any>(
+    `INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note)
+     VALUES (?, NULL, ?, ?, ?, 'serving', ?)`,
+    [
+      targetTableId,
+      originalOrder.created_by,
+      originalOrder.order_type,
+      childLabel,
+      JSON.stringify({ split_from: parentTableId, guest_name: null, guest_phone: null }),
+    ],
+  );
+  const newOrderId = newOrderResult.insertId;
+
+  // Di chuyển các order_items đã chọn sang order mới
+  if (itemIds.length > 0) {
+    const placeholders = itemIds.map(() => "?").join(",");
+    await query<any>(
+      `UPDATE order_items SET order_id = ? WHERE id IN (${placeholders})`,
+      [newOrderId, ...itemIds],
+    );
+  }
+
+  // Ghi lại split record
+  await query<any>(
+    `INSERT INTO table_splits (parent_table_id, child_label) VALUES (?, ?)`,
+    [parentTableId, childLabel],
+  );
+
+  // Cập nhật target table status
+  await query<any>(`UPDATE tables SET status = 'serving' WHERE id = ?`, [targetTableId]);
+
+  return { success: true, newOrderId };
+};
+
+/**
+ * Bỏ tách bàn: xóa split records của bàn cha
+ */
+export const unsplitResmanagerTable = async (parentTableId: number): Promise<boolean> => {
+  const result = await query<any>(
+    `DELETE FROM table_splits WHERE parent_table_id = ?`,
+    [parentTableId],
+  );
+  return result.affectedRows > 0;
+};

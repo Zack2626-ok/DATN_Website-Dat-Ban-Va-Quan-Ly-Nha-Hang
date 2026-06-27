@@ -1,26 +1,48 @@
 import React, { useState, useEffect } from "react";
-import { Search, Plus, CalendarDays, User, Phone, CheckCircle, XCircle, UserCheck, MapPin } from "lucide-react";
+import {
+  Search,
+  Plus,
+  CalendarDays,
+  User,
+  Phone,
+  CheckCircle,
+  XCircle,
+  UserCheck,
+  MapPin,
+  Users,
+  Clock,
+  FileText,
+  Table2,
+  ChevronDown,
+} from "lucide-react";
 import { toast } from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
 import { Badge } from "../../../components/Badge";
-import { getBookings, updateBookingStatus, createBooking, Booking } from "../../../services/bookingService";
-import { getTablesV1 } from "../../../services/tableService";
+import {
+  getBookings,
+  updateBookingStatus,
+  createBooking,
+  Booking,
+} from "../../../services/bookingService";
+import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
 
 /**
  * BookingListPage — Quản lý đặt bàn
+ * Redesigned: light modal, 2-column form, chỉ lấy bàn trống
  */
 export const BookingListPage: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [tables, setTables] = useState<any[]>([]);
+  const [emptyTables, setEmptyTables] = useState<ResmanagerTable[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     guest_name: "",
     guest_phone: "",
-    party_size: 1,
+    party_size: 2,
     table_id: "",
     start_time: "",
     guest_note: "",
@@ -30,10 +52,10 @@ export const BookingListPage: React.FC = () => {
     try {
       const [bookingsData, tablesData] = await Promise.all([
         getBookings(),
-        getTablesV1(),
+        getEmptyTables(formData.start_time), // Truyền start_time để lọc bàn trống thực sự
       ]);
       setBookings(bookingsData);
-      setTables(tablesData);
+      setEmptyTables(tablesData);
     } catch (err) {
       console.error(err);
       toast.error("Không thể tải dữ liệu đặt bàn");
@@ -42,7 +64,7 @@ export const BookingListPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [formData.start_time]); // Fetch lại khi start_time thay đổi
 
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
@@ -57,7 +79,7 @@ export const BookingListPage: React.FC = () => {
     try {
       await updateBookingStatus(id, newStatus);
       setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b)));
-      toast.success(`Đã cập nhật Booking #${id} thành ${newStatus}`);
+      toast.success(`Cập nhật booking #${id} thành công`);
     } catch (err) {
       toast.error("Lỗi cập nhật trạng thái");
     }
@@ -69,10 +91,14 @@ export const BookingListPage: React.FC = () => {
       toast.error("Vui lòng chọn bàn");
       return;
     }
+    if (!formData.start_time) {
+      toast.error("Vui lòng chọn ngày giờ đặt bàn");
+      return;
+    }
+    setSubmitting(true);
     try {
-      // Mặc định thời gian đặt bàn là 2 tiếng
       const startDate = new Date(formData.start_time);
-      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000); // +2h
 
       await createBooking({
         table_id: Number(formData.table_id),
@@ -84,24 +110,17 @@ export const BookingListPage: React.FC = () => {
         guest_note: formData.guest_note,
       });
 
-      toast.success("Đã tạo booking mới thành công!");
+      toast.success("✅ Tạo booking mới thành công!");
       setIsAddModalOpen(false);
-      setFormData({
-        guest_name: "",
-        guest_phone: "",
-        party_size: 1,
-        table_id: "",
-        start_time: "",
-        guest_note: "",
-      });
-      fetchData(); // Tải lại danh sách
+      setFormData({ guest_name: "", guest_phone: "", party_size: 2, table_id: "", start_time: "", guest_note: "" });
+      fetchData();
     } catch (err) {
       console.error(err);
-      toast.error("Lỗi khi tạo booking");
+      toast.error("Lỗi khi tạo booking, vui lòng thử lại");
+    } finally {
+      setSubmitting(false);
     }
   };
-
-  // Badge component already handles booking statuses natively with Vietnamese now
 
   const formatDateTime = (dateString: string) => {
     try {
@@ -115,13 +134,21 @@ export const BookingListPage: React.FC = () => {
     }
   };
 
+  const statusCount = {
+    all: bookings.length,
+    pending: bookings.filter((b) => b.status === "pending").length,
+    confirmed: bookings.filter((b) => b.status === "confirmed").length,
+    completed: bookings.filter((b) => b.status === "completed").length,
+    cancelled: bookings.filter((b) => b.status === "cancelled").length,
+  };
+
   return (
     <div className="p-8 space-y-6 animate-fade-in">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-admin-text-main font-display">Đặt bàn</h1>
-          <p className="text-sm text-admin-text-sub">Quản lý lịch đặt bàn hệ thống</p>
+          <p className="text-sm text-admin-text-sub mt-0.5">Quản lý lịch đặt bàn hệ thống</p>
         </div>
         <button
           onClick={() => setIsAddModalOpen(true)}
@@ -131,10 +158,10 @@ export const BookingListPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Toolbar */}
-      <div className="bg-admin-card rounded-2xl border border-admin-border p-4 flex gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-3 text-admin-text-sub" size={16} />
+      {/* ── Toolbar ── */}
+      <div className="bg-admin-card rounded-2xl border border-admin-border p-4 flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-text-sub" size={15} />
           <input
             placeholder="Tìm mã, tên, SĐT..."
             value={searchTerm}
@@ -142,20 +169,32 @@ export const BookingListPage: React.FC = () => {
             className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-lg text-sm outline-none border border-admin-border focus:ring-2 focus:ring-admin-primary/20"
           />
         </div>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-4 py-2 bg-gray-50 rounded-lg text-sm border border-admin-border outline-none font-bold text-admin-text-main"
-        >
-          <option value="all">Tất cả</option>
-          <option value="pending">Chờ xác nhận (Pending)</option>
-          <option value="confirmed">Đã xác nhận (Confirmed)</option>
-          <option value="completed">Đã hoàn thành</option>
-          <option value="cancelled">Đã hủy</option>
-        </select>
+        {/* Status filter tabs */}
+        <div className="flex gap-1 flex-wrap">
+          {[
+            { key: "all", label: "Tất cả" },
+            { key: "pending", label: "Chờ xác nhận" },
+            { key: "confirmed", label: "Đã xác nhận" },
+            { key: "completed", label: "Hoàn thành" },
+            { key: "cancelled", label: "Đã hủy" },
+          ].map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setFilterStatus(s.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                filterStatus === s.key
+                  ? "bg-admin-primary text-white"
+                  : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
+              }`}
+            >
+              {s.label}
+              <span className="ml-1 opacity-70">({statusCount[s.key as keyof typeof statusCount]})</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Table */}
+      {/* ── Table ── */}
       <div className="bg-admin-card rounded-2xl border border-admin-border shadow-sm overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-admin-text-sub font-semibold uppercase text-xs">
@@ -167,13 +206,14 @@ export const BookingListPage: React.FC = () => {
               <th className="px-6 py-4">Bàn</th>
               <th className="px-6 py-4">Người</th>
               <th className="px-6 py-4">Trạng thái</th>
-              <th className="px-6 py-4 text-right">Actions</th>
+              <th className="px-6 py-4 text-right">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-admin-border">
             {filteredBookings.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-admin-text-sub">
+                <td colSpan={8} className="px-6 py-12 text-center text-admin-text-sub">
+                  <CalendarDays className="mx-auto mb-2 opacity-30" size={32} />
                   Không có dữ liệu đặt bàn nào
                 </td>
               </tr>
@@ -190,10 +230,11 @@ export const BookingListPage: React.FC = () => {
                     <td className="px-6 py-4 font-medium text-admin-text-main">{b.guest_name}</td>
                     <td className="px-6 py-4 text-admin-text-sub">{b.guest_phone}</td>
                     <td className="px-6 py-4 text-admin-text-sub">
-                      {dt.date} {dt.time}
+                      <span className="font-medium text-admin-text-main">{dt.date}</span>
+                      <span className="text-xs ml-1">{dt.time}</span>
                     </td>
-                    <td className="px-6 py-4">{b.table_name || "—"}</td>
-                    <td className="px-6 py-4">{b.party_size}</td>
+                    <td className="px-6 py-4 font-medium">{b.table_name || "—"}</td>
+                    <td className="px-6 py-4">{b.party_size} người</td>
                     <td className="px-6 py-4">
                       <Badge status={b.status as any} type="booking" theme="light" />
                     </td>
@@ -245,55 +286,67 @@ export const BookingListPage: React.FC = () => {
         </table>
       </div>
 
-      {/* Modal - Detail */}
+      {/* ── Modal Chi tiết ── */}
       <Modal
         isOpen={!!selectedBooking}
         onClose={() => setSelectedBooking(null)}
         title="Chi tiết đặt bàn"
         size="md"
+        theme="light"
       >
         {selectedBooking && (
-          <div className="space-y-6">
-            <div className="p-4 bg-gray-50 rounded-xl border border-admin-border flex justify-between items-center shadow-sm">
-              <span className="font-bold text-gray-900 text-lg">#{selectedBooking.confirmation_code}</span>
+          <div className="space-y-5">
+            <div className="flex justify-between items-center p-4 bg-blue-50 rounded-xl border border-blue-100">
+              <div>
+                <p className="text-xs text-gray-500 font-medium mb-0.5">Mã xác nhận</p>
+                <span className="font-black text-blue-700 text-lg">#{selectedBooking.confirmation_code}</span>
+              </div>
               <Badge status={selectedBooking.status as any} type="booking" theme="light" />
             </div>
-            <div className="grid gap-4 text-sm text-admin-text-main bg-white p-4 rounded-xl border border-admin-border">
-              <div className="flex items-center gap-3">
-                <User size={16} className="text-admin-primary" /> {selectedBooking.guest_name}
-              </div>
-              <div className="flex items-center gap-3">
-                <Phone size={16} className="text-admin-primary" /> {selectedBooking.guest_phone}
-              </div>
-              <div className="flex items-center gap-3">
-                <CalendarDays size={16} className="text-admin-primary" />{" "}
-                {formatDateTime(selectedBooking.start_time).date} •{" "}
-                {formatDateTime(selectedBooking.start_time).time}
-              </div>
-              <div className="flex items-center gap-3">
-                <MapPin size={16} className="text-admin-primary" /> {selectedBooking.table_name || "Chưa gán bàn"}
-              </div>
+
+            <div className="grid gap-3 text-sm">
+              {[
+                { icon: <User size={15} className="text-admin-primary" />, label: "Khách hàng", value: selectedBooking.guest_name },
+                { icon: <Phone size={15} className="text-admin-primary" />, label: "Số điện thoại", value: selectedBooking.guest_phone },
+                {
+                  icon: <CalendarDays size={15} className="text-admin-primary" />,
+                  label: "Thời gian",
+                  value: `${formatDateTime(selectedBooking.start_time).date} lúc ${formatDateTime(selectedBooking.start_time).time}`,
+                },
+                { icon: <MapPin size={15} className="text-admin-primary" />, label: "Bàn", value: selectedBooking.table_name || "Chưa gán bàn" },
+                { icon: <Users size={15} className="text-admin-primary" />, label: "Số người", value: `${selectedBooking.party_size} người` },
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                  <span className="mt-0.5 shrink-0">{item.icon}</span>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">{item.label}</p>
+                    <p className="font-medium text-gray-800">{item.value}</p>
+                  </div>
+                </div>
+              ))}
               {selectedBooking.guest_note && (
-                <div className="pt-2 border-t text-gray-600 italic">
-                  Ghi chú khách: "{selectedBooking.guest_note}"
+                <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                  <FileText size={15} className="text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold text-amber-600 uppercase">Ghi chú khách</p>
+                    <p className="font-medium text-gray-700 italic">"{selectedBooking.guest_note}"</p>
+                  </div>
                 </div>
               )}
             </div>
-            <div className="flex gap-3 border-t border-admin-border pt-4">
+
+            <div className="flex gap-3 pt-2">
               {selectedBooking.status === "pending" && (
                 <button
-                  onClick={() => {
-                    handleStatusChange(selectedBooking.id, "confirmed");
-                    setSelectedBooking(null);
-                  }}
-                  className="flex-1 py-2.5 bg-admin-primary text-white rounded-lg font-bold text-sm hover:bg-admin-primary-hover"
+                  onClick={() => { handleStatusChange(selectedBooking.id, "confirmed"); setSelectedBooking(null); }}
+                  className="flex-1 py-2.5 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover"
                 >
-                  Xác nhận đặt bàn
+                  ✓ Xác nhận đặt bàn
                 </button>
               )}
               <button
                 onClick={() => setSelectedBooking(null)}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm hover:bg-gray-200"
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200"
               >
                 Đóng
               </button>
@@ -302,74 +355,178 @@ export const BookingListPage: React.FC = () => {
         )}
       </Modal>
 
-      {/* Modal - Add */}
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Tạo Booking mới" size="md">
-        <form className="space-y-6" onSubmit={handleCreateBooking}>
-          <div className="space-y-4">
-            <h3 className="text-xs font-bold text-admin-text-sub uppercase tracking-wider border-b pb-2">
-              Thông tin khách hàng
-            </h3>
-            <input
-              required
-              placeholder="Tên khách hàng"
-              value={formData.guest_name}
-              onChange={(e) => setFormData({ ...formData, guest_name: e.target.value })}
-              className="w-full p-2.5 bg-gray-50 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
-            />
-            <input
-              required
-              placeholder="Số điện thoại"
-              value={formData.guest_phone}
-              onChange={(e) => setFormData({ ...formData, guest_phone: e.target.value })}
-              className="w-full p-2.5 bg-gray-50 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
-            />
-            <input
-              type="number"
-              min="1"
-              required
-              placeholder="Số lượng người"
-              value={formData.party_size}
-              onChange={(e) => setFormData({ ...formData, party_size: Number(e.target.value) })}
-              className="w-full p-2.5 bg-gray-50 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
-            />
+      {/* ── Modal Tạo Booking — Redesigned ── */}
+      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Tạo Booking mới" size="lg" theme="light">
+        <form className="space-y-0" onSubmit={handleCreateBooking}>
+          {/* Section 1: Thông tin khách */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+              <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                <User size={14} className="text-blue-600" />
+              </div>
+              <h3 className="font-bold text-gray-700 text-sm">Thông tin khách hàng</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Tên khách */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Tên khách hàng <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    required
+                    placeholder="Ví dụ: Nguyễn Văn A"
+                    value={formData.guest_name}
+                    onChange={(e) => setFormData({ ...formData, guest_name: e.target.value })}
+                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 placeholder-gray-400"
+                  />
+                </div>
+              </div>
+              {/* SĐT */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Số điện thoại <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    required
+                    placeholder="0901 234 567"
+                    value={formData.guest_phone}
+                    onChange={(e) => setFormData({ ...formData, guest_phone: e.target.value })}
+                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 placeholder-gray-400"
+                  />
+                </div>
+              </div>
+              {/* Số người */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Số lượng người <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    required
+                    placeholder="2"
+                    value={formData.party_size}
+                    onChange={(e) => setFormData({ ...formData, party_size: Number(e.target.value) })}
+                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="space-y-4">
-            <h3 className="text-xs font-bold text-admin-text-sub uppercase tracking-wider border-b pb-2">
-              Thông tin bàn
-            </h3>
-            <input
-              type="datetime-local"
-              required
-              value={formData.start_time}
-              onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-              className="w-full p-2.5 bg-gray-50 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
-            />
-            <select
-              required
-              value={formData.table_id}
-              onChange={(e) => setFormData({ ...formData, table_id: e.target.value })}
-              className="w-full p-2.5 bg-gray-50 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
+
+          {/* Section 2: Thông tin bàn */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+              <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center">
+                <Table2 size={14} className="text-green-600" />
+              </div>
+              <h3 className="font-bold text-gray-700 text-sm">Thông tin đặt bàn</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Ngày giờ */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Ngày & Giờ đặt <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Clock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="datetime-local"
+                    required
+                    value={formData.start_time}
+                    onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1 ml-1">Vui lòng chọn ngày giờ TRƯỚC khi chọn bàn</p>
+              </div>
+
+              {/* Chọn bàn - chỉ bàn trống */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Chọn bàn trống <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Table2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <select
+                    required
+                    value={formData.table_id}
+                    onChange={(e) => setFormData({ ...formData, table_id: e.target.value })}
+                    className="w-full pl-9 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 appearance-none"
+                  >
+                    <option value="">-- Chọn bàn --</option>
+                    {emptyTables.length === 0 ? (
+                      <option disabled>Không có bàn trống</option>
+                    ) : (
+                      emptyTables.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} — {t.capacity} chỗ — {t.area_name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                {emptyTables.length === 0 && formData.start_time && (
+                  <p className="text-[10px] text-amber-600 mt-1 ml-1 font-medium">
+                    ⚠ Hiện không có bàn trống lúc này
+                  </p>
+                )}
+              </div>
+
+              {/* Ghi chú */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Ghi chú (tùy chọn)
+                </label>
+                <div className="relative">
+                  <FileText size={15} className="absolute left-3 top-3.5 text-gray-400" />
+                  <textarea
+                    placeholder="Yêu cầu đặc biệt, vị trí ngồi, dịp đặc biệt..."
+                    value={formData.guest_note}
+                    onChange={(e) => setFormData({ ...formData, guest_note: e.target.value })}
+                    rows={3}
+                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 placeholder-gray-400 resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Submit */}
+          <div className="flex gap-3 pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(false)}
+              className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
             >
-              <option value="">Chọn bàn...</option>
-              {tables.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.capacity} chỗ) - {t.area_name}
-                </option>
-              ))}
-            </select>
-            <textarea
-              placeholder="Ghi chú thêm..."
-              value={formData.guest_note}
-              onChange={(e) => setFormData({ ...formData, guest_note: e.target.value })}
-              className="w-full p-2.5 bg-gray-50 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
-            />
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || emptyTables.length === 0}
+              className="flex-2 flex-1 py-3 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {submitting ? (
+                <>
+                  <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+                  Đang tạo...
+                </>
+              ) : (
+                <>
+                  <Plus size={15} />
+                  Tạo Booking
+                </>
+              )}
+            </button>
           </div>
-          <button
-            type="submit"
-            className="w-full py-3 bg-admin-primary text-white rounded-lg font-bold text-sm hover:bg-admin-primary-hover"
-          >
-            Tạo booking
-          </button>
         </form>
       </Modal>
     </div>
