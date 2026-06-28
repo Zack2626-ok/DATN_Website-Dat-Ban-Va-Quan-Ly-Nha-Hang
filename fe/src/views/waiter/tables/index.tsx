@@ -24,7 +24,7 @@ import { toast } from "react-hot-toast";
 import { TransferTableModal } from "./TransferTableModal";
 import { MergeTableModal } from "./MergeTableModal";
 import { SplitTableModal } from "./SplitTableModal";
-import { getTableAreas, getTablesV1, updateTableStatus } from "../../../services/tableService";
+import { getTableAreas, getTablesV1 } from "../../../services/tableService";
 import { getOrdersByTable, getOrderItems, createOrder } from "../../../services/waiterService";
 
 type TableAction = "transfer" | "merge" | "split" | null;
@@ -175,7 +175,7 @@ export const WaiterTableMap: React.FC = () => {
     }
   };
 
-  const handleTransfer = async (sourceId: string | number, targetId: string | number) => {
+  const handleTransfer = async (_sourceId: string | number, targetId: string | number) => {
     // API đã gọi xong trong modal, chỉ cần reload
     await fetchData();
     setSelectedTableId(targetId);
