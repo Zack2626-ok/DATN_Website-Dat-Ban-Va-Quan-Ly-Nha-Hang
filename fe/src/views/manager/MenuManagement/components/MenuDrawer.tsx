@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Save, Plus, Trash2 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import type { MenuItem, Category } from "../../../../interfaces";
 
 interface MenuDrawerProps {
@@ -47,9 +48,13 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
   const [modifierGroups, setModifierGroups] = useState<ModifierGroupFormState[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
+  
+  // Field-specific validation errors for inline red text and outlines
+  const [fieldErrors, setFieldErrors] = useState<any>({});
 
   useEffect(() => {
     setValidationError(null);
+    setFieldErrors({});
     if (editingItem) {
       setFormData({
         name: editingItem.name,
@@ -93,7 +98,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
     }
   }, [editingItem, categories, isOpen]);
 
-  // Group modifiers state handers
+  // Group modifiers state handlers
   const handleAddGroup = () => {
     setModifierGroups((prev) => [
       ...prev,
@@ -109,6 +114,12 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
   const handleRemoveGroup = (gIndex: number) => {
     setModifierGroups((prev) => prev.filter((_, idx) => idx !== gIndex));
+    // Clear any validation errors for this group
+    if (fieldErrors.groups?.[gIndex]) {
+      const updatedGroups = { ...fieldErrors.groups };
+      delete updatedGroups[gIndex];
+      setFieldErrors({ ...fieldErrors, groups: updatedGroups });
+    }
   };
 
   const handleGroupChange = (
@@ -123,14 +134,22 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
         
         // Sync required and min_select logically
         if (field === "is_required") {
-          updated.min_select = (value as boolean) ? Math.max(g.min_select, 1) : 0;
+          // If turning off requirement, set min_select to 0. Otherwise ensure at least 1
+          updated.min_select = value ? (g.min_select > 0 ? g.min_select : 1) : 0;
         } else if (field === "min_select") {
-          const val = Number(value);
+          const val = Number(value) || 0;
           updated.is_required = val > 0;
         }
         return updated;
       })
     );
+
+    // Clear validation warnings upon manual editing
+    if (fieldErrors.groups?.[gIndex]) {
+      const updatedGroups = { ...fieldErrors.groups };
+      delete updatedGroups[gIndex];
+      setFieldErrors({ ...fieldErrors, groups: updatedGroups });
+    }
   };
 
   const handleAddModifier = (gIndex: number) => {
@@ -168,48 +187,117 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
         return { ...g, modifiers: updatedModifiers };
       })
     );
+
+    // Clear validation warnings for this option
+    if (fieldErrors.groups?.[gIndex]?.modifiers?.[mIndex]) {
+      const updatedGroups = { ...fieldErrors.groups };
+      if (updatedGroups[gIndex]?.modifiers) {
+        delete updatedGroups[gIndex].modifiers[mIndex];
+      }
+      setFieldErrors({ ...fieldErrors, groups: updatedGroups });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
+    
+    const errors: any = {};
+    let firstErrorMsg = "";
 
-    // Business Logic Validations
-    for (let i = 0; i < modifierGroups.length; i++) {
-      const g = modifierGroups[i];
-      const nameLabel = g.name.trim() || `Nhóm số ${i + 1}`;
+    // 1. Basic Form Validations
+    if (!formData.name.trim()) {
+      errors.name = "Tên món ăn không được để trống.";
+      if (!firstErrorMsg) firstErrorMsg = errors.name;
+    }
+
+    if (formData.price === undefined || formData.price < 0) {
+      errors.price = "Giá bán phải là số dương hoặc bằng 0.";
+      if (!firstErrorMsg) firstErrorMsg = errors.price;
+    }
+
+    if (!formData.category_id) {
+      errors.category_id = "Vui lòng chọn danh mục cho món ăn.";
+      if (!firstErrorMsg) firstErrorMsg = errors.category_id;
+    }
+
+    // 2. Modifier Groups Validations
+    const groupErrors: any = {};
+    modifierGroups.forEach((g, gIdx) => {
+      const gErr: any = {};
+      const nameLabel = g.name.trim() || `Nhóm tùy chọn số ${gIdx + 1}`;
 
       if (!g.name.trim()) {
-        setValidationError(`Tên nhóm tùy chọn thứ ${i + 1} không được bỏ trống.`);
-        return;
+        gErr.name = "Tên nhóm tùy chọn không được bỏ trống.";
+        if (!firstErrorMsg) firstErrorMsg = `Tên nhóm tùy chọn thứ ${gIdx + 1} không được bỏ trống.`;
       }
 
       if (g.min_select > g.max_select) {
-        setValidationError(
-          `Lỗi tại nhóm "${nameLabel}": Số lượng tối thiểu (${g.min_select}) không được lớn hơn tối đa (${g.max_select}).`
-        );
-        return;
+        gErr.range = `Số lượng tối thiểu (${g.min_select}) không được lớn hơn tối đa (${g.max_select}).`;
+        if (!firstErrorMsg) {
+          firstErrorMsg = `Lỗi tại nhóm "${nameLabel}": Số lượng chọn tối thiểu không được lớn hơn chọn tối đa.`;
+        }
       }
 
       if ((g.is_required || g.min_select > 0) && g.modifiers.length === 0) {
-        setValidationError(
-          `Lỗi tại nhóm "${nameLabel}": Đây là nhóm bắt buộc, vui lòng thêm ít nhất 1 tùy chọn.`
-        );
-        return;
+        gErr.range = "Nhóm bắt buộc phải có ít nhất 1 tùy chọn lựa chọn.";
+        if (!firstErrorMsg) {
+          firstErrorMsg = `Lỗi tại nhóm "${nameLabel}": Đây là nhóm bắt buộc, vui lòng thêm ít nhất 1 tùy chọn.`;
+        }
       }
 
-      for (let j = 0; j < g.modifiers.length; j++) {
-        const m = g.modifiers[j];
+      const modErrors: any = {};
+      g.modifiers.forEach((m, mIdx) => {
+        const mErr: any = {};
         if (!m.name.trim()) {
-          setValidationError(`Tên tùy chọn thứ ${j + 1} trong nhóm "${nameLabel}" không được để trống.`);
-          return;
+          mErr.name = "Tên tùy chọn không được để trống.";
+          if (!firstErrorMsg) {
+            firstErrorMsg = `Tên tùy chọn thứ ${mIdx + 1} trong nhóm "${nameLabel}" không được để trống.`;
+          }
         }
         if (m.extra_price < 0) {
-          setValidationError(`Giá phụ thu của "${m.name}" trong nhóm "${nameLabel}" không được là số âm.`);
-          return;
+          mErr.price = "Giá phụ thu không được là số âm.";
+          if (!firstErrorMsg) {
+            firstErrorMsg = `Giá phụ thu của "${m.name || `Tùy chọn ${mIdx + 1}`}" trong nhóm "${nameLabel}" không được là số âm.`;
+          }
         }
+
+        if (Object.keys(mErr).length > 0) {
+          modErrors[mIdx] = mErr;
+        }
+      });
+
+      if (Object.keys(modErrors).length > 0) {
+        gErr.modifiers = modErrors;
       }
+
+      if (Object.keys(gErr).length > 0) {
+        groupErrors[gIdx] = gErr;
+      }
+    });
+
+    if (Object.keys(groupErrors).length > 0) {
+      errors.groups = groupErrors;
     }
+
+    // If there are validation errors, cancel submission and display logs
+    if (Object.keys(errors).length > 0) {
+      console.log("Validation Error: ", errors);
+      setFieldErrors(errors);
+      setValidationError(firstErrorMsg);
+      toast.error(firstErrorMsg);
+
+      // Scroll form body to top so the validation error banner is visible
+      const formElement = document.getElementById("menu-drawer-form");
+      if (formElement) {
+        formElement.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      return;
+    }
+
+    // Clean states on successful submit
+    setFieldErrors({});
+    setValidationError(null);
 
     onSave({
       ...formData,
@@ -251,13 +339,20 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
         </div>
 
         {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        <form
+          id="menu-drawer-form"
+          onSubmit={handleSubmit}
+          className="flex-1 overflow-y-auto p-6 space-y-6"
+        >
           
           {/* Validation Alert */}
           {validationError && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-start gap-2.5">
               <span className="text-red-500 text-lg">⚠️</span>
-              <div className="font-medium">{validationError}</div>
+              <div>
+                <div className="font-semibold mb-0.5">Lỗi kiểm tra dữ liệu</div>
+                <div className="font-medium text-red-600/90">{validationError}</div>
+              </div>
             </div>
           )}
 
@@ -274,12 +369,21 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </label>
               <input
                 type="text"
-                required
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] transition-shadow"
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value });
+                  if (fieldErrors.name) setFieldErrors({ ...fieldErrors, name: undefined });
+                }}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
+                  fieldErrors.name
+                    ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
+                    : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                }`}
                 placeholder="Ví dụ: Bò lúc lắc, Trà đào sả..."
               />
+              {fieldErrors.name && (
+                <p className="text-xs text-red-500 mt-1 font-semibold">{fieldErrors.name}</p>
+              )}
             </div>
 
             {/* Price */}
@@ -289,13 +393,22 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </label>
               <input
                 type="number"
-                required
                 min="0"
                 value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] transition-shadow"
+                onChange={(e) => {
+                  setFormData({ ...formData, price: Number(e.target.value) || 0 });
+                  if (fieldErrors.price) setFieldErrors({ ...fieldErrors, price: undefined });
+                }}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
+                  fieldErrors.price
+                    ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
+                    : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                }`}
                 placeholder="Nhập giá bán món ăn"
               />
+              {fieldErrors.price && (
+                <p className="text-xs text-red-500 mt-1 font-semibold">{fieldErrors.price}</p>
+              )}
             </div>
 
             {/* Category & Kitchen Station */}
@@ -306,15 +419,26 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 </label>
                 <select
                   value={formData.category_id}
-                  onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] bg-white transition-shadow"
+                  onChange={(e) => {
+                    setFormData({ ...formData, category_id: e.target.value });
+                    if (fieldErrors.category_id) setFieldErrors({ ...fieldErrors, category_id: undefined });
+                  }}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white transition-shadow ${
+                    fieldErrors.category_id
+                      ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
+                      : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                  }`}
                 >
+                  <option value="">-- Chọn danh mục --</option>
                   {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
                     </option>
                   ))}
                 </select>
+                {fieldErrors.category_id && (
+                  <p className="text-xs text-red-500 mt-1 font-semibold">{fieldErrors.category_id}</p>
+                )}
               </div>
 
               <div>
@@ -441,18 +565,30 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 {modifierGroups.map((group, gIdx) => (
                   <div
                     key={gIdx}
-                    className="relative bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:border-gray-300 transition-colors space-y-4"
+                    className={`relative bg-white border rounded-xl p-4 shadow-sm hover:border-gray-300 transition-colors space-y-4 ${
+                      fieldErrors.groups?.[gIdx] ? "border-red-300 bg-red-50/5" : "border-gray-200"
+                    }`}
                   >
                     {/* Header Group */}
                     <div className="flex items-center justify-between gap-4">
-                      <input
-                        type="text"
-                        required
-                        value={group.name}
-                        onChange={(e) => handleGroupChange(gIdx, "name", e.target.value)}
-                        className="flex-1 font-bold text-sm text-gray-900 border-b border-gray-200 hover:border-gray-400 focus:border-[#FF5A5F] focus:outline-none pb-0.5"
-                        placeholder="Tên nhóm (ví dụ: Độ ngọt, Kích thước)"
-                      />
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={group.name}
+                          onChange={(e) => handleGroupChange(gIdx, "name", e.target.value)}
+                          className={`w-full font-bold text-sm text-gray-900 border-b focus:outline-none pb-0.5 ${
+                            fieldErrors.groups?.[gIdx]?.name
+                              ? "border-red-400 focus:border-red-500"
+                              : "border-gray-200 hover:border-gray-400 focus:border-[#FF5A5F]"
+                          }`}
+                          placeholder="Tên nhóm (ví dụ: Độ ngọt, Kích thước)"
+                        />
+                        {fieldErrors.groups?.[gIdx]?.name && (
+                          <p className="text-[11px] text-red-500 mt-1 font-semibold">
+                            {fieldErrors.groups[gIdx].name}
+                          </p>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleRemoveGroup(gIdx)}
@@ -494,11 +630,14 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                         </label>
                         <input
                           type="number"
-                          required
                           min="0"
                           value={group.min_select}
-                          onChange={(e) => handleGroupChange(gIdx, "min_select", Number(e.target.value))}
-                          className="w-full px-2.5 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#FF5A5F] focus:border-[#FF5A5F] bg-white"
+                          onChange={(e) => handleGroupChange(gIdx, "min_select", e.target.value)}
+                          className={`w-full px-2.5 py-1 border rounded-md text-sm focus:outline-none focus:ring-1 bg-white ${
+                            fieldErrors.groups?.[gIdx]?.range
+                              ? "border-red-400 focus:ring-red-400 focus:border-red-400"
+                              : "border-gray-300 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                          }`}
                         />
                       </div>
 
@@ -509,14 +648,24 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                         </label>
                         <input
                           type="number"
-                          required
                           min="1"
                           value={group.max_select}
-                          onChange={(e) => handleGroupChange(gIdx, "max_select", Number(e.target.value))}
-                          className="w-full px-2.5 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#FF5A5F] focus:border-[#FF5A5F] bg-white"
+                          onChange={(e) => handleGroupChange(gIdx, "max_select", e.target.value)}
+                          className={`w-full px-2.5 py-1 border rounded-md text-sm focus:outline-none focus:ring-1 bg-white ${
+                            fieldErrors.groups?.[gIdx]?.range
+                              ? "border-red-400 focus:ring-red-400 focus:border-red-400"
+                              : "border-gray-300 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                          }`}
                         />
                       </div>
                     </div>
+
+                    {/* Range / Options Length Validation Message */}
+                    {fieldErrors.groups?.[gIdx]?.range && (
+                      <p className="text-xs text-red-500 font-semibold mt-1">
+                        ⚠️ {fieldErrors.groups[gIdx].range}
+                      </p>
+                    )}
 
                     {/* Options Item Options (Modifiers) */}
                     <div className="space-y-2">
@@ -539,44 +688,64 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                       ) : (
                         <div className="space-y-2">
                           {group.modifiers.map((modifier, mIdx) => (
-                            <div key={mIdx} className="flex items-center gap-2">
-                              {/* Option name */}
-                              <input
-                                type="text"
-                                required
-                                value={modifier.name}
-                                onChange={(e) => handleModifierChange(gIdx, mIdx, "name", e.target.value)}
-                                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
-                                placeholder="Tên tùy chọn (ví dụ: Ít đường, Cỡ lớn)"
-                              />
-                              
-                              {/* Option extra price */}
-                              <div className="relative w-28">
+                            <div key={mIdx} className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                {/* Option name */}
                                 <input
-                                  type="number"
-                                  required
-                                  min="0"
-                                  value={modifier.extra_price}
-                                  onChange={(e) =>
-                                    handleModifierChange(gIdx, mIdx, "extra_price", Number(e.target.value))
-                                  }
-                                  className="w-full pl-3 pr-6 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
-                                  placeholder="0"
+                                  type="text"
+                                  value={modifier.name}
+                                  onChange={(e) => handleModifierChange(gIdx, mIdx, "name", e.target.value)}
+                                  className={`flex-1 px-3 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-1 ${
+                                    fieldErrors.groups?.[gIdx]?.modifiers?.[mIdx]?.name
+                                      ? "border-red-400 focus:ring-red-400 focus:border-red-400 bg-red-50/5"
+                                      : "border-gray-200 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                                  }`}
+                                  placeholder="Tên tùy chọn (ví dụ: Ít đường, Cỡ lớn)"
                                 />
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400">
-                                  đ
-                                </span>
-                              </div>
+                                
+                                {/* Option extra price */}
+                                <div className="relative w-28">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={modifier.extra_price}
+                                    onChange={(e) =>
+                                      handleModifierChange(gIdx, mIdx, "extra_price", e.target.value)
+                                    }
+                                    className={`w-full pl-3 pr-6 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-1 ${
+                                      fieldErrors.groups?.[gIdx]?.modifiers?.[mIdx]?.price
+                                        ? "border-red-400 focus:ring-red-400 focus:border-red-400 bg-red-50/5"
+                                        : "border-gray-200 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                                    }`}
+                                    placeholder="0"
+                                  />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400">
+                                    đ
+                                  </span>
+                                </div>
 
-                              {/* Delete option */}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveModifier(gIdx, mIdx)}
-                                className="p-1.5 text-gray-400 hover:text-red-500 rounded-md transition-colors"
-                                title="Xóa tùy chọn này"
-                              >
-                                <X size={14} />
-                              </button>
+                                {/* Delete option */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveModifier(gIdx, mIdx)}
+                                  className="p-1.5 text-gray-400 hover:text-red-500 rounded-md transition-colors"
+                                  title="Xóa tùy chọn này"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                              
+                              {/* Option-specific errors */}
+                              {fieldErrors.groups?.[gIdx]?.modifiers?.[mIdx] && (
+                                <div className="flex gap-4 px-1 text-[10px] font-semibold text-red-500">
+                                  {fieldErrors.groups[gIdx].modifiers[mIdx].name && (
+                                    <span>* {fieldErrors.groups[gIdx].modifiers[mIdx].name}</span>
+                                  )}
+                                  {fieldErrors.groups[gIdx].modifiers[mIdx].price && (
+                                    <span>* {fieldErrors.groups[gIdx].modifiers[mIdx].price}</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -599,8 +768,8 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             Hủy bỏ
           </button>
           <button
-            type="button"
-            onClick={handleSubmit}
+            type="submit"
+            form="menu-drawer-form"
             className="flex-1 px-4 py-2.5 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/30"
           >
             <Save size={18} />

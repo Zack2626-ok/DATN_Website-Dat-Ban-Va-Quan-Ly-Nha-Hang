@@ -27,6 +27,8 @@ export const menuService = {
         const localItem = localItems.find((li) => String(li.id) === String(apiItem.id));
         return {
           ...apiItem,
+          image_url: apiItem.image_url || apiItem.image || (apiItem as any).image,
+          image: apiItem.image || apiItem.image_url,
           // Map backend 'available' property back to frontend 'is_active'
           is_active: apiItem.is_active ?? (apiItem as any).available ?? true,
           modifier_groups: localItem?.modifier_groups || [],
@@ -45,7 +47,7 @@ export const menuService = {
    */
   async getCategories(): Promise<Category[]> {
     try {
-      const response = await api.get("/categories");
+      const response = await api.get("/v1/waiter/categories");
       return response.data.data || [];
     } catch (error) {
       console.warn("Category API error, using fallback defaults:", error);
@@ -86,6 +88,9 @@ export const menuService = {
         price: data.price,
         image: data.image_url,
         available: data.is_active ? 1 : 0,
+        is_active: data.is_active ? 1 : 0,
+        kitchen_station: data.kitchen_station || "hot_kitchen",
+        is_featured: data.is_featured ? 1 : 0,
         preparationTime: 15,
         modifier_groups: data.modifier_groups, // Sent in case backend schema is extended
       };
@@ -93,16 +98,20 @@ export const menuService = {
       const response = await api.post("/menu", payload);
       const created = response.data.data;
       
+      const merged = {
+        ...newItem,
+        id: created.id,
+        image_url: created.image_url || created.image || newItem.image_url,
+        image: created.image || created.image_url || newItem.image,
+      };
+
       // Update local cache with backend assigned ID
       const updatedLocalItems = localItems.map((item) =>
-        item.id === tempId ? { ...item, id: created.id } : item
+        item.id === tempId ? merged : item
       );
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedLocalItems));
 
-      return {
-        ...newItem,
-        id: created.id,
-      };
+      return merged;
     } catch (error) {
       console.warn("Backend creation failed, falling back to local storage:", error);
       return newItem;
@@ -129,14 +138,26 @@ export const menuService = {
         price: data.price,
         image: data.image_url,
         available: data.is_active !== undefined ? (data.is_active ? 1 : 0) : undefined,
+        is_active: data.is_active !== undefined ? (data.is_active ? 1 : 0) : undefined,
+        kitchen_station: data.kitchen_station,
+        is_featured: data.is_featured !== undefined ? (data.is_featured ? 1 : 0) : undefined,
         modifier_groups: data.modifier_groups,
       };
       
       const response = await api.patch(`/menu/${id}`, payload);
-      return {
+      const updated = response.data.data;
+      const merged = {
         ...localItems[index],
-        ...response.data.data,
+        ...updated,
+        image_url: updated?.image_url || updated?.image || localItems[index]?.image_url,
+        image: updated?.image || updated?.image_url || localItems[index]?.image,
       };
+      
+      if (index !== -1) {
+        localItems[index] = merged;
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localItems));
+      }
+      return merged;
     } catch (error) {
       console.warn("Backend update failed, using local cache state:", error);
       return localItems[index] || (data as MenuItem);

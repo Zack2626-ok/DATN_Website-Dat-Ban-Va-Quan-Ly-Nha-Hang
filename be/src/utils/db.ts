@@ -38,6 +38,7 @@ export interface Order {
 const normalizeMenuItem = (row: any): MenuItem => ({
   ...row,
   available: Boolean(row.available),
+  is_active: row.is_active !== undefined ? Boolean(row.is_active) : Boolean(row.available),
 });
 
 const normalizeTable = (row: any): Table => ({
@@ -315,39 +316,156 @@ export const getTablesByStatus = async (status: string): Promise<Table[]> => {
 
 // ===== Menu operations =====
 export const getMenuItems = async (): Promise<MenuItem[]> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items ORDER BY createdAt DESC");
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE m.is_deleted = 0
+     ORDER BY m.created_at DESC`
+  );
   return rows.map(normalizeMenuItem);
 };
 
 export const getMenuItemById = async (id: string): Promise<MenuItem | null> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items WHERE id = ?", [id]);
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE m.id = ? AND m.is_deleted = 0`,
+    [id]
+  );
   return rows[0] ? normalizeMenuItem(rows[0]) : null;
 };
 
 export const getMenuItemsByCategory = async (category: string): Promise<MenuItem[]> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items WHERE category = ? ORDER BY createdAt DESC", [category]);
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE c.name = ? AND m.is_deleted = 0
+     ORDER BY m.created_at DESC`,
+    [category]
+  );
   return rows.map(normalizeMenuItem);
 };
 
-export const createMenuItem = async (item: Omit<MenuItem, "id" | "createdAt">): Promise<MenuItem> => {
-  const id = `dish_${Date.now()}`;
-  const createdAt = new Date().toISOString();
-  await query(
-    "INSERT INTO menu_items (id, name, description, category, price, image, available, preparationTime, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, item.name, item.description || null, item.category, item.price, item.image || null, item.available ? 1 : 0, item.preparationTime || null, createdAt],
+export const createMenuItem = async (item: Omit<MenuItem, "id" | "createdAt"> & { category_id?: number | string, kitchen_station?: string, is_featured?: boolean }): Promise<MenuItem> => {
+  let categoryId = Number(item.category_id);
+  if (!categoryId && item.category) {
+    const catRows = await query<any[]>("SELECT id FROM categories WHERE name = ?", [item.category]);
+    categoryId = catRows[0]?.id || 2; // fallback to Món chính
+  } else if (!categoryId) {
+    categoryId = 2; // fallback to Món chính
+  }
+
+  const result = await query<any>(
+    `INSERT INTO menu_items (category_id, name, description, price, image_url, kitchen_station, is_featured, is_active, is_deleted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    [
+      categoryId,
+      item.name,
+      item.description || null,
+      item.price,
+      item.image || null,
+      item.kitchen_station || "hot_kitchen",
+      item.is_featured ? 1 : 0,
+      item.available ? 1 : 0
+    ]
   );
-  return { id, createdAt, ...item };
+  
+  const insertId = result.insertId ? result.insertId.toString() : `dish_${Date.now()}`;
+  const createdAt = new Date().toISOString();
+  
+  return {
+    id: insertId,
+    name: item.name,
+    description: item.description,
+    category: item.category || "Món chính",
+    category_id: categoryId,
+    price: item.price,
+    image: item.image || (item as any).image_url,
+    image_url: (item as any).image_url || item.image,
+    available: item.available,
+    kitchen_station: item.kitchen_station || "hot_kitchen",
+    is_featured: item.is_featured || false,
+    createdAt
+  } as any;
 };
 
-export const updateMenuItem = async (id: string, data: Partial<MenuItem>): Promise<MenuItem | null> => {
+export const updateMenuItem = async (id: string, data: Partial<MenuItem> & { category_id?: number | string, is_deleted?: number | boolean, deleted_at?: string, kitchen_station?: string, is_featured?: boolean }): Promise<MenuItem | null> => {
   const existing = await getMenuItemById(id);
   if (!existing) return null;
-  const updated = { ...existing, ...data };
+  
+  // Filter out undefined keys from data to prevent spreading undefined over existing values
+  const cleanData: any = {};
+  const dataAsAny = data as any;
+  for (const key of Object.keys(data)) {
+    if (dataAsAny[key] !== undefined) {
+      cleanData[key] = dataAsAny[key];
+    }
+  }
+  
+  const updated = { ...existing, ...cleanData };
+
+  // Keep both fields synced in the returned object
+  if (data.image !== undefined) {
+    updated.image_url = data.image;
+  } else if ((data as any).image_url !== undefined) {
+    updated.image = (data as any).image_url;
+  } else if (existing.image_url) {
+    updated.image = existing.image_url;
+  } else if (existing.image) {
+    updated.image_url = existing.image;
+  }
+  
+  let categoryId = Number(data.category_id || (updated as any).category_id);
+  if (!categoryId && data.category) {
+    const catRows = await query<any[]>("SELECT id FROM categories WHERE name = ?", [data.category]);
+    categoryId = catRows[0]?.id || 2;
+  } else if (!categoryId) {
+    categoryId = 2;
+  }
+
+  const isDeleted = data.is_deleted !== undefined 
+    ? (data.is_deleted ? 1 : 0) 
+    : (existing.is_deleted ? 1 : 0);
+
+  const deletedAt = isDeleted ? (data.deleted_at || new Date().toISOString()) : null;
+
   await query(
-    "UPDATE menu_items SET name = ?, description = ?, category = ?, price = ?, image = ?, available = ?, preparationTime = ? WHERE id = ?",
-    [updated.name, updated.description || null, updated.category, updated.price, updated.image || null, updated.available ? 1 : 0, updated.preparationTime || null, id],
+    `UPDATE menu_items 
+     SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?, 
+         kitchen_station = ?, is_featured = ?, is_active = ?, is_deleted = ?, deleted_at = ?
+     WHERE id = ?`,
+    [
+      categoryId,
+      updated.name,
+      updated.description || null,
+      updated.price,
+      updated.image || updated.image_url || null,
+      updated.kitchen_station || "hot_kitchen",
+      updated.is_featured ? 1 : 0,
+      updated.available ? 1 : 0,
+      isDeleted,
+      deletedAt,
+      id
+    ]
   );
-  return updated;
+  
+  return {
+    ...updated,
+    image: updated.image || updated.image_url,
+    image_url: updated.image_url || updated.image,
+    category_id: categoryId,
+    is_deleted: Boolean(isDeleted),
+    deleted_at: deletedAt
+  } as any;
 };
 
 export const deleteMenuItem = async (id: string): Promise<boolean> => {

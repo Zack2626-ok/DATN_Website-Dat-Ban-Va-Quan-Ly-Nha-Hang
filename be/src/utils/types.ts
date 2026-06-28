@@ -49,9 +49,12 @@ export interface MenuItem {
   category: string;
   price: number;
   image?: string;
+  image_url?: string;
   available: boolean;
   preparationTime?: number;
   createdAt: string;
+  is_deleted?: boolean;
+  deleted_at?: string;
 }
 
 // ===== INVENTORY TYPES =====
