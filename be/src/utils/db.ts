@@ -1187,3 +1187,193 @@ export const unsplitResmanagerTable = async (parentTableId: number): Promise<boo
   );
   return result.affectedRows > 0;
 };
+
+// ===== Resmanager User & RBAC Management Operations =====
+export const getRoles = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM roles ORDER BY id ASC");
+};
+
+export const getUsers = async (): Promise<any[]> => {
+  return query<any[]>(
+    `SELECT u.id, u.role_id, u.full_name, u.email, u.phone, u.avatar_url, u.status, 
+            u.is_deleted, u.deleted_at, u.last_login, u.created_at, u.updated_at,
+            r.name AS role_name, r.description AS role_description
+     FROM users u
+     LEFT JOIN roles r ON u.role_id = r.id
+     WHERE u.is_deleted = 0
+     ORDER BY u.id DESC`
+  );
+};
+
+export const createResmanagerUser = async (user: any): Promise<any> => {
+  const result = await query<any>(
+    `INSERT INTO users (role_id, full_name, email, password_hash, phone, status, is_deleted) 
+     VALUES (?, ?, ?, ?, ?, ?, 0)`,
+    [
+      user.role_id,
+      user.full_name,
+      user.email,
+      user.password, // hashed password
+      user.phone || null,
+      user.status || "active"
+    ]
+  );
+  const insertId = result.insertId;
+  return { id: insertId, ...user };
+};
+
+export const updateResmanagerUser = async (id: number | string, user: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+
+  if (user.role_id !== undefined) {
+    fields.push("role_id = ?");
+    params.push(user.role_id);
+  }
+  if (user.full_name !== undefined) {
+    fields.push("full_name = ?");
+    params.push(user.full_name);
+  }
+  if (user.email !== undefined) {
+    fields.push("email = ?");
+    params.push(user.email);
+  }
+  if (user.password !== undefined) {
+    fields.push("password_hash = ?");
+    params.push(user.password);
+  }
+  if (user.phone !== undefined) {
+    fields.push("phone = ?");
+    params.push(user.phone || null);
+  }
+  if (user.status !== undefined) {
+    fields.push("status = ?");
+    params.push(user.status);
+  }
+  if (user.is_deleted !== undefined) {
+    fields.push("is_deleted = ?");
+    params.push(user.is_deleted);
+  }
+  if (user.deleted_at !== undefined) {
+    fields.push("deleted_at = ?");
+    params.push(user.deleted_at);
+  }
+
+  if (fields.length === 0) return false;
+
+  params.push(id);
+  const result = await query<any>(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);
+  return result.affectedRows > 0;
+};
+
+// ===== Event Halls & Set Menu Packages Operations =====
+export const getHalls = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM halls ORDER BY id DESC");
+};
+
+export const createHall = async (hall: any): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO halls (name, capacity, description, is_active) VALUES (?, ?, ?, 1)",
+    [hall.name, hall.capacity, hall.description || null]
+  );
+  return { id: result.insertId, ...hall, is_active: 1 };
+};
+
+export const updateHall = async (id: number | string, hall: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+  if (hall.name !== undefined) {
+    fields.push("name = ?");
+    params.push(hall.name);
+  }
+  if (hall.capacity !== undefined) {
+    fields.push("capacity = ?");
+    params.push(hall.capacity);
+  }
+  if (hall.description !== undefined) {
+    fields.push("description = ?");
+    params.push(hall.description);
+  }
+  if (hall.is_active !== undefined) {
+    fields.push("is_active = ?");
+    params.push(hall.is_active);
+  }
+  if (fields.length === 0) return false;
+  params.push(id);
+  const result = await query<any>(`UPDATE halls SET ${fields.join(", ")} WHERE id = ?`, params);
+  return result.affectedRows > 0;
+};
+
+export const getEventPackages = async (): Promise<any[]> => {
+  const packages = await query<any[]>("SELECT * FROM event_packages ORDER BY id DESC");
+  for (const pkg of packages) {
+    pkg.items = await query<any[]>(
+      `SELECT epi.id, epi.package_id, epi.menu_item_id, epi.quantity,
+              mi.name AS menu_item_name, mi.price AS menu_item_price
+       FROM event_package_items epi
+       JOIN menu_items mi ON epi.menu_item_id = mi.id
+       WHERE epi.package_id = ?`,
+      [pkg.id]
+    );
+  }
+  return packages;
+};
+
+export const createEventPackage = async (pkg: any): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO event_packages (name, price_per_person, description, is_active) VALUES (?, ?, ?, 1)",
+    [pkg.name, pkg.price_per_person, pkg.description || null]
+  );
+  const packageId = result.insertId;
+
+  if (pkg.items && pkg.items.length > 0) {
+    for (const item of pkg.items) {
+      await query<any>(
+        "INSERT INTO event_package_items (package_id, menu_item_id, quantity) VALUES (?, ?, ?)",
+        [packageId, item.menu_item_id, item.quantity]
+      );
+    }
+  }
+
+  return { id: packageId, ...pkg, is_active: 1 };
+};
+
+export const updateEventPackage = async (id: number | string, pkg: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+  if (pkg.name !== undefined) {
+    fields.push("name = ?");
+    params.push(pkg.name);
+  }
+  if (pkg.price_per_person !== undefined) {
+    fields.push("price_per_person = ?");
+    params.push(pkg.price_per_person);
+  }
+  if (pkg.description !== undefined) {
+    fields.push("description = ?");
+    params.push(pkg.description);
+  }
+  if (pkg.is_active !== undefined) {
+    fields.push("is_active = ?");
+    params.push(pkg.is_active);
+  }
+
+  if (fields.length > 0) {
+    params.push(id);
+    await query(`UPDATE event_packages SET ${fields.join(", ")} WHERE id = ?`, params);
+  }
+
+  if (pkg.items !== undefined) {
+    await query("DELETE FROM event_package_items WHERE package_id = ?", [id]);
+    if (pkg.items.length > 0) {
+      for (const item of pkg.items) {
+        await query(
+          "INSERT INTO event_package_items (package_id, menu_item_id, quantity) VALUES (?, ?, ?)",
+          [id, item.menu_item_id, item.quantity]
+        );
+      }
+    }
+  }
+
+  return true;
+};

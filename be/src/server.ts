@@ -8,6 +8,7 @@ import path from "path";
 
 import uploadRoutes from "./routes/upload.routes";
 import authRoutes from "./routes/auth.routes";
+import userRoutes from "./routes/user.routes";
 import orderRoutes from "./routes/order.routes";
 import kdsRoutes from "./routes/kds.routes";
 import tableRoutes from "./routes/table.routes";
@@ -18,6 +19,7 @@ import bookingRoutes from "./routes/booking.routes";
 import waitlistRoutes from "./routes/waitlist.routes";
 import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
+import eventConfigRoutes from "./routes/eventConfig.routes";
 import { initDb } from "./utils/db";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
@@ -72,6 +74,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/upload", uploadRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/orders", orderRoutes);
 // API KDS: nhà bếp
 app.use("/api/kds", kdsRoutes);
@@ -84,6 +87,7 @@ app.use("/api/v1/tables", resmanagerTableRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/waitlist", waitlistRoutes);
 app.use("/api/v1/waiter", waiterRoutes);
+app.use("/api/events", eventConfigRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
