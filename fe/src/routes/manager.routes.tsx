@@ -6,6 +6,7 @@ import {
   MenuManagement,
   ShiftManagement,
   BanquetConfig,
+  AnalyticsView,
 } from "../views/manager";
 import { WaiterTableMap, BookingListPage, WaitlistPage } from "../views/waiter";
 import UserManagement from "../views/manager/UserManagement";
@@ -28,5 +29,6 @@ export const ManagerRoutes = () => (
     <Route path="menu" element={<MenuManagement />} />
     <Route path="shifts" element={<ShiftManagement />} />
     <Route path="events" element={<BanquetConfig />} />
+    <Route path="analytics" element={<AnalyticsView />} />
   </Route>
 );
