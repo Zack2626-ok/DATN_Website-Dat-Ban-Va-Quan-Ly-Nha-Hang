@@ -14,6 +14,7 @@ import {
   UserCheck,
   Clock,
   LogOut,
+  LineChart,
 } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "../../../store/hooks";
 import { logoutAction } from "../../../store/authSlice";
@@ -188,6 +189,21 @@ export const ManagerSidebar: React.FC = () => {
                 <span className="flex items-center gap-2.5">
                   <Calendar size={14} />
                   Cấu hình Sự kiện & Tiệc
+                </span>
+              </Link>
+
+              {/* Báo cáo & Phân tích */}
+              <Link
+                to="/manager/analytics"
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isRouteActive("/manager/analytics")
+                    ? "bg-[#FF5A5F] text-white"
+                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <LineChart size={14} />
+                  Báo cáo & Phân tích
                 </span>
               </Link>
             </div>

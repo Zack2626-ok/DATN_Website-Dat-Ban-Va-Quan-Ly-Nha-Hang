@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Users } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { userService } from "../../../services/userService";
 import type { User, Role } from "../../../interfaces";
 import { UserFilters } from "./components/UserFilters";
@@ -64,15 +65,18 @@ const UserManagement: React.FC = () => {
       setActionLoading(true);
       if (editingUser) {
         await userService.updateUser(editingUser.id, userData);
+        toast.success("Cập nhật thông tin nhân viên thành công");
       } else {
         await userService.createUser(userData);
+        toast.success("Thêm nhân viên mới thành công");
       }
       setIsDrawerOpen(false);
       setEditingUser(null);
       await fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Không thể lưu người dùng");
+      const errMsg = err.response?.data?.message || err.message || "Không thể lưu người dùng";
+      toast.error(errMsg);
     } finally {
       setActionLoading(false);
     }
@@ -84,12 +88,14 @@ const UserManagement: React.FC = () => {
     try {
       setActionLoading(true);
       await userService.deleteUser(userToDelete.id);
+      toast.success("Xóa nhân viên thành công");
       setIsDeleteModalOpen(false);
       setUserToDelete(null);
       await fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Không thể xóa người dùng");
+      const errMsg = err.response?.data?.message || err.message || "Không thể xóa người dùng";
+      toast.error(errMsg);
     } finally {
       setActionLoading(false);
     }

@@ -1,6 +1,24 @@
 import type { OrderStatus } from "../constants/orderStatus";
 import type { TableStatus } from "../constants/tableStatus";
 
+export interface Modifier {
+  id?: number | string;
+  group_id?: number | string;
+  parent_modifier_id?: number | string | null;
+  name: string;
+  extra_price: number;
+}
+
+export interface ModifierGroup {
+  id?: number | string;
+  menu_item_id?: number | string;
+  name: string;
+  is_required: boolean;
+  min_select: number;
+  max_select: number;
+  modifiers: Modifier[];
+}
+
 export interface MenuItem {
   id: string | number;
   name: string;
@@ -15,10 +33,12 @@ export interface MenuItem {
   is_active: boolean;
   is_featured: boolean;
   is_deleted?: boolean;
+  deleted_at?: string | null;
   created_at?: string;
   updated_at?: string;
   inStock?: boolean; // For backward compatibility
   available?: boolean; // For backward compatibility
+  modifier_groups?: ModifierGroup[];
 }
 
 export interface Category {

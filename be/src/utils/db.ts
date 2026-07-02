@@ -38,6 +38,7 @@ export interface Order {
 const normalizeMenuItem = (row: any): MenuItem => ({
   ...row,
   available: Boolean(row.available),
+  is_active: row.is_active !== undefined ? Boolean(row.is_active) : Boolean(row.available),
 });
 
 const normalizeTable = (row: any): Table => ({
@@ -315,39 +316,156 @@ export const getTablesByStatus = async (status: string): Promise<Table[]> => {
 
 // ===== Menu operations =====
 export const getMenuItems = async (): Promise<MenuItem[]> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items ORDER BY createdAt DESC");
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE m.is_deleted = 0
+     ORDER BY m.created_at DESC`
+  );
   return rows.map(normalizeMenuItem);
 };
 
 export const getMenuItemById = async (id: string): Promise<MenuItem | null> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items WHERE id = ?", [id]);
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE m.id = ? AND m.is_deleted = 0`,
+    [id]
+  );
   return rows[0] ? normalizeMenuItem(rows[0]) : null;
 };
 
 export const getMenuItemsByCategory = async (category: string): Promise<MenuItem[]> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items WHERE category = ? ORDER BY createdAt DESC", [category]);
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE c.name = ? AND m.is_deleted = 0
+     ORDER BY m.created_at DESC`,
+    [category]
+  );
   return rows.map(normalizeMenuItem);
 };
 
-export const createMenuItem = async (item: Omit<MenuItem, "id" | "createdAt">): Promise<MenuItem> => {
-  const id = `dish_${Date.now()}`;
-  const createdAt = new Date().toISOString();
-  await query(
-    "INSERT INTO menu_items (id, name, description, category, price, image, available, preparationTime, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, item.name, item.description || null, item.category, item.price, item.image || null, item.available ? 1 : 0, item.preparationTime || null, createdAt],
+export const createMenuItem = async (item: Omit<MenuItem, "id" | "createdAt"> & { category_id?: number | string, kitchen_station?: string, is_featured?: boolean }): Promise<MenuItem> => {
+  let categoryId = Number(item.category_id);
+  if (!categoryId && item.category) {
+    const catRows = await query<any[]>("SELECT id FROM categories WHERE name = ?", [item.category]);
+    categoryId = catRows[0]?.id || 2; // fallback to Món chính
+  } else if (!categoryId) {
+    categoryId = 2; // fallback to Món chính
+  }
+
+  const result = await query<any>(
+    `INSERT INTO menu_items (category_id, name, description, price, image_url, kitchen_station, is_featured, is_active, is_deleted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    [
+      categoryId,
+      item.name,
+      item.description || null,
+      item.price,
+      item.image || null,
+      item.kitchen_station || "hot_kitchen",
+      item.is_featured ? 1 : 0,
+      item.available ? 1 : 0
+    ]
   );
-  return { id, createdAt, ...item };
+  
+  const insertId = result.insertId ? result.insertId.toString() : `dish_${Date.now()}`;
+  const createdAt = new Date().toISOString();
+  
+  return {
+    id: insertId,
+    name: item.name,
+    description: item.description,
+    category: item.category || "Món chính",
+    category_id: categoryId,
+    price: item.price,
+    image: item.image || (item as any).image_url,
+    image_url: (item as any).image_url || item.image,
+    available: item.available,
+    kitchen_station: item.kitchen_station || "hot_kitchen",
+    is_featured: item.is_featured || false,
+    createdAt
+  } as any;
 };
 
-export const updateMenuItem = async (id: string, data: Partial<MenuItem>): Promise<MenuItem | null> => {
+export const updateMenuItem = async (id: string, data: Partial<MenuItem> & { category_id?: number | string, is_deleted?: number | boolean, deleted_at?: string, kitchen_station?: string, is_featured?: boolean }): Promise<MenuItem | null> => {
   const existing = await getMenuItemById(id);
   if (!existing) return null;
-  const updated = { ...existing, ...data };
+  
+  // Filter out undefined keys from data to prevent spreading undefined over existing values
+  const cleanData: any = {};
+  const dataAsAny = data as any;
+  for (const key of Object.keys(data)) {
+    if (dataAsAny[key] !== undefined) {
+      cleanData[key] = dataAsAny[key];
+    }
+  }
+  
+  const updated = { ...existing, ...cleanData };
+
+  // Keep both fields synced in the returned object
+  if (data.image !== undefined) {
+    updated.image_url = data.image;
+  } else if ((data as any).image_url !== undefined) {
+    updated.image = (data as any).image_url;
+  } else if (existing.image_url) {
+    updated.image = existing.image_url;
+  } else if (existing.image) {
+    updated.image_url = existing.image;
+  }
+  
+  let categoryId = Number(data.category_id || (updated as any).category_id);
+  if (!categoryId && data.category) {
+    const catRows = await query<any[]>("SELECT id FROM categories WHERE name = ?", [data.category]);
+    categoryId = catRows[0]?.id || 2;
+  } else if (!categoryId) {
+    categoryId = 2;
+  }
+
+  const isDeleted = data.is_deleted !== undefined 
+    ? (data.is_deleted ? 1 : 0) 
+    : (existing.is_deleted ? 1 : 0);
+
+  const deletedAt = isDeleted ? (data.deleted_at || new Date().toISOString()) : null;
+
   await query(
-    "UPDATE menu_items SET name = ?, description = ?, category = ?, price = ?, image = ?, available = ?, preparationTime = ? WHERE id = ?",
-    [updated.name, updated.description || null, updated.category, updated.price, updated.image || null, updated.available ? 1 : 0, updated.preparationTime || null, id],
+    `UPDATE menu_items 
+     SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?, 
+         kitchen_station = ?, is_featured = ?, is_active = ?, is_deleted = ?, deleted_at = ?
+     WHERE id = ?`,
+    [
+      categoryId,
+      updated.name,
+      updated.description || null,
+      updated.price,
+      updated.image || updated.image_url || null,
+      updated.kitchen_station || "hot_kitchen",
+      updated.is_featured ? 1 : 0,
+      updated.available ? 1 : 0,
+      isDeleted,
+      deletedAt,
+      id
+    ]
   );
-  return updated;
+  
+  return {
+    ...updated,
+    image: updated.image || updated.image_url,
+    image_url: updated.image_url || updated.image,
+    category_id: categoryId,
+    is_deleted: Boolean(isDeleted),
+    deleted_at: deletedAt
+  } as any;
 };
 
 export const deleteMenuItem = async (id: string): Promise<boolean> => {
@@ -1068,4 +1186,194 @@ export const unsplitResmanagerTable = async (parentTableId: number): Promise<boo
     [parentTableId],
   );
   return result.affectedRows > 0;
+};
+
+// ===== Resmanager User & RBAC Management Operations =====
+export const getRoles = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM roles ORDER BY id ASC");
+};
+
+export const getUsers = async (): Promise<any[]> => {
+  return query<any[]>(
+    `SELECT u.id, u.role_id, u.full_name, u.email, u.phone, u.avatar_url, u.status, 
+            u.is_deleted, u.deleted_at, u.last_login, u.created_at, u.updated_at,
+            r.name AS role_name, r.description AS role_description
+     FROM users u
+     LEFT JOIN roles r ON u.role_id = r.id
+     WHERE u.is_deleted = 0
+     ORDER BY u.id DESC`
+  );
+};
+
+export const createResmanagerUser = async (user: any): Promise<any> => {
+  const result = await query<any>(
+    `INSERT INTO users (role_id, full_name, email, password_hash, phone, status, is_deleted) 
+     VALUES (?, ?, ?, ?, ?, ?, 0)`,
+    [
+      user.role_id,
+      user.full_name,
+      user.email,
+      user.password, // hashed password
+      user.phone || null,
+      user.status || "active"
+    ]
+  );
+  const insertId = result.insertId;
+  return { id: insertId, ...user };
+};
+
+export const updateResmanagerUser = async (id: number | string, user: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+
+  if (user.role_id !== undefined) {
+    fields.push("role_id = ?");
+    params.push(user.role_id);
+  }
+  if (user.full_name !== undefined) {
+    fields.push("full_name = ?");
+    params.push(user.full_name);
+  }
+  if (user.email !== undefined) {
+    fields.push("email = ?");
+    params.push(user.email);
+  }
+  if (user.password !== undefined) {
+    fields.push("password_hash = ?");
+    params.push(user.password);
+  }
+  if (user.phone !== undefined) {
+    fields.push("phone = ?");
+    params.push(user.phone || null);
+  }
+  if (user.status !== undefined) {
+    fields.push("status = ?");
+    params.push(user.status);
+  }
+  if (user.is_deleted !== undefined) {
+    fields.push("is_deleted = ?");
+    params.push(user.is_deleted);
+  }
+  if (user.deleted_at !== undefined) {
+    fields.push("deleted_at = ?");
+    params.push(user.deleted_at);
+  }
+
+  if (fields.length === 0) return false;
+
+  params.push(id);
+  const result = await query<any>(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);
+  return result.affectedRows > 0;
+};
+
+// ===== Event Halls & Set Menu Packages Operations =====
+export const getHalls = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM halls ORDER BY id DESC");
+};
+
+export const createHall = async (hall: any): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO halls (name, capacity, description, is_active) VALUES (?, ?, ?, 1)",
+    [hall.name, hall.capacity, hall.description || null]
+  );
+  return { id: result.insertId, ...hall, is_active: 1 };
+};
+
+export const updateHall = async (id: number | string, hall: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+  if (hall.name !== undefined) {
+    fields.push("name = ?");
+    params.push(hall.name);
+  }
+  if (hall.capacity !== undefined) {
+    fields.push("capacity = ?");
+    params.push(hall.capacity);
+  }
+  if (hall.description !== undefined) {
+    fields.push("description = ?");
+    params.push(hall.description);
+  }
+  if (hall.is_active !== undefined) {
+    fields.push("is_active = ?");
+    params.push(hall.is_active);
+  }
+  if (fields.length === 0) return false;
+  params.push(id);
+  const result = await query<any>(`UPDATE halls SET ${fields.join(", ")} WHERE id = ?`, params);
+  return result.affectedRows > 0;
+};
+
+export const getEventPackages = async (): Promise<any[]> => {
+  const packages = await query<any[]>("SELECT * FROM event_packages ORDER BY id DESC");
+  for (const pkg of packages) {
+    pkg.items = await query<any[]>(
+      `SELECT epi.id, epi.package_id, epi.menu_item_id, epi.quantity,
+              mi.name AS menu_item_name, mi.price AS menu_item_price
+       FROM event_package_items epi
+       JOIN menu_items mi ON epi.menu_item_id = mi.id
+       WHERE epi.package_id = ?`,
+      [pkg.id]
+    );
+  }
+  return packages;
+};
+
+export const createEventPackage = async (pkg: any): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO event_packages (name, price_per_person, description, is_active) VALUES (?, ?, ?, 1)",
+    [pkg.name, pkg.price_per_person, pkg.description || null]
+  );
+  const packageId = result.insertId;
+
+  if (pkg.items && pkg.items.length > 0) {
+    for (const item of pkg.items) {
+      await query<any>(
+        "INSERT INTO event_package_items (package_id, menu_item_id, quantity) VALUES (?, ?, ?)",
+        [packageId, item.menu_item_id, item.quantity]
+      );
+    }
+  }
+
+  return { id: packageId, ...pkg, is_active: 1 };
+};
+
+export const updateEventPackage = async (id: number | string, pkg: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+  if (pkg.name !== undefined) {
+    fields.push("name = ?");
+    params.push(pkg.name);
+  }
+  if (pkg.price_per_person !== undefined) {
+    fields.push("price_per_person = ?");
+    params.push(pkg.price_per_person);
+  }
+  if (pkg.description !== undefined) {
+    fields.push("description = ?");
+    params.push(pkg.description);
+  }
+  if (pkg.is_active !== undefined) {
+    fields.push("is_active = ?");
+    params.push(pkg.is_active);
+  }
+
+  if (fields.length > 0) {
+    params.push(id);
+    await query(`UPDATE event_packages SET ${fields.join(", ")} WHERE id = ?`, params);
+  }
+
+  if (pkg.items !== undefined) {
+    await query("DELETE FROM event_package_items WHERE package_id = ?", [id]);
+    if (pkg.items.length > 0) {
+      for (const item of pkg.items) {
+        await query(
+          "INSERT INTO event_package_items (package_id, menu_item_id, quantity) VALUES (?, ?, ?)",
+          [id, item.menu_item_id, item.quantity]
+        );
+      }
+    }
+  }
+
+  return true;
 };
