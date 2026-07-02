@@ -9,6 +9,11 @@ import path from "path";
 import uploadRoutes from "./routes/upload.routes";
 import authRoutes from "./routes/auth.routes";
 import orderRoutes from "./routes/order.routes";
+import tableRoutes from "./routes/table.routes";
+import menuRoutes from "./routes/menu.routes";
+import inventoryRoutes from "./routes/inventory.routes";
+import paymentRoutes from "./routes/payment.routes";
+import kdsRoutes from "./routes/kds.routes";
 import { initDb } from "./utils/db";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
@@ -65,6 +70,12 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/upload", uploadRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/tables", tableRoutes);
+app.use("/api/menu", menuRoutes);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/kds", kdsRoutes);
+app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

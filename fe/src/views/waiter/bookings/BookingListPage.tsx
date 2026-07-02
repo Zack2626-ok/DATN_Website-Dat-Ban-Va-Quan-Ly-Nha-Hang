@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, Plus, MoreVertical, CalendarDays, User, Phone, CheckCircle, XCircle, UserCheck, Clock, MapPin } from "lucide-react";
+import { Search, Plus, CalendarDays, User, Phone, CheckCircle, XCircle, UserCheck, MapPin } from "lucide-react";
 import { MOCK_BOOKINGS, Booking } from "../../../data/mockBookings";
 import { MOCK_TABLES } from "../../../data/mockTables";
 import { toast } from "react-hot-toast";
