@@ -41,12 +41,19 @@ export const BookingListPage: React.FC = () => {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const getLocalNowString = () => {
+    const now = new Date();
+    // Adjust to local timezone offset for input[type="datetime-local"]
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+  };
+
   const [formData, setFormData] = useState({
     guest_name: "",
     guest_phone: "",
     party_size: 2,
     table_id: "",
-    start_time: "",
+    start_time: getLocalNowString(),
     guest_note: "",
   });
 
@@ -100,6 +107,14 @@ export const BookingListPage: React.FC = () => {
 
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.guest_name.trim()) {
+      toast.error("Vui lòng nhập tên khách hàng");
+      return;
+    }
+    if (!formData.guest_phone.trim()) {
+      toast.error("Vui lòng nhập số điện thoại");
+      return;
+    }
     if (!formData.table_id) {
       toast.error("Vui lòng chọn bàn");
       return;
@@ -125,7 +140,7 @@ export const BookingListPage: React.FC = () => {
 
       toast.success("✅ Tạo booking mới thành công!");
       setIsAddModalOpen(false);
-      setFormData({ guest_name: "", guest_phone: "", party_size: 2, table_id: "", start_time: "", guest_note: "" });
+      setFormData({ guest_name: "", guest_phone: "", party_size: 2, table_id: "", start_time: getLocalNowString(), guest_note: "" });
       fetchData();
     } catch (err) {
       console.error(err);

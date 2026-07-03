@@ -40,6 +40,10 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!customerName.trim()) {
+      import('react-hot-toast').then(m => m.toast.error('Vui lòng nhập tên khách hàng'));
+      return;
+    }
     setIsSubmitting(true);
 
     setTimeout(() => {

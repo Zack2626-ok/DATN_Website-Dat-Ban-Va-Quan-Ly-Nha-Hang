@@ -65,7 +65,8 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
       return;
     }
 
-    const success = await db.updateBookingStatus(Number(id), status);
+    const userId = req.user?.userId ? Number(req.user.userId) : undefined;
+    const success = await db.updateBookingStatus(Number(id), status, userId);
     if (!success) {
       sendError(res, "Không tìm thấy đặt bàn", 404);
       return;

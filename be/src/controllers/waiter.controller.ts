@@ -48,27 +48,21 @@ export const getOrderItemsHandler = async (req: Request, res: Response): Promise
 // Tạo order mới (resmanager)
 export const createResmanagerOrderHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count } = req.body;
+    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone } = req.body;
 
     if (!created_by) {
       sendError(res, "created_by (waiter id) là bắt buộc", 400);
       return;
     }
 
-    // Lưu thông tin khách vào note dưới dạng JSON
-    const noteData: any = {};
-    if (guest_name) noteData.guest_name = guest_name;
-    if (guest_phone) noteData.guest_phone = guest_phone;
-    if (guest_count) noteData.guest_count = guest_count;
-    if (note) noteData.extra_note = note;
-    const noteJson = Object.keys(noteData).length > 0 ? JSON.stringify(noteData) : undefined;
-
     const order = await db.createResmanagerOrder({
       table_id: table_id ? Number(table_id) : null,
       customer_id: customer_id ? Number(customer_id) : null,
       created_by: Number(created_by),
       order_type: order_type || "dine_in",
-      note: noteJson,
+      note: note || undefined,
+      guest_name: guest_name || null,
+      guest_phone: guest_phone || null,
     });
 
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
@@ -82,6 +76,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
 
 // Thêm món vào order
 export const addOrderItemHandler = async (req: Request, res: Response): Promise<void> => {
