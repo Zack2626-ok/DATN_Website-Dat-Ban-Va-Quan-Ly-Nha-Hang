@@ -13,11 +13,9 @@ const router = Router();
 
 // Table areas
 router.get("/table-areas", getTableAreasHandler);
-router.get("/v1/table-areas", getTableAreasHandler);
 
 // Table list
 router.get("/", getAllTables);
-router.get("/v1/tables", getAllTables);
 
 router.get("/status/:status", getTablesByStatus);
 router.post("/", createTable);

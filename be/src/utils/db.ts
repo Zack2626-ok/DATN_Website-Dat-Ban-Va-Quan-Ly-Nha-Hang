@@ -63,7 +63,7 @@ export const loadJsonDb = (): { orders: Order[] } => {
     return { orders: [] };
   }
   try {
-    const content = fs.readFileSync(JSON_DB_PATH, "utf8");
+    const content = fs.readFileSync(JSON_DB_PATH, "utf8");  
     return JSON.parse(content);
   } catch (err) {
     console.error("Error reading JSON DB file, returning empty state:", err);
@@ -854,10 +854,11 @@ export const getBookingById = async (id: number): Promise<any | null> => {
   return rows[0] || null;
 };
 
-/** Đồng bộ trạng thái bàn với booking (pending/confirmed → reserved, cancelled/completed → empty) */
 export const syncTableStatusWithBooking = async (
   tableId: number,
   bookingStatus: "pending" | "confirmed" | "cancelled" | "completed",
+  userId?: number,
+  booking?: any
 ): Promise<void> => {
   if (bookingStatus === "pending" || bookingStatus === "confirmed") {
     await query<any>(
@@ -868,7 +869,7 @@ export const syncTableStatusWithBooking = async (
     return;
   }
 
-  if (bookingStatus === "cancelled" || bookingStatus === "completed") {
+  if (bookingStatus === "cancelled") {
     await query<any>(
       `UPDATE tables SET status = 'empty'
        WHERE id = ? AND status = 'reserved' AND is_deleted = 0
@@ -878,6 +879,29 @@ export const syncTableStatusWithBooking = async (
          )`,
       [tableId, tableId],
     );
+  }
+
+  if (bookingStatus === "completed") {
+    await query<any>(
+      `UPDATE tables SET status = 'serving'
+       WHERE id = ? AND (status = 'reserved' OR status = 'empty') AND is_deleted = 0`,
+      [tableId],
+    );
+
+    const existingOrders = await query<any[]>(
+      `SELECT id FROM orders WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')`,
+      [tableId]
+    );
+
+    if (existingOrders.length === 0 && booking) {
+       await createResmanagerOrder({
+         table_id: tableId,
+         created_by: userId || 4,
+         order_type: "dine_in",
+         guest_name: booking.guest_name || null,
+         guest_phone: booking.guest_phone || null,
+       });
+    }
   }
 };
 
@@ -916,24 +940,25 @@ export const createBooking = async (data: {
 export const updateBookingStatus = async (
   id: number,
   status: "pending" | "confirmed" | "cancelled" | "completed",
+  userId?: number
 ): Promise<boolean> => {
   const booking = await getBookingById(id);
   if (!booking) return false;
 
   const result = await query<any>("UPDATE bookings SET status = ? WHERE id = ?", [status, id]);
   if (result.affectedRows > 0 && booking.table_id) {
-    await syncTableStatusWithBooking(booking.table_id, status);
+    await syncTableStatusWithBooking(booking.table_id, status, userId, booking);
   }
   return result.affectedRows > 0;
 };
 
-export const completeActiveBookingForTable = async (tableId: number): Promise<void> => {
+export const completeActiveBookingForTable = async (tableId: number, userId?: number): Promise<void> => {
   const rows = await query<any[]>(
     `SELECT id FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1`,
     [tableId],
   );
   if (rows.length > 0) {
-    await updateBookingStatus(rows[0].id, "completed");
+    await updateBookingStatus(rows[0].id, "completed", userId);
   }
 };
 
@@ -1034,20 +1059,25 @@ export const createResmanagerOrder = async (data: {
   created_by: number;
   order_type?: "dine_in" | "takeaway" | "delivery";
   note?: string;
+  guest_name?: string | null;
+  guest_phone?: string | null;
 }): Promise<any> => {
   const result = await query<any>(
-    `INSERT INTO orders (table_id, customer_id, created_by, order_type, status, note)
-     VALUES (?, ?, ?, ?, 'open', ?)`,
+    `INSERT INTO orders (table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone)
+     VALUES (?, ?, ?, ?, 'open', ?, ?, ?)`,
     [
       data.table_id,
       data.customer_id || null,
       data.created_by,
       data.order_type || "dine_in",
       data.note || null,
+      data.guest_name || null,
+      data.guest_phone || null,
     ],
   );
   return { id: result.insertId, ...data, status: "open" };
 };
+
 
 export const addResmanagerOrderItem = async (data: {
   order_id: number;
@@ -1115,9 +1145,10 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
   // 1) Lấy tất cả bàn cơ bản
   const tables = await getResmanagerTables(areaId);
 
-  // 2) Lấy active orders kèm thông tin khách (parse từ note)
+  // 2) Lấy active orders kèm thông tin khách
   const activeOrders = await query<any[]>(
-    `SELECT o.table_id, o.id AS order_id, o.note AS order_note, o.customer_id,
+    `SELECT o.table_id, o.id AS order_id, o.customer_id,
+            o.guest_name, o.guest_phone,
             c.name AS customer_name, c.phone AS customer_phone
      FROM orders o
      LEFT JOIN customers c ON o.customer_id = c.id
@@ -1160,14 +1191,9 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     let bookingStartTime: string | null = null;
 
     if (activeOrder) {
-      try {
-        const noteData = JSON.parse(activeOrder.order_note || "{}");
-        guestName = noteData.guest_name || activeOrder.customer_name || null;
-        guestPhone = noteData.guest_phone || activeOrder.customer_phone || null;
-      } catch {
-        guestName = activeOrder.customer_name || null;
-        guestPhone = activeOrder.customer_phone || null;
-      }
+      // Ưu tiên: guest_name/guest_phone cột riêng → customer từ JOIN
+      guestName  = activeOrder.guest_name  || activeOrder.customer_name  || null;
+      guestPhone = activeOrder.guest_phone || activeOrder.customer_phone || null;
     }
 
     if (!guestName && upcomingBooking) {
@@ -1385,16 +1411,18 @@ export const splitResmanagerTable = async (
   if (orders.length === 0) return { success: false };
   const originalOrder = orders[0];
 
-  // Tạo order mới cho target table
+  // Tạo order mới cho target table (kế thừa thông tin khách từ order gốc)
   const newOrderResult = await query<any>(
-    `INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note)
-     VALUES (?, NULL, ?, ?, ?, 'serving', ?)`,
+    `INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone)
+     VALUES (?, NULL, ?, ?, ?, 'serving', ?, ?, ?)`,
     [
       targetTableId,
       originalOrder.created_by,
       originalOrder.order_type,
       childLabel,
-      JSON.stringify({ split_from: parentTableId, guest_name: null, guest_phone: null }),
+      originalOrder.note || null,
+      originalOrder.guest_name || null,
+      originalOrder.guest_phone || null,
     ],
   );
   const newOrderId = newOrderResult.insertId;
