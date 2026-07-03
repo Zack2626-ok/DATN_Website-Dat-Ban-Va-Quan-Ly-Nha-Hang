@@ -24,7 +24,7 @@ import { toast } from "react-hot-toast";
 import { TransferTableModal } from "./TransferTableModal";
 import { MergeTableModal } from "./MergeTableModal";
 import { SplitTableModal } from "./SplitTableModal";
-import { getTableAreas, getTablesV1 } from "../../../services/tableService";
+import { getTableAreas, getTablesV1, updateTableStatus } from "../../../services/tableService";
 import { getOrdersByTable, getOrderItems, createOrder } from "../../../services/waiterService";
 
 type TableAction = "transfer" | "merge" | "split" | null;
@@ -189,6 +189,17 @@ export const WaiterTableMap: React.FC = () => {
     await fetchData();
   };
 
+  const handleRequestPayment = async () => {
+    if (!selectedTableId) return;
+    try {
+      await updateTableStatus(Number(selectedTableId), "pending_payment");
+      await fetchData();
+      toast.success("Đã gửi yêu cầu thanh toán — thu ngân sẽ xử lý");
+    } catch {
+      toast.error("Không thể gửi yêu cầu thanh toán");
+    }
+  };
+
   const goToOrder = () => {
     if (selectedTable) navigate(`/waiter/orders/${selectedTable.id}`);
   };
@@ -209,7 +220,7 @@ export const WaiterTableMap: React.FC = () => {
         <div className="flex justify-between items-center">
           <div>
             <h3 className="text-xl font-bold text-gray-800 font-display">Sơ đồ trạng thái bàn</h3>
-            <p className="text-xs text-gray-500 mt-1">Quản lý khu vực và trạng thái phục vụ thời gian thực</p>
+            <p className="text-sm text-gray-500 mt-1">Quản lý khu vực và trạng thái phục vụ thời gian thực</p>
           </div>
           <button onClick={fetchData} className="p-2 hover:bg-gray-100 rounded-full transition-colors" title="Làm mới">
             <RefreshCw size={20} className="text-gray-400" />
@@ -285,29 +296,31 @@ export const WaiterTableMap: React.FC = () => {
                     <span className="text-lg font-black mt-1">{table.name}</span>
 
                     {/* Capacity + Status */}
-                    <span className="text-[10px] font-bold uppercase tracking-tighter opacity-70">
+                    <span className="text-xs font-bold uppercase tracking-tighter opacity-70">
                       {table.capacity} Chỗ • {labels[table.status as keyof typeof labels]}
                     </span>
 
-                    {/* Guest info — hiển thị khi bàn đang phục vụ hoặc reserved */}
-                    {(table.status === "serving" || table.status === "pending_payment") && tableExt.guest_name && (
+                    {/* Guest info — hiển thị khi bàn đang phục vụ, reserved hoặc chờ TT */}
+                    {(table.status === "serving" || table.status === "pending_payment" || table.status === "reserved") &&
+                      tableExt.guest_name && (
                       <div className="w-full mt-1 space-y-0.5">
-                        <div className="flex items-center gap-1 text-[9px] font-bold opacity-80">
-                          <User size={8} />
-                          <span className="truncate max-w-[80px]">{tableExt.guest_name}</span>
+                        <div className="flex items-center gap-1 text-xs font-bold opacity-80">
+                          <User size={10} />
+                          <span className="truncate max-w-[90px]">{tableExt.guest_name}</span>
                         </div>
                         {tableExt.guest_phone && (
-                          <div className="flex items-center gap-1 text-[9px] opacity-60">
-                            <Phone size={8} />
+                          <div className="flex items-center gap-1 text-xs opacity-70">
+                            <Phone size={10} />
                             <span>{tableExt.guest_phone}</span>
                           </div>
                         )}
-                      </div>
-                    )}
-
-                    {table.status === "reserved" && tableExt.guest_name && (
-                      <div className="w-full mt-0.5 text-[9px] font-bold opacity-70 text-center truncate">
-                        👤 {tableExt.guest_name}
+                        {table.status === "reserved" && tableExt.booking_start_time && (
+                          <div className="text-[11px] font-semibold text-amber-700 opacity-80">
+                            📅 {new Date(tableExt.booking_start_time).toLocaleString("vi-VN", {
+                              day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -351,13 +364,13 @@ export const WaiterTableMap: React.FC = () => {
               <div className="flex justify-between items-start pb-4 border-b border-gray-50">
                 <div>
                   <h4 className="text-2xl font-black text-gray-800">{selectedTable.name}</h4>
-                  <p className="text-xs text-gray-400 font-medium">Sức chứa: {selectedTable.capacity} khách</p>
+                  <p className="text-sm text-gray-400 font-medium">Sức chứa: {selectedTable.capacity} khách</p>
                   {(selectedTable as any).area_name && (
                     <p className="text-xs text-blue-400 font-medium">{(selectedTable as any).area_name}</p>
                   )}
                   {/* Merge/Split status */}
                   {(selectedTable as any).is_merged_primary && (
-                    <p className="text-[10px] font-bold text-indigo-600 mt-1">
+                    <p className="text-xs font-bold text-indigo-600 mt-1">
                       🔗 Đang gộp với: {((selectedTable as any).merged_tables || []).map((m: any) => m.name).join(", ")}
                     </p>
                   )}
@@ -487,6 +500,12 @@ export const WaiterTableMap: React.FC = () => {
                     <ShoppingBag size={16} />
                     GỌI THÊM MÓN
                   </button>
+                  <button
+                    onClick={handleRequestPayment}
+                    className="w-full py-3 border-2 border-purple-200 text-purple-700 rounded-2xl font-bold text-sm hover:bg-purple-50 transition-all"
+                  >
+                    YÊU CẦU THANH TOÁN (Thu ngân xử lý)
+                  </button>
                 </div>
               )}
 
@@ -498,10 +517,15 @@ export const WaiterTableMap: React.FC = () => {
                   </div>
                   <div>
                     <h5 className="font-bold text-gray-800">Bàn đã đặt trước</h5>
-                    <div className="mt-3 p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-left space-y-1">
-                      <p className="text-[10px] font-bold text-amber-700 uppercase">Trạng thái</p>
-                      <p className="text-sm font-black text-gray-800">Đang chờ khách</p>
-                    </div>
+                    {(selectedTable as any).guest_name && (
+                      <div className="mt-3 p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-left space-y-1.5 w-full">
+                        <p className="text-xs font-bold text-amber-700 uppercase">Khách đặt</p>
+                        <p className="text-sm font-black text-gray-800">{(selectedTable as any).guest_name}</p>
+                        {(selectedTable as any).guest_phone && (
+                          <p className="text-sm text-gray-600">📞 {(selectedTable as any).guest_phone}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={async () => {
@@ -574,8 +598,11 @@ export const WaiterTableMap: React.FC = () => {
                     className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black text-sm hover:bg-purple-700 transition-all flex items-center justify-center gap-2"
                   >
                     <ShoppingBag size={16} />
-                    XEM ORDER / THANH TOÁN
+                    XEM ORDER
                   </button>
+                  <p className="text-xs text-center text-gray-400 px-2">
+                    Thanh toán do thu ngân thực hiện tại quầy POS
+                  </p>
                 </div>
               )}
             </div>

@@ -10,5 +10,10 @@ const navLinks: NavLinkItem[] = [
 ];
 
 export const WaiterLayout: React.FC = () => (
-  <ActorShellLayout actorRole="waiter" navLinks={navLinks} homeLink="/waiter/tables" />
+  <ActorShellLayout
+    actorRole="waiter"
+    navLinks={navLinks}
+    homeLink="/waiter/tables"
+    mainClassName="text-[15px] md:text-base"
+  />
 );

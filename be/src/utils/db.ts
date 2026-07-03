@@ -181,8 +181,36 @@ export const initDb = async (): Promise<boolean> => {
   conn.release();
   console.log(`🚀 Connected to MySQL ${host}:${port}/${database}`);
   await createDatabaseTables();
+  await runSchemaMigrations();
   console.log("✅ MySQL tables verified/created successfully.");
   return true;
+};
+
+/** Lightweight migrations for resmanager schema columns */
+const runSchemaMigrations = async (): Promise<void> => {
+  try {
+    const cols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_held'`,
+    );
+    if (cols.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN is_held TINYINT(1) NOT NULL DEFAULT 0 AFTER status`);
+      console.log("✅ Migration: added order_items.is_held");
+    }
+
+    // Đồng bộ bàn reserved với booking pending/confirmed còn hiệu lực
+    await query(`
+      UPDATE tables t
+      SET t.status = 'reserved'
+      WHERE t.status = 'empty' AND t.is_deleted = 0
+        AND EXISTS (
+          SELECT 1 FROM bookings b
+          WHERE b.table_id = t.id AND b.status IN ('pending', 'confirmed')
+        )
+    `);
+  } catch (err) {
+    console.warn("Schema migration skipped:", (err as Error).message);
+  }
 };
 
 // ===== User operations =====
@@ -691,6 +719,33 @@ export const getBookingById = async (id: number): Promise<any | null> => {
   return rows[0] || null;
 };
 
+/** Đồng bộ trạng thái bàn với booking (pending/confirmed → reserved, cancelled/completed → empty) */
+export const syncTableStatusWithBooking = async (
+  tableId: number,
+  bookingStatus: "pending" | "confirmed" | "cancelled" | "completed",
+): Promise<void> => {
+  if (bookingStatus === "pending" || bookingStatus === "confirmed") {
+    await query<any>(
+      `UPDATE tables SET status = 'reserved'
+       WHERE id = ? AND status = 'empty' AND is_deleted = 0`,
+      [tableId],
+    );
+    return;
+  }
+
+  if (bookingStatus === "cancelled" || bookingStatus === "completed") {
+    await query<any>(
+      `UPDATE tables SET status = 'empty'
+       WHERE id = ? AND status = 'reserved' AND is_deleted = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM orders o
+           WHERE o.table_id = ? AND o.status NOT IN ('completed', 'cancelled')
+         )`,
+      [tableId, tableId],
+    );
+  }
+};
+
 export const createBooking = async (data: {
   table_id: number;
   customer_id?: number | null;
@@ -719,6 +774,7 @@ export const createBooking = async (data: {
       data.note || null,
     ],
   );
+  await syncTableStatusWithBooking(data.table_id, "pending");
   return { id: result.insertId, ...data, confirmation_code: code, status: "pending" };
 };
 
@@ -726,7 +782,34 @@ export const updateBookingStatus = async (
   id: number,
   status: "pending" | "confirmed" | "cancelled" | "completed",
 ): Promise<boolean> => {
+  const booking = await getBookingById(id);
+  if (!booking) return false;
+
   const result = await query<any>("UPDATE bookings SET status = ? WHERE id = ?", [status, id]);
+  if (result.affectedRows > 0 && booking.table_id) {
+    await syncTableStatusWithBooking(booking.table_id, status);
+  }
+  return result.affectedRows > 0;
+};
+
+export const completeActiveBookingForTable = async (tableId: number): Promise<void> => {
+  const rows = await query<any[]>(
+    `SELECT id FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1`,
+    [tableId],
+  );
+  if (rows.length > 0) {
+    await updateBookingStatus(rows[0].id, "completed");
+  }
+};
+
+export const deleteCancelledBooking = async (id: number): Promise<boolean> => {
+  const booking = await getBookingById(id);
+  if (!booking || booking.status !== "cancelled") return false;
+
+  const result = await query<any>("DELETE FROM bookings WHERE id = ? AND status = 'cancelled'", [id]);
+  if (result.affectedRows > 0 && booking.table_id) {
+    await syncTableStatusWithBooking(booking.table_id, "cancelled");
+  }
   return result.affectedRows > 0;
 };
 
@@ -868,8 +951,20 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
   const result = await query<any>(
-    `UPDATE order_items SET status = 'cooking' WHERE id IN (${placeholders}) AND status = 'pending'`,
+    `UPDATE order_items SET status = 'cooking', is_held = 0
+     WHERE id IN (${placeholders}) AND status = 'pending'`,
     orderItemIds,
+  );
+  return result.affectedRows > 0;
+};
+
+export const holdResmanagerOrderItems = async (orderItemIds: number[], held: boolean): Promise<boolean> => {
+  if (orderItemIds.length === 0) return false;
+  const placeholders = orderItemIds.map(() => "?").join(",");
+  const result = await query<any>(
+    `UPDATE order_items SET is_held = ?
+     WHERE id IN (${placeholders}) AND status = 'pending'`,
+    [held ? 1 : 0, ...orderItemIds],
   );
   return result.affectedRows > 0;
 };
@@ -922,10 +1017,12 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
   return tables.map((table: any) => {
     // Thông tin order đang chạy
     const activeOrder = activeOrders.find((o) => o.table_id === table.id);
+    const upcomingBooking = bookings.find((b) => b.table_id === table.id);
 
     // Thông tin khách
     let guestName: string | null = null;
     let guestPhone: string | null = null;
+    let bookingStartTime: string | null = null;
 
     if (activeOrder) {
       try {
@@ -938,14 +1035,15 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
       }
     }
 
-    if (!guestName) {
-      // Fallback: lấy từ booking gần nhất của bàn này
-      const booking = bookings.find((b) => b.table_id === table.id);
-      if (booking) {
-        guestName = booking.guest_name;
-        guestPhone = booking.guest_phone;
-      }
+    if (!guestName && upcomingBooking) {
+      guestName = upcomingBooking.guest_name;
+      guestPhone = upcomingBooking.guest_phone;
+      bookingStartTime = upcomingBooking.start_time;
     }
+
+    // Hiển thị reserved trên sơ đồ khi có booking active nhưng DB chưa sync status
+    const displayStatus =
+      table.status === "empty" && upcomingBooking ? "reserved" : table.status;
 
     // Thông tin gộp bàn
     const mergedInto = merges.find((m) => m.merged_table_id === table.id);
@@ -956,8 +1054,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
 
     return {
       ...table,
+      status: displayStatus,
       guest_name: guestName,
       guest_phone: guestPhone,
+      booking_start_time: bookingStartTime,
+      has_upcoming_booking: !!upcomingBooking,
       // Gộp bàn
       is_merged_primary: mergedChildren.length > 0,
       merged_tables: mergedChildren.map((m) => ({ id: m.merged_table_id, name: m.merged_name })),
@@ -1103,16 +1204,23 @@ export const transferResmanagerOrder = async (
   sourceTableId: number,
   targetTableId: number,
 ): Promise<boolean> => {
-  // Cập nhật order sang bàn mới
-  const orderResult = await query<any>(
+  const sourceRows = await query<any[]>(
+    `SELECT status FROM tables WHERE id = ? AND is_deleted = 0`,
+    [sourceTableId],
+  );
+  if (sourceRows.length === 0) return false;
+
+  const sourceStatus = sourceRows[0].status as string;
+  if (!["serving", "pending_payment"].includes(sourceStatus)) return false;
+
+  // Cập nhật order sang bàn mới (nếu có)
+  await query<any>(
     `UPDATE orders SET table_id = ? WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')`,
     [targetTableId, sourceTableId],
   );
 
-  if (orderResult.affectedRows === 0) return false;
-
-  // Cập nhật trạng thái bàn
-  await query<any>(`UPDATE tables SET status = 'serving' WHERE id = ?`, [targetTableId]);
+  // Chuyển trạng thái bàn — kể cả khi chưa có order active (data lệch seed/UI)
+  await query<any>(`UPDATE tables SET status = ? WHERE id = ?`, [sourceStatus, targetTableId]);
   await query<any>(`UPDATE tables SET status = 'empty' WHERE id = ?`, [sourceTableId]);
 
   // Xóa bất kỳ merge records liên quan đến source table

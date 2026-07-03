@@ -76,3 +76,17 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+export const deleteBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const success = await db.deleteCancelledBooking(Number(id));
+    if (!success) {
+      sendError(res, "Chỉ xóa được booking đã hủy", 400);
+      return;
+    }
+    sendSuccess(res, { id: Number(id) }, "Đã xóa booking");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};

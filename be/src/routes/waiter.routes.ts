@@ -8,6 +8,7 @@ import {
   addOrderItemHandler,
   voidOrderItemHandler,
   sendItemsToKitchenHandler,
+  holdOrderItemsHandler,
 } from "../controllers/waiter.controller";
 
 const router = Router();
@@ -23,5 +24,6 @@ router.post("/orders", createResmanagerOrderHandler);
 router.post("/orders/:orderId/items", addOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/void", voidOrderItemHandler);
 router.post("/orders/:orderId/send-to-kitchen", sendItemsToKitchenHandler);
+router.post("/orders/:orderId/hold-items", holdOrderItemsHandler);
 
 export default router;
