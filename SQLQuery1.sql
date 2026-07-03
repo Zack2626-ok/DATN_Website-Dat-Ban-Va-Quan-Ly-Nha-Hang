@@ -198,15 +198,15 @@ CREATE TABLE tables (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO tables (area_id, name, capacity, row_pos, col_pos, status) VALUES
- (1,'B01',4,'A',1,'serving'),
- (1,'B02',4,'A',2,'serving'),
- (1,'B03',6,'A',3,'empty'),
+ (1,'B01',4,'A',1,'empty'),
+ (1,'B02',4,'A',2,'empty'),
+ (1,'B03',6,'A',3,'reserved'),
  (1,'B04',8,'B',1,'pending_payment'),
  (1,'B05',4,'B',2,'empty'),
  (2,'B06',4,'A',1,'reserved'),
  (2,'B07',6,'A',2,'empty'),
  (2,'B08',8,'A',3,'serving'),
- (2,'B09',10,'B',1,'empty'),
+ (2,'B09',10,'B',1,'reserved'),
  (3,'B10',6,'A',1,'empty');
 
 CREATE TABLE bookings (
@@ -263,9 +263,8 @@ CREATE TABLE table_merges (
     CONSTRAINT fk_merge_merged  FOREIGN KEY (merged_table_id)  REFERENCES tables(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- B01 và B02 đang phục vụ cùng 1 đoàn khách lớn → gộp bàn
-INSERT INTO table_merges (primary_table_id, merged_table_id, merged_at) VALUES
- (1, 2, '2026-06-23 19:00:00');
+-- (Không seed dữ liệu mẫu gộp bàn để demo sạch)
+
 
 CREATE TABLE table_splits (
     id               INT          NOT NULL AUTO_INCREMENT,
@@ -276,10 +275,7 @@ CREATE TABLE table_splits (
     CONSTRAINT fk_split_parent FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- B04 (bàn 8 người) tách thành 2 nhóm tự trả tiền riêng
-INSERT INTO table_splits (parent_table_id, child_label, created_at) VALUES
- (4, '4:1', '2026-06-23 19:30:00'),
- (4, '4:2', '2026-06-23 19:30:00');
+-- (Không seed dữ liệu mẫu tách bàn để demo sạch)
 
 
 -- ============================================================================
@@ -421,6 +417,8 @@ CREATE TABLE orders (
     split_label VARCHAR(10)  DEFAULT NULL,
     status      ENUM('open','serving','pending_payment','completed','cancelled') NOT NULL DEFAULT 'open',
     note        TEXT         DEFAULT NULL,
+    guest_name  VARCHAR(100) DEFAULT NULL,
+    guest_phone VARCHAR(20)  DEFAULT NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     closed_at   DATETIME     DEFAULT NULL,
     PRIMARY KEY (id),
@@ -429,12 +427,13 @@ CREATE TABLE orders (
     CONSTRAINT fk_orders_user     FOREIGN KEY (created_by)  REFERENCES users(id)     ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note, created_at, closed_at) VALUES
- (1, 1, 4, 'dine_in',  NULL,  'completed',       N'Khách yêu cầu ít muối',    '2026-06-23 12:00:00', '2026-06-23 13:30:00'),
- (8, NULL, 5, 'dine_in', NULL, 'serving',         NULL,                        '2026-06-23 18:15:00', NULL),
- (4, 3, 4, 'dine_in',  '4:1', 'pending_payment',  N'Tách nhóm 1',             '2026-06-23 19:00:00', NULL),
- (4, NULL, 4, 'dine_in','4:2', 'pending_payment',  N'Tách nhóm 2',            '2026-06-23 19:00:00', NULL),
- (NULL, NULL, 4, 'takeaway', NULL, 'completed',   N'Mang về',                  '2026-06-23 11:00:00', '2026-06-23 11:20:00');
+INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, created_at, closed_at) VALUES
+ (1, 1, 4, 'dine_in',  NULL, 'completed',      N'Khách yêu cầu ít muối', NULL,               NULL,           '2026-06-23 12:00:00', '2026-06-23 13:30:00'),
+ (8, NULL, 5, 'dine_in', NULL, 'serving',        NULL,                     N'Nguyễn Văn Bình', '0912345678',   '2026-06-23 18:15:00', NULL),
+ (4, 3, 4, 'dine_in',  NULL, 'pending_payment', NULL,                     NULL,               NULL,           '2026-06-23 19:00:00', NULL),
+ (4, NULL, 4, 'dine_in', NULL, 'pending_payment', NULL,                   N'Lê Thị C',        '0933333333',   '2026-06-23 19:00:00', NULL),
+ (NULL, NULL, 4, 'takeaway', NULL, 'completed',   N'Mang về',               NULL,               NULL,           '2026-06-23 11:00:00', '2026-06-23 11:20:00');
+
 
 CREATE TABLE order_items (
     id            INT           NOT NULL AUTO_INCREMENT,
@@ -446,6 +445,7 @@ CREATE TABLE order_items (
     course_number INT           NOT NULL DEFAULT 1,
     kitchen_note  TEXT          DEFAULT NULL,
     status        ENUM('pending','cooking','done','cancelled','voided') NOT NULL DEFAULT 'pending',
+    is_held       TINYINT(1)   NOT NULL DEFAULT 0,
     voided_at     DATETIME      DEFAULT NULL,
     void_reason   VARCHAR(255)  DEFAULT NULL,
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,

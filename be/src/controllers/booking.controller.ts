@@ -65,13 +65,28 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
       return;
     }
 
-    const success = await db.updateBookingStatus(Number(id), status);
+    const userId = req.user?.userId ? Number(req.user.userId) : undefined;
+    const success = await db.updateBookingStatus(Number(id), status, userId);
     if (!success) {
       sendError(res, "Không tìm thấy đặt bàn", 404);
       return;
     }
 
     sendSuccess(res, { id, status }, "Cập nhật trạng thái đặt bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const deleteBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const success = await db.deleteCancelledBooking(Number(id));
+    if (!success) {
+      sendError(res, "Chỉ xóa được booking đã hủy", 400);
+      return;
+    }
+    sendSuccess(res, { id: Number(id) }, "Đã xóa booking");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

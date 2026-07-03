@@ -1,12 +1,18 @@
 import mysql from "mysql2/promise";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
 
 dotenv.config();
 
 let connectionPool: mysql.Pool | null = null;
 let dbAvailable = false;
+export let connectionPool: mysql.Pool | null = null;
+
+const JSON_DB_DIR = path.join(__dirname, "../database");
+const JSON_DB_PATH = path.join(JSON_DB_DIR, "db.json");
 
 const ensurePool = (): mysql.Pool => {
   if (!connectionPool) {
@@ -49,9 +55,11 @@ export interface Order {
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
+export let useFallback = false;
 const normalizeMenuItem = (row: any): MenuItem => ({
   ...row,
   available: Boolean(row.available),
+  is_active: row.is_active !== undefined ? Boolean(row.is_active) : Boolean(row.available),
 });
 
 const normalizeTable = (row: any): Table => ({
@@ -60,6 +68,33 @@ const normalizeTable = (row: any): Table => ({
   capacity: Number(row.capacity),
 });
 
+// Helper to load fallback JSON database
+export const loadJsonDb = (): { orders: Order[] } => {
+  if (!fs.existsSync(JSON_DB_DIR)) {
+    fs.mkdirSync(JSON_DB_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(JSON_DB_PATH)) {
+    fs.writeFileSync(JSON_DB_PATH, JSON.stringify({ orders: [] }, null, 2));
+    return { orders: [] };
+  }
+  try {
+    const content = fs.readFileSync(JSON_DB_PATH, "utf8");  
+    return JSON.parse(content);
+  } catch (err) {
+    console.error("Error reading JSON DB file, returning empty state:", err);
+    return { orders: [] };
+  }
+};
+
+// Helper to save fallback JSON database
+export const saveJsonDb = (data: { orders: Order[] }) => {
+  if (!fs.existsSync(JSON_DB_DIR)) {
+    fs.mkdirSync(JSON_DB_DIR, { recursive: true });
+  }
+  fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
+};
+
+// Initialize DB (MySQL or Fallback JSON)
 const normalizeInventory = (row: any): Inventory => ({
   ...row,
   quantity: Number(row.quantity),
@@ -194,9 +229,62 @@ export const initDb = async (): Promise<boolean> => {
   conn.release();
   console.log(`🚀 Connected to MySQL ${host}:${port}/${database}`);
   await createDatabaseTables();
+  await runSchemaMigrations();
   console.log("✅ MySQL tables verified/created successfully.");
   dbAvailable = true;
   return true;
+};
+
+/** Lightweight migrations for resmanager schema columns */
+const runSchemaMigrations = async (): Promise<void> => {
+  try {
+    const cols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_held'`,
+    );
+    if (cols.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN is_held TINYINT(1) NOT NULL DEFAULT 0 AFTER status`);
+      console.log("✅ Migration: added order_items.is_held");
+    }
+
+    // Đồng bộ bàn reserved với booking pending/confirmed còn hiệu lực
+    await query(`
+      UPDATE tables t
+      SET t.status = 'reserved'
+      WHERE t.status = 'empty' AND t.is_deleted = 0
+        AND EXISTS (
+          SELECT 1 FROM bookings b
+          WHERE b.table_id = t.id AND b.status IN ('pending', 'confirmed')
+        )
+    `);
+  } catch (err) {
+    console.warn("Schema migration skipped:", (err as Error).message);
+  }
+};
+
+const mapRoleName = (roleId: any): string => {
+  const id = Number(roleId);
+  switch (id) {
+    case 1: return "admin";
+    case 2: return "manager";
+    case 3: return "waiter";
+    case 4: return "cashier";
+    case 5: return "chef";
+    case 6: return "sales_event";
+    default: return "waiter";
+  }
+};
+
+const mapUserRow = (user: any): User => {
+  const roleName = user.role_name || mapRoleName(user.role_id);
+  return {
+    ...user,
+    id: String(user.id),
+    password: user.password || user.password_hash,
+    role: roleName,
+    role_name: roleName,
+    createdAt: user.createdAt || user.created_at || new Date().toISOString(),
+  };
 };
 
 // ===== User operations =====
@@ -211,7 +299,7 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
      WHERE u.email = ? AND u.is_deleted = 0`,
     [email],
   );
-  return rows[0] ? (rows[0] as User) : null;
+  return rows[0] ? mapUserRow(rows[0]) : null;
 };
 
 export const findUserById = async (id: string): Promise<User | null> => {
@@ -225,7 +313,7 @@ export const findUserById = async (id: string): Promise<User | null> => {
      WHERE u.id = ? AND u.is_deleted = 0`,
     [id],
   );
-  return rows[0] ? (rows[0] as User) : null;
+  return rows[0] ? mapUserRow(rows[0]) : null;
 };
 
 const getRoleId = (roleName: string): number => {
@@ -241,14 +329,27 @@ const getRoleId = (roleName: string): number => {
 };
 
 export const createUser = async (user: Omit<User, "id" | "createdAt">): Promise<User> => {
-  const roleId = getRoleId(user.role_name);
-  const result = await query<any>(
-    "INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES (?, ?, ?, ?, ?)",
-    [roleId, user.full_name, user.email, user.password, user.phone]
-  );
-  const id = result.insertId ? result.insertId.toString() : `user_${Date.now()}`;
-  const createdAt = new Date().toISOString();
-  return { id, createdAt, ...user };
+  try {
+    const roleId = getRoleId(user.role_name);
+    const result = await query<any>(
+      "INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES (?, ?, ?, ?, ?)",
+      [roleId, user.full_name, user.email, user.password, user.phone],
+    );
+    const insertId = result.insertId;
+    return {
+      id: String(insertId),
+      createdAt: new Date().toISOString(),
+      ...user,
+    };
+  } catch (err) {
+    const id = `user_${Date.now()}`;
+    const createdAt = new Date().toISOString();
+    await query(
+      "INSERT INTO users (id, full_name, email, password, role_name, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, user.full_name, user.email, user.password, user.role_name, user.phone, createdAt],
+    );
+    return { id, createdAt, ...user };
+  }
 };
 
 // ===== Order operations =====
@@ -382,15 +483,81 @@ export const updateOrderStatus = async (id: string, status: string): Promise<boo
   return result.affectedRows > 0;
 };
 
-// ===== Table operations =====
-export const getTables = async (): Promise<Table[]> => {
-  const rows = await query<any[]>("SELECT * FROM tables ORDER BY tableNumber ASC");
-  return rows.map(normalizeTable);
+export interface TableArea {
+  id: number;
+  name: string;
+  is_active: number;
+}
+
+export const getTableAreas = async (): Promise<TableArea[]> => {
+  try {
+    const rows = await query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
+    return rows.map(row => ({
+      id: Number(row.id),
+      name: row.name,
+      is_active: Number(row.is_active),
+    }));
+  } catch (err) {
+    return [
+      { id: 1, name: "Tầng 1", is_active: 1 },
+      { id: 2, name: "Tầng 2", is_active: 1 },
+      { id: 3, name: "Sân vườn", is_active: 1 },
+    ];
+  }
 };
 
-export const getTableById = async (id: string): Promise<Table | null> => {
-  const rows = await query<any[]>("SELECT * FROM tables WHERE id = ?", [id]);
-  return rows[0] ? normalizeTable(rows[0]) : null;
+const mapTable = (row: any): any => {
+  return {
+    ...row,
+    id: row.id,
+    area_id: row.area_id,
+    area_name: row.area_name,
+    name: row.name || String(row.tableNumber),
+    tableNumber: row.tableNumber !== undefined ? Number(row.tableNumber) : undefined,
+    capacity: Number(row.capacity),
+    status: row.status,
+  };
+};
+
+// ===== Table operations =====
+export const getTables = async (areaId?: number): Promise<any[]> => {
+  try {
+    let sql = `
+      SELECT t.*, a.name AS area_name 
+      FROM tables t 
+      LEFT JOIN table_areas a ON t.area_id = a.id 
+      WHERE t.is_deleted = 0
+    `;
+    const params: any[] = [];
+    if (areaId !== undefined) {
+      sql += " AND t.area_id = ?";
+      params.push(areaId);
+    }
+    sql += " ORDER BY t.name ASC";
+    const rows = await query<any[]>(sql, params);
+    return rows.map(mapTable);
+  } catch (err) {
+    let sql = "SELECT * FROM tables";
+    sql += " ORDER BY tableNumber ASC";
+    const rows = await query<any[]>(sql);
+    return rows.map(mapTable);
+  }
+};
+
+export const getTableById = async (id: string): Promise<any | null> => {
+  try {
+    const rows = await query<any[]>(
+      `SELECT t.*, a.name AS area_name 
+       FROM tables t 
+       LEFT JOIN table_areas a ON t.area_id = a.id 
+       WHERE t.id = ?`,
+      [id]
+    );
+    return rows[0] ? mapTable(rows[0]) : null;
+  } catch (err) {
+    const rows = await query<any[]>("SELECT * FROM tables WHERE id = ?", [id]);
+    return rows[0] ? mapTable(rows[0]) : null;
+  }
 };
 
 export const createTable = async (table: Omit<Table, "id" | "createdAt">): Promise<Table> => {
@@ -427,39 +594,156 @@ export const getTablesByStatus = async (status: string): Promise<Table[]> => {
 
 // ===== Menu operations =====
 export const getMenuItems = async (): Promise<MenuItem[]> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items ORDER BY createdAt DESC");
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE m.is_deleted = 0
+     ORDER BY m.created_at DESC`
+  );
   return rows.map(normalizeMenuItem);
 };
 
 export const getMenuItemById = async (id: string): Promise<MenuItem | null> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items WHERE id = ?", [id]);
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE m.id = ? AND m.is_deleted = 0`,
+    [id]
+  );
   return rows[0] ? normalizeMenuItem(rows[0]) : null;
 };
 
 export const getMenuItemsByCategory = async (category: string): Promise<MenuItem[]> => {
-  const rows = await query<any[]>("SELECT * FROM menu_items WHERE category = ? ORDER BY createdAt DESC", [category]);
+  const rows = await query<any[]>(
+    `SELECT m.id, m.name, m.description, m.price, m.image_url, m.image_url AS image, 
+            m.is_active AS available, m.category_id, c.name AS category,
+            m.kitchen_station, m.is_featured, m.is_deleted, m.created_at AS createdAt
+     FROM menu_items m
+     LEFT JOIN categories c ON m.category_id = c.id
+     WHERE c.name = ? AND m.is_deleted = 0
+     ORDER BY m.created_at DESC`,
+    [category]
+  );
   return rows.map(normalizeMenuItem);
 };
 
-export const createMenuItem = async (item: Omit<MenuItem, "id" | "createdAt">): Promise<MenuItem> => {
-  const id = `dish_${Date.now()}`;
-  const createdAt = new Date().toISOString();
-  await query(
-    "INSERT INTO menu_items (id, name, description, category, price, image, available, preparationTime, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, item.name, item.description || null, item.category, item.price, item.image || null, item.available ? 1 : 0, item.preparationTime || null, createdAt],
+export const createMenuItem = async (item: Omit<MenuItem, "id" | "createdAt"> & { category_id?: number | string, kitchen_station?: string, is_featured?: boolean }): Promise<MenuItem> => {
+  let categoryId = Number(item.category_id);
+  if (!categoryId && item.category) {
+    const catRows = await query<any[]>("SELECT id FROM categories WHERE name = ?", [item.category]);
+    categoryId = catRows[0]?.id || 2; // fallback to Món chính
+  } else if (!categoryId) {
+    categoryId = 2; // fallback to Món chính
+  }
+
+  const result = await query<any>(
+    `INSERT INTO menu_items (category_id, name, description, price, image_url, kitchen_station, is_featured, is_active, is_deleted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+    [
+      categoryId,
+      item.name,
+      item.description || null,
+      item.price,
+      item.image || null,
+      item.kitchen_station || "hot_kitchen",
+      item.is_featured ? 1 : 0,
+      item.available ? 1 : 0
+    ]
   );
-  return { id, createdAt, ...item };
+  
+  const insertId = result.insertId ? result.insertId.toString() : `dish_${Date.now()}`;
+  const createdAt = new Date().toISOString();
+  
+  return {
+    id: insertId,
+    name: item.name,
+    description: item.description,
+    category: item.category || "Món chính",
+    category_id: categoryId,
+    price: item.price,
+    image: item.image || (item as any).image_url,
+    image_url: (item as any).image_url || item.image,
+    available: item.available,
+    kitchen_station: item.kitchen_station || "hot_kitchen",
+    is_featured: item.is_featured || false,
+    createdAt
+  } as any;
 };
 
-export const updateMenuItem = async (id: string, data: Partial<MenuItem>): Promise<MenuItem | null> => {
+export const updateMenuItem = async (id: string, data: Partial<MenuItem> & { category_id?: number | string, is_deleted?: number | boolean, deleted_at?: string, kitchen_station?: string, is_featured?: boolean }): Promise<MenuItem | null> => {
   const existing = await getMenuItemById(id);
   if (!existing) return null;
-  const updated = { ...existing, ...data };
+  
+  // Filter out undefined keys from data to prevent spreading undefined over existing values
+  const cleanData: any = {};
+  const dataAsAny = data as any;
+  for (const key of Object.keys(data)) {
+    if (dataAsAny[key] !== undefined) {
+      cleanData[key] = dataAsAny[key];
+    }
+  }
+  
+  const updated = { ...existing, ...cleanData };
+
+  // Keep both fields synced in the returned object
+  if (data.image !== undefined) {
+    updated.image_url = data.image;
+  } else if ((data as any).image_url !== undefined) {
+    updated.image = (data as any).image_url;
+  } else if (existing.image_url) {
+    updated.image = existing.image_url;
+  } else if (existing.image) {
+    updated.image_url = existing.image;
+  }
+  
+  let categoryId = Number(data.category_id || (updated as any).category_id);
+  if (!categoryId && data.category) {
+    const catRows = await query<any[]>("SELECT id FROM categories WHERE name = ?", [data.category]);
+    categoryId = catRows[0]?.id || 2;
+  } else if (!categoryId) {
+    categoryId = 2;
+  }
+
+  const isDeleted = data.is_deleted !== undefined 
+    ? (data.is_deleted ? 1 : 0) 
+    : (existing.is_deleted ? 1 : 0);
+
+  const deletedAt = isDeleted ? (data.deleted_at || new Date().toISOString()) : null;
+
   await query(
-    "UPDATE menu_items SET name = ?, description = ?, category = ?, price = ?, image = ?, available = ?, preparationTime = ? WHERE id = ?",
-    [updated.name, updated.description || null, updated.category, updated.price, updated.image || null, updated.available ? 1 : 0, updated.preparationTime || null, id],
+    `UPDATE menu_items 
+     SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?, 
+         kitchen_station = ?, is_featured = ?, is_active = ?, is_deleted = ?, deleted_at = ?
+     WHERE id = ?`,
+    [
+      categoryId,
+      updated.name,
+      updated.description || null,
+      updated.price,
+      updated.image || updated.image_url || null,
+      updated.kitchen_station || "hot_kitchen",
+      updated.is_featured ? 1 : 0,
+      updated.available ? 1 : 0,
+      isDeleted,
+      deletedAt,
+      id
+    ]
   );
-  return updated;
+  
+  return {
+    ...updated,
+    image: updated.image || updated.image_url,
+    image_url: updated.image_url || updated.image,
+    category_id: categoryId,
+    is_deleted: Boolean(isDeleted),
+    deleted_at: deletedAt
+  } as any;
 };
 
 export const deleteMenuItem = async (id: string): Promise<boolean> => {
@@ -645,9 +929,7 @@ export const getPaymentStatistics = async (startDate?: string, endDate?: string)
 //  RESMANAGER SCHEMA — Table Areas & Tables (khớp với SQLQuery1.sql)
 // ============================================================================
 
-export const getTableAreas = async (): Promise<any[]> => {
-  return query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
-};
+// Removed duplicate getTableAreas function
 
 export const getResmanagerTables = async (areaId?: number): Promise<any[]> => {
   const sql = areaId
@@ -680,7 +962,26 @@ export const updateResmanagerTableStatus = async (
   status: "empty" | "reserved" | "serving" | "pending_payment",
 ): Promise<boolean> => {
   const result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
-  return result.affectedRows > 0;
+  
+  if (result.affectedRows > 0) {
+    if (status === "empty") {
+      // Hủy bỏ các booking liên quan đến bàn này nếu chuyển về trống
+      await query<any>(
+        `UPDATE bookings SET status = 'cancelled'
+         WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
+        [id]
+      );
+    } else if (status === "serving") {
+      // Hoàn thành các booking liên quan đến bàn này nếu đã nhận bàn (serving)
+      await query<any>(
+        `UPDATE bookings SET status = 'completed'
+         WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
+        [id]
+      );
+    }
+    return true;
+  }
+  return false;
 };
 
 // ============================================================================
@@ -707,6 +1008,57 @@ export const getBookingById = async (id: number): Promise<any | null> => {
     [id],
   );
   return rows[0] || null;
+};
+
+export const syncTableStatusWithBooking = async (
+  tableId: number,
+  bookingStatus: "pending" | "confirmed" | "cancelled" | "completed",
+  userId?: number,
+  booking?: any
+): Promise<void> => {
+  if (bookingStatus === "pending" || bookingStatus === "confirmed") {
+    await query<any>(
+      `UPDATE tables SET status = 'reserved'
+       WHERE id = ? AND status = 'empty' AND is_deleted = 0`,
+      [tableId],
+    );
+    return;
+  }
+
+  if (bookingStatus === "cancelled") {
+    await query<any>(
+      `UPDATE tables SET status = 'empty'
+       WHERE id = ? AND status = 'reserved' AND is_deleted = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM orders o
+           WHERE o.table_id = ? AND o.status NOT IN ('completed', 'cancelled')
+         )`,
+      [tableId, tableId],
+    );
+  }
+
+  if (bookingStatus === "completed") {
+    await query<any>(
+      `UPDATE tables SET status = 'serving'
+       WHERE id = ? AND (status = 'reserved' OR status = 'empty') AND is_deleted = 0`,
+      [tableId],
+    );
+
+    const existingOrders = await query<any[]>(
+      `SELECT id FROM orders WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')`,
+      [tableId]
+    );
+
+    if (existingOrders.length === 0 && booking) {
+       await createResmanagerOrder({
+         table_id: tableId,
+         created_by: userId || 4,
+         order_type: "dine_in",
+         guest_name: booking.guest_name || null,
+         guest_phone: booking.guest_phone || null,
+       });
+    }
+  }
 };
 
 export const createBooking = async (data: {
@@ -737,14 +1089,43 @@ export const createBooking = async (data: {
       data.note || null,
     ],
   );
+  await syncTableStatusWithBooking(data.table_id, "pending");
   return { id: result.insertId, ...data, confirmation_code: code, status: "pending" };
 };
 
 export const updateBookingStatus = async (
   id: number,
   status: "pending" | "confirmed" | "cancelled" | "completed",
+  userId?: number
 ): Promise<boolean> => {
+  const booking = await getBookingById(id);
+  if (!booking) return false;
+
   const result = await query<any>("UPDATE bookings SET status = ? WHERE id = ?", [status, id]);
+  if (result.affectedRows > 0 && booking.table_id) {
+    await syncTableStatusWithBooking(booking.table_id, status, userId, booking);
+  }
+  return result.affectedRows > 0;
+};
+
+export const completeActiveBookingForTable = async (tableId: number, userId?: number): Promise<void> => {
+  const rows = await query<any[]>(
+    `SELECT id FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1`,
+    [tableId],
+  );
+  if (rows.length > 0) {
+    await updateBookingStatus(rows[0].id, "completed", userId);
+  }
+};
+
+export const deleteCancelledBooking = async (id: number): Promise<boolean> => {
+  const booking = await getBookingById(id);
+  if (!booking || booking.status !== "cancelled") return false;
+
+  const result = await query<any>("DELETE FROM bookings WHERE id = ? AND status = 'cancelled'", [id]);
+  if (result.affectedRows > 0 && booking.table_id) {
+    await syncTableStatusWithBooking(booking.table_id, "cancelled");
+  }
   return result.affectedRows > 0;
 };
 
@@ -834,20 +1215,25 @@ export const createResmanagerOrder = async (data: {
   created_by: number;
   order_type?: "dine_in" | "takeaway" | "delivery";
   note?: string;
+  guest_name?: string | null;
+  guest_phone?: string | null;
 }): Promise<any> => {
   const result = await query<any>(
-    `INSERT INTO orders (table_id, customer_id, created_by, order_type, status, note)
-     VALUES (?, ?, ?, ?, 'open', ?)`,
+    `INSERT INTO orders (table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone)
+     VALUES (?, ?, ?, ?, 'open', ?, ?, ?)`,
     [
       data.table_id,
       data.customer_id || null,
       data.created_by,
       data.order_type || "dine_in",
       data.note || null,
+      data.guest_name || null,
+      data.guest_phone || null,
     ],
   );
   return { id: result.insertId, ...data, status: "open" };
 };
+
 
 export const addResmanagerOrderItem = async (data: {
   order_id: number;
@@ -886,8 +1272,20 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
   const result = await query<any>(
-    `UPDATE order_items SET status = 'cooking' WHERE id IN (${placeholders}) AND status = 'pending'`,
+    `UPDATE order_items SET status = 'cooking', is_held = 0
+     WHERE id IN (${placeholders}) AND status = 'pending'`,
     orderItemIds,
+  );
+  return result.affectedRows > 0;
+};
+
+export const holdResmanagerOrderItems = async (orderItemIds: number[], held: boolean): Promise<boolean> => {
+  if (orderItemIds.length === 0) return false;
+  const placeholders = orderItemIds.map(() => "?").join(",");
+  const result = await query<any>(
+    `UPDATE order_items SET is_held = ?
+     WHERE id IN (${placeholders}) AND status = 'pending'`,
+    [held ? 1 : 0, ...orderItemIds],
   );
   return result.affectedRows > 0;
 };
@@ -903,9 +1301,10 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
   // 1) Lấy tất cả bàn cơ bản
   const tables = await getResmanagerTables(areaId);
 
-  // 2) Lấy active orders kèm thông tin khách (parse từ note)
+  // 2) Lấy active orders kèm thông tin khách
   const activeOrders = await query<any[]>(
-    `SELECT o.table_id, o.id AS order_id, o.note AS order_note, o.customer_id,
+    `SELECT o.table_id, o.id AS order_id, o.customer_id,
+            o.guest_name, o.guest_phone,
             c.name AS customer_name, c.phone AS customer_phone
      FROM orders o
      LEFT JOIN customers c ON o.customer_id = c.id
@@ -940,30 +1339,28 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
   return tables.map((table: any) => {
     // Thông tin order đang chạy
     const activeOrder = activeOrders.find((o) => o.table_id === table.id);
+    const upcomingBooking = bookings.find((b) => b.table_id === table.id);
 
     // Thông tin khách
     let guestName: string | null = null;
     let guestPhone: string | null = null;
+    let bookingStartTime: string | null = null;
 
     if (activeOrder) {
-      try {
-        const noteData = JSON.parse(activeOrder.order_note || "{}");
-        guestName = noteData.guest_name || activeOrder.customer_name || null;
-        guestPhone = noteData.guest_phone || activeOrder.customer_phone || null;
-      } catch {
-        guestName = activeOrder.customer_name || null;
-        guestPhone = activeOrder.customer_phone || null;
-      }
+      // Ưu tiên: guest_name/guest_phone cột riêng → customer từ JOIN
+      guestName  = activeOrder.guest_name  || activeOrder.customer_name  || null;
+      guestPhone = activeOrder.guest_phone || activeOrder.customer_phone || null;
     }
 
-    if (!guestName) {
-      // Fallback: lấy từ booking gần nhất của bàn này
-      const booking = bookings.find((b) => b.table_id === table.id);
-      if (booking) {
-        guestName = booking.guest_name;
-        guestPhone = booking.guest_phone;
-      }
+    if (!guestName && upcomingBooking) {
+      guestName = upcomingBooking.guest_name;
+      guestPhone = upcomingBooking.guest_phone;
+      bookingStartTime = upcomingBooking.start_time;
     }
+
+    // Hiển thị reserved trên sơ đồ khi có booking active nhưng DB chưa sync status
+    const displayStatus =
+      table.status === "empty" && upcomingBooking ? "reserved" : table.status;
 
     // Thông tin gộp bàn
     const mergedInto = merges.find((m) => m.merged_table_id === table.id);
@@ -974,8 +1371,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
 
     return {
       ...table,
+      status: displayStatus,
       guest_name: guestName,
       guest_phone: guestPhone,
+      booking_start_time: bookingStartTime,
+      has_upcoming_booking: !!upcomingBooking,
       // Gộp bàn
       is_merged_primary: mergedChildren.length > 0,
       merged_tables: mergedChildren.map((m) => ({ id: m.merged_table_id, name: m.merged_name })),
@@ -1121,16 +1521,23 @@ export const transferResmanagerOrder = async (
   sourceTableId: number,
   targetTableId: number,
 ): Promise<boolean> => {
-  // Cập nhật order sang bàn mới
-  const orderResult = await query<any>(
+  const sourceRows = await query<any[]>(
+    `SELECT status FROM tables WHERE id = ? AND is_deleted = 0`,
+    [sourceTableId],
+  );
+  if (sourceRows.length === 0) return false;
+
+  const sourceStatus = sourceRows[0].status as string;
+  if (!["serving", "pending_payment"].includes(sourceStatus)) return false;
+
+  // Cập nhật order sang bàn mới (nếu có)
+  await query<any>(
     `UPDATE orders SET table_id = ? WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')`,
     [targetTableId, sourceTableId],
   );
 
-  if (orderResult.affectedRows === 0) return false;
-
-  // Cập nhật trạng thái bàn
-  await query<any>(`UPDATE tables SET status = 'serving' WHERE id = ?`, [targetTableId]);
+  // Chuyển trạng thái bàn — kể cả khi chưa có order active (data lệch seed/UI)
+  await query<any>(`UPDATE tables SET status = ? WHERE id = ?`, [sourceStatus, targetTableId]);
   await query<any>(`UPDATE tables SET status = 'empty' WHERE id = ?`, [sourceTableId]);
 
   // Xóa bất kỳ merge records liên quan đến source table
@@ -1160,16 +1567,18 @@ export const splitResmanagerTable = async (
   if (orders.length === 0) return { success: false };
   const originalOrder = orders[0];
 
-  // Tạo order mới cho target table
+  // Tạo order mới cho target table (kế thừa thông tin khách từ order gốc)
   const newOrderResult = await query<any>(
-    `INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note)
-     VALUES (?, NULL, ?, ?, ?, 'serving', ?)`,
+    `INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone)
+     VALUES (?, NULL, ?, ?, ?, 'serving', ?, ?, ?)`,
     [
       targetTableId,
       originalOrder.created_by,
       originalOrder.order_type,
       childLabel,
-      JSON.stringify({ split_from: parentTableId, guest_name: null, guest_phone: null }),
+      originalOrder.note || null,
+      originalOrder.guest_name || null,
+      originalOrder.guest_phone || null,
     ],
   );
   const newOrderId = newOrderResult.insertId;
@@ -1204,4 +1613,194 @@ export const unsplitResmanagerTable = async (parentTableId: number): Promise<boo
     [parentTableId],
   );
   return result.affectedRows > 0;
+};
+
+// ===== Resmanager User & RBAC Management Operations =====
+export const getRoles = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM roles ORDER BY id ASC");
+};
+
+export const getUsers = async (): Promise<any[]> => {
+  return query<any[]>(
+    `SELECT u.id, u.role_id, u.full_name, u.email, u.phone, u.avatar_url, u.status, 
+            u.is_deleted, u.deleted_at, u.last_login, u.created_at, u.updated_at,
+            r.name AS role_name, r.description AS role_description
+     FROM users u
+     LEFT JOIN roles r ON u.role_id = r.id
+     WHERE u.is_deleted = 0
+     ORDER BY u.id DESC`
+  );
+};
+
+export const createResmanagerUser = async (user: any): Promise<any> => {
+  const result = await query<any>(
+    `INSERT INTO users (role_id, full_name, email, password_hash, phone, status, is_deleted) 
+     VALUES (?, ?, ?, ?, ?, ?, 0)`,
+    [
+      user.role_id,
+      user.full_name,
+      user.email,
+      user.password, // hashed password
+      user.phone || null,
+      user.status || "active"
+    ]
+  );
+  const insertId = result.insertId;
+  return { id: insertId, ...user };
+};
+
+export const updateResmanagerUser = async (id: number | string, user: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+
+  if (user.role_id !== undefined) {
+    fields.push("role_id = ?");
+    params.push(user.role_id);
+  }
+  if (user.full_name !== undefined) {
+    fields.push("full_name = ?");
+    params.push(user.full_name);
+  }
+  if (user.email !== undefined) {
+    fields.push("email = ?");
+    params.push(user.email);
+  }
+  if (user.password !== undefined) {
+    fields.push("password_hash = ?");
+    params.push(user.password);
+  }
+  if (user.phone !== undefined) {
+    fields.push("phone = ?");
+    params.push(user.phone || null);
+  }
+  if (user.status !== undefined) {
+    fields.push("status = ?");
+    params.push(user.status);
+  }
+  if (user.is_deleted !== undefined) {
+    fields.push("is_deleted = ?");
+    params.push(user.is_deleted);
+  }
+  if (user.deleted_at !== undefined) {
+    fields.push("deleted_at = ?");
+    params.push(user.deleted_at);
+  }
+
+  if (fields.length === 0) return false;
+
+  params.push(id);
+  const result = await query<any>(`UPDATE users SET ${fields.join(", ")} WHERE id = ?`, params);
+  return result.affectedRows > 0;
+};
+
+// ===== Event Halls & Set Menu Packages Operations =====
+export const getHalls = async (): Promise<any[]> => {
+  return query<any[]>("SELECT * FROM halls ORDER BY id DESC");
+};
+
+export const createHall = async (hall: any): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO halls (name, capacity, description, is_active) VALUES (?, ?, ?, 1)",
+    [hall.name, hall.capacity, hall.description || null]
+  );
+  return { id: result.insertId, ...hall, is_active: 1 };
+};
+
+export const updateHall = async (id: number | string, hall: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+  if (hall.name !== undefined) {
+    fields.push("name = ?");
+    params.push(hall.name);
+  }
+  if (hall.capacity !== undefined) {
+    fields.push("capacity = ?");
+    params.push(hall.capacity);
+  }
+  if (hall.description !== undefined) {
+    fields.push("description = ?");
+    params.push(hall.description);
+  }
+  if (hall.is_active !== undefined) {
+    fields.push("is_active = ?");
+    params.push(hall.is_active);
+  }
+  if (fields.length === 0) return false;
+  params.push(id);
+  const result = await query<any>(`UPDATE halls SET ${fields.join(", ")} WHERE id = ?`, params);
+  return result.affectedRows > 0;
+};
+
+export const getEventPackages = async (): Promise<any[]> => {
+  const packages = await query<any[]>("SELECT * FROM event_packages ORDER BY id DESC");
+  for (const pkg of packages) {
+    pkg.items = await query<any[]>(
+      `SELECT epi.id, epi.package_id, epi.menu_item_id, epi.quantity,
+              mi.name AS menu_item_name, mi.price AS menu_item_price
+       FROM event_package_items epi
+       JOIN menu_items mi ON epi.menu_item_id = mi.id
+       WHERE epi.package_id = ?`,
+      [pkg.id]
+    );
+  }
+  return packages;
+};
+
+export const createEventPackage = async (pkg: any): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO event_packages (name, price_per_person, description, is_active) VALUES (?, ?, ?, 1)",
+    [pkg.name, pkg.price_per_person, pkg.description || null]
+  );
+  const packageId = result.insertId;
+
+  if (pkg.items && pkg.items.length > 0) {
+    for (const item of pkg.items) {
+      await query<any>(
+        "INSERT INTO event_package_items (package_id, menu_item_id, quantity) VALUES (?, ?, ?)",
+        [packageId, item.menu_item_id, item.quantity]
+      );
+    }
+  }
+
+  return { id: packageId, ...pkg, is_active: 1 };
+};
+
+export const updateEventPackage = async (id: number | string, pkg: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+  if (pkg.name !== undefined) {
+    fields.push("name = ?");
+    params.push(pkg.name);
+  }
+  if (pkg.price_per_person !== undefined) {
+    fields.push("price_per_person = ?");
+    params.push(pkg.price_per_person);
+  }
+  if (pkg.description !== undefined) {
+    fields.push("description = ?");
+    params.push(pkg.description);
+  }
+  if (pkg.is_active !== undefined) {
+    fields.push("is_active = ?");
+    params.push(pkg.is_active);
+  }
+
+  if (fields.length > 0) {
+    params.push(id);
+    await query(`UPDATE event_packages SET ${fields.join(", ")} WHERE id = ?`, params);
+  }
+
+  if (pkg.items !== undefined) {
+    await query("DELETE FROM event_package_items WHERE package_id = ?", [id]);
+    if (pkg.items.length > 0) {
+      for (const item of pkg.items) {
+        await query(
+          "INSERT INTO event_package_items (package_id, menu_item_id, quantity) VALUES (?, ?, ?)",
+          [id, item.menu_item_id, item.quantity]
+        );
+      }
+    }
+  }
+
+  return true;
 };

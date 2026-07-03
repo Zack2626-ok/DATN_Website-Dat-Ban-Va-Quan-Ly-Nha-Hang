@@ -14,6 +14,7 @@ import {
   FileText,
   Table2,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
@@ -22,6 +23,7 @@ import {
   getBookings,
   updateBookingStatus,
   createBooking,
+  deleteBooking,
   Booking,
 } from "../../../services/bookingService";
 import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
@@ -39,12 +41,19 @@ export const BookingListPage: React.FC = () => {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const getLocalNowString = () => {
+    const now = new Date();
+    // Adjust to local timezone offset for input[type="datetime-local"]
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+  };
+
   const [formData, setFormData] = useState({
     guest_name: "",
     guest_phone: "",
     party_size: 2,
     table_id: "",
-    start_time: "",
+    start_time: getLocalNowString(),
     guest_note: "",
   });
 
@@ -85,8 +94,27 @@ export const BookingListPage: React.FC = () => {
     }
   };
 
+  const handleDeleteBooking = async (id: number) => {
+    if (!window.confirm("Xóa booking đã hủy này khỏi danh sách?")) return;
+    try {
+      await deleteBooking(id);
+      setBookings((prev) => prev.filter((b) => b.id !== id));
+      toast.success("Đã xóa booking");
+    } catch {
+      toast.error("Chỉ xóa được booking đã hủy");
+    }
+  };
+
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.guest_name.trim()) {
+      toast.error("Vui lòng nhập tên khách hàng");
+      return;
+    }
+    if (!formData.guest_phone.trim()) {
+      toast.error("Vui lòng nhập số điện thoại");
+      return;
+    }
     if (!formData.table_id) {
       toast.error("Vui lòng chọn bàn");
       return;
@@ -112,7 +140,7 @@ export const BookingListPage: React.FC = () => {
 
       toast.success("✅ Tạo booking mới thành công!");
       setIsAddModalOpen(false);
-      setFormData({ guest_name: "", guest_phone: "", party_size: 2, table_id: "", start_time: "", guest_note: "" });
+      setFormData({ guest_name: "", guest_phone: "", party_size: 2, table_id: "", start_time: getLocalNowString(), guest_note: "" });
       fetchData();
     } catch (err) {
       console.error(err);
@@ -181,11 +209,10 @@ export const BookingListPage: React.FC = () => {
             <button
               key={s.key}
               onClick={() => setFilterStatus(s.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                filterStatus === s.key
-                  ? "bg-admin-primary text-white"
-                  : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === s.key
+                ? "bg-admin-primary text-white"
+                : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
+                }`}
             >
               {s.label}
               <span className="ml-1 opacity-70">({statusCount[s.key as keyof typeof statusCount]})</span>
@@ -196,8 +223,8 @@ export const BookingListPage: React.FC = () => {
 
       {/* ── Table ── */}
       <div className="bg-admin-card rounded-2xl border border-admin-border shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-admin-text-sub font-semibold uppercase text-xs">
+        <table className="w-full text-left text-base">
+          <thead className="bg-gray-50 text-admin-text-sub font-semibold uppercase text-sm">
             <tr>
               <th className="px-6 py-4">Mã</th>
               <th className="px-6 py-4">Khách</th>
@@ -275,6 +302,15 @@ export const BookingListPage: React.FC = () => {
                               <XCircle size={16} />
                             </button>
                           </>
+                        )}
+                        {b.status === "cancelled" && (
+                          <button
+                            onClick={() => handleDeleteBooking(b.id)}
+                            className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-50 hover:text-red-600"
+                            title="Xóa booking đã hủy"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         )}
                       </div>
                     </td>
@@ -461,7 +497,7 @@ export const BookingListPage: React.FC = () => {
                     value={formData.table_id}
                     onChange={(e) => setFormData({ ...formData, table_id: e.target.value })}
                     className="w-full pl-9 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 appearance-none"
-                  >
+                  >git status
                     <option value="">-- Chọn bàn --</option>
                     {emptyTables.length === 0 ? (
                       <option disabled>Không có bàn trống</option>

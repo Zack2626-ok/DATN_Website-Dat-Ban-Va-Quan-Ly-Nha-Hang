@@ -1,11 +1,12 @@
 import React from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { Bell, Database, Search, User } from "lucide-react";
+import { Bell, Database, LogOut, Search, User } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
 import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
 import { X } from "lucide-react";
+import { logoutAction } from "../../store/authSlice";
 
 export interface NavLinkItem {
   to: string;
@@ -18,12 +19,14 @@ interface ActorShellLayoutProps {
   actorRole: UserRole;
   navLinks: NavLinkItem[];
   homeLink: string;
+  mainClassName?: string;
 }
 
 export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   actorRole,
   navLinks,
   homeLink,
+  mainClassName = "",
 }) => {
   const location = useLocation();
   const dispatch = useAppDispatch();
@@ -119,11 +122,20 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500">
                 <User size={16} />
               </div>
+              <button
+                type="button"
+                onClick={() => dispatch(logoutAction())}
+                title="Đăng xuất"
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+              >
+                <LogOut size={16} />
+                <span className="hidden sm:inline">Đăng xuất</span>
+              </button>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className={`flex-1 overflow-y-auto p-6 ${mainClassName}`}>
           <Outlet />
         </main>
       </div>

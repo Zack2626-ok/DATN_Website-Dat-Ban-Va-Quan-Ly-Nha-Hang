@@ -86,7 +86,7 @@ export const transferTableHandler = async (req: Request, res: Response): Promise
 
     const success = await db.transferResmanagerOrder(sourceTableId, Number(target_table_id));
     if (!success) {
-      sendError(res, "Không tìm thấy order đang hoạt động tại bàn nguồn", 404);
+      sendError(res, "Không thể chuyển bàn — bàn nguồn phải đang phục vụ hoặc chờ thanh toán", 400);
       return;
     }
 
@@ -108,6 +108,24 @@ export const mergeTableHandler = async (req: Request, res: Response): Promise<vo
     if (!merged_table_ids || !Array.isArray(merged_table_ids) || merged_table_ids.length === 0) {
       sendError(res, "merged_table_ids là bắt buộc (mảng ID bàn cần gộp)", 400);
       return;
+    }
+
+    const primaryTable = await db.getResmanagerTableById(primaryTableId);
+    if (!primaryTable) {
+      sendError(res, "Không tìm thấy bàn chính", 404);
+      return;
+    }
+
+    for (const mergedId of merged_table_ids.map(Number)) {
+      const mergedTable = await db.getResmanagerTableById(mergedId);
+      if (!mergedTable) {
+        sendError(res, `Không tìm thấy bàn #${mergedId}`, 404);
+        return;
+      }
+      if (mergedTable.area_id !== primaryTable.area_id) {
+        sendError(res, `Chỉ gộp được bàn cùng khu vực (${primaryTable.area_name})`, 400);
+        return;
+      }
     }
 
     const success = await db.mergeResmanagerTables(primaryTableId, merged_table_ids.map(Number));

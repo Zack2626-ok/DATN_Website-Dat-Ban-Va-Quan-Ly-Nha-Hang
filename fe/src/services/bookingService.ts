@@ -48,3 +48,7 @@ export const updateBookingStatus = async (
 ): Promise<void> => {
   await api.patch(`/v1/bookings/${id}/status`, { status });
 };
+
+export const deleteBooking = async (id: number): Promise<void> => {
+  await api.delete(`/v1/bookings/${id}`);
+};

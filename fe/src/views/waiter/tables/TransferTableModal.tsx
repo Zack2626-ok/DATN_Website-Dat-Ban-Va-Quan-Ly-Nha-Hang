@@ -29,7 +29,10 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
   const [loading, setLoading] = useState(false);
 
   const emptyTables = availableTables.filter(
-    (t) => t.status === "empty" && t.id !== sourceTable?.id,
+    (t) =>
+      t.status === "empty" &&
+      t.id !== sourceTable?.id &&
+      t.area_id === sourceTable?.area_id,
   );
 
   const handleClose = () => {
@@ -51,9 +54,10 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
       onConfirm(sourceTable.id, targetId);
       onSuccess?.();
       handleClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Không thể chuyển bàn. Vui lòng thử lại.");
+      const msg = err?.response?.data?.message || "Không thể chuyển bàn. Vui lòng thử lại.";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -80,7 +84,7 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Chọn bàn đích (đang trống)
+              Chọn bàn đích (cùng {(sourceTable as any).area_name || "khu vực"} — đang trống)
             </label>
             <span className="text-xs text-gray-400">{emptyTables.length} bàn trống</span>
           </div>
