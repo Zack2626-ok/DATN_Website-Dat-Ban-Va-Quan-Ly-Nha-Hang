@@ -1,12 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getTableAreas, getTables } from '../../services/tableService';
+import { getTableAreas, getTables, type ResmanagerTable } from '../../services/tableService';
 import AreaSelector from '../../components/tables/AreaSelector';
 import TableMap from '../../components/tables/TableMap';
 import StatusLegend from '../../components/tables/StatusLegend';
 import TableDetailModal from '../../components/tables/TableDetailModal';
 import OpenTableModal, { OpenTableFormData } from '../../components/tables/OpenTableModal';
-import { Table } from '../../interfaces/table.interface';
+import { Table, TableArea } from '../../interfaces/table.interface';
 import { RefreshCw } from 'lucide-react';
 
 const TableMapPage: React.FC = () => {
@@ -29,11 +29,11 @@ const TableMapPage: React.FC = () => {
     queryFn: () => getTables(selectedAreaId || undefined),
   });
 
-  const areas = areaResponse?.data || [];
-  const rawTables = tableResponse?.data || [];
+  const areas: TableArea[] = areaResponse || [];
+  const rawTables: ResmanagerTable[] = tableResponse || [];
 
   // Apply local overrides to tables (mock state updates)
-  const tables = rawTables.map((t) => ({
+  const tables = rawTables.map((t: ResmanagerTable) => ({
     ...t,
     ...(localTableOverrides[t.id] || {}),
   }));
