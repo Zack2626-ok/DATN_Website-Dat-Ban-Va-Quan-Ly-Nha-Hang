@@ -825,7 +825,26 @@ export const updateResmanagerTableStatus = async (
   status: "empty" | "reserved" | "serving" | "pending_payment",
 ): Promise<boolean> => {
   const result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
-  return result.affectedRows > 0;
+  
+  if (result.affectedRows > 0) {
+    if (status === "empty") {
+      // Hủy bỏ các booking liên quan đến bàn này nếu chuyển về trống
+      await query<any>(
+        `UPDATE bookings SET status = 'cancelled'
+         WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
+        [id]
+      );
+    } else if (status === "serving") {
+      // Hoàn thành các booking liên quan đến bàn này nếu đã nhận bàn (serving)
+      await query<any>(
+        `UPDATE bookings SET status = 'completed'
+         WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
+        [id]
+      );
+    }
+    return true;
+  }
+  return false;
 };
 
 // ============================================================================

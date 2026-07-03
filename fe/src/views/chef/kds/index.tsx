@@ -10,7 +10,6 @@ import {
   dismissVoidAlert,
   dismissNewAlert,
   dismissChangeAlert,
-  dismissAllAlerts,
   updateItemStatusLocal,
   recallItemStatusLocal,
   KdsItem

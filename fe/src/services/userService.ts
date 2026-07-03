@@ -1,6 +1,19 @@
 import type { User, Role } from "../interfaces";
 import api from "./axiosInstance";
 
+// Helper: Chuyển đổi thuộc tính phẳng của vai trò sang dạng cấu trúc đối tượng (nested object) mà Frontend yêu cầu
+const mapUserRole = (user: any): User => {
+  if (!user) return user;
+  return {
+    ...user,
+    role: user.role_name ? {
+      id: user.role_id,
+      name: user.role_name.toLowerCase() as any,
+      description: user.role_description || ""
+    } : user.role
+  };
+};
+
 /**
  * User Service - Handles REST APIs for managing restaurant staff accounts and RBAC roles.
  * Connects directly to the Express backend.
@@ -19,7 +32,8 @@ export const userService = {
    */
   getUsers: async (): Promise<{ data: User[] }> => {
     const response = await api.get("/users");
-    return { data: response.data.data || [] };
+    const users = response.data.data || [];
+    return { data: users.map(mapUserRole) };
   },
 
   /**
@@ -29,7 +43,7 @@ export const userService = {
     userData: Omit<User, "id" | "created_at" | "updated_at" | "is_deleted" | "deleted_at" | "last_login" | "role"> & { password?: string }
   ): Promise<{ data: User }> => {
     const response = await api.post("/users/create", userData);
-    return { data: response.data.data };
+    return { data: mapUserRole(response.data.data) };
   },
 
   /**
@@ -40,7 +54,7 @@ export const userService = {
     userData: Partial<Omit<User, "id" | "created_at" | "is_deleted" | "deleted_at" | "last_login" | "role"> & { password?: string }>
   ): Promise<{ data: User }> => {
     const response = await api.patch(`/users/${id}/update`, userData);
-    return { data: response.data.data };
+    return { data: mapUserRole(response.data.data) };
   },
 
   /**
