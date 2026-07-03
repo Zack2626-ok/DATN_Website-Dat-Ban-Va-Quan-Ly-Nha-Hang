@@ -12,11 +12,12 @@ import {
   addOrderItem,
   voidOrderItem,
   sendItemsToKitchen,
+  holdOrderItems,
   createOrder,
   type WaiterMenuItem,
   type WaiterCategory,
 } from "../../../services/waiterService";
-import { getTablesV1 } from "../../../services/tableService";
+import { getTablesV1, updateTableStatus } from "../../../services/tableService";
 
 interface DisplayOrderItem {
   id: number;
@@ -81,6 +82,7 @@ export const OrderPage: React.FC = () => {
   const [addingItem, setAddingItem] = useState(false);
   const [voidTarget, setVoidTarget] = useState<DisplayOrderItem | null>(null);
   const [sending, setSending] = useState(false);
+  const [holding, setHolding] = useState(false);
 
   // Tải thông tin bàn
   useEffect(() => {
@@ -130,7 +132,7 @@ export const OrderPage: React.FC = () => {
             quantity: i.quantity,
             status: i.status as OrderItemStatus,
             kitchenNote: i.kitchen_note,
-            held: false,
+            held: Boolean(i.is_held),
           })),
         );
       })
@@ -201,11 +203,51 @@ export const OrderPage: React.FC = () => {
     }
   };
 
-  const handleHold = () => {
-    setOrderItems((prev) =>
-      prev.map((i) => (i.status === "pending" && !i.held ? { ...i, held: true } : i)),
-    );
-    toast.success("Đã hold các món chờ gửi bếp");
+  const handleHold = async () => {
+    if (!orderId) {
+      toast.error("Chưa có order");
+      return;
+    }
+    const toHold = orderItems.filter((i) => i.status === "pending" && !i.held);
+    if (toHold.length === 0) {
+      toast.error("Không có món nào để hold");
+      return;
+    }
+    setHolding(true);
+    try {
+      await holdOrderItems(orderId, toHold.map((i) => i.id), true);
+      setOrderItems((prev) =>
+        prev.map((i) => (i.status === "pending" && !i.held ? { ...i, held: true } : i)),
+      );
+      toast.success(`Đã hold ${toHold.length} món — gửi bếp sau khi khách sẵn sàng`);
+    } catch {
+      toast.error("Không thể hold món");
+    } finally {
+      setHolding(false);
+    }
+  };
+
+  const handleSendHeldToKitchen = async () => {
+    if (!orderId) return;
+    const toSend = orderItems.filter((i) => i.status === "pending" && i.held);
+    if (toSend.length === 0) {
+      toast.error("Không có món hold nào để gửi");
+      return;
+    }
+    setSending(true);
+    try {
+      await sendItemsToKitchen(orderId, toSend.map((i) => i.id));
+      setOrderItems((prev) =>
+        prev.map((i) =>
+          i.status === "pending" && i.held ? { ...i, status: "cooking" as OrderItemStatus, held: false } : i,
+        ),
+      );
+      toast.success(`Đã gửi ${toSend.length} món hold xuống bếp`);
+    } catch {
+      toast.error("Không thể gửi món hold xuống bếp");
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleSendToKitchen = async () => {
@@ -244,6 +286,17 @@ export const OrderPage: React.FC = () => {
       toast.success("Đã hủy món");
     } catch {
       toast.error("Không thể hủy món");
+    }
+  };
+
+  const handleRequestPayment = async () => {
+    if (!tableId) return;
+    try {
+      await updateTableStatus(Number(tableId), "pending_payment");
+      toast.success("Đã gửi yêu cầu thanh toán — thu ngân sẽ xử lý tại quầy");
+      navigate("/waiter/tables");
+    } catch {
+      toast.error("Không thể gửi yêu cầu thanh toán");
     }
   };
 
@@ -293,14 +346,21 @@ export const OrderPage: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={handleHold}
-            disabled={pendingCount === 0}
+            disabled={pendingCount === 0 || holding}
             className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-sm hover:bg-amber-100 disabled:opacity-50"
           >
-            <Pause size={16} />
+            {holding ? <Loader2 size={16} className="animate-spin" /> : <Pause size={16} />}
             Hold ({pendingCount})
+          </button>
+          <button
+            onClick={handleSendHeldToKitchen}
+            disabled={heldCount === 0 || sending}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 disabled:opacity-50"
+          >
+            Gửi hold ({heldCount})
           </button>
           <button
             onClick={handleSendToKitchen}
@@ -320,7 +380,7 @@ export const OrderPage: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedCategoryId("all")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${
                 selectedCategoryId === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
@@ -330,7 +390,7 @@ export const OrderPage: React.FC = () => {
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategoryId(cat.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${
                   selectedCategoryId === cat.id
                     ? "bg-blue-600 text-white"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -381,8 +441,8 @@ export const OrderPage: React.FC = () => {
                     }}
                   />
                   <div className="p-2.5">
-                    <p className="text-xs font-bold text-gray-800 truncate">{item.name}</p>
-                    <p className="text-[10px] font-semibold text-blue-600 mt-0.5">
+                    <p className="text-sm font-bold text-gray-800 truncate">{item.name}</p>
+                    <p className="text-xs font-semibold text-blue-600 mt-0.5">
                       {Number(item.price).toLocaleString("vi-VN")}₫
                     </p>
                     {!item.is_active && (
@@ -433,7 +493,7 @@ export const OrderPage: React.FC = () => {
                         <p className="text-[10px] text-amber-600 mt-1">📝 {item.kitchenNote}</p>
                       )}
                       {item.held && item.status === "pending" && (
-                        <span className="text-[10px] font-bold text-amber-600">HOLD</span>
+                        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">⏸ HOLD</span>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
@@ -471,6 +531,14 @@ export const OrderPage: React.FC = () => {
             >
               Quay lại sơ đồ bàn
             </button>
+            {table.status === "serving" && (
+              <button
+                onClick={handleRequestPayment}
+                className="w-full py-3 border-2 border-purple-200 text-purple-700 rounded-xl font-bold text-sm hover:bg-purple-50"
+              >
+                Yêu cầu thanh toán (Thu ngân)
+              </button>
+            )}
           </div>
         </div>
       </div>

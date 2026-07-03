@@ -446,6 +446,7 @@ CREATE TABLE order_items (
     course_number INT           NOT NULL DEFAULT 1,
     kitchen_note  TEXT          DEFAULT NULL,
     status        ENUM('pending','cooking','done','cancelled','voided') NOT NULL DEFAULT 'pending',
+    is_held       TINYINT(1)   NOT NULL DEFAULT 0,
     voided_at     DATETIME      DEFAULT NULL,
     void_reason   VARCHAR(255)  DEFAULT NULL,
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -18,12 +18,14 @@ interface ActorShellLayoutProps {
   actorRole: UserRole;
   navLinks: NavLinkItem[];
   homeLink: string;
+  mainClassName?: string;
 }
 
 export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   actorRole,
   navLinks,
   homeLink,
+  mainClassName = "",
 }) => {
   const location = useLocation();
   const dispatch = useAppDispatch();
@@ -123,7 +125,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className={`flex-1 overflow-y-auto p-6 ${mainClassName}`}>
           <Outlet />
         </main>
       </div>

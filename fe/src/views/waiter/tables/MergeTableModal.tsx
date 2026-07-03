@@ -29,12 +29,13 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Lấy các bàn đang phục vụ (trừ bàn hiện tại và các bàn đã merged)
+  // Chỉ gộp bàn cùng khu vực/tầng với bàn chính
   const servingTables = availableTables.filter(
     (t) =>
       (t.status === "serving" || t.status === "pending_payment") &&
       t.id !== sourceTable?.id &&
-      !(t as any).is_merged_child, // Không cho chọn bàn đã bị gộp
+      t.area_id === sourceTable?.area_id &&
+      !(t as any).is_merged_child,
   );
 
   const toggleTable = (id: string | number) => {
@@ -57,13 +58,18 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
     setLoading(true);
     try {
       await mergeTables(Number(sourceTable.id), selectedIds.map(Number));
-      toast.success(`✅ Đã gộp ${selectedIds.length} bàn vào ${sourceTable.name}`);
+      const mergedNames = selectedIds
+        .map((id) => servingTables.find((t) => t.id.toString() === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      toast.success(`✅ Đã gộp bàn ${mergedNames} vào ${sourceTable.name}`);
       onConfirm(sourceTable.id, selectedIds);
       onSuccess?.();
       handleClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Không thể gộp bàn. Vui lòng thử lại.");
+      const msg = err?.response?.data?.message || "Không thể gộp bàn. Vui lòng thử lại.";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -98,13 +104,15 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
             <Merge size={18} className="text-indigo-600" />
           </div>
           <div className="flex-1">
-            <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider">Bàn chính (giữ order)</p>
+            <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
+              Bàn chính (giữ order) — {(sourceTable as any).area_name || "Cùng tầng"}
+            </p>
             <p className="font-black text-gray-900 text-xl">{sourceTable.name}</p>
             {isMergedPrimary && (
               <div className="flex flex-wrap gap-1 mt-1">
-                <span className="text-[10px] text-indigo-600 font-bold">Đang gộp với:</span>
+                <span className="text-xs text-indigo-600 font-bold">Đang gộp với:</span>
                 {currentMergedTables.map((mt) => (
-                  <span key={mt.id} className="text-[10px] bg-indigo-100 text-indigo-700 rounded px-1.5 py-0.5 font-bold">
+                  <span key={mt.id} className="text-xs bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 font-bold">
                     {mt.name}
                   </span>
                 ))}
@@ -115,15 +123,20 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
 
         {/* Nếu đang là primary → cho phép bỏ gộp */}
         {isMergedPrimary && (
-          <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-center justify-between">
-            <p className="text-xs text-amber-700 font-medium">Bàn này đang gộp với {currentMergedTables.length} bàn khác</p>
-            <button
-              onClick={handleUnmerge}
-              disabled={loading}
-              className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
-            >
-              <X size={12} /> Bỏ gộp
-            </button>
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
+            <p className="text-sm text-amber-800 font-semibold">
+              Bàn {sourceTable.name} đang gộp với:{" "}
+              <span className="font-black">{currentMergedTables.map((m) => m.name).join(", ")}</span>
+            </p>
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={handleUnmerge}
+                disabled={loading}
+                className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600 transition-all flex items-center gap-1"
+              >
+                <X size={12} /> Bỏ gộp
+              </button>
+            </div>
           </div>
         )}
 
@@ -131,7 +144,7 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Chọn bàn cần gộp vào
+              Chọn bàn cùng {(sourceTable as any).area_name || "tầng"} để gộp vào
             </label>
             <span className="text-xs text-gray-400">
               {selectedIds.length > 0 ? `Đã chọn ${selectedIds.length} bàn` : `${servingTables.length} bàn có thể gộp`}

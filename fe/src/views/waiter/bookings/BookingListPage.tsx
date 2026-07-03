@@ -14,6 +14,7 @@ import {
   FileText,
   Table2,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
@@ -22,6 +23,7 @@ import {
   getBookings,
   updateBookingStatus,
   createBooking,
+  deleteBooking,
   Booking,
 } from "../../../services/bookingService";
 import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
@@ -82,6 +84,17 @@ export const BookingListPage: React.FC = () => {
       toast.success(`Cập nhật booking #${id} thành công`);
     } catch (err) {
       toast.error("Lỗi cập nhật trạng thái");
+    }
+  };
+
+  const handleDeleteBooking = async (id: number) => {
+    if (!window.confirm("Xóa booking đã hủy này khỏi danh sách?")) return;
+    try {
+      await deleteBooking(id);
+      setBookings((prev) => prev.filter((b) => b.id !== id));
+      toast.success("Đã xóa booking");
+    } catch {
+      toast.error("Chỉ xóa được booking đã hủy");
     }
   };
 
@@ -195,8 +208,8 @@ export const BookingListPage: React.FC = () => {
 
       {/* ── Table ── */}
       <div className="bg-admin-card rounded-2xl border border-admin-border shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-admin-text-sub font-semibold uppercase text-xs">
+        <table className="w-full text-left text-base">
+          <thead className="bg-gray-50 text-admin-text-sub font-semibold uppercase text-sm">
             <tr>
               <th className="px-6 py-4">Mã</th>
               <th className="px-6 py-4">Khách</th>
@@ -274,6 +287,15 @@ export const BookingListPage: React.FC = () => {
                               <XCircle size={16} />
                             </button>
                           </>
+                        )}
+                        {b.status === "cancelled" && (
+                          <button
+                            onClick={() => handleDeleteBooking(b.id)}
+                            className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-50 hover:text-red-600"
+                            title="Xóa booking đã hủy"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         )}
                       </div>
                     </td>

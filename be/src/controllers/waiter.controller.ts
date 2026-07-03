@@ -74,6 +74,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
     if (table_id) {
       await db.updateResmanagerTableStatus(Number(table_id), "serving");
+      await db.completeActiveBookingForTable(Number(table_id));
     }
 
     sendSuccess(res, order, "Tạo order thành công", 201);
@@ -148,9 +149,36 @@ export const sendItemsToKitchenHandler = async (req: Request, res: Response): Pr
       return;
     }
 
-    const success = await db.sendResmanagerOrderItemsToKitchen(item_ids.map(Number));
+    await db.sendResmanagerOrderItemsToKitchen(item_ids.map(Number));
 
     sendSuccess(res, { orderId, sent: item_ids.length }, "Đã gửi món xuống bếp");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Hold / bỏ hold món trước khi gửi bếp
+export const holdOrderItemsHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId } = req.params;
+    const { item_ids, held } = req.body;
+
+    if (!item_ids || !Array.isArray(item_ids) || item_ids.length === 0) {
+      sendError(res, "item_ids là bắt buộc (mảng ID món)", 400);
+      return;
+    }
+    if (typeof held !== "boolean") {
+      sendError(res, "held (boolean) là bắt buộc", 400);
+      return;
+    }
+
+    const success = await db.holdResmanagerOrderItems(item_ids.map(Number), held);
+    if (!success) {
+      sendError(res, "Không thể cập nhật trạng thái hold", 400);
+      return;
+    }
+
+    sendSuccess(res, { orderId, item_ids, held }, held ? "Đã hold món" : "Đã bỏ hold món");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

@@ -40,10 +40,7 @@ export interface Order {
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
-<<<<<<< HEAD
 export let useFallback = false;
-=======
->>>>>>> origin/main
 const normalizeMenuItem = (row: any): MenuItem => ({
   ...row,
   available: Boolean(row.available),
@@ -56,7 +53,6 @@ const normalizeTable = (row: any): Table => ({
   capacity: Number(row.capacity),
 });
 
-<<<<<<< HEAD
 // Helper to load fallback JSON database
 export const loadJsonDb = (): { orders: Order[] } => {
   if (!fs.existsSync(JSON_DB_DIR)) {
@@ -84,8 +80,6 @@ export const saveJsonDb = (data: { orders: Order[] }) => {
 };
 
 // Initialize DB (MySQL or Fallback JSON)
-=======
->>>>>>> origin/main
 const normalizeInventory = (row: any): Inventory => ({
   ...row,
   quantity: Number(row.quantity),
@@ -220,8 +214,36 @@ export const initDb = async (): Promise<boolean> => {
   conn.release();
   console.log(`🚀 Connected to MySQL ${host}:${port}/${database}`);
   await createDatabaseTables();
+  await runSchemaMigrations();
   console.log("✅ MySQL tables verified/created successfully.");
   return true;
+};
+
+/** Lightweight migrations for resmanager schema columns */
+const runSchemaMigrations = async (): Promise<void> => {
+  try {
+    const cols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_held'`,
+    );
+    if (cols.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN is_held TINYINT(1) NOT NULL DEFAULT 0 AFTER status`);
+      console.log("✅ Migration: added order_items.is_held");
+    }
+
+    // Đồng bộ bàn reserved với booking pending/confirmed còn hiệu lực
+    await query(`
+      UPDATE tables t
+      SET t.status = 'reserved'
+      WHERE t.status = 'empty' AND t.is_deleted = 0
+        AND EXISTS (
+          SELECT 1 FROM bookings b
+          WHERE b.table_id = t.id AND b.status IN ('pending', 'confirmed')
+        )
+    `);
+  } catch (err) {
+    console.warn("Schema migration skipped:", (err as Error).message);
+  }
 };
 
 const mapRoleName = (roleId: any): string => {
@@ -234,19 +256,6 @@ const mapRoleName = (roleId: any): string => {
     case 5: return "chef";
     case 6: return "sales_event";
     default: return "waiter";
-  }
-};
-
-const getRoleId = (roleName: string): number => {
-  const role = roleName.toLowerCase();
-  switch (role) {
-    case "admin": return 1;
-    case "manager": return 2;
-    case "waiter": return 3;
-    case "cashier": return 4;
-    case "chef": return 5;
-    case "sales_event": return 6;
-    default: return 3;
   }
 };
 
@@ -264,15 +273,6 @@ const mapUserRow = (user: any): User => {
 
 // ===== User operations =====
 export const findUserByEmail = async (email: string): Promise<User | null> => {
-<<<<<<< HEAD
-  const rows = await query<any[]>("SELECT * FROM users WHERE email = ?", [email]);
-  return rows[0] ? mapUserRow(rows[0]) : null;
-};
-
-export const findUserById = async (id: string): Promise<User | null> => {
-  const rows = await query<any[]>("SELECT * FROM users WHERE id = ?", [id]);
-  return rows[0] ? mapUserRow(rows[0]) : null;
-=======
   const rows = await query<any[]>(
     `SELECT u.id, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.created_at AS createdAt
      FROM users u
@@ -280,7 +280,7 @@ export const findUserById = async (id: string): Promise<User | null> => {
      WHERE u.email = ? AND u.is_deleted = 0`,
     [email]
   );
-  return rows[0] ? (rows[0] as User) : null;
+  return rows[0] ? mapUserRow(rows[0]) : null;
 };
 
 export const findUserById = async (id: string): Promise<User | null> => {
@@ -291,8 +291,7 @@ export const findUserById = async (id: string): Promise<User | null> => {
      WHERE u.id = ? AND u.is_deleted = 0`,
     [id]
   );
-  return rows[0] ? (rows[0] as User) : null;
->>>>>>> origin/main
+  return rows[0] ? mapUserRow(rows[0]) : null;
 };
 
 const getRoleId = (roleName: string): number => {
@@ -308,7 +307,6 @@ const getRoleId = (roleName: string): number => {
 };
 
 export const createUser = async (user: Omit<User, "id" | "createdAt">): Promise<User> => {
-<<<<<<< HEAD
   try {
     const roleId = getRoleId(user.role_name);
     const result = await query<any>(
@@ -330,16 +328,6 @@ export const createUser = async (user: Omit<User, "id" | "createdAt">): Promise<
     );
     return { id, createdAt, ...user };
   }
-=======
-  const roleId = getRoleId(user.role_name);
-  const result = await query<any>(
-    "INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES (?, ?, ?, ?, ?)",
-    [roleId, user.full_name, user.email, user.password, user.phone]
-  );
-  const id = result.insertId ? result.insertId.toString() : `user_${Date.now()}`;
-  const createdAt = new Date().toISOString();
-  return { id, createdAt, ...user };
->>>>>>> origin/main
 };
 
 // ===== Order operations =====
@@ -391,7 +379,7 @@ export interface TableArea {
 
 export const getTableAreas = async (): Promise<TableArea[]> => {
   try {
-    const rows = await query<any[]>("SELECT * FROM table_areas WHERE is_active = 1");
+    const rows = await query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
     return rows.map(row => ({
       id: Number(row.id),
       name: row.name,
@@ -804,9 +792,7 @@ export const getPaymentStatistics = async (startDate?: string, endDate?: string)
 //  RESMANAGER SCHEMA — Table Areas & Tables (khớp với SQLQuery1.sql)
 // ============================================================================
 
-export const getTableAreas = async (): Promise<any[]> => {
-  return query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
-};
+// Removed duplicate getTableAreas function
 
 export const getResmanagerTables = async (areaId?: number): Promise<any[]> => {
   const sql = areaId
@@ -868,6 +854,33 @@ export const getBookingById = async (id: number): Promise<any | null> => {
   return rows[0] || null;
 };
 
+/** Đồng bộ trạng thái bàn với booking (pending/confirmed → reserved, cancelled/completed → empty) */
+export const syncTableStatusWithBooking = async (
+  tableId: number,
+  bookingStatus: "pending" | "confirmed" | "cancelled" | "completed",
+): Promise<void> => {
+  if (bookingStatus === "pending" || bookingStatus === "confirmed") {
+    await query<any>(
+      `UPDATE tables SET status = 'reserved'
+       WHERE id = ? AND status = 'empty' AND is_deleted = 0`,
+      [tableId],
+    );
+    return;
+  }
+
+  if (bookingStatus === "cancelled" || bookingStatus === "completed") {
+    await query<any>(
+      `UPDATE tables SET status = 'empty'
+       WHERE id = ? AND status = 'reserved' AND is_deleted = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM orders o
+           WHERE o.table_id = ? AND o.status NOT IN ('completed', 'cancelled')
+         )`,
+      [tableId, tableId],
+    );
+  }
+};
+
 export const createBooking = async (data: {
   table_id: number;
   customer_id?: number | null;
@@ -896,6 +909,7 @@ export const createBooking = async (data: {
       data.note || null,
     ],
   );
+  await syncTableStatusWithBooking(data.table_id, "pending");
   return { id: result.insertId, ...data, confirmation_code: code, status: "pending" };
 };
 
@@ -903,7 +917,34 @@ export const updateBookingStatus = async (
   id: number,
   status: "pending" | "confirmed" | "cancelled" | "completed",
 ): Promise<boolean> => {
+  const booking = await getBookingById(id);
+  if (!booking) return false;
+
   const result = await query<any>("UPDATE bookings SET status = ? WHERE id = ?", [status, id]);
+  if (result.affectedRows > 0 && booking.table_id) {
+    await syncTableStatusWithBooking(booking.table_id, status);
+  }
+  return result.affectedRows > 0;
+};
+
+export const completeActiveBookingForTable = async (tableId: number): Promise<void> => {
+  const rows = await query<any[]>(
+    `SELECT id FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1`,
+    [tableId],
+  );
+  if (rows.length > 0) {
+    await updateBookingStatus(rows[0].id, "completed");
+  }
+};
+
+export const deleteCancelledBooking = async (id: number): Promise<boolean> => {
+  const booking = await getBookingById(id);
+  if (!booking || booking.status !== "cancelled") return false;
+
+  const result = await query<any>("DELETE FROM bookings WHERE id = ? AND status = 'cancelled'", [id]);
+  if (result.affectedRows > 0 && booking.table_id) {
+    await syncTableStatusWithBooking(booking.table_id, "cancelled");
+  }
   return result.affectedRows > 0;
 };
 
@@ -1045,8 +1086,20 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
   const result = await query<any>(
-    `UPDATE order_items SET status = 'cooking' WHERE id IN (${placeholders}) AND status = 'pending'`,
+    `UPDATE order_items SET status = 'cooking', is_held = 0
+     WHERE id IN (${placeholders}) AND status = 'pending'`,
     orderItemIds,
+  );
+  return result.affectedRows > 0;
+};
+
+export const holdResmanagerOrderItems = async (orderItemIds: number[], held: boolean): Promise<boolean> => {
+  if (orderItemIds.length === 0) return false;
+  const placeholders = orderItemIds.map(() => "?").join(",");
+  const result = await query<any>(
+    `UPDATE order_items SET is_held = ?
+     WHERE id IN (${placeholders}) AND status = 'pending'`,
+    [held ? 1 : 0, ...orderItemIds],
   );
   return result.affectedRows > 0;
 };
@@ -1099,10 +1152,12 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
   return tables.map((table: any) => {
     // Thông tin order đang chạy
     const activeOrder = activeOrders.find((o) => o.table_id === table.id);
+    const upcomingBooking = bookings.find((b) => b.table_id === table.id);
 
     // Thông tin khách
     let guestName: string | null = null;
     let guestPhone: string | null = null;
+    let bookingStartTime: string | null = null;
 
     if (activeOrder) {
       try {
@@ -1115,14 +1170,15 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
       }
     }
 
-    if (!guestName) {
-      // Fallback: lấy từ booking gần nhất của bàn này
-      const booking = bookings.find((b) => b.table_id === table.id);
-      if (booking) {
-        guestName = booking.guest_name;
-        guestPhone = booking.guest_phone;
-      }
+    if (!guestName && upcomingBooking) {
+      guestName = upcomingBooking.guest_name;
+      guestPhone = upcomingBooking.guest_phone;
+      bookingStartTime = upcomingBooking.start_time;
     }
+
+    // Hiển thị reserved trên sơ đồ khi có booking active nhưng DB chưa sync status
+    const displayStatus =
+      table.status === "empty" && upcomingBooking ? "reserved" : table.status;
 
     // Thông tin gộp bàn
     const mergedInto = merges.find((m) => m.merged_table_id === table.id);
@@ -1133,8 +1189,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
 
     return {
       ...table,
+      status: displayStatus,
       guest_name: guestName,
       guest_phone: guestPhone,
+      booking_start_time: bookingStartTime,
+      has_upcoming_booking: !!upcomingBooking,
       // Gộp bàn
       is_merged_primary: mergedChildren.length > 0,
       merged_tables: mergedChildren.map((m) => ({ id: m.merged_table_id, name: m.merged_name })),
@@ -1280,16 +1339,23 @@ export const transferResmanagerOrder = async (
   sourceTableId: number,
   targetTableId: number,
 ): Promise<boolean> => {
-  // Cập nhật order sang bàn mới
-  const orderResult = await query<any>(
+  const sourceRows = await query<any[]>(
+    `SELECT status FROM tables WHERE id = ? AND is_deleted = 0`,
+    [sourceTableId],
+  );
+  if (sourceRows.length === 0) return false;
+
+  const sourceStatus = sourceRows[0].status as string;
+  if (!["serving", "pending_payment"].includes(sourceStatus)) return false;
+
+  // Cập nhật order sang bàn mới (nếu có)
+  await query<any>(
     `UPDATE orders SET table_id = ? WHERE table_id = ? AND status NOT IN ('completed', 'cancelled')`,
     [targetTableId, sourceTableId],
   );
 
-  if (orderResult.affectedRows === 0) return false;
-
-  // Cập nhật trạng thái bàn
-  await query<any>(`UPDATE tables SET status = 'serving' WHERE id = ?`, [targetTableId]);
+  // Chuyển trạng thái bàn — kể cả khi chưa có order active (data lệch seed/UI)
+  await query<any>(`UPDATE tables SET status = ? WHERE id = ?`, [sourceStatus, targetTableId]);
   await query<any>(`UPDATE tables SET status = 'empty' WHERE id = ?`, [sourceTableId]);
 
   // Xóa bất kỳ merge records liên quan đến source table
