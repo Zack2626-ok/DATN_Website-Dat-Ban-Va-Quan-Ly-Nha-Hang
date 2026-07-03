@@ -15,13 +15,15 @@ import tableRoutes from "./routes/table.routes";
 import menuRoutes from "./routes/menu.routes";
 import inventoryRoutes from "./routes/inventory.routes";
 import paymentRoutes from "./routes/payment.routes";
+import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
+
+// Tải biến môi trường từ file v
 import bookingRoutes from "./routes/booking.routes";
 import waitlistRoutes from "./routes/waitlist.routes";
 import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
 import eventConfigRoutes from "./routes/eventConfig.routes";
 import { initDb } from "./utils/db";
-import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
 dotenv.config();
 
@@ -82,6 +84,8 @@ app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/kds", kdsRoutes);
+app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
 app.use("/api/v1/tables", resmanagerTableRoutes);
 app.use("/api/v1/bookings", bookingRoutes);

@@ -8,6 +8,9 @@ import {
   recallKdsItemStatus,
   setStationFilter,
   dismissVoidAlert,
+  dismissNewAlert,
+  dismissChangeAlert,
+  dismissAllAlerts,
   updateItemStatusLocal,
   recallItemStatusLocal,
   KdsItem
@@ -23,6 +26,8 @@ import {
   VolumeX,
   Undo2,
   Flame,
+  Info,
+  RefreshCcw,
   Layers,
   Inbox,
   Filter,
@@ -32,7 +37,7 @@ import {
 
 export const ChefKitchenQueue: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { items, voidAlerts, loading, stationFilter } = useAppSelector((state) => state.kds);
+  const { items, voidAlerts, newAlerts, changeAlerts, loading, stationFilter } = useAppSelector((state) => state.kds);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
 
   // Lọc món ăn dựa trên ô tìm kiếm chung
@@ -97,14 +102,17 @@ export const ChefKitchenQueue: React.FC = () => {
     return () => clearInterval(interval);
   }, [dispatch, stationFilter]);
 
-  // Audio trigger on new active void alerts
+  // Audio trigger on new active alerts
   useEffect(() => {
-    const activeAlerts = voidAlerts.filter((a) => !a.dismissed);
-    if (activeAlerts.length > lastAlertsCount.current) {
+    const activeVoid = voidAlerts.filter((a) => !a.dismissed).length;
+    const activeNew = newAlerts.filter((a) => !a.dismissed).length;
+    const activeChange = changeAlerts.filter((a) => !a.dismissed).length;
+    const totalActive = activeVoid + activeNew + activeChange;
+    if (totalActive > lastAlertsCount.current) {
       playBuzzerSound();
     }
-    lastAlertsCount.current = activeAlerts.length;
-  }, [voidAlerts, soundEnabled]);
+    lastAlertsCount.current = totalActive;
+  }, [voidAlerts, newAlerts, changeAlerts, soundEnabled]);
 
   // Redux action wrappers with local fallback for offline/development
   const handleUpdateStatus = (id: string | number, nextStatus: "pending" | "cooking" | "done" | "cancelled" | "voided") => {
@@ -127,10 +135,10 @@ export const ChefKitchenQueue: React.FC = () => {
 
   const handleDeliver = (id: string | number) => {
     // Delivery / archive item
-    dispatch(updateKdsItemStatus({ id, status: "voided" })) // or just use a final status
+    dispatch(updateKdsItemStatus({ id, status: "delivered" }))
       .unwrap()
       .catch(() => {
-        dispatch(updateItemStatusLocal({ id, status: "voided" }));
+        dispatch(updateItemStatusLocal({ id, status: "delivered" }));
       });
   };
 
@@ -313,6 +321,76 @@ export const ChefKitchenQueue: React.FC = () => {
                 >
                   <X size={12} />
                   Đã xem & Xác nhận
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* 2.1 New Item Alerts Banner */}
+      {newAlerts.filter((a) => !a.dismissed).length > 0 && (
+        <div className="flex flex-col gap-2 mt-2">
+          {newAlerts
+            .filter((a) => !a.dismissed)
+            .map((alert) => (
+              <div
+                key={alert.id}
+                className="bg-emerald-500/10 border-2 border-emerald-500/30 text-emerald-400 p-3.5 rounded-xl flex items-center justify-between gap-3 animate-pulse shadow-lg"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-emerald-500 text-white p-1.5 rounded-lg">
+                    <Info size={16} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-white">
+                      MÓN MỚI: {alert.name} (x{alert.quantity})
+                    </div>
+                    <div className="text-[11px] text-emerald-300 mt-0.5">
+                      Bàn: <strong className="text-white">{alert.tableName}</strong> | Trạm: {getStationLabel(alert.kitchenStation)}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => dispatch(dismissNewAlert(alert.id))}
+                  className="bg-emerald-900/40 hover:bg-emerald-950/60 text-white px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/20 flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <X size={12} />
+                  Đã xem
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* 2.2 Changed Item Alerts Banner */}
+      {changeAlerts.filter((a) => !a.dismissed).length > 0 && (
+        <div className="flex flex-col gap-2 mt-2">
+          {changeAlerts
+            .filter((a) => !a.dismissed)
+            .map((alert) => (
+              <div
+                key={alert.id}
+                className="bg-amber-500/10 border-2 border-amber-500/30 text-amber-400 p-3.5 rounded-xl flex items-center justify-between gap-3 animate-pulse shadow-lg"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-amber-500 text-white p-1.5 rounded-lg">
+                    <RefreshCcw size={16} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-white">
+                      ĐỔI {alert.changeType === "quantity" ? "SỐ LƯỢNG" : "GHI CHÚ"}: {alert.name}
+                    </div>
+                    <div className="text-[11px] text-amber-300 mt-0.5">
+                      Bàn: <strong className="text-white">{alert.tableName}</strong> | Thay đổi: {alert.oldValue} ➔ <strong className="text-amber-500 bg-amber-500/20 px-1 rounded">{alert.newValue}</strong>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => dispatch(dismissChangeAlert(alert.id))}
+                  className="bg-amber-900/40 hover:bg-amber-950/60 text-white px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-500/20 flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <X size={12} />
+                  Đã xác nhận
                 </button>
               </div>
             ))}

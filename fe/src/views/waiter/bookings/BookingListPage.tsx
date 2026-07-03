@@ -194,11 +194,10 @@ export const BookingListPage: React.FC = () => {
             <button
               key={s.key}
               onClick={() => setFilterStatus(s.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                filterStatus === s.key
-                  ? "bg-admin-primary text-white"
-                  : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === s.key
+                ? "bg-admin-primary text-white"
+                : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
+                }`}
             >
               {s.label}
               <span className="ml-1 opacity-70">({statusCount[s.key as keyof typeof statusCount]})</span>
@@ -483,7 +482,7 @@ export const BookingListPage: React.FC = () => {
                     value={formData.table_id}
                     onChange={(e) => setFormData({ ...formData, table_id: e.target.value })}
                     className="w-full pl-9 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 appearance-none"
-                  >
+                  >git status
                     <option value="">-- Chọn bàn --</option>
                     {emptyTables.length === 0 ? (
                       <option disabled>Không có bàn trống</option>

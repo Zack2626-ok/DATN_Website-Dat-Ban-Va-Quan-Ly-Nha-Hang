@@ -1,10 +1,15 @@
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
 
 dotenv.config();
 
-let connectionPool: mysql.Pool | null = null;
+export let connectionPool: mysql.Pool | null = null;
+
+const JSON_DB_DIR = path.join(__dirname, "../database");
+const JSON_DB_PATH = path.join(JSON_DB_DIR, "db.json");
 
 const ensurePool = (): mysql.Pool => {
   if (!connectionPool) {
@@ -35,6 +40,7 @@ export interface Order {
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
+export let useFallback = false;
 const normalizeMenuItem = (row: any): MenuItem => ({
   ...row,
   available: Boolean(row.available),
@@ -47,6 +53,33 @@ const normalizeTable = (row: any): Table => ({
   capacity: Number(row.capacity),
 });
 
+// Helper to load fallback JSON database
+export const loadJsonDb = (): { orders: Order[] } => {
+  if (!fs.existsSync(JSON_DB_DIR)) {
+    fs.mkdirSync(JSON_DB_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(JSON_DB_PATH)) {
+    fs.writeFileSync(JSON_DB_PATH, JSON.stringify({ orders: [] }, null, 2));
+    return { orders: [] };
+  }
+  try {
+    const content = fs.readFileSync(JSON_DB_PATH, "utf8");
+    return JSON.parse(content);
+  } catch (err) {
+    console.error("Error reading JSON DB file, returning empty state:", err);
+    return { orders: [] };
+  }
+};
+
+// Helper to save fallback JSON database
+export const saveJsonDb = (data: { orders: Order[] }) => {
+  if (!fs.existsSync(JSON_DB_DIR)) {
+    fs.mkdirSync(JSON_DB_DIR, { recursive: true });
+  }
+  fs.writeFileSync(JSON_DB_PATH, JSON.stringify(data, null, 2));
+};
+
+// Initialize DB (MySQL or Fallback JSON)
 const normalizeInventory = (row: any): Inventory => ({
   ...row,
   quantity: Number(row.quantity),
@@ -213,6 +246,31 @@ const runSchemaMigrations = async (): Promise<void> => {
   }
 };
 
+const mapRoleName = (roleId: any): string => {
+  const id = Number(roleId);
+  switch (id) {
+    case 1: return "admin";
+    case 2: return "manager";
+    case 3: return "waiter";
+    case 4: return "cashier";
+    case 5: return "chef";
+    case 6: return "sales_event";
+    default: return "waiter";
+  }
+};
+
+const mapUserRow = (user: any): User => {
+  const roleName = user.role_name || mapRoleName(user.role_id);
+  return {
+    ...user,
+    id: String(user.id),
+    password: user.password || user.password_hash,
+    role: roleName,
+    role_name: roleName,
+    createdAt: user.createdAt || user.created_at || new Date().toISOString(),
+  };
+};
+
 // ===== User operations =====
 export const findUserByEmail = async (email: string): Promise<User | null> => {
   const rows = await query<any[]>(
@@ -222,7 +280,7 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
      WHERE u.email = ? AND u.is_deleted = 0`,
     [email]
   );
-  return rows[0] ? (rows[0] as User) : null;
+  return rows[0] ? mapUserRow(rows[0]) : null;
 };
 
 export const findUserById = async (id: string): Promise<User | null> => {
@@ -233,7 +291,7 @@ export const findUserById = async (id: string): Promise<User | null> => {
      WHERE u.id = ? AND u.is_deleted = 0`,
     [id]
   );
-  return rows[0] ? (rows[0] as User) : null;
+  return rows[0] ? mapUserRow(rows[0]) : null;
 };
 
 const getRoleId = (roleName: string): number => {
@@ -249,14 +307,27 @@ const getRoleId = (roleName: string): number => {
 };
 
 export const createUser = async (user: Omit<User, "id" | "createdAt">): Promise<User> => {
-  const roleId = getRoleId(user.role_name);
-  const result = await query<any>(
-    "INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES (?, ?, ?, ?, ?)",
-    [roleId, user.full_name, user.email, user.password, user.phone]
-  );
-  const id = result.insertId ? result.insertId.toString() : `user_${Date.now()}`;
-  const createdAt = new Date().toISOString();
-  return { id, createdAt, ...user };
+  try {
+    const roleId = getRoleId(user.role_name);
+    const result = await query<any>(
+      "INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES (?, ?, ?, ?, ?)",
+      [roleId, user.full_name, user.email, user.password, user.phone],
+    );
+    const insertId = result.insertId;
+    return {
+      id: String(insertId),
+      createdAt: new Date().toISOString(),
+      ...user,
+    };
+  } catch (err) {
+    const id = `user_${Date.now()}`;
+    const createdAt = new Date().toISOString();
+    await query(
+      "INSERT INTO users (id, full_name, email, password, role_name, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, user.full_name, user.email, user.password, user.role_name, user.phone, createdAt],
+    );
+    return { id, createdAt, ...user };
+  }
 };
 
 // ===== Order operations =====
@@ -300,15 +371,81 @@ export const updateOrderStatus = async (id: string, status: string): Promise<boo
   return result.affectedRows > 0;
 };
 
-// ===== Table operations =====
-export const getTables = async (): Promise<Table[]> => {
-  const rows = await query<any[]>("SELECT * FROM tables ORDER BY tableNumber ASC");
-  return rows.map(normalizeTable);
+export interface TableArea {
+  id: number;
+  name: string;
+  is_active: number;
+}
+
+export const getTableAreas = async (): Promise<TableArea[]> => {
+  try {
+    const rows = await query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
+    return rows.map(row => ({
+      id: Number(row.id),
+      name: row.name,
+      is_active: Number(row.is_active),
+    }));
+  } catch (err) {
+    return [
+      { id: 1, name: "Tầng 1", is_active: 1 },
+      { id: 2, name: "Tầng 2", is_active: 1 },
+      { id: 3, name: "Sân vườn", is_active: 1 },
+    ];
+  }
 };
 
-export const getTableById = async (id: string): Promise<Table | null> => {
-  const rows = await query<any[]>("SELECT * FROM tables WHERE id = ?", [id]);
-  return rows[0] ? normalizeTable(rows[0]) : null;
+const mapTable = (row: any): any => {
+  return {
+    ...row,
+    id: row.id,
+    area_id: row.area_id,
+    area_name: row.area_name,
+    name: row.name || String(row.tableNumber),
+    tableNumber: row.tableNumber !== undefined ? Number(row.tableNumber) : undefined,
+    capacity: Number(row.capacity),
+    status: row.status,
+  };
+};
+
+// ===== Table operations =====
+export const getTables = async (areaId?: number): Promise<any[]> => {
+  try {
+    let sql = `
+      SELECT t.*, a.name AS area_name 
+      FROM tables t 
+      LEFT JOIN table_areas a ON t.area_id = a.id 
+      WHERE t.is_deleted = 0
+    `;
+    const params: any[] = [];
+    if (areaId !== undefined) {
+      sql += " AND t.area_id = ?";
+      params.push(areaId);
+    }
+    sql += " ORDER BY t.name ASC";
+    const rows = await query<any[]>(sql, params);
+    return rows.map(mapTable);
+  } catch (err) {
+    let sql = "SELECT * FROM tables";
+    sql += " ORDER BY tableNumber ASC";
+    const rows = await query<any[]>(sql);
+    return rows.map(mapTable);
+  }
+};
+
+export const getTableById = async (id: string): Promise<any | null> => {
+  try {
+    const rows = await query<any[]>(
+      `SELECT t.*, a.name AS area_name 
+       FROM tables t 
+       LEFT JOIN table_areas a ON t.area_id = a.id 
+       WHERE t.id = ?`,
+      [id]
+    );
+    return rows[0] ? mapTable(rows[0]) : null;
+  } catch (err) {
+    const rows = await query<any[]>("SELECT * FROM tables WHERE id = ?", [id]);
+    return rows[0] ? mapTable(rows[0]) : null;
+  }
 };
 
 export const createTable = async (table: Omit<Table, "id" | "createdAt">): Promise<Table> => {
@@ -655,9 +792,7 @@ export const getPaymentStatistics = async (startDate?: string, endDate?: string)
 //  RESMANAGER SCHEMA — Table Areas & Tables (khớp với SQLQuery1.sql)
 // ============================================================================
 
-export const getTableAreas = async (): Promise<any[]> => {
-  return query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
-};
+// Removed duplicate getTableAreas function
 
 export const getResmanagerTables = async (areaId?: number): Promise<any[]> => {
   const sql = areaId

@@ -17,6 +17,7 @@ export interface User {
   full_name: string;
   email: string;
   password: string;
+  role?: string;
   role_name: string;
   phone: string;
   createdAt: string;
