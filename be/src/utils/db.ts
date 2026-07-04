@@ -1153,6 +1153,44 @@ export const holdResmanagerOrderItems = async (orderItemIds: number[], held: boo
   return result.affectedRows > 0;
 };
 
+/**
+ * Lấy danh sách món đã xong (status='done') thuộc các order đang mở,
+ * để waiter biết cần mang ra bàn.
+ * Chỉ lấy 'done' — khi đã served thì tự biến mất khỏi danh sách.
+ */
+export const getWaiterDoneNotifications = async (): Promise<any[]> => {
+  return query<any[]>(
+    `SELECT
+       oi.id          AS item_id,
+       oi.order_id,
+       oi.status,
+       oi.created_at  AS item_created_at,
+       m.name         AS item_name,
+       t.name         AS table_name,
+       t.id           AS table_id
+     FROM order_items oi
+     JOIN orders o      ON oi.order_id     = o.id
+     JOIN menu_items m  ON oi.menu_item_id = m.id
+     LEFT JOIN tables t ON o.table_id      = t.id
+     WHERE oi.status = 'done'
+       AND o.status IN ('open', 'serving')
+     ORDER BY oi.created_at DESC
+     LIMIT 50`,
+  );
+};
+
+/**
+ * Waiter xác nhận đã mang món ra bàn: done → served
+ */
+export const markOrderItemServed = async (itemId: number): Promise<boolean> => {
+  const result = await query<any>(
+    `UPDATE order_items SET status = 'served' WHERE id = ? AND status = 'done'`,
+    [itemId],
+  );
+  return result.affectedRows > 0;
+};
+
+
 // ============================================================================
 //  RESMANAGER SCHEMA — Tables Enhanced (with guest + merge + split info)
 // ============================================================================

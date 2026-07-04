@@ -113,3 +113,22 @@ export const sendItemsToKitchen = async (orderId: number, itemIds: number[]): Pr
 export const holdOrderItems = async (orderId: number, itemIds: number[], held: boolean): Promise<void> => {
   await api.post(`/v1/waiter/orders/${orderId}/hold-items`, { item_ids: itemIds, held });
 };
+
+export interface WaiterNotification {
+  item_id: number;
+  order_id: number;
+  status: string;
+  item_created_at: string;
+  item_name: string;
+  table_name: string | null;
+  table_id: number | null;
+}
+
+export const getWaiterNotifications = async (): Promise<WaiterNotification[]> => {
+  const response = await api.get("/v1/waiter/notifications");
+  return response.data.data || [];
+};
+
+export const markItemAsServed = async (orderId: number, itemId: number): Promise<void> => {
+  await api.patch(`/v1/waiter/orders/${orderId}/items/${itemId}/served`);
+};

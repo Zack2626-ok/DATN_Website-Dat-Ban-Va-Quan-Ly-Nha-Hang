@@ -444,7 +444,7 @@ CREATE TABLE order_items (
     seat_number   TINYINT       DEFAULT NULL,
     course_number INT           NOT NULL DEFAULT 1,
     kitchen_note  TEXT          DEFAULT NULL,
-    status        ENUM('pending','cooking','done','cancelled','voided') NOT NULL DEFAULT 'pending',
+    status        ENUM('pending','cooking','done','served','cancelled','voided') NOT NULL DEFAULT 'pending',
     is_held       TINYINT(1)   NOT NULL DEFAULT 0,
     voided_at     DATETIME      DEFAULT NULL,
     void_reason   VARCHAR(255)  DEFAULT NULL,
@@ -931,3 +931,13 @@ INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, not
 --  CẬP NHẬT used_count voucher sau khi đã dùng
 -- ============================================================================
 UPDATE vouchers SET used_count = 1 WHERE code = 'SAVE10';
+
+-- ============================================================================
+--  THÊM TRẠNG THÁI 'served' VÀO order_items (v2 — waiter xác nhận đã mang ra)
+--  Chạy script này nếu database đã được tạo trước khi có thay đổi này.
+--  Nếu chạy schema từ đầu thì KHÔNG cần chạy lại dòng này.
+-- ============================================================================
+ALTER TABLE order_items
+  MODIFY COLUMN status
+  ENUM('pending','cooking','done','served','cancelled','voided')
+  NOT NULL DEFAULT 'pending';

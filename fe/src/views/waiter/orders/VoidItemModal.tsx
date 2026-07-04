@@ -3,7 +3,7 @@ import { Modal } from "../../../components/Modal";
 import { AlertTriangle, Flame, Send } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-export type OrderItemStatus = "pending" | "cooking" | "done" | "voided";
+export type OrderItemStatus = "pending" | "cooking" | "done" | "served" | "voided";
 
 export interface VoidableOrderItem {
   id: string;

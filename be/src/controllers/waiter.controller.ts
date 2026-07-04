@@ -178,3 +178,28 @@ export const holdOrderItemsHandler = async (req: Request, res: Response): Promis
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+// Lấy danh sách thông báo: món đã xong (done) cần mang ra bàn
+export const getWaiterNotificationsHandler = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const items = await db.getWaiterDoneNotifications();
+    sendSuccess(res, items, "Lấy thông báo thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Waiter xác nhận đã mang món ra bàn: done → served
+export const markItemServedHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { itemId } = req.params;
+    const success = await db.markOrderItemServed(Number(itemId));
+    if (!success) {
+      sendError(res, "Không thể cập nhật — món chưa ở trạng thái 'done' hoặc không tồn tại", 400);
+      return;
+    }
+    sendSuccess(res, { itemId: Number(itemId), status: "served" }, "Đã xác nhận mang ra bàn");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};

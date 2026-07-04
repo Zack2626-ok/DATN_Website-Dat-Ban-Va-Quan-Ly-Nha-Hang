@@ -31,7 +31,7 @@ type TableAction = "transfer" | "merge" | "split" | null;
 
 interface ActiveOrderInfo {
   id: number;
-  items: { id: number; name: string; quantity: number; price: number }[];
+  items: { id: number; name: string; quantity: number; price: number; status: string }[];
   totalAmount: number;
   status: string;
 }
@@ -129,6 +129,7 @@ export const WaiterTableMap: React.FC = () => {
             name: i.item_name,
             quantity: i.quantity,
             price: Number(i.unit_price),
+            status: selectedTable.status === "pending_payment" ? "served" : i.status,
           })),
           totalAmount: total,
           status: selectedTable.status,
@@ -446,12 +447,21 @@ export const WaiterTableMap: React.FC = () => {
                         {activeOrder.items.map((item) => (
                           <div
                             key={item.id}
-                            className="flex justify-between items-center p-2.5 bg-gray-50 rounded-xl border border-gray-100"
+                            className="flex justify-between items-start p-2.5 bg-gray-50 rounded-xl border border-gray-100 gap-2"
                           >
-                            <span className="text-sm font-bold text-gray-700">
-                              {item.name}
-                              <span className="text-gray-400 ml-1 font-normal">×{item.quantity}</span>
-                            </span>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-bold text-gray-700">
+                                {item.name}
+                                <span className="text-gray-400 ml-1 font-normal">×{item.quantity}</span>
+                              </span>
+                              {/* Badge trạng thái món */}
+                              <div className="mt-1">
+                                {item.status === "pending" && <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">⏳ Chờ gửi</span>}
+                                {item.status === "cooking" && <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">🔥 Đang nấu</span>}
+                                {item.status === "done" && <span className="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">✅ Hoàn thành</span>}
+                                {item.status === "served" && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">🛎 Đã mang ra</span>}
+                              </div>
+                            </div>
                             <span className="text-sm font-black text-gray-800 shrink-0">
                               {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                             </span>
@@ -570,12 +580,17 @@ export const WaiterTableMap: React.FC = () => {
                         {activeOrder.items.map((item) => (
                           <div
                             key={item.id}
-                            className="flex justify-between items-center p-2.5 bg-gray-50 rounded-xl border border-gray-100"
+                            className="flex justify-between items-start p-2.5 bg-gray-50 rounded-xl border border-gray-100 gap-2"
                           >
-                            <span className="text-sm font-bold text-gray-700">
-                              {item.name}
-                              <span className="text-gray-400 ml-1 font-normal">×{item.quantity}</span>
-                            </span>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-bold text-gray-700">
+                                {item.name}
+                                <span className="text-gray-400 ml-1 font-normal">×{item.quantity}</span>
+                              </span>
+                              <div className="mt-1">
+                                <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">🛎 Đã mang ra</span>
+                              </div>
+                            </div>
                             <span className="text-sm font-black text-gray-800 shrink-0">
                               {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                             </span>
