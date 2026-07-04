@@ -2,8 +2,9 @@ import React, { useState, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { ORDER_STATUS } from "../../../constants/orderStatus";
 import { TABLE_STATUS } from "../../../constants/tableStatus";
-import { updateOrderStatus } from "../../../store/orderSlice";
+import { updateOrderStatus as updateOrderStatusLocal, updateOrderStatusOnServer } from "../../../store/orderSlice";
 import { releaseTableToCleaning } from "../../../store/tableSlice";
+import { createPaymentApi } from "../../../services/paymentService";
 import {
   CreditCard,
   DollarSign,
@@ -12,6 +13,7 @@ import {
   Info,
   CheckCircle2,
 } from "lucide-react";
+import { Modal } from "../../../components/Modal";
 
 type SplitMode = "equal" | "items";
 
@@ -41,6 +43,9 @@ export const CashierPOS: React.FC = () => {
   const [splitMode, setSplitMode] = useState<SplitMode>("equal");
   const [splitCount, setSplitCount] = useState<number>(2);
   const [tipAmount, setTipAmount] = useState<string>("0");
+  const [vatEnabled, setVatEnabled] = useState<boolean>(true);
+  const [roundEnabled, setRoundEnabled] = useState<boolean>(false);
+  const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
   const [lastPaidTable, setLastPaidTable] = useState<string>("");
 
@@ -62,28 +67,63 @@ export const CashierPOS: React.FC = () => {
 
   // Calculations
   const subtotal = activeOrder ? activeOrder.totalAmount : 0;
-  const tax = subtotal * 0.1;
+  const tax = vatEnabled ? subtotal * 0.1 : 0;
   const tipVal = parseFloat(tipAmount) || 0;
-  const totalAmount = subtotal + tax + tipVal;
+  let totalAmount = subtotal + tax + tipVal;
+  if (roundEnabled) {
+    // Round to nearest 1000 (since UI multiplies by 1000 later)
+    totalAmount = Math.round(totalAmount / 1) ;
+  }
 
   const perPersonAmount = useMemo(() => {
     const count = Math.max(1, splitCount);
     return totalAmount / count;
   }, [totalAmount, splitCount]);
 
-  const handleProcessPayment = (_method: string) => {
+  const handleProcessPayment = async (method: string) => {
     if (!activeOrder || !selectedTableId) return;
 
-    dispatch(
-      updateOrderStatus({ id: activeOrder.id, status: ORDER_STATUS.PAID }),
-    );
-    dispatch(releaseTableToCleaning({ id: selectedTableId }));
+    try {
+      const amountVnd = Math.round(totalAmount * 1000); // convert UI units to VND
+      const taxVnd = Math.round(tax * 1000);
+      const tipVnd = Math.round(tipVal * 1000);
+      await createPaymentApi({
+        orderId: activeOrder.id,
+        amount: amountVnd,
+        paymentMethod: method,
+        status: "completed",
+        completedAt: new Date().toISOString(),
+        notes: JSON.stringify({ vatEnabled, roundEnabled }),
+        discountAmount: 0,
+      });
 
-    setLastPaidTable(selectedTable?.name || "Bàn");
-    setPaymentSuccess(true);
-    setSelectedTableId(null);
-    setTipAmount("0");
-    setSplitCount(2);
+      // Optimistically update UI and sync with server
+      dispatch(updateOrderStatusLocal({ id: activeOrder.id, status: ORDER_STATUS.PAID }));
+      dispatch(updateOrderStatusOnServer({ id: activeOrder.id, status: ORDER_STATUS.PAID }));
+      dispatch(releaseTableToCleaning({ id: selectedTableId }));
+
+      setLastPaidTable(selectedTable?.name || "Bàn");
+      setPaymentSuccess(true);
+      setSelectedTableId(null);
+      setTipAmount("0");
+      setSplitCount(2);
+    } catch (err: any) {
+      console.error("Payment failed:", err);
+      // Optionally show error to user
+      alert("Thanh toán thất bại. Vui lòng thử lại.");
+    }
+  };
+
+  const openConfirm = (method: string) => {
+    // attach method temporarily via data-attr on window, or closure
+    (window as any).__pmethod = method;
+    setConfirmOpen(true);
+  };
+
+  const confirmAndPay = async () => {
+    const method = (window as any).__pmethod || "cash";
+    setConfirmOpen(false);
+    await handleProcessPayment(method);
   };
 
   return (
@@ -216,6 +256,34 @@ export const CashierPOS: React.FC = () => {
                     .000 vnđ
                   </span>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                <span className="flex items-center gap-2">
+                  <input
+                    id="vat"
+                    type="checkbox"
+                    checked={vatEnabled}
+                    onChange={(e) => setVatEnabled(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="vat">Áp thuế VAT 10%</label>
+                </span>
+                <span className="text-xs text-slate-400">{vatEnabled ? "Bật" : "Tắt"}</span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                <span className="flex items-center gap-2">
+                  <input
+                    id="round"
+                    type="checkbox"
+                    checked={roundEnabled}
+                    onChange={(e) => setRoundEnabled(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="round">Làm tròn</label>
+                </span>
+                <span className="text-xs text-slate-400">{roundEnabled ? "Bật" : "Tắt"}</span>
               </div>
 
               <div className="flex justify-between items-center border-t border-slate-100 pt-4 mt-1">
@@ -369,22 +437,22 @@ export const CashierPOS: React.FC = () => {
                 Phương thức thanh toán
               </label>
 
-              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2">
                 <button
-                  onClick={() => handleProcessPayment("cash")}
+                  onClick={() => openConfirm("cash")}
                   className="w-full py-3.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-2 cursor-pointer transition-all hover:border-slate-300"
                 >
                   <DollarSign size={15} className="text-slate-500" /> Tiền mặt
                 </button>
                 <button
-                  onClick={() => handleProcessPayment("card")}
+                  onClick={() => openConfirm("card")}
                   className="w-full py-3.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-2 cursor-pointer transition-all hover:border-slate-300"
                 >
                   <CreditCard size={15} className="text-slate-500" /> Thẻ tín
                   dụng
                 </button>
                 <button
-                  onClick={() => handleProcessPayment("wallet")}
+                  onClick={() => openConfirm("wallet")}
                   className="w-full py-3.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-2 cursor-pointer transition-all hover:border-slate-300"
                 >
                   <Wallet size={15} className="text-slate-500" /> Ví điện tử
@@ -404,6 +472,48 @@ export const CashierPOS: React.FC = () => {
             hóa đơn.
           </p>
         </div>
+      )}
+
+      {confirmOpen && (
+        <Modal
+          isOpen={confirmOpen}
+          onClose={() => setConfirmOpen(false)}
+          title="Xác nhận Thanh toán"
+          footer={
+            <>
+              <button
+                onClick={() => setConfirmOpen(false)}
+                className="py-2 px-4 rounded-lg bg-white border mr-2"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => confirmAndPay()}
+                className="py-2 px-4 rounded-lg bg-blue-600 text-white"
+              >
+                Xác nhận & Thanh toán
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm">
+            <p>
+              Hóa đơn: <strong>{selectedTable?.name}</strong>
+            </p>
+            <p>
+              Tạm tính: <strong>{(subtotal * 1000).toLocaleString("vi-VN")} vnđ</strong>
+            </p>
+            <p>
+              Thuế: <strong>{(tax * 1000).toLocaleString("vi-VN")} vnđ</strong>
+            </p>
+            <p>
+              Tip: <strong>{(tipVal * 1000).toLocaleString("vi-VN")} vnđ</strong>
+            </p>
+            <p>
+              Tổng: <strong>{(totalAmount * 1000).toLocaleString("vi-VN")} vnđ</strong>
+            </p>
+          </div>
+        </Modal>
       )}
     </div>
   );
