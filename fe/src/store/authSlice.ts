@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
-import type { User, LoginPayload } from "../interfaces/auth";
+import type { User, LoginPayload, UserRole } from "../interfaces/auth";
 import { loginApi, getMeApi } from "../services/authService";
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -29,7 +29,11 @@ export const loginThunk = createAsyncThunk<
 >("auth/login", async (payload, { rejectWithValue }) => {
   try {
     const loginData = await loginApi(payload);
-    return loginData.user || (loginData as any);
+    const apiUser = loginData.user || (loginData as any);
+    return {
+      ...apiUser,
+      role: apiUser.role || (apiUser as unknown as { role_name?: UserRole }).role_name,
+    } as User;
   } catch (err: unknown) {
     const msg = (err as { response?: { data?: { message?: string } } })
       ?.response?.data?.message;
@@ -48,7 +52,11 @@ export const restoreSessionThunk = createAsyncThunk<
   const token = localStorage.getItem("accessToken");
   if (!token) return null;
   try {
-    return await getMeApi();
+    const apiUser = await getMeApi();
+    return {
+      ...apiUser,
+      role: apiUser.role || (apiUser as unknown as { role_name?: UserRole }).role_name,
+    } as User;
   } catch {
     localStorage.clear();
     return rejectWithValue("Phiên đăng nhập hết hạn");

@@ -1,15 +1,42 @@
-import React, { useState, useMemo } from "react";
-import { MOCK_WAITLIST, WaitlistCustomer } from "../../waitlist/mockData";
+import React, { useState, useEffect, useMemo } from "react";
 import { WaitlistTable } from "../../waitlist/components/WaitlistTable";
 import { AddCustomerModal } from "../../waitlist/components/AddCustomerModal";
 import { Users, Star, Clock, Plus } from "lucide-react";
+import { getWaitlist, addToWaitlist, notifyWaitlistGuest } from "../../../services/waitlistService";
+import { toast } from "react-hot-toast";
 
 /**
  * Danh sách chờ — Waitlist cho nhân viên phục vụ
  */
 export const WaitlistPage: React.FC = () => {
-  const [customers, setCustomers] = useState<WaitlistCustomer[]>(MOCK_WAITLIST);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const fetchWaitlist = async () => {
+    try {
+      const data = await getWaitlist();
+      // Chuyển format từ DB sang format của UI
+      const formatted = data.map((d) => ({
+        id: d.id.toString(),
+        name: d.guest_name,
+        phone: d.phone || "",
+        partySize: d.party_size,
+        joinedAt: d.joined_at,
+        status: d.notified_at ? "notified" : "waiting",
+      }));
+      setCustomers(formatted);
+    } catch (err) {
+      toast.error("Lỗi khi tải danh sách chờ");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWaitlist();
+  }, []);
 
   const stats = useMemo(() => {
     const total = customers.filter((c) => c.status !== "seated" && c.status !== "cancelled").length;
@@ -17,22 +44,31 @@ export const WaitlistPage: React.FC = () => {
     return { total, waiting };
   }, [customers]);
 
-  const handleNotify = (id: string) => {
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: "notified" } : c)),
-    );
+  const handleNotify = async (id: string) => {
+    try {
+      await notifyWaitlistGuest(Number(id));
+      toast.success("Đã thông báo cho khách hàng!");
+      fetchWaitlist();
+    } catch (err) {
+      toast.error("Lỗi khi thông báo");
+      console.error(err);
+    }
   };
 
-  const handleAdd = (name: string, phone: string, partySize: number) => {
-    const newCustomer: WaitlistCustomer = {
-      id: Date.now().toString(),
-      name,
-      phone,
-      partySize,
-      joinedAt: new Date().toISOString(),
-      status: "waiting",
-    };
-    setCustomers((prev) => [...prev, newCustomer]);
+  const handleAdd = async (name: string, phone: string, partySize: number) => {
+    try {
+      await addToWaitlist({
+        guest_name: name,
+        phone,
+        party_size: partySize,
+      });
+      toast.success("Đã thêm vào danh sách chờ!");
+      setIsModalOpen(false);
+      fetchWaitlist();
+    } catch (err) {
+      toast.error("Lỗi thêm khách hàng");
+      console.error(err);
+    }
   };
 
   return (
@@ -73,7 +109,11 @@ export const WaitlistPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <WaitlistTable customers={customers} onNotify={handleNotify} />
+        {loading ? (
+          <div className="p-8 text-center text-gray-500 animate-pulse">Đang tải danh sách chờ...</div>
+        ) : (
+          <WaitlistTable customers={customers} onNotify={handleNotify} />
+        )}
       </div>
 
       <AddCustomerModal

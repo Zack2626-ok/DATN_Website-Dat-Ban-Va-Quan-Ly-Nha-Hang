@@ -51,9 +51,20 @@ export const getMenuItemsByCategory = async (req: Request, res: Response): Promi
 
 export const createMenuItem = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, description, category, price, preparationTime, image, available } = req.body;
+    const {
+      name,
+      description,
+      category,
+      category_id,
+      price,
+      preparationTime,
+      image,
+      available,
+      kitchen_station,
+      is_featured,
+    } = req.body;
 
-    if (!name || !category || price === undefined) {
+    if (!name || (!category && !category_id) || price === undefined) {
       sendError(res, "Tên, danh mục và giá là bắt buộc", 400);
       return;
     }
@@ -67,11 +78,14 @@ export const createMenuItem = async (req: Request, res: Response): Promise<void>
       name,
       description,
       category,
+      category_id,
       price,
       image,
       available: available !== undefined ? Boolean(available) : true,
       preparationTime,
-    });
+      kitchen_station,
+      is_featured: is_featured !== undefined ? Boolean(is_featured) : false,
+    } as any);
 
     sendSuccess(res, newItem, "Tạo món ăn thành công", 201);
   } catch (error) {
@@ -83,7 +97,20 @@ export const createMenuItem = async (req: Request, res: Response): Promise<void>
 export const updateMenuItem = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, description, category, price, available, preparationTime, image } = req.body;
+    const {
+      name,
+      description,
+      category,
+      category_id,
+      price,
+      available,
+      preparationTime,
+      image,
+      is_deleted,
+      deleted_at,
+      kitchen_station,
+      is_featured,
+    } = req.body;
 
     if (!id) {
       sendError(res, "ID món ăn là bắt buộc", 400);
@@ -99,11 +126,16 @@ export const updateMenuItem = async (req: Request, res: Response): Promise<void>
       name,
       description,
       category,
+      category_id,
       price,
       available: available !== undefined ? Boolean(available) : undefined,
       preparationTime,
       image,
-    });
+      is_deleted,
+      deleted_at,
+      kitchen_station,
+      is_featured: is_featured !== undefined ? Boolean(is_featured) : undefined,
+    } as any);
 
     if (!updatedItem) {
       sendError(res, "Không tìm thấy món ăn cần cập nhật", 404);

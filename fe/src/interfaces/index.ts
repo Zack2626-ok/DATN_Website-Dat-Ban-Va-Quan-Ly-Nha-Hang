@@ -1,16 +1,51 @@
 import type { OrderStatus } from "../constants/orderStatus";
 import type { TableStatus } from "../constants/tableStatus";
 
+export interface Modifier {
+  id?: number | string;
+  group_id?: number | string;
+  parent_modifier_id?: number | string | null;
+  name: string;
+  extra_price: number;
+}
+
+export interface ModifierGroup {
+  id?: number | string;
+  menu_item_id?: number | string;
+  name: string;
+  is_required: boolean;
+  min_select: number;
+  max_select: number;
+  modifiers: Modifier[];
+}
+
 export interface MenuItem {
-  id: string;
+  id: string | number;
   name: string;
   price: number;
   description: string;
-  category: string;
-  image: string;
-  isSpicy: boolean;
-  isBestSeller: boolean;
-  inStock: boolean;
+  category_id: string | number;
+  category_name?: string;
+  category?: string; // For backward compatibility
+  image_url?: string;
+  image?: string; // For backward compatibility
+  kitchen_station: "hot_kitchen" | "bar" | "cold_kitchen";
+  is_active: boolean;
+  is_featured: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  inStock?: boolean; // For backward compatibility
+  available?: boolean; // For backward compatibility
+  modifier_groups?: ModifierGroup[];
+}
+
+export interface Category {
+  id: string | number;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
 }
 
 export interface Table {
@@ -23,7 +58,7 @@ export interface Table {
 }
 
 export interface OrderItem {
-  menuItemId: string;
+  menuItemId: string | number;
   name: string;
   price: number;
   quantity: number;
@@ -53,4 +88,28 @@ export interface Ingredient {
   threshold: number; // Alert when stock < threshold
 }
 
-export type UserRole = "admin" | "manager" | "waiter" | "chef" | "cashier";
+export type UserRole = "admin" | "manager" | "waiter" | "chef" | "cashier" | "sales_event";
+
+export interface Role {
+  id: number;
+  name: UserRole;
+  description: string;
+}
+
+export interface User {
+  id: number;
+  role_id: number;
+  full_name: string;
+  email: string;
+  password_hash?: string;
+  phone?: string;
+  avatar_url?: string;
+  status: "active" | "inactive";
+  is_deleted: boolean;
+  deleted_at?: string;
+  last_login?: string;
+  created_at: string;
+  updated_at: string;
+  // For UI: include role object when fetching
+  role?: Role;
+}

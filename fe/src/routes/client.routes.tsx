@@ -1,6 +1,6 @@
 import { Route } from "react-router-dom";
 import { ClientLayout, HomeView } from "../views/client";
-import { MenuPage, PromotionsPage, BookingPage } from "../views/client";
+import { MenuPage, PromotionsPage, BookingPage, AccountPage } from "../views/client";
 import LoginPage from "../views/auth/LoginPage";
 import RegisterPage from "../views/auth/RegisterPage";
 
@@ -15,6 +15,7 @@ export const ClientRoutes = () => (
       <Route path="menu" element={<MenuPage />} />
       <Route path="promotions" element={<PromotionsPage />} />
       <Route path="booking" element={<BookingPage />} />
+      <Route path="account" element={<AccountPage />} />
     </Route>
 
     {/* Authentication pages (standalone, no shared layout) */}

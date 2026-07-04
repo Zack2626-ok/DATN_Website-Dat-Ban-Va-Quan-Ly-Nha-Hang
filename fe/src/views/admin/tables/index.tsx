@@ -26,7 +26,7 @@ export const WaiterTableMap: React.FC = () => {
   const [isOrderingModalOpen, setIsOrderingModalOpen] = useState(false);
   const [guestCount, setGuestCount] = useState(2);
   const [cart, setCart] = useState<
-    { menuItemId: string; name: string; price: number; quantity: number }[]
+    { menuItemId: string | number; name: string; price: number; quantity: number }[]
   >([]);
 
   const selectedTable = useMemo(
@@ -40,7 +40,8 @@ export const WaiterTableMap: React.FC = () => {
   }, [orders, selectedTable]);
 
   const handleAddToCart = (item: MenuItem) => {
-    if (!item.inStock) return;
+    const inStock = item.inStock ?? item.is_active ?? item.available ?? true;
+    if (!inStock) return;
     setCart((prev) => {
       const existing = prev.find((i) => i.menuItemId === item.id);
       if (existing) {
@@ -406,16 +407,19 @@ export const WaiterTableMap: React.FC = () => {
             </h4>
 
             <div className="flex flex-col gap-2.5 max-h-[350px] overflow-y-auto pr-1 scrollbar">
-              {menu.map((item) => (
+              {menu.map((item) => {
+                const inStock = item.inStock ?? item.is_active ?? item.available ?? true;
+                const imageSrc = item.image ?? item.image_url ?? "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
+                return (
                 <div
                   key={item.id}
-                  onClick={() => item.inStock && handleAddToCart(item)}
+                  onClick={() => inStock && handleAddToCart(item)}
                   className={`flex items-center gap-3 p-2 border rounded-xl cursor-pointer transition-all hover:bg-slate-100 bg-slate-50 border-slate-100 ${
-                    item.inStock ? "" : "opacity-50 cursor-not-allowed"
+                    inStock ? "" : "opacity-50 cursor-not-allowed"
                   }`}
                 >
                   <img
-                    src={item.image}
+                    src={imageSrc}
                     alt={item.name}
                     className="w-10 h-10 rounded-lg object-cover"
                   />
@@ -427,7 +431,7 @@ export const WaiterTableMap: React.FC = () => {
                       {(item.price * 1000).toLocaleString("vi-VN")} vnđ
                     </span>
                   </div>
-                  {item.inStock ? (
+                  {inStock ? (
                     <span className="text-[10px] text-admin-primary font-bold bg-admin-primary-light px-2 py-0.5 rounded border border-admin-primary/20">
                       Thêm +
                     </span>
@@ -437,7 +441,7 @@ export const WaiterTableMap: React.FC = () => {
                     </span>
                   )}
                 </div>
-              ))}
+              )})}
             </div>
           </div>
 

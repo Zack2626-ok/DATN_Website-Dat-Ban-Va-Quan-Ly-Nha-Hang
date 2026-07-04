@@ -18,7 +18,7 @@ export interface KdsItem {
   seatNumber?: number | null;
   courseNumber?: number | null;
   kitchenNote?: string | null;
-  status: "pending" | "cooking" | "done" | "cancelled" | "voided";
+  status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
   createdAt: string;
   tableName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
@@ -35,9 +35,34 @@ export interface KdsVoidAlert {
   dismissed?: boolean;
 }
 
+export interface KdsNewAlert {
+  id: string | number;
+  orderId: string | number;
+  name: string;
+  quantity: number;
+  tableName: string;
+  kitchenStation: string;
+  createdAt: string;
+  dismissed?: boolean;
+}
+
+export interface KdsChangeAlert {
+  id: string | number;
+  orderId: string | number;
+  name: string;
+  tableName: string;
+  changeType: "quantity" | "note";
+  oldValue: string | number;
+  newValue: string | number;
+  createdAt: string;
+  dismissed?: boolean;
+}
+
 interface KdsState {
   items: KdsItem[];
   voidAlerts: KdsVoidAlert[];
+  newAlerts: KdsNewAlert[];
+  changeAlerts: KdsChangeAlert[];
   loading: boolean;
   error: string | null;
   stationFilter: "all" | "hot_kitchen" | "bar" | "cold_kitchen";
@@ -46,6 +71,8 @@ interface KdsState {
 const initialState: KdsState = {
   items: [],
   voidAlerts: [],
+  newAlerts: [],
+  changeAlerts: [],
   loading: false,
   error: null,
   stationFilter: "all",
@@ -117,6 +144,17 @@ const kdsSlice = createSlice({
     dismissVoidAlert: (state, action: PayloadAction<string | number>) => {
       state.voidAlerts = state.voidAlerts.filter((alert) => alert.id !== action.payload);
     },
+    dismissNewAlert: (state, action: PayloadAction<string | number>) => {
+      state.newAlerts = state.newAlerts.filter((alert) => alert.id !== action.payload);
+    },
+    dismissChangeAlert: (state, action: PayloadAction<string | number>) => {
+      state.changeAlerts = state.changeAlerts.filter((alert) => alert.id !== action.payload);
+    },
+    dismissAllAlerts: (state) => {
+      state.newAlerts = [];
+      state.changeAlerts = [];
+      state.voidAlerts = [];
+    },
     // Mock handler for offline mode
     updateItemStatusLocal: (state, action: PayloadAction<{ id: string | number; status: any }>) => {
       const item = state.items.find((i) => i.id === action.payload.id);
@@ -140,7 +178,64 @@ const kdsSlice = createSlice({
       })
       .addCase(fetchKdsItems.fulfilled, (state, action) => {
         state.loading = false;
-        state.items = action.payload || [];
+        const newItemsList = action.payload || [];
+        
+        // 1. So sánh để tìm món mới (chưa có trong state cũ)
+        // Chỉ tìm những món có createdAt gần đây (ví dụ < 2 phút) để tránh alert món cũ lúc mới load trang
+        const now = Date.now();
+        const twoMinsAgo = now - 2 * 60 * 1000;
+        
+        if (state.items.length > 0) { // Đã load lần đầu xong
+          newItemsList.forEach((newItem: KdsItem) => {
+            const oldItem = state.items.find((i) => i.id === newItem.id);
+            
+            // Check Món mới
+            if (!oldItem && new Date(newItem.createdAt).getTime() > twoMinsAgo) {
+              // Bỏ qua nếu đã có alert rồi hoặc đã dismissed
+              if (!state.newAlerts.some(a => a.id === newItem.id)) {
+                state.newAlerts.push({
+                  id: newItem.id,
+                  orderId: newItem.orderId,
+                  name: newItem.name,
+                  quantity: newItem.quantity,
+                  tableName: newItem.tableName || "Mang về",
+                  kitchenStation: newItem.kitchenStation,
+                  createdAt: new Date().toISOString()
+                });
+              }
+            }
+            
+            // Check Đổi món (Số lượng hoặc Ghi chú)
+            if (oldItem && newItem.status !== "done" && newItem.status !== "delivered") {
+              if (oldItem.quantity !== newItem.quantity) {
+                state.changeAlerts.push({
+                  id: `${newItem.id}_qty_${now}`,
+                  orderId: newItem.orderId,
+                  name: newItem.name,
+                  tableName: newItem.tableName || "Mang về",
+                  changeType: "quantity",
+                  oldValue: oldItem.quantity,
+                  newValue: newItem.quantity,
+                  createdAt: new Date().toISOString()
+                });
+              }
+              if (oldItem.kitchenNote !== newItem.kitchenNote) {
+                state.changeAlerts.push({
+                  id: `${newItem.id}_note_${now}`,
+                  orderId: newItem.orderId,
+                  name: newItem.name,
+                  tableName: newItem.tableName || "Mang về",
+                  changeType: "note",
+                  oldValue: oldItem.kitchenNote || "(Không có)",
+                  newValue: newItem.kitchenNote || "(Không có)",
+                  createdAt: new Date().toISOString()
+                });
+              }
+            }
+          });
+        }
+        
+        state.items = newItemsList;
       })
       .addCase(fetchKdsItems.rejected, (state, action) => {
         state.loading = false;
@@ -158,5 +253,13 @@ const kdsSlice = createSlice({
   },
 });
 
-export const { setStationFilter, dismissVoidAlert, updateItemStatusLocal, recallItemStatusLocal } = kdsSlice.actions;
+export const { 
+  setStationFilter, 
+  dismissVoidAlert, 
+  dismissNewAlert,
+  dismissChangeAlert,
+  dismissAllAlerts,
+  updateItemStatusLocal, 
+  recallItemStatusLocal 
+} = kdsSlice.actions;
 export default kdsSlice.reducer;

@@ -14,7 +14,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ name, phone, onNameC
       <label className="text-sm font-bold text-zinc-300 flex items-center gap-2">
         <User size={15} className="text-brand-primary" />
         Tên khách hàng
-        <span className="text-xs font-normal text-zinc-600">(không bắt buộc)</span>
+        <span className="text-xs font-normal text-rose-500">(bắt buộc)</span>
       </label>
       <input
         type="text"

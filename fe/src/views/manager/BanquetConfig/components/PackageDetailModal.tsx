@@ -1,0 +1,92 @@
+import React from "react";
+import { X } from "lucide-react";
+
+interface EventPackage {
+  id: number;
+  name: string;
+  price_per_person: number;
+  description: string;
+  is_active: boolean;
+  items?: any[];
+}
+
+interface PackageDetailModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  pkg: EventPackage | null;
+}
+
+/**
+ * PackageDetailModal - Modal xem chi tiết gói tiệc
+ */
+export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ isOpen, onClose, pkg }) => {
+  if (!isOpen || !pkg) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 animate-fade-in">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-lg font-bold text-gray-800">Chi tiết Gói Tiệc</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X size={20} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Tên Gói
+              </label>
+              <p className="text-lg font-bold text-gray-900">{pkg.name}</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Giá / Người
+              </label>
+              <p className="text-lg font-bold text-[#FF5A5F]">
+                {pkg.price_per_person.toLocaleString("vi-VN")}₫
+              </p>
+            </div>
+          </div>
+
+          {pkg.description && (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Mô tả
+              </label>
+              <p className="text-sm text-gray-700 leading-relaxed">{pkg.description}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Trạng thái
+              </label>
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  pkg.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                }`}
+              >
+                {pkg.is_active ? "Hoạt động" : "Đã khóa"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-gray-200 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
