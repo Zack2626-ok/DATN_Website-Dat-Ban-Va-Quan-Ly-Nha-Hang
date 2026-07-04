@@ -1,4 +1,5 @@
 import mysql from "mysql2/promise";
+import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
@@ -6,6 +7,8 @@ import { Table, MenuItem, Inventory, Payment, User } from "./types";
 
 dotenv.config();
 
+let connectionPool: mysql.Pool | null = null;
+let dbAvailable = false;
 export let connectionPool: mysql.Pool | null = null;
 
 const JSON_DB_DIR = path.join(__dirname, "../database");
@@ -23,6 +26,18 @@ const query = async <T = any>(sql: string, params: any[] = []): Promise<T> => {
   const [rows] = await pool.query(sql, params);
   return rows as T;
 };
+
+export const isDbAvailable = (): boolean => dbAvailable;
+
+const MOCK_USERS: User[] = [
+  { id: "1", full_name: "System Admin", email: "admin@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "admin", phone: "0900000001", createdAt: new Date().toISOString() },
+  { id: "2", full_name: "Restaurant Manager", email: "manager@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "manager", phone: "0900000002", createdAt: new Date().toISOString() },
+  { id: "3", full_name: "Cashier 1", email: "cashier@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "cashier", phone: "0900000003", createdAt: new Date().toISOString() },
+  { id: "4", full_name: "Waiter 1", email: "waiter1@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "waiter", phone: "0900000004", createdAt: new Date().toISOString() },
+  { id: "5", full_name: "Waiter 2", email: "waiter2@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "waiter", phone: "0900000005", createdAt: new Date().toISOString() },
+  { id: "6", full_name: "Chef 1", email: "chef1@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "chef", phone: "0900000006", createdAt: new Date().toISOString() },
+  { id: "7", full_name: "Sales Event 1", email: "sales@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "sales_event", phone: "0900000007", createdAt: new Date().toISOString() },
+];
 
 export interface Order {
   id: string;
@@ -193,7 +208,7 @@ export const initDb = async (): Promise<boolean> => {
   const port = parseInt(process.env.DB_PORT || "3306", 10);
   const user = process.env.DB_USER || "root";
   const password = process.env.DB_PASSWORD || "";
-  const database = process.env.DB_NAME || "todo_app";
+  const database = process.env.DB_NAME || "resmanager";
 
   if (!process.env.DB_NAME) {
     throw new Error("DB_NAME is not defined in .env");
@@ -216,6 +231,7 @@ export const initDb = async (): Promise<boolean> => {
   await createDatabaseTables();
   await runSchemaMigrations();
   console.log("✅ MySQL tables verified/created successfully.");
+  dbAvailable = true;
   return true;
 };
 
@@ -273,23 +289,29 @@ const mapUserRow = (user: any): User => {
 
 // ===== User operations =====
 export const findUserByEmail = async (email: string): Promise<User | null> => {
+  if (!dbAvailable) {
+    return MOCK_USERS.find((u) => u.email === email) || null;
+  }
   const rows = await query<any[]>(
     `SELECT u.id, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.created_at AS createdAt
      FROM users u
      JOIN roles r ON u.role_id = r.id
      WHERE u.email = ? AND u.is_deleted = 0`,
-    [email]
+    [email],
   );
   return rows[0] ? mapUserRow(rows[0]) : null;
 };
 
 export const findUserById = async (id: string): Promise<User | null> => {
+  if (!dbAvailable) {
+    return MOCK_USERS.find((u) => u.id === id) || null;
+  }
   const rows = await query<any[]>(
     `SELECT u.id, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.created_at AS createdAt
      FROM users u
      JOIN roles r ON u.role_id = r.id
      WHERE u.id = ? AND u.is_deleted = 0`,
-    [id]
+    [id],
   );
   return rows[0] ? mapUserRow(rows[0]) : null;
 };
@@ -331,17 +353,99 @@ export const createUser = async (user: Omit<User, "id" | "createdAt">): Promise<
 };
 
 // ===== Order operations =====
+const MOCK_ORDERS: Order[] = [
+  {
+    id: "o_figma_4",
+    tableId: "t3",
+    tableName: "B03",
+    customerName: "Nguyễn Văn A",
+    customerPhone: "0904445556",
+    customerEmail: "an@gmail.com",
+    guestCount: 2,
+    items: [
+      { menuItemId: "m1", name: "Gỏi hải sản", price: 185, quantity: 1 },
+      { menuItemId: "m3", name: "Bò lúc lắc", price: 265, quantity: 1 },
+      { menuItemId: "m9", name: "Trà đào cam sả", price: 45, quantity: 2 },
+    ],
+    status: "served",
+    totalAmount: 540,
+    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    orderType: "dine_in",
+  },
+  {
+    id: "o1",
+    tableId: "t5",
+    tableName: "B05",
+    customerName: "Alex Mercer",
+    customerPhone: "0901234567",
+    customerEmail: "alex@example.com",
+    guestCount: 2,
+    items: [
+      { menuItemId: "m6", name: "Lẩu Thái chua cay", price: 380, quantity: 1 },
+      { menuItemId: "m10", name: "Nước ép dưa hấu", price: 40, quantity: 2 },
+    ],
+    status: "in_kitchen",
+    totalAmount: 460,
+    createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+    orderType: "dine_in",
+  },
+  {
+    id: "o2",
+    tableId: "t1",
+    tableName: "B01",
+    customerName: "Elena Rostova",
+    customerPhone: "0987654321",
+    customerEmail: "elena@yahoo.com",
+    guestCount: 3,
+    items: [
+      { menuItemId: "m4", name: "Cá hồi sốt chanh leo", price: 285, quantity: 1 },
+      { menuItemId: "m11", name: "Sinh tố bơ", price: 55, quantity: 1 },
+    ],
+    status: "served",
+    totalAmount: 340,
+    createdAt: new Date(Date.now() - 65 * 60 * 1000).toISOString(),
+    orderType: "dine_in",
+  },
+  {
+    id: "o_past_1",
+    tableId: "t5",
+    tableName: "B05",
+    customerName: "Marcus Aurelius",
+    customerPhone: "0900111222",
+    customerEmail: "marcus@philosophy.org",
+    guestCount: 2,
+    items: [
+      { menuItemId: "m5", name: "Sườn sụn nướng BBQ", price: 245, quantity: 1 },
+      { menuItemId: "m8", name: "Bánh tiramisu", price: 60, quantity: 1 },
+    ],
+    status: "paid",
+    totalAmount: 305,
+    createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+    orderType: "dine_in",
+  },
+];
+
 export const getOrders = async (): Promise<Order[]> => {
+  if (!dbAvailable) {
+    return MOCK_ORDERS;
+  }
   const rows = await query<any[]>("SELECT * FROM orders ORDER BY createdAt DESC");
   return rows.map(normalizeOrder);
 };
 
 export const getOrderById = async (id: string): Promise<Order | null> => {
+  if (!dbAvailable) {
+    return MOCK_ORDERS.find((o) => o.id === id) || null;
+  }
   const rows = await query<any[]>("SELECT * FROM orders WHERE id = ?", [id]);
   return rows[0] ? normalizeOrder(rows[0]) : null;
 };
 
 export const saveOrder = async (order: Order): Promise<Order> => {
+  if (!dbAvailable) {
+    MOCK_ORDERS.push(order);
+    return order;
+  }
   await query(
     `INSERT INTO orders (
       id, tableId, tableName, items, status, totalAmount, createdAt,
@@ -367,6 +471,14 @@ export const saveOrder = async (order: Order): Promise<Order> => {
 };
 
 export const updateOrderStatus = async (id: string, status: string): Promise<boolean> => {
+  if (!dbAvailable) {
+    const order = MOCK_ORDERS.find((o) => o.id === id);
+    if (order) {
+      order.status = status;
+      return true;
+    }
+    return false;
+  }
   const result = await query<any>("UPDATE orders SET status = ? WHERE id = ?", [status, id]);
   return result.affectedRows > 0;
 };
@@ -462,6 +574,7 @@ export const updateTable = async (id: string, data: Partial<Table>): Promise<Tab
   const existing = await getTableById(id);
   if (!existing) return null;
   const updated = { ...existing, ...data };
+  if (!dbAvailable) return updated;
   await query(
     "UPDATE tables SET tableNumber = ?, capacity = ?, status = ?, location = ?, qrCode = ? WHERE id = ?",
     [updated.tableNumber, updated.capacity, updated.status, updated.location || null, updated.qrCode || null, id],
@@ -700,17 +813,22 @@ export const getLowStockItems = async (): Promise<Inventory[]> => {
 };
 
 // ===== Payment operations =====
+const MOCK_PAYMENTS: Payment[] = [];
+
 export const getPayments = async (): Promise<Payment[]> => {
+  if (!dbAvailable) return MOCK_PAYMENTS;
   const rows = await query<Payment[]>("SELECT * FROM payments ORDER BY createdAt DESC");
   return rows.map(normalizePayment);
 };
 
 export const getPaymentById = async (id: string): Promise<Payment | null> => {
+  if (!dbAvailable) return MOCK_PAYMENTS.find((p) => p.id === id) || null;
   const rows = await query<Payment[]>("SELECT * FROM payments WHERE id = ?", [id]);
   return rows[0] ? normalizePayment(rows[0]) : null;
 };
 
 export const getPaymentsByOrderId = async (orderId: string): Promise<Payment[]> => {
+  if (!dbAvailable) return MOCK_PAYMENTS.filter((p) => p.orderId === orderId);
   const rows = await query<Payment[]>("SELECT * FROM payments WHERE orderId = ? ORDER BY createdAt DESC", [orderId]);
   return rows.map(normalizePayment);
 };
@@ -718,17 +836,27 @@ export const getPaymentsByOrderId = async (orderId: string): Promise<Payment[]> 
 export const createPayment = async (payment: Omit<Payment, "id" | "createdAt">): Promise<Payment> => {
   const id = `pay_${Date.now()}`;
   const createdAt = new Date().toISOString();
+  const newPayment: Payment = { id, createdAt, ...payment };
+  if (!dbAvailable) {
+    MOCK_PAYMENTS.push(newPayment);
+    return newPayment;
+  }
   await query(
     "INSERT INTO payments (id, orderId, amount, paymentMethod, status, discountAmount, discountReason, notes, createdAt, completedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [id, payment.orderId, payment.amount, payment.paymentMethod, payment.status, payment.discountAmount || 0, payment.discountReason || null, payment.notes || null, createdAt, payment.completedAt || null],
   );
-  return { id, createdAt, ...payment };
+  return newPayment;
 };
 
 export const updatePaymentStatus = async (id: string, status: Payment["status"]): Promise<Payment | null> => {
   const payment = await getPaymentById(id);
   if (!payment) return null;
   const completedAt = status === "completed" ? new Date().toISOString() : undefined;
+  if (!dbAvailable) {
+    payment.status = status;
+    payment.completedAt = completedAt;
+    return payment;
+  }
   await query("UPDATE payments SET status = ?, completedAt = ? WHERE id = ?", [status, completedAt || null, id]);
   return { ...payment, status, completedAt };
 };
@@ -738,6 +866,12 @@ export const applyDiscount = async (id: string, discountAmount: number, discount
   if (!payment) return null;
   const newAmount = payment.amount - discountAmount;
   if (newAmount < 0) return null;
+  if (!dbAvailable) {
+    payment.amount = newAmount;
+    payment.discountAmount = discountAmount;
+    payment.discountReason = discountReason;
+    return payment;
+  }
   await query(
     "UPDATE payments SET amount = ?, discountAmount = ?, discountReason = ? WHERE id = ?",
     [newAmount, discountAmount, discountReason || null, id],
@@ -756,6 +890,9 @@ export const getPaymentDetails = async (orderId: string) => {
 };
 
 export const getPaymentStatistics = async (startDate?: string, endDate?: string): Promise<any> => {
+  if (!dbAvailable) {
+    return { totalPayments: MOCK_PAYMENTS.length, totalAmount: 0, completedCount: 0, completedAmount: 0, pendingCount: 0, pendingAmount: 0, failedCount: 0, failedAmount: 0, averageAmount: 0, dateRange: { startDate: startDate || null, endDate: endDate || null } };
+  }
   const conditions: string[] = [];
   const params: any[] = [];
   if (startDate) {
