@@ -5,8 +5,7 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
 import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
-<<<<<<< HEAD
-import { X } from "lucide-react";
+import { logoutAction } from "../../store/authSlice";
 import {
   getNotificationsApi,
   markNotificationAsReadApi,
@@ -35,10 +34,6 @@ const formatTime = (timeStr: string) => {
     return "";
   }
 };
-=======
-import { logoutAction } from "../../store/authSlice";
-import { getWaiterNotifications, type WaiterNotification } from "../../services/waiterService";
->>>>>>> 7a5ab642880de48ff6c501a43a4d3fa7708a4f1c
 
 export interface NavLinkItem {
   to: string;
@@ -359,7 +354,6 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             )}
           </div>
           <div className="ml-auto flex items-center gap-4">
-<<<<<<< HEAD
             {/* Notification Bell with Dropdown */}
             <div className="relative">
               <button
@@ -435,16 +429,6 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 </>
               )}
             </div>
-=======
-            {/* Bell thông báo thực — chỉ waiter */}
-            {actorRole === "waiter" ? (
-              <WaiterNotificationBell />
-            ) : (
-              <button type="button" className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">
-                <Bell size={18} />
-              </button>
-            )}
->>>>>>> 7a5ab642880de48ff6c501a43a4d3fa7708a4f1c
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
                 <p className="text-sm font-semibold text-gray-700">{user?.full_name || "Demo User"}</p>
