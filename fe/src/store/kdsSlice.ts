@@ -249,6 +249,35 @@ const kdsSlice = createSlice({
         state.voidAlerts = newAlerts.filter(
           (newA) => !state.voidAlerts.some((oldA) => oldA.id === newA.id && oldA.dismissed)
         );
+      })
+
+      // Update KDS Item Status
+      .addCase(updateKdsItemStatus.fulfilled, (state, action) => {
+        const { id, status } = action.payload;
+        const item = state.items.find((i) => i.id === id);
+        if (item) {
+          item.status = status;
+        }
+      })
+      // Update KDS Batch Status
+      .addCase(updateKdsBatchStatus.fulfilled, (state, action) => {
+        const { status } = action.payload;
+        const { itemIds } = action.meta.arg;
+        itemIds.forEach((id) => {
+          const item = state.items.find((i) => i.id === id);
+          if (item) {
+            item.status = status;
+          }
+        });
+      })
+      // Recall KDS Item Status
+      .addCase(recallKdsItemStatus.fulfilled, (state, action) => {
+        const { id } = action.payload;
+        const item = state.items.find((i) => i.id === id);
+        if (item) {
+          if (item.status === "done") item.status = "cooking";
+          else if (item.status === "cooking") item.status = "pending";
+        }
       });
   },
 });

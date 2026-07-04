@@ -186,6 +186,18 @@ const createDatabaseTables = async (): Promise<void> => {
       FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      message VARCHAR(500) NOT NULL,
+      type VARCHAR(50) NOT NULL DEFAULT 'info',
+      role VARCHAR(50) DEFAULT 'waiter',
+      is_read TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
 };
 
 export const initDb = async (): Promise<boolean> => {
@@ -1647,4 +1659,57 @@ export const updateEventPackage = async (id: number | string, pkg: any): Promise
   }
 
   return true;
+};
+
+// ============================================================================
+//  RESMANAGER SCHEMA — Notifications
+// ============================================================================
+
+export const createNotification = async (
+  title: string,
+  message: string,
+  type: string = "info",
+  role: string = "waiter"
+): Promise<any> => {
+  const result = await query<any>(
+    "INSERT INTO notifications (title, message, type, role, is_read) VALUES (?, ?, ?, ?, 0)",
+    [title, message, type, role]
+  );
+  return {
+    id: result.insertId,
+    title,
+    message,
+    type,
+    role,
+    is_read: 0,
+    created_at: new Date().toISOString()
+  };
+};
+
+export const getNotifications = async (role?: string): Promise<any[]> => {
+  if (role) {
+    return query<any[]>(
+      "SELECT * FROM notifications WHERE role = ? OR role IS NULL ORDER BY id DESC LIMIT 50",
+      [role]
+    );
+  }
+  return query<any[]>("SELECT * FROM notifications ORDER BY id DESC LIMIT 50");
+};
+
+export const markNotificationAsRead = async (id: number): Promise<boolean> => {
+  const result = await query<any>("UPDATE notifications SET is_read = 1 WHERE id = ?", [id]);
+  return result.affectedRows > 0;
+};
+
+export const markAllNotificationsAsRead = async (role?: string): Promise<boolean> => {
+  let result;
+  if (role) {
+    result = await query<any>(
+      "UPDATE notifications SET is_read = 1 WHERE role = ? OR role IS NULL",
+      [role]
+    );
+  } else {
+    result = await query<any>("UPDATE notifications SET is_read = 1");
+  }
+  return result.affectedRows > 0;
 };
