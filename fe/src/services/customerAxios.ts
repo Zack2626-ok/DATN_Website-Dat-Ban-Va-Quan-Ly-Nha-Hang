@@ -13,7 +13,7 @@ customerApi.interceptors.request.use((config) => {
 customerApi.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 && !err.config?.url?.includes("/customer/login")) {
       localStorage.removeItem("customer_token");
       localStorage.removeItem("customer_info");
       window.location.href = "/auth/login";
