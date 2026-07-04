@@ -4,6 +4,11 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
+import fs from "fs";
+import path from "path";
+
+
+
 
 dotenv.config();
 
