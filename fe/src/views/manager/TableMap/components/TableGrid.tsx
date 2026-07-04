@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { TableCard } from "./TableCard";
 import type { ResmanagerTable } from "../../../../services/tableService";
 
@@ -8,6 +8,7 @@ interface TableGridProps {
 }
 
 export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction }) => {
+  const [activeMenuTableId, setActiveMenuTableId] = useState<number | null>(null);
   // Tính toán kích thước lưới động dựa trên dữ liệu bàn thực tế trong DB
   const { maxCol, maxRow, occupiedCells } = useMemo(() => {
     let maxC = 3; // Mặc định tối thiểu 3 cột
@@ -94,6 +95,8 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction }) => {
         {/* Render Các Bàn Thực Tế */}
         {tables.map((table) => {
           const rIndex = table.row_pos.charCodeAt(0) - 64;
+          const isBottomRow = rIndex === maxRow;
+          const isMenuOpen = activeMenuTableId === table.id;
           return (
             <div
               key={table.id}
@@ -101,9 +104,15 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction }) => {
                 gridRowStart: rIndex + 1, // dịch 1 hàng vì hàng 1 là tiêu đề cột
                 gridColumnStart: table.col_pos + 1, // dịch 1 cột vì cột 1 là tiêu đề hàng
               }}
-              className="animate-fade-in"
+              className={`animate-fade-in relative ${isMenuOpen ? "z-50" : "z-10"}`}
             >
-              <TableCard table={table} onAction={onAction} />
+              <TableCard
+                table={table}
+                onAction={onAction}
+                isBottomRow={isBottomRow}
+                showMenu={isMenuOpen}
+                onToggleMenu={(isOpen) => setActiveMenuTableId(isOpen ? table.id : null)}
+              />
             </div>
           );
         })}

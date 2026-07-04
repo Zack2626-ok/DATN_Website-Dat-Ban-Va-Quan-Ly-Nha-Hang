@@ -153,7 +153,7 @@ export const CashierPaymentPage: React.FC = () => {
   const handleMerge = useCallback(
     async (invoiceIds: string[]) => {
       try {
-        await dispatch(mergeBills({ invoiceIds })).unwrap();
+        await dispatch(mergeBillsAction({ invoiceIds })).unwrap();
         setMergeOpen(false);
         showSuccess("Gộp hóa đơn thành công!");
         dispatch(fetchInvoices());

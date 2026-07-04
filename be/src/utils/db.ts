@@ -983,6 +983,100 @@ export const updateResmanagerTableStatus = async (
   return false;
 };
 
+export const createResmanagerTable = async (table: {
+  area_id: number;
+  name: string;
+  capacity: number;
+  row_pos: string;
+  col_pos: number;
+}): Promise<any> => {
+  const result = await query<any>(
+    `INSERT INTO tables (area_id, name, capacity, row_pos, col_pos, status, is_deleted)
+     VALUES (?, ?, ?, ?, ?, 'empty', 0)`,
+    [table.area_id, table.name, table.capacity, table.row_pos.toUpperCase(), table.col_pos]
+  );
+  return { id: result.insertId, ...table, status: "empty", is_deleted: 0 };
+};
+
+export const updateResmanagerTable = async (
+  id: number,
+  table: {
+    area_id?: number;
+    name?: string;
+    capacity?: number;
+    row_pos?: string;
+    col_pos?: number;
+  }
+): Promise<boolean> => {
+  const fields: string[] = [];
+  const params: any[] = [];
+  
+  if (table.area_id !== undefined) { fields.push("area_id = ?"); params.push(table.area_id); }
+  if (table.name !== undefined) { fields.push("name = ?"); params.push(table.name); }
+  if (table.capacity !== undefined) { fields.push("capacity = ?"); params.push(table.capacity); }
+  if (table.row_pos !== undefined) { fields.push("row_pos = ?"); params.push(table.row_pos.toUpperCase()); }
+  if (table.col_pos !== undefined) { fields.push("col_pos = ?"); params.push(table.col_pos); }
+  
+  if (fields.length === 0) return false;
+  
+  params.push(id);
+  const result = await query<any>(
+    `UPDATE tables SET ${fields.join(", ")} WHERE id = ? AND is_deleted = 0`,
+    params
+  );
+  return result.affectedRows > 0;
+};
+
+export const checkTableCoordinatesOccupied = async (
+  areaId: number,
+  rowPos: string,
+  colPos: number,
+  excludeTableId?: number
+): Promise<{ id: number; name: string } | null> => {
+  const queryStr = excludeTableId
+    ? `SELECT id, name FROM tables WHERE area_id = ? AND row_pos = ? AND col_pos = ? AND is_deleted = 0 AND id != ? LIMIT 1`
+    : `SELECT id, name FROM tables WHERE area_id = ? AND row_pos = ? AND col_pos = ? AND is_deleted = 0 LIMIT 1`;
+  const params = excludeTableId
+    ? [areaId, rowPos.toUpperCase(), colPos, excludeTableId]
+    : [areaId, rowPos.toUpperCase(), colPos];
+  const rows = await query<any[]>(queryStr, params);
+  return rows.length > 0 ? rows[0] : null;
+};
+
+export const getResmanagerTableCoordinates = async (
+  id: number
+): Promise<{ area_id: number; row_pos: string; col_pos: number } | null> => {
+  const rows = await query<any[]>(
+    `SELECT area_id, row_pos, col_pos FROM tables WHERE id = ? AND is_deleted = 0 LIMIT 1`,
+    [id]
+  );
+  return rows.length > 0 ? rows[0] : null;
+};
+
+export const deleteResmanagerTable = async (id: number): Promise<boolean> => {
+  const result = await query<any>(
+    `UPDATE tables SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 0`,
+    [id]
+  );
+  return result.affectedRows > 0;
+};
+
+export const hasActiveOrdersForTable = async (tableId: number): Promise<boolean> => {
+  const rows = await query<any[]>(
+    `SELECT 1 FROM orders WHERE table_id = ? AND status NOT IN ('completed', 'cancelled') LIMIT 1`,
+    [tableId]
+  );
+  return rows.length > 0;
+};
+
+export const hasActiveBookingsForTable = async (tableId: number): Promise<boolean> => {
+  const rows = await query<any[]>(
+    `SELECT 1 FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') LIMIT 1`,
+    [tableId]
+  );
+  return rows.length > 0;
+};
+
 // ============================================================================
 //  RESMANAGER SCHEMA — Bookings
 // ============================================================================

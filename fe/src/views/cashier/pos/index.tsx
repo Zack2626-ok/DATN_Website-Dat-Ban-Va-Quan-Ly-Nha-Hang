@@ -85,8 +85,6 @@ export const CashierPOS: React.FC = () => {
 
     try {
       const amountVnd = Math.round(totalAmount * 1000); // convert UI units to VND
-      const taxVnd = Math.round(tax * 1000);
-      const tipVnd = Math.round(tipVal * 1000);
       await createPaymentApi({
         orderId: activeOrder.id,
         amount: amountVnd,
