@@ -13,11 +13,9 @@ import {
   CalendarDays,
   UserCheck,
   Clock,
-  LogOut,
   LineChart,
 } from "lucide-react";
-import { useAppSelector, useAppDispatch } from "../../../store/hooks";
-import { logoutAction } from "../../../store/authSlice";
+import { useAppSelector } from "../../../store/hooks";
 import { ROLE_LABELS } from "../../../constants/roles";
 
 /**
@@ -25,7 +23,6 @@ import { ROLE_LABELS } from "../../../constants/roles";
  */
 export const ManagerSidebar: React.FC = () => {
   const location = useLocation();
-  const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
   const [isSystemMenuOpen, setIsSystemMenuOpen] = useState(true);
 
@@ -211,16 +208,6 @@ export const ManagerSidebar: React.FC = () => {
         </div>
       </nav>
 
-      {/* Nút Đăng xuất */}
-      <div className="p-3 border-t border-gray-800">
-        <button
-          onClick={() => dispatch(logoutAction())}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors cursor-pointer"
-        >
-          <LogOut size={16} />
-          Đăng xuất
-        </button>
-      </div>
 
       {/* Footer */}
       <div className="hidden border-t border-gray-800 p-4 text-xs text-gray-400 md:flex md:items-center md:gap-2">

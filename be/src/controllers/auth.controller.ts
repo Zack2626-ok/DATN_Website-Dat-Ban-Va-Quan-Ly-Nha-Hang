@@ -82,9 +82,16 @@ export const loginHandler = async (req: Request, res: Response): Promise<void> =
       role_name: user.role_name,
     });
 
+    const refreshToken = generateToken({
+      userId: user.id,
+      email: user.email,
+      role_name: user.role_name,
+    });
+
     sendSuccess(res, {
       accessToken,
-      user: sanitizeUser(user),
+      refreshToken,
+      user: { ...sanitizeUser(user), role: user.role_name },
     }, "Đăng nhập thành công!");
   } catch (err) {
     console.error("Error in loginHandler:", err);
@@ -109,7 +116,7 @@ export const getMeHandler = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    sendSuccess(res, sanitizeUser(user), "Lấy thông tin người dùng thành công.");
+    sendSuccess(res, { ...sanitizeUser(user), role: user.role_name }, "Lấy thông tin người dùng thành công.");
   } catch (err) {
     console.error("Error in getMeHandler:", err);
     sendError(res, `Lỗi lấy thông tin: ${(err as Error).message}`, 401);

@@ -22,6 +22,7 @@ import bookingRoutes from "./routes/booking.routes";
 import waitlistRoutes from "./routes/waitlist.routes";
 import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
+import invoiceRoutes from "./routes/invoice.routes";
 import eventConfigRoutes from "./routes/eventConfig.routes";
 import notificationRoutes from "./routes/notification.routes";
 import { initDb } from "./utils/db";
@@ -62,8 +63,12 @@ initDb()
     startServer(startPort);
   })
   .catch((err) => {
-    console.error("🔥 Không thể khởi tạo MySQL. Dự án yêu cầu kết nối MySQL thật.", err);
-    process.exit(1);
+    console.warn(
+      "⚠️ MySQL không khả dụng. Server sẽ chạy ở chế độ API-only (không có lưu trữ dữ liệu).",
+      err.message
+    );
+    // Bỏ qua lỗi database, tiếp tục chạy server
+    startServer(startPort);
   });
 
 app.use(
@@ -84,14 +89,14 @@ app.use("/api/kds", kdsRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/kds", kdsRoutes);
+app.use("/api/payments", paymentRoutes)
 app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
 app.use("/api/v1/tables", resmanagerTableRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/waitlist", waitlistRoutes);
 app.use("/api/v1/waiter", waiterRoutes);
+app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/notifications", notificationRoutes);
 

@@ -7,6 +7,7 @@ import tableReducer from "./tableSlice";
 import kdsReducer from "./kdsSlice";
 import uiReducer from "./uiSlice";
 import banquetReducer from "./banquetSlice";
+import invoiceReducer from "./invoiceSlice";
 
 // Load state from localStorage
 const loadState = () => {
@@ -32,6 +33,7 @@ const rootReducer = combineReducers({
   kds: kdsReducer,
   ui: uiReducer,
   banquet: banquetReducer,
+  invoices: invoiceReducer,
 });
 
 export const store = configureStore({

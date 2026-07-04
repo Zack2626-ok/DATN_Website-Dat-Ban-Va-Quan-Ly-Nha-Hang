@@ -78,3 +78,42 @@ export const splitTable = async (
   });
   return response.data.data || {};
 };
+
+export const createResmanagerTable = async (data: {
+  area_id: number;
+  name: string;
+  capacity: number;
+  row_pos: string;
+  col_pos: number;
+}): Promise<ResmanagerTable> => {
+  const response = await api.post("/v1/tables", data);
+  return response.data.data;
+};
+
+export const updateResmanagerTable = async (
+  id: number,
+  data: {
+    area_id?: number;
+    name?: string;
+    capacity?: number;
+    row_pos?: string;
+    col_pos?: number;
+  }
+): Promise<ResmanagerTable> => {
+  const response = await api.patch(`/v1/tables/${id}`, data);
+  return response.data.data;
+};
+
+export const deleteResmanagerTable = async (id: number): Promise<void> => {
+  await api.patch(`/v1/tables/${id}/delete`);
+};
+
+export const openResmanagerTab = async (data: {
+  guest_name: string;
+  guest_phone?: string;
+  note?: string;
+  created_by?: number;
+}): Promise<any> => {
+  const response = await api.post("/v1/tables/tab", data);
+  return response.data.data;
+};
