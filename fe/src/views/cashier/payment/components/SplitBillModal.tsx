@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Scissors, Users, ListChecks, Info, ChevronRight } from "lucide-react";
+import { Scissors, Users, ListChecks, Info } from "lucide-react";
 import { Modal } from "../../../../components/Modal";
 import type { Invoice, SplitBillGroup } from "../../../../interfaces/invoice";
 

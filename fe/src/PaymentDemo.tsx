@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Modal } from "../components/Modal";
+import { useState } from "react";
+import { Modal } from "./components/Modal";
 
 export default function PaymentDemo() {
   const [confirmOpen, setConfirmOpen] = useState(false);

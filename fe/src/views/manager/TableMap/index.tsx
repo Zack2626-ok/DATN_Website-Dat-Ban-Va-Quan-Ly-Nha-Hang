@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { RefreshCw, LayoutGrid, Info } from "lucide-react";
+import { RefreshCw, LayoutGrid, Info, Plus, BookOpen } from "lucide-react";
 import { io } from "socket.io-client";
 
 import {
@@ -11,6 +12,10 @@ import {
   mergeTables,
   unmergeTables,
   splitTable,
+  createResmanagerTable,
+  updateResmanagerTable,
+  deleteResmanagerTable,
+  openResmanagerTab,
   type ResmanagerTable
 } from "../../../services/tableService";
 import type { TableArea } from "../../../interfaces/table.interface";
@@ -20,10 +25,14 @@ import {
   OpenTableModal,
   TransferTableModal,
   MergeTableModal,
-  SplitTableModal
+  SplitTableModal,
+  TableFormModal,
+  ConfirmDeleteTableModal,
+  OpenTabModal
 } from "./components/TableActionModals";
 
 export const TableMapIndex: React.FC = () => {
+  const navigate = useNavigate();
   // Trạng thái dữ liệu
   const [areas, setAreas] = useState<TableArea[]>([]);
   const [tables, setTables] = useState<ResmanagerTable[]>([]);
@@ -41,10 +50,20 @@ export const TableMapIndex: React.FC = () => {
   const [isMergeOpen, setIsMergeOpen] = useState(false);
   const [isSplitOpen, setIsSplitOpen] = useState(false);
 
+  // Trạng thái Modals CRUD và Mở Tab nhanh mới
+  const [isTableFormOpen, setIsTableFormOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isOpenTabOpen, setIsOpenTabOpen] = useState(false);
+
   // Lọc các danh sách bàn trống trong toàn bộ nhà hàng phục vụ cho Chuyển/Gộp/Tách bàn
   const emptyTables = useMemo(() => {
     return tables.filter((t) => t.status === "empty");
   }, [tables]);
+
+  // Danh sách các Area đơn giản phục vụ cho Form Select
+  const simplifiedAreas = useMemo(() => {
+    return areas.map((a) => ({ id: a.id, name: a.name }));
+  }, [areas]);
 
   // 1. Tải danh sách khu vực (Areas)
   const fetchAreas = async () => {
@@ -114,7 +133,7 @@ export const TableMapIndex: React.FC = () => {
     // Lắng nghe sự kiện chuyển bàn
     socket.on("table:transferred", () => {
       fetchTables();
-      toast.success("Thông báo: Một bàn ăn đã chuyển vị trí!");
+      toast.success("Thông báo: Có sự thay đổi hoặc cập nhật sơ đồ bàn!");
     });
 
     // Lắng nghe sự kiện gộp bàn
@@ -199,8 +218,26 @@ export const TableMapIndex: React.FC = () => {
           setActionLoading(false);
         }
         break;
+      case "edit_table":
+        setIsTableFormOpen(true);
+        break;
+      case "delete_table":
+        setIsDeleteConfirmOpen(true);
+        break;
       case "view_order":
-        toast.success(`Xem chi tiết đơn hàng bàn ${table.name} (Đang chuyển tiếp...)`);
+        navigate(`/waiter/orders/${table.id}`);
+        break;
+      case "request_payment":
+        try {
+          setActionLoading(true);
+          await updateTableStatus(table.id, "pending_payment");
+          toast.success(`Đã chuyển bàn ${table.name} sang Chờ thanh toán!`);
+          fetchTables();
+        } catch (err) {
+          toast.error("Lỗi yêu cầu thanh toán");
+        } finally {
+          setActionLoading(false);
+        }
         break;
       case "view_invoice":
         toast.success(`Đang tải hóa đơn thanh toán cho bàn ${table.name}...`);
@@ -260,7 +297,6 @@ export const TableMapIndex: React.FC = () => {
     if (!activeTable) return;
     try {
       setActionLoading(true);
-      // Tách bàn mô phỏng với mảng rỗng (tách toàn bộ hoặc tách mặc định)
       await splitTable(activeTable.id, data.targetTableId, data.childLabel, []);
       toast.success(`Tách bàn thành công sang bàn mới!`);
       setIsSplitOpen(false);
@@ -272,10 +308,75 @@ export const TableMapIndex: React.FC = () => {
     }
   };
 
+  // 6. Xử lý Thêm / Sửa bàn ăn
+  const handleConfirmTableForm = async (data: {
+    area_id: number;
+    name: string;
+    capacity: number;
+    row_pos: string;
+    col_pos: number;
+  }) => {
+    try {
+      setActionLoading(true);
+      if (activeTable) {
+        // Edit mode
+        await updateResmanagerTable(activeTable.id, data);
+        toast.success(`Cập nhật bàn ${data.name} thành công!`);
+      } else {
+        // Create mode
+        await createResmanagerTable(data);
+        toast.success(`Thêm bàn mới ${data.name} thành công!`);
+      }
+      setIsTableFormOpen(false);
+      fetchTables();
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Lỗi lưu thông tin bàn ăn";
+      toast.error(msg);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 7. Xử lý Xóa mềm bàn ăn
+  const handleConfirmDeleteTable = async () => {
+    if (!activeTable) return;
+    try {
+      setActionLoading(true);
+      await deleteResmanagerTable(activeTable.id);
+      toast.success(`Đã xóa (Xóa mềm) bàn ${activeTable.name} thành công!`);
+      setIsDeleteConfirmOpen(false);
+      fetchTables();
+    } catch (err: any) {
+      const msg = err.response?.data?.message || "Không thể xóa bàn ăn này";
+      toast.error(msg);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 8. Xử lý Mở Tab nhanh cho khách mang đi/quầy bar
+  const handleConfirmOpenTab = async (data: { guest_name: string; guest_phone: string; note: string }) => {
+    try {
+      setActionLoading(true);
+      await openResmanagerTab({
+        guest_name: data.guest_name,
+        guest_phone: data.guest_phone || undefined,
+        note: data.note || undefined,
+        created_by: 2, // Quản lý
+      });
+      toast.success(`Đã mở Tab thành công cho khách mang về: ${data.guest_name}`);
+      setIsOpenTabOpen(false);
+    } catch (err: any) {
+      toast.error("Không thể tạo đơn hàng mang về");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Tiêu đề trang */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-black text-gray-800 font-display flex items-center gap-2">
             <LayoutGrid className="text-[#FF5A5F]" />
@@ -286,30 +387,51 @@ export const TableMapIndex: React.FC = () => {
           </p>
         </div>
 
-        {/* Nút làm mới dữ liệu */}
-        <button
-          onClick={() => {
-            fetchAreas();
-            fetchTables();
-            toast.success("Đã cập nhật dữ liệu sơ đồ mới nhất!");
-          }}
-          disabled={loadingTables || loadingAreas}
-          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-xs cursor-pointer self-start sm:self-auto"
-        >
-          <RefreshCw size={14} className={loadingTables || loadingAreas ? "animate-spin" : ""} />
-          Làm mới sơ đồ
-        </button>
+        {/* Nút thao tác nhanh trên Header */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setIsOpenTabOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-[#FF5A5F]/20 bg-[#FF5A5F]/10 hover:bg-[#FF5A5F]/20 px-4 py-2 text-xs font-bold text-[#FF5A5F] transition-all cursor-pointer shadow-xs"
+          >
+            <BookOpen size={14} />
+            📇 Mở Tab nhanh
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTable(null);
+              setIsTableFormOpen(true);
+            }}
+            className="flex items-center gap-2 rounded-lg bg-[#FF5A5F] hover:bg-[#e04f53] px-4 py-2 text-xs font-bold text-white transition-all cursor-pointer shadow-sm"
+          >
+            <Plus size={14} />
+            + Thêm bàn mới
+          </button>
+
+          <button
+            onClick={() => {
+              fetchAreas();
+              fetchTables();
+              toast.success("Đã cập nhật dữ liệu sơ đồ mới nhất!");
+            }}
+            disabled={loadingTables || loadingAreas}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+          >
+            <RefreshCw size={14} className={loadingTables || loadingAreas ? "animate-spin" : ""} />
+            Làm mới
+          </button>
+        </div>
       </div>
 
       {/* Thanh hiển thị Legend trạng thái bàn */}
       <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 text-xs shadow-xs">
         <span className="font-bold text-gray-400 uppercase tracking-wider text-[10px] mr-2">Trạng thái:</span>
         <div className="flex items-center gap-1.5">
-          <span className="h-3.5 w-3.5 rounded bg-green-100 border border-green-300 block" />
-          <span className="font-semibold text-gray-600">Bàn trống (Empty)</span>
+          <span className="h-3.5 w-3.5 rounded bg-slate-100 border border-slate-300 block" />
+          <span className="font-semibold text-gray-600">Trống (Empty)</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="h-3.5 w-3.5 rounded bg-blue-100 border border-blue-300 block" />
+          <span className="h-3.5 w-3.5 rounded bg-emerald-100 border border-emerald-300 block" />
           <span className="font-semibold text-gray-600">Đang phục vụ (Serving)</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -317,12 +439,12 @@ export const TableMapIndex: React.FC = () => {
           <span className="font-semibold text-gray-600">Đặt trước (Reserved)</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="h-3.5 w-3.5 rounded bg-purple-100 border border-purple-300 block" />
+          <span className="h-3.5 w-3.5 rounded bg-rose-100 border border-rose-300 block" />
           <span className="font-semibold text-gray-600">Chờ thanh toán (Pending Payment)</span>
         </div>
       </div>
 
-      {/* Tabs chuyển đổi giữa các Khu vực (Tầng 1, Tầng 2, Sân vườn) */}
+      {/* Tabs chuyển đổi giữa các Khu vực */}
       <div className="border-b border-gray-200 pb-px">
         <div className="flex gap-2">
           {areas.map((area) => {
@@ -362,13 +484,14 @@ export const TableMapIndex: React.FC = () => {
         )}
       </div>
 
-      {/* Phần hướng dẫn quản lý sơ đồ */}
+      {/* Hướng dẫn */}
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
         <Info size={16} className="text-gray-400 mt-0.5" />
         <div className="text-xs text-gray-500 space-y-1">
           <p className="font-bold text-gray-700">Hướng dẫn nhanh cho Quản lý:</p>
-          <p>• Click vào biểu tượng menu <strong className="text-gray-700">⋮</strong> ở góc mỗi bàn để thay đổi trạng thái hoặc chuyển/gộp/tách bàn nhanh.</p>
-          <p>• Trạng thái bàn sẽ được đồng bộ ngay lập tức sang màn hình của Thu ngân tại quầy và Nhân viên phục vụ qua kênh truyền tin Real-time.</p>
+          <p>• Sử dụng nút <strong>+ Thêm bàn mới</strong> ở Header để đăng ký bàn ăn. Toạ độ (Dãy, Cột) sẽ tự động bố trí bàn vào sơ đồ lưới vuông vức.</p>
+          <p>• Nhấn vào nút menu thả xuống (dropdown) tại góc mỗi bàn ăn để đổi trạng thái nhanh, chỉnh sửa thông tin hoặc xóa bàn ăn.</p>
+          <p>• Nhấn <strong>Mở Tab nhanh</strong> để tạo đơn hàng mang về (Takeaway) hoặc tại quầy bar mà không cần chiếm dụng sơ đồ bàn ăn.</p>
         </div>
       </div>
 
@@ -407,6 +530,32 @@ export const TableMapIndex: React.FC = () => {
         table={activeTable}
         emptyTables={emptyTables}
         onConfirm={handleConfirmSplit}
+        loading={actionLoading}
+      />
+
+      {/* Modals CRUD Thêm / Sửa / Xóa mềm mới */}
+      <TableFormModal
+        isOpen={isTableFormOpen}
+        onClose={() => setIsTableFormOpen(false)}
+        table={activeTable}
+        areas={simplifiedAreas}
+        existingTables={tables}
+        onConfirm={handleConfirmTableForm}
+        loading={actionLoading}
+      />
+
+      <ConfirmDeleteTableModal
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        table={activeTable}
+        onConfirm={handleConfirmDeleteTable}
+        loading={actionLoading}
+      />
+
+      <OpenTabModal
+        isOpen={isOpenTabOpen}
+        onClose={() => setIsOpenTabOpen(false)}
+        onConfirm={handleConfirmOpenTab}
         loading={actionLoading}
       />
     </div>

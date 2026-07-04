@@ -1,44 +1,67 @@
-import React, { useState } from "react";
-import { MoreVertical, Users, ArrowLeftRight, Link2, Copy, Eye, FileText, CheckCircle, XCircle } from "lucide-react";
+import React, { useEffect, useRef } from "react";
+import { MoreVertical, Users, ArrowLeftRight, Link2, Copy, Eye, FileText, CheckCircle, XCircle, Edit, Trash2 } from "lucide-react";
 import type { ResmanagerTable } from "../../../../services/tableService";
 
 interface TableCardProps {
   table: ResmanagerTable;
   onAction: (action: string, table: ResmanagerTable) => void;
+  isBottomRow?: boolean;
+  showMenu: boolean;
+  onToggleMenu: (isOpen: boolean) => void;
 }
 
-export const TableCard: React.FC<TableCardProps> = ({ table, onAction }) => {
-  const [showMenu, setShowMenu] = useState(false);
+export const TableCard: React.FC<TableCardProps> = ({
+  table,
+  onAction,
+  isBottomRow = false,
+  showMenu,
+  onToggleMenu,
+}) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        onToggleMenu(false);
+      }
+    };
+    if (showMenu) {
+      document.addEventListener("click", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+    };
+  }, [showMenu, onToggleMenu]);
 
   // Chọn style màu sắc dựa vào trạng thái ENUM của bàn
   const getStatusStyles = (status: ResmanagerTable["status"]) => {
     switch (status) {
       case "empty":
         return {
-          bg: "bg-green-50/90 border-green-200 hover:bg-green-100/80",
-          text: "text-green-800",
-          badge: "bg-green-100 text-green-800 border-green-300",
-          label: "Bàn trống",
+          bg: "bg-slate-50 border-slate-200 hover:bg-slate-100/80",
+          text: "text-slate-700",
+          badge: "bg-slate-100 text-slate-700 border-slate-300",
+          label: "Trống",
         };
       case "reserved":
         return {
-          bg: "bg-amber-50/90 border-amber-200 hover:bg-amber-100/80",
+          bg: "bg-amber-50 border-amber-200 hover:bg-amber-100/80",
           text: "text-amber-800",
           badge: "bg-amber-100 text-amber-800 border-amber-300",
           label: "Đặt trước",
         };
       case "serving":
         return {
-          bg: "bg-blue-50/90 border-blue-200 hover:bg-blue-100/80",
-          text: "text-blue-800",
-          badge: "bg-blue-100 text-blue-800 border-blue-300",
+          bg: "bg-emerald-50 border-emerald-200 hover:bg-emerald-100/80",
+          text: "text-emerald-700",
+          badge: "bg-emerald-100 text-emerald-700 border-emerald-300",
           label: "Đang phục vụ",
         };
       case "pending_payment":
         return {
-          bg: "bg-purple-50/90 border-purple-200 hover:bg-purple-100/80",
-          text: "text-purple-800",
-          badge: "bg-purple-100 text-purple-800 border-purple-300",
+          bg: "bg-rose-50 border-rose-200 hover:bg-rose-100/80",
+          text: "text-rose-700",
+          badge: "bg-rose-100 text-rose-700 border-rose-300",
           label: "Chờ thanh toán",
         };
       default:
@@ -55,13 +78,17 @@ export const TableCard: React.FC<TableCardProps> = ({ table, onAction }) => {
 
   const handleMenuClick = (e: React.MouseEvent, action: string) => {
     e.stopPropagation();
-    setShowMenu(false);
+    onToggleMenu(false);
     onAction(action, table);
   };
 
+  // Chỉ cho xóa bàn khi trạng thái là trống (empty) và không có khách đặt trước/phục vụ
+  const canDelete = table.status === "empty" && !table.guest_name;
+
   return (
     <div
-      onClick={() => setShowMenu(true)}
+      ref={cardRef}
+      onClick={() => onToggleMenu(true)}
       className={`relative w-full h-full min-h-[96px] rounded-xl border p-3 flex flex-col justify-between shadow-xs transition-all cursor-pointer select-none group ${styles.bg}`}
     >
       {/* Nút hành động nhanh ở góc */}
@@ -70,7 +97,7 @@ export const TableCard: React.FC<TableCardProps> = ({ table, onAction }) => {
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            setShowMenu(!showMenu);
+            onToggleMenu(!showMenu);
           }}
           className="p-1 hover:bg-black/5 rounded-md text-gray-500 hover:text-gray-800 transition-colors"
         >
@@ -79,16 +106,7 @@ export const TableCard: React.FC<TableCardProps> = ({ table, onAction }) => {
 
         {/* Dropdown Menu hành động */}
         {showMenu && (
-          <>
-            {/* Click-away overlay */}
-            <div
-              className="fixed inset-0 z-20 cursor-default"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowMenu(false);
-              }}
-            />
-            <div className="absolute right-0 mt-1 w-44 rounded-lg border border-gray-100 bg-white p-1 shadow-md z-30 animate-fade-in text-left">
+          <div className={`absolute right-0 w-44 rounded-lg border border-gray-100 bg-white p-1 shadow-md z-30 animate-fade-in text-left ${isBottomRow ? "bottom-full mb-1" : "top-full mt-1"}`}>
               <div className="px-2 py-1 text-[10px] font-bold text-gray-400 border-b border-gray-100 uppercase tracking-wider">
                 Thao tác: {table.name}
               </div>
@@ -173,6 +191,13 @@ export const TableCard: React.FC<TableCardProps> = ({ table, onAction }) => {
                       Bỏ gộp bàn
                     </button>
                   )}
+                  <button
+                    onClick={(e) => handleMenuClick(e, "request_payment")}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors border-t border-gray-100 mt-1 font-semibold"
+                  >
+                    <FileText size={12} className="text-rose-500" />
+                    Yêu cầu thanh toán
+                  </button>
                 </>
               )}
 
@@ -188,8 +213,29 @@ export const TableCard: React.FC<TableCardProps> = ({ table, onAction }) => {
                   </button>
                 </>
               )}
+
+              {/* Quản lý danh sách bàn (CRUD) */}
+              <div className="border-t border-gray-100 mt-1 pt-1">
+                <button
+                  type="button"
+                  onClick={(e) => handleMenuClick(e, "edit_table")}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  <Edit size={12} className="text-gray-500" />
+                  Sửa thông tin
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleMenuClick(e, "delete_table")}
+                  disabled={!canDelete}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors font-medium"
+                  title={!canDelete ? "Chỉ được xóa khi bàn trống và không có lịch đặt trước" : ""}
+                >
+                  <Trash2 size={12} className="text-red-500" />
+                  Xóa bàn ăn
+                </button>
+              </div>
             </div>
-          </>
         )}
       </div>
 
