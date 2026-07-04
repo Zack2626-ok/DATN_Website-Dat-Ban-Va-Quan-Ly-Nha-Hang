@@ -88,8 +88,7 @@ app.use("/api/kds", kdsRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/kds", kdsRoutes);
+app.use("/api/payments", paymentRoutes)
 app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
 app.use("/api/v1/tables", resmanagerTableRoutes);

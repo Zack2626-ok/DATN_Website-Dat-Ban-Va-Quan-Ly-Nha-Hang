@@ -14,6 +14,7 @@ import {
   sendItemsToKitchen,
   holdOrderItems,
   createOrder,
+  markItemAsServed,
   type WaiterMenuItem,
   type WaiterCategory,
 } from "../../../services/waiterService";
@@ -34,6 +35,7 @@ const STATUS_STYLES: Record<OrderItemStatus, string> = {
   pending: "bg-gray-100 text-gray-700",
   cooking: "bg-orange-100 text-orange-700",
   done: "bg-green-100 text-green-700",
+  served: "bg-blue-100 text-blue-700",
   voided: "bg-red-100 text-red-700 line-through",
 };
 
@@ -41,6 +43,7 @@ const STATUS_LABELS: Record<OrderItemStatus, string> = {
   pending: "⏳ Chờ gửi",
   cooking: "🔥 Đang nấu",
   done: "✅ Hoàn thành",
+  served: "🛎 Đã mang ra",
   voided: "✗ Đã hủy",
 };
 
@@ -78,6 +81,7 @@ export const OrderPage: React.FC = () => {
   // UI state
   const [addItemTarget, setAddItemTarget] = useState<WaiterMenuItem | null>(null);
   const [addQty, setAddQty] = useState(1);
+  const [servingItemId, setServingItemId] = useState<number | null>(null);
   const [addNote, setAddNote] = useState("");
   const [addingItem, setAddingItem] = useState(false);
   const [voidTarget, setVoidTarget] = useState<DisplayOrderItem | null>(null);
@@ -130,7 +134,7 @@ export const OrderPage: React.FC = () => {
             name: i.item_name,
             price: Number(i.unit_price),
             quantity: i.quantity,
-            status: i.status as OrderItemStatus,
+            status: (table?.status === "pending_payment" ? "served" : i.status) as OrderItemStatus,
             kitchenNote: i.kitchen_note,
             held: Boolean(i.is_held),
           })),
@@ -140,7 +144,13 @@ export const OrderPage: React.FC = () => {
         setOrderItems([]);
       })
       .finally(() => setOrderLoading(false));
-  }, [tableId]);
+  }, [tableId, table?.status]);
+
+  useEffect(() => {
+    if (table?.status === "pending_payment") {
+      setOrderItems((prev) => prev.map((i) => ({ ...i, status: "served" as OrderItemStatus })));
+    }
+  }, [table?.status]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
@@ -293,6 +303,7 @@ export const OrderPage: React.FC = () => {
     if (!tableId) return;
     try {
       await updateTableStatus(Number(tableId), "pending_payment");
+      setOrderItems((prev) => prev.map((i) => ({ ...i, status: "served" as OrderItemStatus })));
       toast.success("Đã gửi yêu cầu thanh toán — thu ngân sẽ xử lý tại quầy");
       navigate("/waiter/tables");
     } catch {
@@ -373,9 +384,9 @@ export const OrderPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
         {/* Thực đơn */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
           {/* Categories */}
           <div className="flex flex-wrap gap-2">
             <button
@@ -425,23 +436,25 @@ export const OrderPage: React.FC = () => {
                   key={item.id}
                   onClick={() => item.is_active && setAddItemTarget(item)}
                   disabled={!item.is_active}
-                  className={`flex flex-col rounded-xl border overflow-hidden text-left transition-all hover:shadow-md ${
+                  className={`flex flex-col rounded-xl border text-left transition-all hover:shadow-md ${
                     item.is_active
                       ? "border-gray-100 hover:border-blue-200 cursor-pointer"
                       : "border-gray-100 opacity-50 cursor-not-allowed"
                   }`}
                 >
-                  <img
-                    src={getImageUrl(item)}
-                    alt={item.name}
-                    className="w-full h-24 object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
-                    }}
-                  />
-                  <div className="p-2.5">
-                    <p className="text-sm font-bold text-gray-800 truncate">{item.name}</p>
+                  <div className="w-full h-24 overflow-hidden rounded-t-xl shrink-0">
+                    <img
+                      src={getImageUrl(item)}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
+                      }}
+                    />
+                  </div>
+                  <div className="p-2 bg-white rounded-b-xl">
+                    <p className="text-xs font-bold text-gray-800 leading-tight line-clamp-2">{item.name}</p>
                     <p className="text-xs font-semibold text-blue-600 mt-0.5">
                       {Number(item.price).toLocaleString("vi-VN")}₫
                     </p>
@@ -461,7 +474,7 @@ export const OrderPage: React.FC = () => {
         </div>
 
         {/* Order panel */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
           <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
             <Utensils size={18} className="text-blue-600" />
             <h2 className="font-bold text-gray-900">Order hiện tại</h2>
@@ -483,34 +496,61 @@ export const OrderPage: React.FC = () => {
               orderItems.map((item) => (
                 <div
                   key={item.id}
-                  className={`p-3 rounded-xl border border-gray-100 ${item.status === "voided" ? "opacity-60" : ""}`}
+                  className={`p-4 rounded-xl border border-gray-100 ${item.status === "voided" ? "opacity-60" : ""}`}
                 >
-                  <div className="flex justify-between items-start gap-2">
+                  <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-gray-800">{item.name}</p>
-                      <p className="text-xs text-gray-500">×{item.quantity}</p>
+                      <p className="font-bold text-base text-gray-800">{item.name}</p>
+                      <p className="text-sm text-gray-500 mt-0.5">×{item.quantity}</p>
                       {item.kitchenNote && (
-                        <p className="text-[10px] text-amber-600 mt-1">📝 {item.kitchenNote}</p>
+                        <p className="text-xs text-amber-600 mt-1">📝 {item.kitchenNote}</p>
                       )}
                       {item.held && item.status === "pending" && (
                         <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">⏸ HOLD</span>
                       )}
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-sm font-black text-gray-800">
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className="text-base font-black text-gray-800">
                         {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                       </span>
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLES[item.status]}`}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-full ${STATUS_STYLES[item.status]}`}
                       >
                         {STATUS_LABELS[item.status]}
                       </span>
-                      {item.status !== "voided" && item.status !== "done" && (
+                      {/* Nút Đã mang ra — chỉ hiện khi bếp xong (done) */}
+                      {item.status === "done" && (
+                        <button
+                          disabled={servingItemId === item.id}
+                          onClick={async () => {
+                            if (!orderId) return;
+                            setServingItemId(item.id);
+                            try {
+                              await markItemAsServed(orderId, item.id);
+                              setOrderItems((prev) =>
+                                prev.map((i) => i.id === item.id ? { ...i, status: "served" as OrderItemStatus } : i)
+                              );
+                              toast.success(`Đã mang "${item.name}" ra bàn`);
+                            } catch {
+                              toast.error("Không thể cập nhật");
+                            } finally {
+                              setServingItemId(null);
+                            }
+                          }}
+                          className="mt-1 text-sm text-blue-600 font-bold flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 hover:text-blue-800 transition-colors disabled:opacity-50"
+                        >
+                          {servingItemId === item.id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : "🛎"} Đã mang ra
+                        </button>
+                      )}
+                      {/* Nút Hủy — không hiện khi đã served hoặc voided */}
+                      {item.status !== "voided" && item.status !== "served" && (
                         <button
                           onClick={() => setVoidTarget(item)}
-                          className="text-[10px] text-red-500 font-bold flex items-center gap-0.5 hover:text-red-700"
+                          className="mt-1 text-sm text-red-500 font-bold flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors"
                         >
-                          <XCircle size={12} /> Hủy
+                          <XCircle size={14} /> Hủy
                         </button>
                       )}
                     </div>
@@ -522,19 +562,19 @@ export const OrderPage: React.FC = () => {
 
           <div className="border-t border-gray-100 pt-4 space-y-3">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-500">Tổng cộng</span>
-              <span className="text-2xl font-black text-gray-900">{total.toLocaleString("vi-VN")}₫</span>
+              <span className="font-bold text-base text-gray-500">Tổng cộng</span>
+              <span className="text-3xl font-black text-gray-900">{total.toLocaleString("vi-VN")}₫</span>
             </div>
             <button
               onClick={() => navigate("/waiter/tables")}
-              className="w-full py-3 bg-gray-800 text-white rounded-xl font-bold text-sm hover:bg-gray-900"
+              className="w-full py-3.5 bg-gray-800 text-white rounded-xl font-bold text-base hover:bg-gray-900"
             >
               Quay lại sơ đồ bàn
             </button>
             {table.status === "serving" && (
               <button
                 onClick={handleRequestPayment}
-                className="w-full py-3 border-2 border-purple-200 text-purple-700 rounded-xl font-bold text-sm hover:bg-purple-50"
+                className="w-full py-3.5 border-2 border-purple-200 text-purple-700 rounded-xl font-bold text-base hover:bg-purple-50"
               >
                 Yêu cầu thanh toán (Thu ngân)
               </button>
