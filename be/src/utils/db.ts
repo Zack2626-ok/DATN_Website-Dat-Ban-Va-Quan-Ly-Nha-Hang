@@ -23,7 +23,7 @@ const ensurePool = (): mysql.Pool => {
   return connectionPool;
 };
 
-const query = async <T = any>(sql: string, params: any[] = []): Promise<T> => {
+export const query = async <T = any>(sql: string, params: any[] = []): Promise<T> => {
   const pool = ensurePool();
   const [rows] = await pool.query(sql, params);
   return rows as T;
@@ -1380,8 +1380,8 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
   const result = await query<any>(
-    `UPDATE order_items SET status = 'cooking', is_held = 0
-     WHERE id IN (${placeholders}) AND status = 'pending'`,
+    `UPDATE order_items SET status = 'pending', is_held = 0
+     WHERE id IN (${placeholders})`,
     orderItemIds,
   );
   return result.affectedRows > 0;
@@ -2002,4 +2002,47 @@ export const markAllNotificationsAsRead = async (role?: string): Promise<boolean
     result = await query<any>("UPDATE notifications SET is_read = 1");
   }
   return result.affectedRows > 0;
+};
+
+export const createNewDishNotification = async (
+  orderId: number,
+  menuItemId: number | string,
+  quantity: number
+): Promise<void> => {
+  try {
+    // 1. Lấy tên món ăn từ database
+    const menuItems = await query<any[]>("SELECT name FROM menu_items WHERE id = ?", [menuItemId]);
+    const itemName = menuItems[0]?.name || `Món #${menuItemId}`;
+
+    // 2. Lấy thông tin bàn/đơn hàng từ database
+    const orders = await query<any[]>(
+      `SELECT o.table_id, t.name AS table_name, o.guest_name, o.order_type
+       FROM orders o
+       LEFT JOIN tables t ON o.table_id = t.id
+       WHERE o.id = ?`,
+      [orderId]
+    );
+
+    let locationInfo = "";
+    if (orders[0]) {
+      const { table_name, guest_name, order_type } = orders[0];
+      if (table_name) {
+        locationInfo = `Bàn ${table_name}`;
+      } else if (guest_name) {
+        locationInfo = `${guest_name} (Mang về)`;
+      } else {
+        locationInfo = order_type === "delivery" ? "Giao hàng" : "Mang về";
+      }
+    } else {
+      locationInfo = "Đơn mới";
+    }
+
+    const title = "Món ăn mới";
+    const message = `Có món mới: "${itemName}" (x${quantity}) - ${locationInfo}`;
+
+    // Tạo thông báo cho Đầu bếp (role: "chef")
+    await createNotification(title, message, "info", "chef");
+  } catch (err) {
+    console.error("Lỗi tạo thông báo món ăn mới:", err);
+  }
 };

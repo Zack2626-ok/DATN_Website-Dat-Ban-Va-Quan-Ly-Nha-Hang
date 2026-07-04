@@ -99,6 +99,9 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
       kitchen_note,
     });
 
+    // Tạo thông báo món ăn mới cho đầu bếp
+    await db.createNewDishNotification(Number(orderId), menu_item_id, Number(quantity));
+
     // Báo Socket.IO có món mới thêm
     req.app.get("io")?.emit("order:new_item", item);
 

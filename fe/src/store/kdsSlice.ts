@@ -21,6 +21,7 @@ export interface KdsItem {
   status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
   createdAt: string;
   tableName?: string;
+  areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
