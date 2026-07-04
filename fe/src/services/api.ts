@@ -74,3 +74,27 @@ export const getKdsVoidAlertsApi = async (): Promise<any[]> => {
   return response.data.data;
 };
 
+/**
+ * Fetch notifications, optionally filtered by user role
+ */
+export const getNotificationsApi = async (role?: string): Promise<any[]> => {
+  const response = await api.get("/notifications", { params: { role } });
+  return response.data.data;
+};
+
+/**
+ * Mark a notification as read
+ */
+export const markNotificationAsReadApi = async (id: number): Promise<any> => {
+  const response = await api.patch(`/notifications/${id}/read`);
+  return response.data.data;
+};
+
+/**
+ * Clear all notifications (mark as read)
+ */
+export const clearNotificationsApi = async (role?: string): Promise<any> => {
+  const response = await api.post("/notifications/clear", { role });
+  return response.data.data;
+};
+

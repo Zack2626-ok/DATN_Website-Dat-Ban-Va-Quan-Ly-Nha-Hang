@@ -1,4 +1,4 @@
-import { Order } from "./db";
+import { Order, createNotification } from "./db";
 
 export interface KdsItem {
   id: string | number;
@@ -117,6 +117,20 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
  * Update KDS item status
  */
 export const updateKdsItemStatusInDb = async (id: string | number, status: string): Promise<boolean> => {
+  // If status is done, trigger a notification to waiter/order
+  if (status === "done") {
+    try {
+      const itemInfo = await getSingleKdsItemInfo(id);
+      if (itemInfo) {
+        const title = "Món ăn hoàn thành";
+        const message = `Món "${itemInfo.name}" (x${itemInfo.quantity}) của Bàn ${itemInfo.tableName || "Mang về"} đã nấu xong!`;
+        await createNotification(title, message, "success", "waiter");
+      }
+    } catch (e) {
+      console.warn("Failed to create KDS done notification:", e);
+    }
+  }
+
   // If status is cancelled/voided, log it to the in-memory alerts
   if (status === "cancelled" || status === "voided") {
     try {
@@ -137,7 +151,19 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
     }
   }
 
-  // For now, just log and return true
+  // Update status in mockOrders
+  const parts = String(id).split("_");
+  if (parts.length >= 2) {
+    const orderId = parts.slice(0, -1).join("_");
+    const itemIndex = parseInt(parts[parts.length - 1]);
+    const order = mockOrders.find((o) => o.id === orderId);
+    if (order && order.items[itemIndex]) {
+      order.items[itemIndex].status = status;
+      console.log(`Updated mock order item status: ${id} to ${status}`);
+      return true;
+    }
+  }
+
   console.log(`Updating KDS item ${id} to status: ${status}`);
   return true;
 };
@@ -167,6 +193,25 @@ const getSingleKdsItemInfo = async (id: string | number): Promise<any | null> =>
  * Recall / Undo the last status change of an item
  */
 export const recallKdsItemStatusInDb = async (id: string | number): Promise<boolean> => {
+  const parts = String(id).split("_");
+  if (parts.length >= 2) {
+    const orderId = parts.slice(0, -1).join("_");
+    const itemIndex = parseInt(parts[parts.length - 1]);
+    const order = mockOrders.find((o) => o.id === orderId);
+    if (order && order.items[itemIndex]) {
+      const item = order.items[itemIndex];
+      const currentStatus = item.status || "pending";
+      let nextStatus = "pending";
+      if (currentStatus === "done") {
+        nextStatus = "cooking";
+      } else if (currentStatus === "cooking") {
+        nextStatus = "pending";
+      }
+      item.status = nextStatus;
+      console.log(`Recalled KDS item status: ${id} from ${currentStatus} to ${nextStatus}`);
+      return true;
+    }
+  }
   console.log(`Recalling KDS item ${id}`);
   return true;
 };

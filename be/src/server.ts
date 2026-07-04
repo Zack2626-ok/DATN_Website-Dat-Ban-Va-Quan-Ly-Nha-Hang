@@ -24,6 +24,7 @@ import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
 import invoiceRoutes from "./routes/invoice.routes";
 import eventConfigRoutes from "./routes/eventConfig.routes";
+import notificationRoutes from "./routes/notification.routes";
 import { initDb } from "./utils/db";
 
 dotenv.config();
@@ -97,6 +98,7 @@ app.use("/api/v1/waitlist", waitlistRoutes);
 app.use("/api/v1/waiter", waiterRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

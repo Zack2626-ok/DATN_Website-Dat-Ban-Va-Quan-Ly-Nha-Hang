@@ -6,7 +6,34 @@ import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
 import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
 import { logoutAction } from "../../store/authSlice";
-import { getWaiterNotifications, type WaiterNotification } from "../../services/waiterService";
+import {
+  getNotificationsApi,
+  markNotificationAsReadApi,
+  clearNotificationsApi,
+} from "../../services/api";
+import { toast } from "react-hot-toast";
+
+const formatTime = (timeStr: string) => {
+  try {
+    const date = new Date(timeStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return "Vừa xong";
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    
+    return date.toLocaleDateString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch (e) {
+    return "";
+  }
+};
 
 export interface NavLinkItem {
   to: string;
@@ -167,6 +194,97 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     dispatch(clearSearchQuery());
   }, [location.pathname, dispatch]);
 
+  const [notifications, setNotifications] = React.useState<any[]>([]);
+  const [dropdownOpen, setDropdownOpen] = React.useState(false);
+
+  const playBeepSound = () => {
+    try {
+      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(660, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+      
+      setTimeout(() => {
+        audioCtx.close();
+      }, 500);
+    } catch (err) {
+      console.error("Failed to play notification beep sound:", err);
+    }
+  };
+
+  // Fetch notifications and poll
+  React.useEffect(() => {
+    let active = true;
+    
+    const fetchNotifications = async () => {
+      try {
+        const data = await getNotificationsApi(displayRole);
+        if (!active) return;
+        
+        const unreadCount = data.filter((n: any) => !n.is_read).length;
+        
+        setNotifications((prev) => {
+          const prevUnreadCount = prev.filter((n: any) => !n.is_read).length;
+          
+          if (prev.length > 0 && unreadCount > prevUnreadCount) {
+            const newN = data.filter(
+              (item: any) => !item.is_read && !prev.some((oldItem) => oldItem.id === item.id)
+            );
+            
+            newN.forEach((notif: any) => {
+              toast.success(notif.message, { duration: 5000 });
+            });
+            playBeepSound();
+          }
+          return data;
+        });
+      } catch (err) {
+        console.error("Failed to load notifications:", err);
+      }
+    };
+
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 5000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [displayRole]);
+
+  const handleMarkAsRead = async (id: number, isRead: boolean) => {
+    if (isRead) return;
+    try {
+      await markNotificationAsReadApi(id);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, is_read: 1 } : n))
+      );
+    } catch (err) {
+      console.error("Failed to mark notification as read:", err);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await clearNotificationsApi(displayRole);
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
+    } catch (err) {
+      console.error("Failed to clear notifications:", err);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 text-gray-700 md:flex-row">
       <aside className="flex w-full shrink-0 flex-col border-b border-gray-200 bg-gray-900 md:w-64 md:border-b-0 md:border-r">
@@ -236,14 +354,81 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             )}
           </div>
           <div className="ml-auto flex items-center gap-4">
-            {/* Bell thông báo thực — chỉ waiter */}
-            {actorRole === "waiter" ? (
-              <WaiterNotificationBell />
-            ) : (
-              <button type="button" className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+            {/* Notification Bell with Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${
+                  dropdownOpen ? "bg-gray-150 text-gray-800" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                }`}
+              >
                 <Bell size={18} />
+                {notifications.filter((n) => !n.is_read).length > 0 && (
+                  <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-red-650 text-[8px] font-bold text-white px-1 shadow bg-red-600">
+                    {notifications.filter((n) => !n.is_read).length}
+                  </span>
+                )}
               </button>
-            )}
+
+              {dropdownOpen && (
+                <>
+                  {/* Overlay background to dismiss */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setDropdownOpen(false)}
+                  />
+                  
+                  {/* Dropdown Container */}
+                  <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-white border border-gray-200 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
+                      <span className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Thông báo</span>
+                      {notifications.filter((n) => !n.is_read).length > 0 && (
+                        <button
+                          onClick={handleMarkAllAsRead}
+                          className="text-[11px] font-bold text-blue-700 hover:text-blue-800 transition-colors cursor-pointer"
+                        >
+                          Đọc tất cả
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Notification list */}
+                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                      {notifications.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center text-gray-400">
+                          <Bell size={24} className="mb-2 text-gray-300" />
+                          <p className="text-xs italic">Không có thông báo nào</p>
+                        </div>
+                      ) : (
+                        notifications.map((item) => (
+                          <div
+                            key={item.id}
+                            onClick={() => handleMarkAsRead(item.id, item.is_read)}
+                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${
+                              item.is_read ? "bg-white hover:bg-gray-50" : "bg-blue-50/40 hover:bg-blue-50/70"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <span className={`text-[12px] leading-tight ${item.is_read ? "text-gray-700 font-medium" : "text-gray-900 font-bold"}`}>
+                                {item.message}
+                              </span>
+                              {!item.is_read && (
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600 animate-pulse" />
+                              )}
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-medium">
+                              {formatTime(item.created_at)}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
                 <p className="text-sm font-semibold text-gray-700">{user?.full_name || "Demo User"}</p>
