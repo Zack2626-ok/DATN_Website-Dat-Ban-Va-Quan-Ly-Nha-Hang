@@ -19,13 +19,11 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   }
 
   // ============ BỎ QUA LOGIN ĐỂ XEM TRƯỚC GIAO DIỆN ============
-  // if (!user) return <Navigate to="/auth/login" replace />;
+  if (!user) return <Navigate to="/auth/login" replace />;
   // Đổi role bên dưới để xem giao diện từng actor: admin | manager | waiter | cashier | chef | sales_event
   const effectiveRole = user?.role;
   // ===============================================================
 
-  // [DEMO MODE]: Comment lại kiểm tra role để có thể mở nhiều tab các role khác nhau cùng lúc
-  /*
   if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
     const roleRoutes: Record<string, string> = {
       admin: "/admin",
@@ -38,7 +36,6 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
     const fallbackPath = roleRoutes[effectiveRole] || "/";
     return <Navigate to={fallbackPath} replace />;
   }
-  */
 
   return <>{children}</>;
 }
