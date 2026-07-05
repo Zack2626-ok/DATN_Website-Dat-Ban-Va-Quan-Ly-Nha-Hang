@@ -19,7 +19,6 @@ import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middle
 
 // Tải biến môi trường từ file v
 import bookingRoutes from "./routes/booking.routes";
-import waitlistRoutes from "./routes/waitlist.routes";
 import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
 import invoiceRoutes from "./routes/invoice.routes";
@@ -93,7 +92,6 @@ app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
 app.use("/api/v1/tables", resmanagerTableRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
-app.use("/api/v1/waitlist", waitlistRoutes);
 app.use("/api/v1/waiter", waiterRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
