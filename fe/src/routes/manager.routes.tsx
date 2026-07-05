@@ -32,3 +32,4 @@ export const ManagerRoutes = () => (
     <Route path="analytics" element={<AnalyticsView />} />
   </Route>
 );
+

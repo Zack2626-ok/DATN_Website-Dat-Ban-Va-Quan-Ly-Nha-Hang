@@ -1,12 +1,22 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Tag, Clock, ChevronRight, Percent, Gift, Sparkles } from "lucide-react";
-import { ACTIVE_PROMOTIONS } from "../../data/mockLandingData";
+import { useQuery } from "@tanstack/react-query";
+import { Tag, Clock, ChevronRight, Percent, Gift, Sparkles, Loader2 } from "lucide-react";
+import { getPublicPromotions } from "../../services/customerService";
 
-/**
- * PromotionsPage — Trang ưu đãi & combo (Module 0, Actor: Khách hàng)
- */
+const getImageUrl = (imagePath?: string) => {
+  if (!imagePath) return "";
+  if (imagePath.startsWith("http")) return imagePath;
+  const serverUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+  return `${serverUrl}/${imagePath}`;
+};
+
 export const PromotionsPage: React.FC = () => {
+  const { data: promotions = [], isLoading } = useQuery({
+    queryKey: ["public-promotions"],
+    queryFn: getPublicPromotions,
+  });
+
   return (
     <>
       {/* Hero */}
@@ -34,41 +44,62 @@ export const PromotionsPage: React.FC = () => {
           <p className="mt-1 text-sm text-gray-500">Áp dụng cho tất cả khách hàng</p>
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {ACTIVE_PROMOTIONS.map((promo) => (
-            <div
-              key={promo.id}
-              className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1"
-            >
-              <div className="relative h-48 overflow-hidden bg-gradient-to-br from-blue-100 to-blue-50">
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                  <Gift size={40} className="text-blue-600 mb-3" />
-                  <h3 className="text-lg font-bold text-gray-700">{promo.title}</h3>
+        {isLoading ? (
+          <div className="flex justify-center items-center py-20">
+            <Loader2 size={36} className="animate-spin text-amber-500" />
+          </div>
+        ) : promotions.length === 0 ? (
+          <div className="py-16 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+            <Gift size={48} className="mx-auto text-gray-300 mb-4" />
+            <h3 className="text-lg font-bold text-gray-600">Hiện tại chưa có ưu đãi mới</h3>
+            <p className="text-sm text-gray-400 mt-1">Vui lòng quay lại sau để cập nhật các ưu đãi mới nhất</p>
+          </div>
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {promotions.map((promo: any) => (
+              <div
+                key={promo.id}
+                className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1"
+              >
+                <div className="relative h-48 overflow-hidden bg-gradient-to-br from-blue-100 to-blue-50">
+                  {promo.image_url ? (
+                    <img
+                      src={getImageUrl(promo.image_url)}
+                      alt={promo.title}
+                      className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                      <Gift size={40} className="text-blue-600 mb-3" />
+                      <h3 className="text-lg font-bold text-gray-700">{promo.title}</h3>
+                    </div>
+                  )}
+                  <span className="absolute top-3 right-3 rounded-full bg-red-500 px-3 py-1 text-xs font-bold text-white">
+                    HOT
+                  </span>
                 </div>
-                <span className="absolute top-3 right-3 rounded-full bg-red-500 px-3 py-1 text-xs font-bold text-white">
-                  HOT
-                </span>
-              </div>
-              <div className="p-5">
-                <p className="text-sm text-gray-500 mb-4">{promo.description}</p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                    <Clock size={14} />
-                    <span>Đến {promo.endDate}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs font-semibold text-blue-700">
-                    <Tag size={14} />
-                    <span>
-                      {promo.discountType === "percent"
-                        ? `-${promo.discountValue}%`
-                        : `-${promo.discountValue.toLocaleString("vi-VN")}đ`}
-                    </span>
+                <div className="p-5">
+                  <h3 className="font-bold text-gray-700 mb-1">{promo.title}</h3>
+                  <p className="text-sm text-gray-500 mb-4">{promo.description || "Ưu đãi hấp dẫn mùa này."}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <Clock size={14} />
+                      <span>Đến {new Date(promo.end_date).toLocaleDateString("vi-VN")}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-semibold text-blue-700">
+                      <Tag size={14} />
+                      <span>
+                        {promo.discount_type === "percent"
+                          ? `-${Number(promo.discount_value)}%`
+                          : `-${Number(promo.discount_value).toLocaleString("vi-VN")}đ`}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* CTA */}
         <div className="mt-16 rounded-2xl bg-gradient-to-r from-blue-700 to-blue-600 p-8 sm:p-12 text-center text-white">

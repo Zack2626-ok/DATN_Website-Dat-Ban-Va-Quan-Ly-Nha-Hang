@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getTableAreas, getTables, type ResmanagerTable } from '../../services/tableService';
 import AreaSelector from '../../components/tables/AreaSelector';
@@ -11,7 +11,7 @@ import { RefreshCw } from 'lucide-react';
 
 const TableMapPage: React.FC = () => {
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+  const [selectedTableId, setSelectedTableId] = useState<number | string | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isOpenTableModalOpen, setIsOpenTableModalOpen] = useState(false);
 
@@ -33,30 +33,43 @@ const TableMapPage: React.FC = () => {
   const rawTables: ResmanagerTable[] = tableResponse || [];
 
   // Apply local overrides to tables (mock state updates)
-  const tables = rawTables.map((t: ResmanagerTable) => ({
-    ...t,
+  const tables: Table[] = rawTables.map((t: ResmanagerTable) => ({
+    id: t.id,
+    area_id: t.area_id,
+    area_name: t.area_name,
+    name: t.name,
+    capacity: t.capacity,
+    row_pos: t.row_pos,
+    col_pos: t.col_pos,
+    status: t.status,
+    currentOrder: null,
     ...(localTableOverrides[t.id] || {}),
   }));
 
+  const selectedTable = useMemo(() => {
+    if (selectedTableId === null) return null;
+    return tables.find((t) => String(t.id) === String(selectedTableId)) || null;
+  }, [tables, selectedTableId]);
+
   const handleTableClick = useCallback((table: Table) => {
-    setSelectedTable(table);
+    setSelectedTableId(table.id);
     setIsDetailModalOpen(true);
   }, []);
 
   const handleOpenTable = useCallback((table: Table) => {
-    setSelectedTable(table);
+    setSelectedTableId(table.id);
     setIsDetailModalOpen(false);
     setIsOpenTableModalOpen(true);
   }, []);
 
   const handleConfirmOpenTable = useCallback(
     (data: OpenTableFormData) => {
-      if (!selectedTable) return;
+      if (!selectedTableId) return;
 
       // Mock: update table status locally to 'serving'
       setLocalTableOverrides((prev) => ({
         ...prev,
-        [selectedTable.id]: {
+        [selectedTableId]: {
           status: 'serving' as const,
           currentOrder: {
             id: Math.floor(1000 + Math.random() * 9000),
@@ -69,16 +82,16 @@ const TableMapPage: React.FC = () => {
       }));
 
       console.log('[MOCK] Open table:', {
-        tableId: selectedTable.id,
-        tableName: selectedTable.name,
+        tableId: selectedTableId,
         ...data,
       });
     },
-    [selectedTable]
+    [selectedTableId]
   );
 
   const handleRefresh = useCallback(() => {
     setLocalTableOverrides({});
+    setSelectedTableId(null);
     refetch();
   }, [refetch]);
 
