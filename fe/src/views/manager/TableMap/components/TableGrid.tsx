@@ -5,9 +5,10 @@ import type { ResmanagerTable } from "../../../../services/tableService";
 interface TableGridProps {
   tables: ResmanagerTable[];
   onAction: (action: string, table: ResmanagerTable) => void;
+  showCrud?: boolean;
 }
 
-export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction }) => {
+export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction, showCrud = true }) => {
   const [activeMenuTableId, setActiveMenuTableId] = useState<number | null>(null);
   // Tính toán kích thước lưới động dựa trên dữ liệu bàn thực tế trong DB
   const { maxCol, maxRow, occupiedCells } = useMemo(() => {
@@ -112,6 +113,7 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction }) => {
                 isBottomRow={isBottomRow}
                 showMenu={isMenuOpen}
                 onToggleMenu={(isOpen) => setActiveMenuTableId(isOpen ? table.id : null)}
+                showCrud={showCrud}
               />
             </div>
           );
