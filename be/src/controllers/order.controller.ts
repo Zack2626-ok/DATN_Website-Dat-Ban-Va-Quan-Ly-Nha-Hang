@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { saveOrder, getOrders, updateOrderStatus, Order } from "../utils/db";
+import { saveOrder, getOrders, updateOrderStatus, Order, createNotification } from "../utils/db";
 import { sendOrderReceiptEmail } from "../utils/email";
 import { sendSuccess, sendError } from "../utils/response";
 
@@ -54,6 +54,19 @@ export const createOrderHandler = async (req: Request, res: Response): Promise<v
     };
 
     await saveOrder(newOrder);
+
+    // Tạo thông báo món ăn mới cho đầu bếp
+    if (items && Array.isArray(items)) {
+      for (const item of items) {
+        const locationInfo = orderType === "delivery" ? "Giao hàng" : (tableName || "Mang về");
+        await createNotification(
+          "Món ăn mới",
+          `Có món mới: "${item.name}" (x${item.quantity}) - ${locationInfo}`,
+          "info",
+          "chef"
+        );
+      }
+    }
     let receiptUrl = "";
     try {
       receiptUrl = await sendOrderReceiptEmail({

@@ -19,13 +19,16 @@ import { initDb } from "./utils/db";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
 import bookingRoutes from "./routes/booking.routes";
-import waitlistRoutes from "./routes/waitlist.routes";
 import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
 import invoiceRoutes from "./routes/invoice.routes";
 import eventConfigRoutes from "./routes/eventConfig.routes";
 import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
+import notificationRoutes from "./routes/notification.routes";
+import { initDb } from "./utils/db";
+
+dotenv.config();
 
 const app = express();
 const DEFAULT_PORT = 5000;
@@ -87,15 +90,17 @@ app.use("/api/kds", kdsRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
-app.use("/api/payments", paymentRoutes);
-
-// Register missing routes
-app.use("/api/v1/bookings", bookingRoutes);
-app.use("/api/v1/waitlist", waitlistRoutes);
-app.use("/api/v1/tables", resmanagerTableRoutes);
-app.use("/api/v1/waiter", waiterRoutes);
-app.use("/api/v1/invoices", invoiceRoutes);
+app.use("/api/payments", paymentRoutes)
+// Specific routes before wildcard /api fallback
+app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
+app.use("/api/notifications", notificationRoutes);
+
+app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
+// Resmanager schema routes (waiter module)
+app.use("/api/v1/tables", resmanagerTableRoutes);
+app.use("/api/v1/bookings", bookingRoutes);
+app.use("/api/v1/waiter", waiterRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/public", customerPublicRoutes);

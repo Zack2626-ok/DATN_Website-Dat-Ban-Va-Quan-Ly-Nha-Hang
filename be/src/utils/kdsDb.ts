@@ -1,4 +1,4 @@
-import { Order } from "./db";
+import { Order, createNotification, query } from "./db";
 
 export interface KdsItem {
   id: string | number;
@@ -14,6 +14,7 @@ export interface KdsItem {
   status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
   createdAt: string;
   tableName?: string;
+  areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
 }
 
@@ -59,64 +60,105 @@ export const getKitchenStationFromName = (name: string): "hot_kitchen" | "bar" |
   return "hot_kitchen";
 };
 
-// Mock data for fallback since we removed JSON db
-const mockOrders: Order[] = [
-  {
-    id: "order_1",
-    tableName: "Bàn 1",
-    items: [
-      { name: "Gỏi tôm", quantity: 2, price: 80000 },
-      { name: "Cá nướng miễn", quantity: 1, price: 250000 }
-    ],
-    status: "pending",
-    totalAmount: 410000,
-    createdAt: new Date().toISOString(),
-    guestCount: 2,
-    orderType: "dine_in"
-  }
-];
-
 /**
  * Fetch all active KDS items
  */
 export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> => {
-  // For now, use mock data to avoid errors
-  const kdsItems: KdsItem[] = [];
-  
-  mockOrders.forEach((order) => {
-    if (order.status === "completed" || order.status === "cancelled") return;
+  const rows = await query<any[]>(
+    `SELECT
+       oi.id,
+       oi.order_id    AS orderId,
+       oi.menu_item_id AS menuItemId,
+       m.name,
+       oi.quantity,
+       oi.unit_price  AS unitPrice,
+       oi.seat_number AS seatNumber,
+       oi.course_number AS courseNumber,
+       oi.kitchen_note AS kitchenNote,
+       oi.status,
+       oi.created_at  AS createdAt,
+       t.name         AS tableName,
+       ta.name        AS areaName,
+       o.order_type   AS orderType
+     FROM order_items oi
+     JOIN orders o      ON oi.order_id     = o.id
+     JOIN menu_items m  ON oi.menu_item_id = m.id
+     LEFT JOIN tables t ON o.table_id      = t.id
+     LEFT JOIN table_areas ta ON t.area_id = ta.id
+     WHERE oi.status IN ('pending', 'cooking', 'done')
+     ORDER BY oi.created_at ASC`
+  );
 
-    order.items.forEach((item: any, index: number) => {
-      const status = item.status || "pending";
-      if (!["pending", "cooking", "done"].includes(status)) return;
-
-      const kitchenStation = getKitchenStationFromName(item.name);
-      if (station && station !== "all" && kitchenStation !== station) return;
-
-      kdsItems.push({
-        id: `${order.id}_${index}`,
-        orderId: order.id,
-        menuItemId: item.menuItemId || `m_${index}`,
-        name: item.name,
-        kitchenStation,
-        quantity: item.quantity,
-        unitPrice: item.price || 0,
-        kitchenNote: item.kitchenNote || "",
-        status: status as any,
-        createdAt: order.createdAt,
-        tableName: order.tableName || "Mang về",
-        orderType: order.orderType || "delivery"
-      });
-    });
+  return rows.map((row) => {
+    const kitchenStation = getKitchenStationFromName(row.name);
+    return {
+      id: row.id,
+      orderId: row.orderId,
+      menuItemId: row.menuItemId,
+      name: row.name,
+      kitchenStation,
+      quantity: Number(row.quantity),
+      unitPrice: Number(row.unitPrice),
+      seatNumber: row.seatNumber,
+      courseNumber: row.courseNumber,
+      kitchenNote: row.kitchenNote,
+      status: row.status,
+      createdAt: row.createdAt,
+      tableName: row.tableName || "Mang về",
+      areaName: row.areaName || undefined,
+      orderType: row.orderType || "dine_in"
+    };
+  }).filter((item) => {
+    if (station && station !== "all" && item.kitchenStation !== station) return false;
+    return true;
   });
+};
 
-  return kdsItems;
+/**
+ * Helper to fetch a single KdsItem's information before status change
+ */
+const getSingleKdsItemInfo = async (id: string | number): Promise<any | null> => {
+  const rows = await query<any[]>(
+    `SELECT
+       oi.order_id    AS orderId,
+       m.name         AS name,
+       oi.quantity,
+       t.name         AS tableName
+     FROM order_items oi
+     JOIN orders o      ON oi.order_id     = o.id
+     JOIN menu_items m  ON oi.menu_item_id = m.id
+     LEFT JOIN tables t ON o.table_id      = t.id
+     WHERE oi.id = ?`,
+    [id]
+  );
+  return rows[0] || null;
 };
 
 /**
  * Update KDS item status
  */
 export const updateKdsItemStatusInDb = async (id: string | number, status: string): Promise<boolean> => {
+  const result = await query<any>(
+    "UPDATE order_items SET status = ? WHERE id = ?",
+    [status, id]
+  );
+  
+  if (result.affectedRows === 0) return false;
+
+  // If status is done, trigger a notification to waiter/order
+  if (status === "done") {
+    try {
+      const itemInfo = await getSingleKdsItemInfo(id);
+      if (itemInfo) {
+        const title = "Món ăn hoàn thành";
+        const message = `Món "${itemInfo.name}" (x${itemInfo.quantity}) của Bàn ${itemInfo.tableName || "Mang về"} đã nấu xong!`;
+        await createNotification(title, message, "success", "waiter");
+      }
+    } catch (e) {
+      console.warn("Failed to create KDS done notification:", e);
+    }
+  }
+
   // If status is cancelled/voided, log it to the in-memory alerts
   if (status === "cancelled" || status === "voided") {
     try {
@@ -137,38 +179,29 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
     }
   }
 
-  // For now, just log and return true
-  console.log(`Updating KDS item ${id} to status: ${status}`);
   return true;
-};
-
-/**
- * Helper to fetch a single KdsItem's information before status change
- */
-const getSingleKdsItemInfo = async (id: string | number): Promise<any | null> => {
-  const parts = String(id).split("_");
-  if (parts.length >= 2) {
-    const orderId = parts.slice(0, -1).join("_");
-    const itemIndex = parseInt(parts[parts.length - 1]);
-    const order = mockOrders.find((o) => o.id === orderId);
-    if (order && order.items[itemIndex]) {
-      return {
-        orderId,
-        name: (order.items[itemIndex] as any).name,
-        quantity: (order.items[itemIndex] as any).quantity,
-        tableName: order.tableName
-      };
-    }
-  }
-  return null;
 };
 
 /**
  * Recall / Undo the last status change of an item
  */
 export const recallKdsItemStatusInDb = async (id: string | number): Promise<boolean> => {
-  console.log(`Recalling KDS item ${id}`);
-  return true;
+  const rows = await query<any[]>("SELECT status FROM order_items WHERE id = ?", [id]);
+  if (rows.length === 0) return false;
+  
+  const currentStatus = rows[0].status;
+  let nextStatus = "pending";
+  if (currentStatus === "done") {
+    nextStatus = "cooking";
+  } else if (currentStatus === "cooking") {
+    nextStatus = "pending";
+  }
+
+  const result = await query<any>(
+    "UPDATE order_items SET status = ? WHERE id = ?",
+    [nextStatus, id]
+  );
+  return result.affectedRows > 0;
 };
 
 /**

@@ -7,7 +7,8 @@ export interface ApiResponse<T = unknown> {
 export interface JwtPayload {
   userId: string;
   email: string;
-  role_name: string;
+  role?: string;
+  role_name?: string;
   iat?: number;
   exp?: number;
 }

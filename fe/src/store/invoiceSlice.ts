@@ -29,11 +29,12 @@ const initialState: InvoiceState = {
 
 export const fetchInvoices = createAsyncThunk(
   "invoices/fetchInvoices",
-  async (params: { status?: string; search?: string } | undefined, { rejectWithValue }) => {
+  async (params?: { status?: string; search?: string }, thunkAPI?: any) => {
+    const rejectWithValue = thunkAPI?.rejectWithValue;
     try {
       return await getInvoicesApi(params);
     } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
+      return rejectWithValue ? rejectWithValue(err.response?.data?.message || err.message) : err.message;
     }
   },
 );
