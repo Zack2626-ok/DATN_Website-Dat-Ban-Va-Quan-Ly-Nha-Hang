@@ -18,7 +18,6 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
     );
   }
 
-  // ============ BỎ QUA LOGIN ĐỂ XEM TRƯỚC GIAO DIỆN ============
   if (!user) return <Navigate to="/auth/login" replace />;
   // Đổi role bên dưới để xem giao diện từng actor: admin | manager | waiter | cashier | chef | sales_event
   const effectiveRole = user?.role;
