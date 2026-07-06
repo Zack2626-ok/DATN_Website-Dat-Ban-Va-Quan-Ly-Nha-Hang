@@ -1224,20 +1224,7 @@ export const getEmptyTablesForBooking = async (startTime?: string): Promise<any[
   return query(sql, params);
 };
 
-export const getResmanagerTableById = async (id: number): Promise<any | null> => {
-  const rows = await query(`
-    SELECT t.*, a.name AS area_name
-    FROM tables t
-    LEFT JOIN table_areas a ON t.area_id = a.id
-    WHERE t.id = ? AND t.is_deleted = 0
-  `, [id]);
-  return rows[0] || null;
-};
 
-export const updateResmanagerTableStatus = async (id: number, status: string): Promise<boolean> => {
-  const result = await query("UPDATE tables SET status = ? WHERE id = ?", [status, id]);
-  return result.affectedRows > 0;
-};
 
 export const transferResmanagerOrder = async (sourceTableId: number, targetTableId: number): Promise<boolean> => {
   const rows = await query("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving')", [sourceTableId]);
