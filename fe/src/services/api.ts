@@ -1,14 +1,7 @@
-import axios from "axios";
+import axiosInstance from "./axiosInstance";
 import type { Order } from "../interfaces";
 
-const API_BASE_URL = "http://localhost:5000/api";
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+const api = axiosInstance;
 
 /**
  * Send a new order to the backend database
