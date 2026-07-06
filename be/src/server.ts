@@ -26,7 +26,7 @@ import eventConfigRoutes from "./routes/eventConfig.routes";
 import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
 import notificationRoutes from "./routes/notification.routes";
-import { initDb } from "./utils/db";
+
 
 dotenv.config();
 
