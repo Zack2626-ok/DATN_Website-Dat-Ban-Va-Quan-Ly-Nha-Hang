@@ -260,6 +260,20 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added order_items.is_held");
     }
 
+    // Add employee_code if not exists
+    const empCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'employee_code'`,
+    );
+    if (empCols.length === 0) {
+      await query(`ALTER TABLE users ADD COLUMN employee_code VARCHAR(20) DEFAULT NULL AFTER role_id`);
+      await query(`UPDATE users SET employee_code = CONCAT('NV', LPAD(id, 3, '0')) WHERE employee_code IS NULL`);
+      console.log("✅ Migration: added users.employee_code");
+    }
+
+    // Ensure tables.status includes 'maintenance'
+    await query(`ALTER TABLE tables MODIFY COLUMN status ENUM('empty','reserved','serving','pending_payment','maintenance') NOT NULL DEFAULT 'empty'`);
+
     // Đồng bộ bàn reserved với booking pending/confirmed còn hiệu lực
     await query(`
       UPDATE tables t
@@ -290,9 +304,11 @@ const mapRoleName = (roleId: any): string => {
 
 const mapUserRow = (user: any): User => {
   const roleName = user.role_name || mapRoleName(user.role_id);
+  const empCode = user.employee_code || `NV${String(user.id).padStart(3, "0")}`;
   return {
     ...user,
     id: String(user.id),
+    employee_code: empCode,
     password: user.password || user.password_hash,
     role: roleName,
     role_name: roleName,

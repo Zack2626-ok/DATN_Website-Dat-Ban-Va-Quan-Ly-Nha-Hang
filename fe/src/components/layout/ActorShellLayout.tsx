@@ -11,6 +11,7 @@ import {
   markNotificationAsReadApi,
   clearNotificationsApi,
 } from "../../services/api";
+import { getWaiterNotifications, type WaiterNotification } from "../../services/waiterService";
 import { toast } from "react-hot-toast";
 
 const formatTime = (timeStr: string) => {
@@ -429,9 +430,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 </>
               )}
             </div>
+            {displayRole === "waiter" && <WaiterNotificationBell />}
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-gray-700">{user?.full_name || "Demo User"}</p>
+                <p className="text-sm font-semibold text-gray-700 flex items-center justify-end gap-1.5">
+                  <span>{user?.full_name || "Demo User"}</span>
+                  {user && (
+                    <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                      {user.employee_code || `NV${String(user.id).padStart(3, "0")}`}
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-400">{ROLE_LABELS[displayRole]}</p>
               </div>
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500">

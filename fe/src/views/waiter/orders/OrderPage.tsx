@@ -478,11 +478,6 @@ export const OrderPage: React.FC = () => {
           <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
             <Utensils size={18} className="text-blue-600" />
             <h2 className="font-bold text-gray-900">Order hiện tại</h2>
-            {heldCount > 0 && (
-              <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                {heldCount} hold
-              </span>
-            )}
           </div>
 
           <div className="flex-1 space-y-2 max-h-[calc(100vh-360px)] overflow-y-auto">
@@ -504,9 +499,6 @@ export const OrderPage: React.FC = () => {
                       <p className="text-sm text-gray-500 mt-0.5">×{item.quantity}</p>
                       {item.kitchenNote && (
                         <p className="text-xs text-amber-600 mt-1">📝 {item.kitchenNote}</p>
-                      )}
-                      {item.held && item.status === "pending" && (
-                        <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">⏸ HOLD</span>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5">

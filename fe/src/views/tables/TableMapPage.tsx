@@ -33,7 +33,7 @@ const TableMapPage: React.FC = () => {
   const rawTables: ResmanagerTable[] = tableResponse || [];
 
   // Apply local overrides to tables (mock state updates)
-  const tables: Table[] = rawTables.map((t: ResmanagerTable) => ({
+  const tables: any[] = rawTables.map((t: ResmanagerTable) => ({
     id: t.id,
     area_id: t.area_id,
     area_name: t.area_name,

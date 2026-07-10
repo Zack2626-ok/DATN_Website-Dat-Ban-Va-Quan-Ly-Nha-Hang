@@ -9,11 +9,13 @@ export interface ResmanagerTable {
   capacity: number;
   row_pos: string;
   col_pos: number;
-  status: "empty" | "reserved" | "serving" | "pending_payment";
+  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance";
   is_deleted: number;
   // Enhanced fields
   guest_name?: string | null;
   guest_phone?: string | null;
+  guest_count?: number | null;
+  start_time?: string | null;
   is_merged_primary?: boolean;
   merged_tables?: { id: number; name: string }[];
   is_merged_child?: boolean;
@@ -44,7 +46,7 @@ export const getEmptyTables = async (startTime?: string): Promise<ResmanagerTabl
 
 export const updateTableStatus = async (
   tableId: number,
-  status: "empty" | "reserved" | "serving" | "pending_payment",
+  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance",
 ): Promise<void> => {
   await api.patch(`/v1/tables/${tableId}/status`, { status });
 };
