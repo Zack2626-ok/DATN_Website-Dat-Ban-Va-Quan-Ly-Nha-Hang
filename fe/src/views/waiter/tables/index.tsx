@@ -260,7 +260,7 @@ export const WaiterTableMap: React.FC = () => {
                 guest_name: data.customerName,
                 guest_phone: data.customerPhone,
                 guest_count: data.guestCount,
-                start_time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+                start_time: new Date().toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }),
               } as any)
             : t,
         ),
@@ -329,7 +329,8 @@ export const WaiterTableMap: React.FC = () => {
   // Xóa món khỏi order
   const handleVoidItem = async (item: WaiterOrderItem) => {
     if (!activeOrder) return;
-    if (!window.confirm(`Xác nhận xóa món "${item.item_name}" khỏi đơn hàng?`)) return;
+    const itemDisplayName = item.item_name || (item as any).menu_item_name || "(không xác định)";
+    if (!window.confirm(`Xác nhận xóa món "${itemDisplayName}" khỏi đơn hàng?`)) return;
     try {
       await voidOrderItem(activeOrder.id, item.id, "Khách yêu cầu hủy");
       toast.success(`Đã xóa món ${item.item_name}`);
@@ -777,6 +778,9 @@ export const WaiterTableMap: React.FC = () => {
           items={activeOrder?.items || []}
           waiterName={userInfo.name}
           employeeCode={userInfo.code}
+          guestName={selectedTable.guest_name}
+          guestPhone={selectedTable.guest_phone}
+          startTime={selectedTable.start_time}
         />
       )}
 

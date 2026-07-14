@@ -1,5 +1,5 @@
 import React from "react";
-import { Printer, X, Receipt, Clock, User } from "lucide-react";
+import { Printer, X, Receipt, Clock, User, Phone } from "lucide-react";
 import type { WaiterOrderItem } from "../../../services/waiterService";
 
 interface ProvisionalBillModalProps {
@@ -10,6 +10,9 @@ interface ProvisionalBillModalProps {
   items: WaiterOrderItem[];
   waiterName?: string;
   employeeCode?: string;
+  guestName?: string | null;
+  guestPhone?: string | null;
+  startTime?: string | null;
 }
 
 export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
@@ -20,6 +23,9 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
   items,
   waiterName,
   employeeCode,
+  guestName,
+  guestPhone,
+  startTime,
 }) => {
   if (!isOpen) return null;
 
@@ -34,7 +40,10 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
   });
 
   const validItems = items.filter((item) => item.status !== "voided" && item.status !== "cancelled");
-  const totalAmount = validItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const totalAmount = validItems.reduce(
+    (sum, item) => sum + Number(item.unit_price) * item.quantity,
+    0,
+  );
 
   const handlePrint = () => {
     window.print();
@@ -58,7 +67,8 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
         </div>
 
         {/* Nội dung Phiếu Tạm Tính */}
-        <div className="p-6 print:p-0" id="printable-provisional-bill">
+        <div className="p-6 print:p-0 max-h-[75vh] overflow-y-auto" id="printable-provisional-bill">
+          {/* Tiêu đề */}
           <div className="text-center border-b border-dashed border-gray-300 pb-4 mb-4">
             <h2 className="text-lg font-black tracking-wide text-gray-900 uppercase">NHÀ HÀNG RESMANAGER</h2>
             <p className="text-xs text-gray-500 mt-0.5">Hệ thống quản lý nhà hàng đa mô hình</p>
@@ -75,14 +85,14 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
             </div>
             <div className="flex justify-between items-center">
               <span className="flex items-center gap-1">
-                <Clock size={13} className="text-gray-400" />
+                <Clock size={12} className="text-gray-400" />
                 Ngày giờ in phiếu:
               </span>
               <span className="font-bold text-gray-900">{printDateTime}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="flex items-center gap-1">
-                <User size={13} className="text-gray-400" />
+                <User size={12} className="text-gray-400" />
                 Nhân viên phục vụ:
               </span>
               <span className="font-medium text-gray-800">
@@ -91,30 +101,74 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
             </div>
           </div>
 
-          {/* Bảng món ăn */}
-          <div className="mb-4">
-            <div className="flex justify-between text-[11px] font-bold text-gray-400 uppercase border-b border-gray-200 pb-2 mb-2">
-              <span>Tên món</span>
-              <span>SL x Đơn giá</span>
-              <span>Thành tiền</span>
+          {/* Thông tin khách */}
+          {(guestName || guestPhone || startTime) && (
+            <div className="space-y-1 text-xs text-gray-600 border-b border-dashed border-gray-300 pb-4 mb-4 bg-gray-50 rounded-lg p-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Thông tin khách hàng</p>
+              {guestName && (
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1">
+                    <User size={11} className="text-gray-400" />
+                    Tên khách:
+                  </span>
+                  <span className="font-semibold text-gray-800">{guestName}</span>
+                </div>
+              )}
+              {guestPhone && (
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1">
+                    <Phone size={11} className="text-gray-400" />
+                    Số điện thoại:
+                  </span>
+                  <span className="font-medium text-gray-800">{guestPhone}</span>
+                </div>
+              )}
+              {startTime && (
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1">
+                    <Clock size={11} className="text-gray-400" />
+                    Thời gian đến:
+                  </span>
+                  <span className="font-medium text-gray-800">{startTime}</span>
+                </div>
+              )}
             </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto print:max-h-none">
+          )}
+
+          {/* Bảng món ăn - dùng grid 3 cột cố định */}
+          <div className="mb-4">
+            {/* Header bảng */}
+            <div className="grid text-[11px] font-bold text-gray-400 uppercase border-b border-gray-200 pb-2 mb-2" style={{ gridTemplateColumns: "1fr 130px 80px" }}>
+              <span>Tên món</span>
+              <span className="text-center">SL × Đơn giá</span>
+              <span className="text-right">Thành tiền</span>
+            </div>
+
+            {/* Danh sách món */}
+            <div className="space-y-2 max-h-56 overflow-y-auto print:max-h-none">
               {validItems.length === 0 ? (
                 <p className="text-center text-xs text-gray-400 py-4">Chưa có món ăn nào trong order.</p>
               ) : (
                 validItems.map((item) => (
-                  <div key={item.id} className="flex justify-between text-xs text-gray-700">
-                    <div className="font-medium text-gray-900 pr-2 flex-1 truncate">
-                      {item.item_name || (item as any).menu_item_name}
+                  <div
+                    key={item.id}
+                    className="grid text-xs items-start py-1 border-b border-gray-50"
+                    style={{ gridTemplateColumns: "1fr 130px 80px" }}
+                  >
+                    {/* Tên món */}
+                    <div className="text-gray-900 font-medium pr-2 min-w-0">
+                      <span className="block">{item.item_name || (item as any).menu_item_name || "—"}</span>
                       {item.kitchen_note && (
-                        <span className="block text-[10px] text-gray-400 italic">{item.kitchen_note}</span>
+                        <span className="text-[10px] text-gray-400 italic">{item.kitchen_note}</span>
                       )}
                     </div>
-                    <div className="text-right text-gray-500 w-24">
-                      {item.quantity} x {item.unit_price.toLocaleString()}đ
+                    {/* SL × đơn giá */}
+                    <div className="text-center text-gray-500 whitespace-nowrap">
+                      {item.quantity} × {Number(item.unit_price).toLocaleString("vi-VN")}đ
                     </div>
-                    <div className="text-right font-semibold text-gray-800 w-20">
-                      {(item.quantity * item.unit_price).toLocaleString()}đ
+                    {/* Thành tiền */}
+                    <div className="text-right font-semibold text-gray-800 whitespace-nowrap">
+                      {(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ
                     </div>
                   </div>
                 ))
