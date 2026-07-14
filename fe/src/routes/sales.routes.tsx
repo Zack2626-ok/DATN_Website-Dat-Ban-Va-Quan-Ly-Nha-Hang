@@ -6,7 +6,7 @@ export const SalesRoutes = () => (
   <Route
     path="/sales"
     element={
-      <ProtectedRoute allowedRoles={["sales_event"]}>
+      <ProtectedRoute allowedRoles={["sales_event", "manager", "admin"]}>
         <SalesLayout />
       </ProtectedRoute>
     }

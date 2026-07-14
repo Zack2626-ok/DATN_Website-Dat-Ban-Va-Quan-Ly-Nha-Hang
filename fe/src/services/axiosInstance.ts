@@ -19,7 +19,7 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401 && !err.config?.url?.includes("/auth/login")) {
       localStorage.clear();
-      window.location.href = "/login";
+      window.location.href = "/auth/login";
     }
     return Promise.reject(err);
   },
