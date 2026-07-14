@@ -55,7 +55,7 @@ export const updateResmanagerTableStatusHandler = async (req: Request, res: Resp
     const { id } = req.params;
     const { status } = req.body;
 
-    const validStatuses = ["empty", "reserved", "serving", "pending_payment"];
+    const validStatuses = ["empty", "reserved", "serving", "pending_payment", "maintenance"];
     if (!status || !validStatuses.includes(status)) {
       sendError(res, `Trạng thái phải là: ${validStatuses.join(", ")}`, 400);
       return;

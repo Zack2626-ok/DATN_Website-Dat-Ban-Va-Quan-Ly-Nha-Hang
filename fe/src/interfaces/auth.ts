@@ -3,12 +3,13 @@ import type { UserRole } from "../constants/roles";
 export type { UserRole };
 
 export interface User {
-  id:         number;
-  full_name:  string;
-  email:      string;
-  role:       UserRole;
-  phone:      string | null;
-  avatar_url: string | null;
+  id:            number;
+  employee_code?: string | null;
+  full_name:     string;
+  email:         string;
+  role:          UserRole;
+  phone:         string | null;
+  avatar_url:    string | null;
 }
 
 export interface LoginPayload {
