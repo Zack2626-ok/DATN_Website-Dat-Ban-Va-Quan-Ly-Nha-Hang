@@ -14,7 +14,10 @@ import {
   Clock,
   Wrench,
   CheckCircle,
+  Phone,
+  UserCheck,
 } from "lucide-react";
+import { useAppSelector } from "../../../store/hooks";
 import OpenTableModal from "../../../components/tables/OpenTableModal";
 import { TableArea } from "../../../interfaces/table.interface";
 import { toast } from "react-hot-toast";
@@ -208,9 +211,22 @@ export const WaiterTableMap: React.FC = () => {
     }
   }, [selectedTableId, loadActiveOrder]);
 
+  const searchQuery = useAppSelector((state) => state.ui.searchQuery);
+
   const filteredTables = useMemo(() => {
-    return selectedAreaId ? tables.filter((t) => t.area_id === selectedAreaId) : tables;
-  }, [selectedAreaId, tables]);
+    let result = selectedAreaId ? tables.filter((t) => t.area_id === selectedAreaId) : tables;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      // Smart match: "25" → khớp "B25", "25"; "b25" → khớp "B25"
+      result = result.filter((t) => {
+        const name = t.name.toLowerCase();
+        // Nếu query là số thuần, thử ghép thêm "b" phía trước
+        const isNumeric = /^\d+$/.test(q);
+        return name.includes(q) || (isNumeric && name.includes("b" + q));
+      });
+    }
+    return result;
+  }, [selectedAreaId, tables, searchQuery]);
 
   const selectedTable = useMemo(
     () => tables.find((t) => t.id.toString() === selectedTableId?.toString()) || null,
@@ -473,9 +489,10 @@ export const WaiterTableMap: React.FC = () => {
                           {t.guest_name && (
                             <p className="font-bold text-gray-900 truncate">Khách: {t.guest_name}</p>
                           )}
-                          {t.guest_phone && (
-                            <p className="text-gray-500 truncate">SĐT: {t.guest_phone}</p>
-                          )}
+                          <p className="text-gray-500 truncate flex items-center gap-1">
+                            <Phone size={10} />
+                            {t.guest_phone || <span className="italic text-gray-400">Không ghi</span>}
+                          </p>
                           {t.start_time && (
                             <p className="text-gray-500 flex items-center gap-1">
                               <Clock size={11} /> Đến: {t.start_time}
@@ -570,12 +587,12 @@ export const WaiterTableMap: React.FC = () => {
                           {selectedTable.guest_name || "Khách tại bàn"}
                         </span>
                       </div>
-                      {selectedTable.guest_phone && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Số điện thoại:</span>
-                          <span className="font-medium text-gray-800">{selectedTable.guest_phone}</span>
-                        </div>
-                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 flex items-center gap-1"><Phone size={11} /> SĐT:</span>
+                        <span className="font-medium text-gray-800">
+                          {selectedTable.guest_phone || <span className="italic text-gray-400">Không ghi</span>}
+                        </span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Thời gian đến / đặt:</span>
                         <span className="font-semibold text-gray-800">
@@ -583,6 +600,23 @@ export const WaiterTableMap: React.FC = () => {
                         </span>
                       </div>
                     </div>
+
+                    {/* NÚT KHÁCH ĐÃ ĐẾN — chỉ hiện khi bàn là reserved */}
+                    {selectedTable.status === "reserved" && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await handleStatusChange("serving");
+                            toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
+                          } catch {
+                            toast.error("Không thể cập nhật trạng thái");
+                          }
+                        }}
+                        className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
+                      </button>
+                    )}
 
                     {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
                     {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
@@ -682,21 +716,23 @@ export const WaiterTableMap: React.FC = () => {
                         </div>
                       )}
 
-                      {/* TỔNG TIỀN VÀ IN PHIẾU TẠM TÍNH */}
-                      <div className="rounded-xl bg-gray-900 p-3.5 text-white flex items-center justify-between mt-3">
-                        <div>
-                          <p className="text-[10px] text-gray-400 uppercase font-bold">Tạm tính order:</p>
-                          <p className="text-base font-black text-[#FF5A5F]">
-                            {(activeOrder?.totalAmount || 0).toLocaleString("vi-VN")} đ
-                          </p>
+                      {/* TỔNG TIỀN VÀ IN PHIẾU TẠM TÍNH — chỉ hiển thị khi có món */}
+                      {activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                        <div className="rounded-xl bg-gray-900 p-3.5 text-white flex items-center justify-between mt-3">
+                          <div>
+                            <p className="text-[10px] text-gray-400 uppercase font-bold">Tạm tính order:</p>
+                            <p className="text-base font-black text-[#FF5A5F]">
+                              {(activeOrder?.totalAmount || 0).toLocaleString("vi-VN")} đ
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setIsPrintBillOpen(true)}
+                            className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer shadow-md"
+                          >
+                            <Printer size={14} /> In phiếu tạm tính
+                          </button>
                         </div>
-                        <button
-                          onClick={() => setIsPrintBillOpen(true)}
-                          className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer shadow-md"
-                        >
-                          <Printer size={14} /> In phiếu tạm tính
-                        </button>
-                      </div>
+                      )}
 
                       {/* Nút thao tác chuyển/gộp */}
                       <div className="grid grid-cols-2 gap-2 pt-1">

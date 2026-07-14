@@ -1,5 +1,5 @@
 import React from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { Bell, Database, LogOut, Search, User, X } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
@@ -58,6 +58,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 }) => {
   const location = useLocation();
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || actorRole;
@@ -146,6 +147,40 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       );
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
+    }
+  };
+
+  // Parse tên bàn từ message: "Bàn B02" hoặc "bàn B02"
+  const parseTableNameFromMessage = (message: string): string | null => {
+    const match = message.match(/[Bb]àn\s+([A-Z0-9]+)/i);
+    return match ? match[1].toUpperCase() : null;
+  };
+
+  // Click notification: mark as read + navigate tới trang gọi món (waiter)
+  const handleNotificationClick = async (item: any) => {
+    // Mark as read
+    await handleMarkAsRead(item.id, item.is_read);
+    setDropdownOpen(false);
+
+    // Chỉ navigate nếu là waiter
+    if (displayRole !== "waiter" && displayRole !== "manager" && displayRole !== "admin") return;
+
+    // Parse tên bàn từ message
+    const tableName = parseTableNameFromMessage(item.message || "");
+    if (!tableName) return;
+
+    // Lấy danh sách bàn để tìm tableId
+    try {
+      const { getTablesV1 } = await import("../../services/tableService");
+      const tables = await getTablesV1();
+      const found = tables.find(
+        (t: any) => t.name.toUpperCase() === tableName
+      );
+      if (found) {
+        navigate(`/waiter/orders/${found.id}`);
+      }
+    } catch (err) {
+      console.error("Failed to navigate to order page:", err);
     }
   };
 
@@ -278,7 +313,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                         notifications.map((item) => (
                           <div
                             key={item.id}
-                            onClick={() => handleMarkAsRead(item.id, item.is_read)}
+                            onClick={() => handleNotificationClick(item)}
                             className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${
                               item.is_read ? "bg-white hover:bg-gray-50" : "bg-blue-50/40 hover:bg-blue-50/70"
                             }`}
