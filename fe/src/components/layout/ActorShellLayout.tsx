@@ -408,6 +408,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 <X size={14} />
               </button>
             )}
+          </div>
           <div className="ml-auto flex items-center gap-4">
             {actorRole === "waiter" ? (
               <WaiterNotificationBell />
