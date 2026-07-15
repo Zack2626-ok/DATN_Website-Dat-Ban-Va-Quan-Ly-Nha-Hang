@@ -16,7 +16,6 @@ import {
   CheckCircle,
   Phone,
   UserCheck,
-  ExternalLink,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate } from "react-router-dom";

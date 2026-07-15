@@ -179,7 +179,7 @@ export const WaiterTableMap: React.FC = () => {
                     {priceLabel}
                   </span>
                 )}
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#1C2541]/40 backdrop-blur-xl/60 border border-current/10 mt-1">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#1C2541]/60 backdrop-blur-md border border-current/10 mt-1">
                   {VietnameseLabels[table.status]}
                 </span>
               </div>
