@@ -8,12 +8,7 @@ interface Props {
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: Props) {
-  const {user, isLoading } = useAppSelector((state) => state.auth);
-
-  // Suppress TS6133 compiler warnings for commented out logic
-  if (allowedRoles) {}
-  if (user) {}
-  if (typeof Navigate === 'function') {}
+  const { user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
     return (
@@ -23,24 +18,24 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
     );
   }
 
-  // ============ BỎ QUA LOGIN ĐỂ XEM TRƯỚC GIAO DIỆN ============
-  // if (!user) return <Navigate to="/auth/login" replace />;
-  // Đổi role bên dưới để xem giao diện từng actor: admin | manager | waiter | cashier | chef | sales_event
-  // const effectiveRole = user?.role;
-  // ===============================================================
+  // Chưa đăng nhập → về trang đăng nhập nhân viên
+  if (!user) {
+    return <Navigate to="/auth/login" replace />;
+  }
 
-  // if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
-  //   const roleRoutes: Record<string, string> = {
-  //     admin: "/admin",
-  //     manager: "/manager",
-  //     waiter: "/waiter",
-  //     cashier: "/cashier",
-  //     chef: "/chef",
-  //     sales_event: "/sales",
-  //   };
-  //   const fallbackPath = roleRoutes[effectiveRole] || "/";
-  //   return <Navigate to={fallbackPath} replace />;
-  // }
+  // Đã đăng nhập nhưng không đúng role → redirect về workspace của role hiện tại
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    const roleRoutes: Record<string, string> = {
+      admin: "/admin",
+      manager: "/manager",
+      waiter: "/waiter",
+      cashier: "/cashier",
+      chef: "/chef",
+      sales_event: "/sales",
+    };
+    const fallbackPath = roleRoutes[user.role] || "/";
+    return <Navigate to={fallbackPath} replace />;
+  }
 
   return <>{children}</>;
 }

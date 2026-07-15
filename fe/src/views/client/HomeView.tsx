@@ -1,15 +1,37 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Star, MapPin, Phone, Clock } from "lucide-react";
+import { ChevronRight, Star, MapPin, Phone, Clock, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { FeaturedDishCard } from "../../components/client/FeaturedDishCard";
 import { PromotionCard } from "../../components/client/PromotionCard";
 import { FEATURED_DISHES, ACTIVE_PROMOTIONS } from "../../data/mockLandingData";
+import { getPublicMenu, getPublicPromotions } from "../../services/customerService";
 
 /**
  * HomeView — W1 Landing Page (Module 0, Actor: Khách hàng)
  * UI Spec: Hero → Món nổi bật → Ưu đãi → Thông tin + Maps
  */
 export const HomeView: React.FC = () => {
+  // Lấy thực đơn động từ API
+  const { data: menuData, isLoading: isMenuLoading } = useQuery({
+    queryKey: ["public-menu"],
+    queryFn: getPublicMenu,
+  });
+
+  // Lấy ưu đãi động từ API
+  const { data: promotionsData, isLoading: isPromotionsLoading } = useQuery({
+    queryKey: ["public-promotions"],
+    queryFn: getPublicPromotions,
+  });
+
+  const dishes = menuData?.items && menuData.items.length > 0
+    ? menuData.items.slice(0, 4)
+    : FEATURED_DISHES;
+
+  const promotions = promotionsData && promotionsData.length > 0
+    ? promotionsData
+    : ACTIVE_PROMOTIONS;
+
   return (
     <>
       {/* Hero Banner */}
@@ -24,7 +46,7 @@ export const HomeView: React.FC = () => {
         <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8">
           <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
             <Star size={14} className="fill-amber-400 text-amber-400" />
-            Nhà hàng đa mô hình — Dine-in & Sự kiện
+            Nhà hàng đa mô hình — Dine-in &amp; Sự kiện
           </span>
           <h1 className="max-w-2xl text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-6xl">
             Trải nghiệm ẩm thực
@@ -69,11 +91,17 @@ export const HomeView: React.FC = () => {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURED_DISHES.map((dish) => (
-            <FeaturedDishCard key={dish.id} dish={dish} />
-          ))}
-        </div>
+        {isMenuLoading ? (
+          <div className="flex justify-center items-center py-10">
+            <Loader2 size={32} className="animate-spin text-blue-700" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {dishes.map((dish) => (
+              <FeaturedDishCard key={dish.id} dish={dish} />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Ưu đãi đang active */}
@@ -93,11 +121,17 @@ export const HomeView: React.FC = () => {
             </Link>
           </div>
 
-          <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-thin">
-            {ACTIVE_PROMOTIONS.map((promo) => (
-              <PromotionCard key={promo.id} promotion={promo} />
-            ))}
-          </div>
+          {isPromotionsLoading ? (
+            <div className="flex justify-center items-center py-10">
+              <Loader2 size={32} className="animate-spin text-blue-700" />
+            </div>
+          ) : (
+            <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-thin">
+              {promotions.map((promo) => (
+                <PromotionCard key={promo.id} promotion={promo} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -154,7 +188,7 @@ export const HomeView: React.FC = () => {
           <div className="overflow-hidden rounded-xl border border-gray-200 shadow-sm">
             <iframe
               title="Vị trí ResManager trên Google Maps"
-              src="https://maps.google.com/maps?q=Nguy%E1%BB%85n+Hu%E1%BB%87,+Qu%E1%BA%ADn+1,+Ho+Chi+Minh+City&t=&z=15&ie=UTF8&iwloc=&output=embed"
+              src="https://maps.google.com/maps?q=Nguy%E1%BB%85n+Hu%E1%BB%87,+Qu%E1%BA%ADn+1,+Ho+Chi+Minh+City&amp;t=&amp;z=15&amp;ie=UTF8&amp;iwloc=&amp;output=embed"
               className="h-[400px] w-full lg:h-full lg:min-h-[420px]"
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"

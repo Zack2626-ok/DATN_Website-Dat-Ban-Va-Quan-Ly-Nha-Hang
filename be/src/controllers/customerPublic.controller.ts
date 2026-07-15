@@ -6,8 +6,11 @@ export const getPublicMenu = async (req: Request, res: Response): Promise<void> 
   try {
     const items = await db.getResmanagerMenuItems();
     const categories = await db.getResmanagerCategories();
-    // Filter out inactive/deleted items
-    const activeItems = items.filter((item: any) => item.available && !item.is_deleted);
+    // Filter out inactive/deleted items (support both is_active and available columns)
+    const activeItems = items.filter((item: any) => {
+      const isAvailable = item.available !== undefined ? item.available : item.is_active;
+      return isAvailable && !item.is_deleted;
+    });
     sendSuccess(res, { items: activeItems, categories }, "Lấy thực đơn công khai thành công.");
   } catch (error) {
     console.error("Error in getPublicMenu:", error);

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
+import { isValidPhoneNumber } from "../utils/validation";
 
 export const getEventsHandler = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -33,6 +34,11 @@ export const createEventHandler = async (req: Request, res: Response): Promise<v
 
     if (!customer_name || !customer_phone || !guest_count || !event_date || !start_time || !end_time) {
       sendError(res, "Vui lòng điền đầy đủ các thông tin bắt buộc!", 400);
+      return;
+    }
+
+    if (!isValidPhoneNumber(customer_phone)) {
+      sendError(res, "Số điện thoại không hợp lệ (phải từ 10-11 chữ số)", 400);
       return;
     }
 
