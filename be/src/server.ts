@@ -23,6 +23,7 @@ import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
 import invoiceRoutes from "./routes/invoice.routes";
 import eventConfigRoutes from "./routes/eventConfig.routes";
+import eventRoutes from "./routes/event.routes";
 import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
 import notificationRoutes from "./routes/notification.routes";
@@ -98,6 +99,7 @@ app.use("/api/payments", paymentRoutes)
 // Specific routes before wildcard /api fallback
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
+app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas

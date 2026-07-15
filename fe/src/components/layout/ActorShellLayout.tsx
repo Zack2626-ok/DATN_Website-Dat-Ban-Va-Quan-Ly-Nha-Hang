@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
 import { Outlet, Link, useLocation } from "react-router-dom";
-import { Bell, CheckCircle, Database, LogOut, Search, User, X, UtensilsCrossed } from "lucide-react";
+import { Bell, Database, LogOut, Search, User, X } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
@@ -49,17 +49,18 @@ interface ActorShellLayoutProps {
   mainClassName?: string;
 }
 
-/** Bell thông báo món xong — chỉ dùng cho waiter */
+/* 
+/** Bell thông báo món xong — chỉ dùng cho waiter * /
 const WaiterNotificationBell: React.FC = () => {
-  const [notifications, setNotifications] = useState<WaiterNotification[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = async () => {
     try {
-      const data = await getWaiterNotifications();
-      setNotifications(data);
+      // const data = await getWaiterNotifications();
+      // setNotifications(data);
     } catch {
       // silent fail
     }
@@ -106,7 +107,7 @@ const WaiterNotificationBell: React.FC = () => {
 
       {open && (
         <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-gray-100 bg-white shadow-xl">
-          {/* Header */}
+          {/* Header * /}
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
             <div className="flex items-center gap-2">
               <UtensilsCrossed size={15} className="text-orange-500" />
@@ -122,7 +123,7 @@ const WaiterNotificationBell: React.FC = () => {
             )}
           </div>
 
-          {/* List */}
+          {/* List * /}
           <div className="max-h-72 overflow-y-auto">
             {visible.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-8 text-gray-400">
@@ -135,9 +136,9 @@ const WaiterNotificationBell: React.FC = () => {
                   key={n.item_id}
                   className="flex items-start gap-3 border-b border-gray-50 px-4 py-3 hover:bg-orange-50 transition-colors"
                 >
-                  {/* Click vào phần text → điều hướng đến trang Order của bàn */}
+                  {/* Click vào phần text → điều hướng đến trang Order của bàn * /}
                   <Link
-                    to={n.table_id ? `/waiter/orders/${n.table_id}` : "/waiter/tables"}
+                    to={n.table_id ? \`/waiter/orders/\${n.table_id}\` : "/waiter/tables"}
                     onClick={() => setOpen(false)}
                     className="flex flex-1 items-start gap-3 min-w-0"
                   >
@@ -147,7 +148,7 @@ const WaiterNotificationBell: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">{n.item_name}</p>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        {n.table_name ? `Bàn ${n.table_name}` : "Mang về / Tại quầy"}
+                        {n.table_name ? \`Bàn \${n.table_name}\` : "Mang về / Tại quầy"}
                         {" · "}Order #{n.order_id}
                       </p>
                       <p className="text-[10px] text-orange-500 font-medium mt-0.5">Nhấn để xem bàn →</p>
@@ -165,7 +166,7 @@ const WaiterNotificationBell: React.FC = () => {
             )}
           </div>
 
-          {/* Footer */}
+          {/* Footer * /}
           {visible.length > 0 && (
             <div className="border-t border-gray-100 px-4 py-2.5 text-center">
               <p className="text-xs text-gray-400">Cập nhật tự động mỗi 20 giây</p>
@@ -176,6 +177,7 @@ const WaiterNotificationBell: React.FC = () => {
     </div>
   );
 };
+*/
 
 export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   actorRole,
