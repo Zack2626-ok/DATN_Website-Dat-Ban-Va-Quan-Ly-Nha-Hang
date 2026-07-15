@@ -359,7 +359,7 @@ export const AccountPage: React.FC = () => {
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Số điện thoại</label>
                         <input
                           value={profileForm.phone}
-                          onChange={(e) => setProfileForm((prev) => ({ ...prev, phone: e.target.value.replace(/[^0-9+\s-]/g, '') }))}
+                          onChange={(e) => setProfileForm((prev) => ({ ...prev, phone: e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, '') }))}
                           placeholder="Chưa cập nhật"
                           className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         />

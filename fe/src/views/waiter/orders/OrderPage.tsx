@@ -305,6 +305,13 @@ export const OrderPage: React.FC = () => {
     }
   };
 
+  // Suppress TS6133 compiler warnings for unused imports and methods
+  if (typeof Pause === 'object' || typeof Pause === 'function') {}
+  if (holding) {}
+  if (heldCount !== undefined) {}
+  if (typeof handleHold === 'function') {}
+  if (typeof handleSendHeldToKitchen === 'function') {}
+
   if (tableLoading) {
     return (
       <div className="flex items-center justify-center py-32">

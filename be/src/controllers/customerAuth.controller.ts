@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
+import { isValidPhoneNumber } from "../utils/validation";
 
 const getCustomerSecret = (): string => {
   return process.env.JWT_CUSTOMER_SECRET || (process.env.JWT_SECRET ? process.env.JWT_SECRET + "_customer" : "customer_default_secret_key");
@@ -23,6 +24,11 @@ export const registerCustomer = async (req: Request, res: Response): Promise<voi
 
     if (!name || !email || !password) {
       sendError(res, "Họ tên, email và mật khẩu là bắt buộc.", 400);
+      return;
+    }
+
+    if (phone && !isValidPhoneNumber(phone)) {
+      sendError(res, "Số điện thoại không hợp lệ (phải từ 10-11 chữ số).", 400);
       return;
     }
 
@@ -117,7 +123,13 @@ export const updateCustomerMe = async (req: Request, res: Response): Promise<voi
     const { name, phone } = req.body;
     const payload: any = {};
     if (name !== undefined) payload.name = name;
-    if (phone !== undefined) payload.phone = phone;
+    if (phone !== undefined) {
+      if (phone && !isValidPhoneNumber(phone)) {
+        sendError(res, "Số điện thoại không hợp lệ (phải từ 10-11 chữ số).", 400);
+        return;
+      }
+      payload.phone = phone;
+    }
 
     if (Object.keys(payload).length === 0) {
       sendError(res, "Không có thông tin nào để cập nhật.", 400);

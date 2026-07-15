@@ -345,7 +345,7 @@ export const BookingPage: React.FC = () => {
                       required
                       type="tel"
                       value={form.phone}
-                      onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+\s-]/g, ''))}
+                      onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
                       placeholder="0912345678"
                       className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     />
@@ -370,7 +370,7 @@ export const BookingPage: React.FC = () => {
                     value={form.note}
                     onChange={(e) => setField("note", e.target.value)}
                     rows={3}
-                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, tổ chức sinh nhật, vị trí ngồi..."
+                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, đặt trước món ăn, vị trí ngồi..."
                     className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all"
                   />
                 </div>
