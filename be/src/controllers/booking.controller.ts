@@ -29,7 +29,7 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note } =
+    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note } =
       req.body;
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
@@ -42,9 +42,23 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
 
+    const partySizeNum = Number(party_size);
+    if (isNaN(partySizeNum) || partySizeNum < 1 || partySizeNum > 30) {
+      sendError(res, "Số lượng khách phải từ 1 đến 30 người", 400);
+      return;
+    }
+
+    const bookingStart = new Date(start_time);
+    const now = new Date();
+    if (bookingStart < now) {
+      sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
+      return;
+    }
+
     const booking = await db.createBooking({
       table_id: Number(table_id),
       customer_id: customer_id ? Number(customer_id) : null,
+      promotion_id: promotion_id ? Number(promotion_id) : null,
       guest_name,
       guest_phone,
       party_size: Number(party_size),

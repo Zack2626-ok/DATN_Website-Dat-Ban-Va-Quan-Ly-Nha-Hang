@@ -257,6 +257,21 @@ const createDatabaseTables = async (): Promise<void> => {
       FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS promotions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(200) NOT NULL,
+      description TEXT DEFAULT NULL,
+      discount_type ENUM('percent','fixed') NOT NULL,
+      discount_value DOUBLE NOT NULL DEFAULT 0.00,
+      image_url VARCHAR(255) DEFAULT NULL,
+      start_date VARCHAR(50) NOT NULL,
+      end_date VARCHAR(50) NOT NULL,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
 };
 
 export const initDb = async (): Promise<boolean> => {
@@ -287,6 +302,22 @@ export const initDb = async (): Promise<boolean> => {
   await createDatabaseTables();
   await runSchemaMigrations();
   console.log("✅ MySQL tables verified/created successfully.");
+
+  // Tự động seed dữ liệu ưu đãi mẫu nếu bảng promotions đang trống
+  try {
+    const promoCount = await query("SELECT COUNT(*) as count FROM promotions");
+    if (promoCount[0].count === 0) {
+      await query(`
+        INSERT INTO promotions (title, description, discount_type, discount_value, image_url, start_date, end_date, is_active) VALUES
+        ('Giảm giá khai vị', 'Giảm 15% cho tất cả món khai vị', 'percent', 15.00, 'promo_khai_vi.jpg', '2026-06-01 00:00:00', '2026-12-31 23:59:59', 1),
+        ('Tiệc trưa tiết kiệm', 'Tiệc trưa 11h–14h giảm 10%', 'percent', 10.00, 'promo_tiec_trua.jpg', '2026-06-01 00:00:00', '2026-12-31 23:59:59', 1)
+      `);
+      console.log("✅ Seeded default promotions into promotions table.");
+    }
+  } catch (err: any) {
+    console.warn("Seeding promotions skipped:", err.message);
+  }
+
   dbAvailable = true;
   return true;
 };
@@ -1217,11 +1248,12 @@ export const getBookingById = async (id: number): Promise<any | null> => {
 export const createBooking = async (data: any): Promise<any> => {
   const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
   const result = await query(`
-    INSERT INTO bookings (table_id, customer_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    INSERT INTO bookings (table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
   `, [
     data.table_id,
     data.customer_id || null,
+    data.promotion_id || null,
     data.guest_name,
     data.guest_phone,
     data.party_size,
@@ -1961,4 +1993,48 @@ export const createNewDishNotification = async (
   } catch (err) {
     console.error("Lỗi tạo thông báo món ăn mới:", err);
   }
+};
+
+// ===== PROMOTION CRUD OPERATIONS =====
+export const getAllPromotionsList = async (): Promise<any[]> => {
+  return query("SELECT * FROM promotions ORDER BY created_at DESC");
+};
+
+export const getPromotionById = async (id: number | string): Promise<any | null> => {
+  const rows = await query("SELECT * FROM promotions WHERE id = ?", [id]);
+  return rows[0] || null;
+};
+
+export const createPromotion = async (data: any): Promise<any> => {
+  const result = await query(`
+    INSERT INTO promotions (title, description, discount_type, discount_value, image_url, start_date, end_date, is_active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    data.title,
+    data.description || null,
+    data.discount_type,
+    data.discount_value,
+    data.image_url || null,
+    data.start_date,
+    data.end_date,
+    data.is_active !== undefined ? data.is_active : 1
+  ]);
+  return { id: result.insertId, ...data };
+};
+
+export const updatePromotion = async (id: number | string, data: any): Promise<boolean> => {
+  const fields: string[] = [];
+  const values: any[] = [];
+  Object.keys(data).forEach((key) => {
+    fields.push(`\`${key}\` = ?`);
+    values.push(data[key]);
+  });
+  values.push(id);
+  const result = await query(`UPDATE promotions SET ${fields.join(", ")} WHERE id = ?`, values);
+  return result.affectedRows > 0;
+};
+
+export const deletePromotion = async (id: number | string): Promise<boolean> => {
+  const result = await query("DELETE FROM promotions WHERE id = ?", [id]);
+  return result.affectedRows > 0;
 };
