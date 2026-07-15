@@ -1273,7 +1273,12 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
            DATE_FORMAT(COALESCE(o.created_at, b.start_time), '%H:%i %d/%m/%Y') AS start_time
     FROM tables t
     LEFT JOIN table_areas a ON t.area_id = a.id
-    LEFT JOIN orders o ON o.table_id = t.id AND o.status IN ('open', 'serving', 'pending_payment')
+    LEFT JOIN orders o ON o.id = (
+      SELECT id FROM orders
+      WHERE table_id = t.id AND status IN ('open', 'serving', 'pending_payment')
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    )
     LEFT JOIN bookings b ON b.id = (
       SELECT id FROM bookings
       WHERE table_id = t.id AND status IN ('pending', 'confirmed')
