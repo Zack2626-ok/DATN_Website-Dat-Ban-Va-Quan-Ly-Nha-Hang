@@ -16,7 +16,6 @@ import {
   CheckCircle,
   Phone,
   UserCheck,
-  ExternalLink,
   XCircle,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";

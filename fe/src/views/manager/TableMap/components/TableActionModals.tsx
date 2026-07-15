@@ -822,7 +822,7 @@ export const OpenTabModal: React.FC<OpenTabModalProps> = ({ isOpen, onClose, onC
               type="tel"
               placeholder="Nhập số điện thoại khách hàng"
               value={guestPhone}
-              onChange={(e) => setGuestPhone(e.target.value.replace(/[^0-9+\s-]/g, ''))}
+              onChange={(e) => setGuestPhone(e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
             />
           </div>

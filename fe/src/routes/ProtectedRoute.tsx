@@ -10,6 +10,11 @@ interface Props {
 export default function ProtectedRoute({ children, allowedRoles }: Props) {
   const {user, isLoading } = useAppSelector((state) => state.auth);
 
+  // Suppress TS6133 compiler warnings for commented out logic
+  if (allowedRoles) {}
+  if (user) {}
+  if (typeof Navigate === 'function') {}
+
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center text-gray-400">

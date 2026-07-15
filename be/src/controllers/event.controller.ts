@@ -38,7 +38,7 @@ export const createEventHandler = async (req: Request, res: Response): Promise<v
 
     const payload = {
       ...req.body,
-      sales_id: req.user?.id // Assuming auth middleware injects user
+      sales_id: (req.user as any)?.id // Assuming auth middleware injects user
     };
 
     const newEvent = await db.createEvent(payload);

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
+import { isValidPhoneNumber } from "../utils/validation";
 
 export const getAllBookings = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -33,6 +34,11 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
       sendError(res, "Thiếu thông tin bắt buộc", 400);
+      return;
+    }
+
+    if (!isValidPhoneNumber(guest_phone)) {
+      sendError(res, "Số điện thoại không hợp lệ (phải từ 10-11 chữ số)", 400);
       return;
     }
 
