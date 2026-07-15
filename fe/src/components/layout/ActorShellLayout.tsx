@@ -177,6 +177,7 @@ const WaiterNotificationBell: React.FC = () => {
           )}
         </div>
       )}
+    </div>
   );
 };
 
