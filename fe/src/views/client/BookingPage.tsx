@@ -80,6 +80,13 @@ export const BookingPage: React.FC = () => {
       return;
     }
 
+    const cleanedPhone = form.phone.trim().replace(/[\s-]/g, '');
+    const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+    if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
+      toast.error("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const startTimeStr = `${form.date} ${form.time}:00`;
@@ -338,7 +345,7 @@ export const BookingPage: React.FC = () => {
                       required
                       type="tel"
                       value={form.phone}
-                      onChange={(e) => setField("phone", e.target.value)}
+                      onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
                       placeholder="0912345678"
                       className="w-full rounded-xl border border-sky-200 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     />
@@ -363,7 +370,7 @@ export const BookingPage: React.FC = () => {
                     value={form.note}
                     onChange={(e) => setField("note", e.target.value)}
                     rows={3}
-                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, tổ chức sinh nhật, vị trí ngồi..."
+                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, đặt trước món ăn, vị trí ngồi..."
                     className="w-full rounded-xl border border-sky-200 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all"
                   />
                 </div>

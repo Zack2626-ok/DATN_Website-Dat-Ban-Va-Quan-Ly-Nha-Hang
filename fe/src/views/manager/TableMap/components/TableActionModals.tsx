@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, ArrowRight, Link2, Copy, Play } from "lucide-react";
+import toast from "react-hot-toast";
 import type { ResmanagerTable } from "../../../../services/tableService";
 
 // Interface chung cho Modal Props
@@ -34,6 +35,14 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (customerPhone.trim()) {
+      const cleanedPhone = customerPhone.trim().replace(/[\s-]/g, '');
+      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
+        toast.error("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+        return;
+      }
+    }
     onConfirm({
       guestCount,
       customerName: customerName.trim(),
@@ -86,7 +95,7 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
               type="tel"
               placeholder="Ví dụ: 0969775850"
               value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
+              onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9+\s-]/g, ''))}
               className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
@@ -765,6 +774,15 @@ export const OpenTabModal: React.FC<OpenTabModalProps> = ({ isOpen, onClose, onC
     e.preventDefault();
     if (!guestName.trim()) return;
 
+    if (guestPhone.trim()) {
+      const cleanedPhone = guestPhone.trim().replace(/[\s-]/g, '');
+      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
+        toast.error("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+        return;
+      }
+    }
+
     onConfirm({
       guest_name: guestName.trim(),
       guest_phone: guestPhone.trim(),
@@ -804,8 +822,13 @@ export const OpenTabModal: React.FC<OpenTabModalProps> = ({ isOpen, onClose, onC
               type="tel"
               placeholder="Nhập số điện thoại khách hàng"
               value={guestPhone}
+<<<<<<< HEAD
               onChange={(e) => setGuestPhone(e.target.value)}
               className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
+=======
+              onChange={(e) => setGuestPhone(e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+>>>>>>> 8eef87d4e00dca68e332d7149d1576227da90a6c
             />
           </div>
 

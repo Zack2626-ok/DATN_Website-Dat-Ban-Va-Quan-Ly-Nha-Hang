@@ -16,9 +16,10 @@ import {
   CheckCircle,
   Phone,
   UserCheck,
+  XCircle,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import OpenTableModal from "../../../components/tables/OpenTableModal";
 import { TableArea } from "../../../interfaces/table.interface";
 import { toast } from "react-hot-toast";
@@ -45,6 +46,7 @@ import {
 import { AddTableModal } from "./AddTableModal";
 import { AddDishModal } from "./AddDishModal";
 import { ProvisionalBillModal } from "./ProvisionalBillModal";
+import { updateBookingStatus } from "../../../services/bookingService";
 
 type TableAction = "transfer" | "merge" | "split" | null;
 
@@ -139,12 +141,39 @@ export const WaiterTableMap: React.FC = () => {
   // Layout 2 cột: bàn đang được chọn bên phải
   const [selectedTableId, setSelectedTableId] = useState<number | string | null>(null);
 
+  const location = useLocation();
+  const userInfo = getCurrentUserInfo();
+  const navigate = useNavigate();
+
+  // Auto-select bàn khi quay lại từ trang Gọi món
+  useEffect(() => {
+    const stateTableId = (location.state as any)?.selectedTableId;
+    if (stateTableId) {
+      setSelectedTableId(stateTableId);
+      window.history.replaceState({}, "");
+    }
+  }, [location.state]);
+
+  // Khi tables đã load và có selectedTableId từ navigate-back → auto-switch tab khu vực
+  useEffect(() => {
+    const stateTableId = (location.state as any)?.selectedTableId;
+    if (!stateTableId || tables.length === 0) return;
+    const found = tables.find((t) => t.id.toString() === stateTableId.toString());
+    if (found && found.area_id) {
+      setSelectedAreaId(found.area_id);
+    }
+  }, [tables]);
+
   // Modals
   const [isOpenTableModalOpen, setIsOpenTableModalOpen] = useState(false);
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
   const [isAddDishOpen, setIsAddDishOpen] = useState(false);
   const [isPrintBillOpen, setIsPrintBillOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<TableAction>(null);
+
+  // State hủy booking từ sơ đồ bàn
+  const [cancelBookingModal, setCancelBookingModal] = useState<{ tableId: number; tableName: string } | null>(null);
+  const [cancelBookingReason, setCancelBookingReason] = useState("");
 
   // Active Order integrated management
   const [activeOrder, setActiveOrder] = useState<ActiveOrderInfo | null>(null);
@@ -371,8 +400,32 @@ export const WaiterTableMap: React.FC = () => {
     }
   };
 
-  const userInfo = getCurrentUserInfo();
-  const navigate = useNavigate();
+  // Handler hủy booking từ sơ đồ bàn
+  const handleCancelBookingFromMap = async () => {
+    if (!cancelBookingModal || !cancelBookingReason.trim()) {
+      toast.error("Vui lòng nhập lý do hủy");
+      return;
+    }
+    try {
+      // Tìm booking pending/confirmed của bàn này
+      const { getBookings } = await import("../../../services/bookingService");
+      const allBookings = await getBookings();
+      const booking = allBookings.find(
+        (b: any) => b.table_id === cancelBookingModal.tableId && ["pending", "confirmed"].includes(b.status)
+      );
+      if (!booking) {
+        toast.error("Không tìm thấy booking cần hủy");
+        return;
+      }
+      await updateBookingStatus(booking.id, "cancelled", cancelBookingReason.trim());
+      toast.success(`Đã hủy booking bàn ${cancelBookingModal.tableName}`);
+      setCancelBookingModal(null);
+      setCancelBookingReason("");
+      fetchData();
+    } catch {
+      toast.error("Không thể hủy booking");
+    }
+  };
 
   // State modal bảo trì
   const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
@@ -625,21 +678,33 @@ export const WaiterTableMap: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* NÚT KHÁCH ĐÃ ĐẾN — chỉ hiện khi bàn là reserved */}
+                    {/* NÚT KHÁCH ĐÃ ĐẾN & HỦY BOOKING — chỉ hiện khi bàn là reserved */}
                     {selectedTable.status === "reserved" && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await handleStatusChange("serving");
-                            toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
-                          } catch {
-                            toast.error("Không thể cập nhật trạng thái");
-                          }
-                        }}
-                        className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await handleStatusChange("serving");
+                              toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
+                            } catch {
+                              toast.error("Không thể cập nhật trạng thái");
+                            }
+                          }}
+                          className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name });
+                            setCancelBookingReason("");
+                          }}
+                          className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          title="Hủy booking"
+                        >
+                          <XCircle size={14} /> Hủy
+                        </button>
+                      </div>
                     )}
 
                     {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
@@ -938,6 +1003,49 @@ export const WaiterTableMap: React.FC = () => {
                 className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl font-bold text-sm hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Xác nhận Bảo trì
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Hủy Booking từ Sơ đồ Bàn ── */}
+      {cancelBookingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl animate-fade-in p-6 space-y-4">
+            <div className="flex items-center gap-2 text-red-600">
+              <XCircle size={18} />
+              <h3 className="font-bold text-base">Hủy booking — Bàn {cancelBookingModal.tableName}</h3>
+            </div>
+            <div className="p-3 bg-red-50 rounded-xl border border-red-100 text-xs text-red-700">
+              Booking sẽ bị hủy và bàn chuyển về trạng thái <strong>Trống</strong>. Vui lòng ghi rõ lý do để theo dõi.
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+                Lý do hủy <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                placeholder="VD: Khách gọi báo hủy, khách không đến sau 30 phút..."
+                value={cancelBookingReason}
+                onChange={(e) => setCancelBookingReason(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 resize-none bg-gray-50"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setCancelBookingModal(null); setCancelBookingReason(""); }}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200"
+              >
+                Giữ lại
+              </button>
+              <button
+                onClick={handleCancelBookingFromMap}
+                disabled={!cancelBookingReason.trim()}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Xác nhận Hủy
               </button>
             </div>
           </div>

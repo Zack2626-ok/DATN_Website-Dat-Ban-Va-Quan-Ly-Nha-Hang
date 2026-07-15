@@ -152,6 +152,14 @@ export const AccountPage: React.FC = () => {
 
   const handleUpdateProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    if (profileForm.phone && profileForm.phone.trim()) {
+      const cleanedPhone = profileForm.phone.trim().replace(/[\s-]/g, '');
+      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
+        toast.error("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+        return;
+      }
+    }
     updateProfileMutation.mutate(profileForm);
   };
 
@@ -351,7 +359,7 @@ export const AccountPage: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Số điện thoại</label>
                         <input
                           value={profileForm.phone}
-                          onChange={(e) => setProfileForm((prev) => ({ ...prev, phone: e.target.value }))}
+                          onChange={(e) => setProfileForm((prev) => ({ ...prev, phone: e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, '') }))}
                           placeholder="Chưa cập nhật"
                           className="w-full rounded-xl border border-sky-200 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         />

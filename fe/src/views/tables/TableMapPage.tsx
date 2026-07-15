@@ -5,7 +5,7 @@ import AreaSelector from '../../components/tables/AreaSelector';
 import TableMap from '../../components/tables/TableMap';
 import StatusLegend from '../../components/tables/StatusLegend';
 import TableDetailModal from '../../components/tables/TableDetailModal';
-import OpenTableModal, { OpenTableFormData } from '../../components/tables/OpenTableModal';
+import { OpenTableModal, OpenTableFormData } from '../../components/tables/OpenTableModal';
 import { Table, TableArea } from '../../interfaces/table.interface';
 import { RefreshCw } from 'lucide-react';
 

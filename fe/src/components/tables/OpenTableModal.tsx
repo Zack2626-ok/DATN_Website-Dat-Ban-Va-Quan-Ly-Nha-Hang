@@ -44,6 +44,14 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
       import('react-hot-toast').then(m => m.toast.error('Vui lòng nhập tên khách hàng'));
       return;
     }
+    if (customerPhone.trim()) {
+      const cleanedPhone = customerPhone.trim().replace(/[\s-]/g, '');
+      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
+        import('react-hot-toast').then(m => m.toast.error('Số điện thoại không hợp lệ (phải từ 10-11 chữ số)'));
+        return;
+      }
+    }
     setIsSubmitting(true);
 
     setTimeout(() => {
