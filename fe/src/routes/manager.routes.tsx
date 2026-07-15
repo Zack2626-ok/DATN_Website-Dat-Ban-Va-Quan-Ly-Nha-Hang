@@ -9,7 +9,6 @@ import {
   AnalyticsView,
   TableMapIndex,
 } from "../views/manager";
-import { BookingListPage } from "../views/waiter";
 import UserManagement from "../views/manager/UserManagement";
 
 export const ManagerRoutes = () => (
@@ -24,7 +23,6 @@ export const ManagerRoutes = () => (
     <Route index element={<Navigate to="/manager/dashboard" replace />} />
     <Route path="dashboard" element={<ManagerDashboard />} />
     <Route path="tables" element={<TableMapIndex />} />
-    <Route path="bookings" element={<BookingListPage />} />
     <Route path="staff" element={<UserManagement />} />
     <Route path="menu" element={<MenuManagement />} />
     <Route path="shifts" element={<ShiftManagement />} />
