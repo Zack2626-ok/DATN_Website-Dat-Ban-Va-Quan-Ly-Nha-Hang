@@ -110,7 +110,7 @@ export const AdminRbac: React.FC = () => {
         </div>
         <button
           onClick={handleSaveSettings}
-          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold font-display flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold font-display flex items-center gap-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all cursor-pointer"
         >
           <Save size={14} /> Lưu cấu hình
         </button>
@@ -124,7 +124,7 @@ export const AdminRbac: React.FC = () => {
 
       {/* Dynamic Tab Content rendering */}
       {activeTab === "rbac" ? (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs p-6 flex flex-col gap-5">
+        <div className="bg-[#1C2541]/40 backdrop-blur-xl rounded-2xl border border-slate-200 overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.4)] p-6 flex flex-col gap-5">
           <div>
             <h4 className="text-base font-black text-slate-900 font-display">Ma trận Phân quyền (RBAC)</h4>
             <p className="text-xs text-slate-400 mt-1">Quản lý quyền truy cập cho từng vai trò nhân viên</p>

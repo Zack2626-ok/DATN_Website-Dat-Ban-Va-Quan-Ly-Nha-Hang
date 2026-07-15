@@ -12,6 +12,7 @@ import {
   clearNotificationsApi,
 } from "../../services/api";
 import { toast } from "react-hot-toast";
+import { Modal } from "../Modal";
 
 const formatTime = (timeStr: string) => {
   try {
@@ -19,13 +20,13 @@ const formatTime = (timeStr: string) => {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return "Vừa xong";
     if (diffMins < 60) return `${diffMins} phút trước`;
-    
+
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours} giờ trước`;
-    
+
     return date.toLocaleDateString("vi-VN", {
       hour: "2-digit",
       minute: "2-digit"
@@ -199,26 +200,27 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
+  const [showLogoutModal, setShowLogoutModal] = React.useState(false);
 
   const playBeepSound = () => {
     try {
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
       if (!AudioContextClass) return;
       const audioCtx = new AudioContextClass();
-      
+
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      
+
       osc.type = "sine";
       osc.frequency.setValueAtTime(660, audioCtx.currentTime);
       gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
-      
+
       osc.start();
       osc.stop(audioCtx.currentTime + 0.3);
-      
+
       setTimeout(() => {
         audioCtx.close();
       }, 500);
@@ -227,14 +229,13 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     }
   };
 
-  // Fetch notifications and poll every 30s (only when tab is visible)
+  // Fetch notifications and poll
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   React.useEffect(() => {
     let active = true;
 
     const fetchNotifications = async () => {
-      // Không fetch khi tab bị ẩn (tiết kiệm request)
       if (document.visibilityState === "hidden") return;
       try {
         const data = await getNotificationsApi(displayRole);
@@ -262,11 +263,10 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       }
     };
 
-    // Xóa interval cũ nếu có (tránh chồng)
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     fetchNotifications();
-    intervalRef.current = setInterval(fetchNotifications, 30000); // 30 giây
+    intervalRef.current = setInterval(fetchNotifications, 30000); // 30s
 
     return () => {
       active = false;
@@ -333,13 +333,13 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 text-gray-700 md:flex-row">
-      <aside className="flex w-full shrink-0 flex-col border-b border-gray-200 bg-gray-900 md:w-64 md:border-b-0 md:border-r">
-        <div className="border-b border-gray-800 p-5">
-          <Link to={homeLink} className="text-lg font-bold text-white hover:text-blue-300">
+    <div className="flex min-h-screen flex-col bg-transparent text-slate-800 md:flex-row">
+      <aside className="flex w-full shrink-0 flex-col border-b border-sky-700 bg-gradient-to-b from-sky-600 to-sky-800 md:w-64 md:border-b-0 md:border-r z-20 shadow-xl">
+        <div className="border-b border-white/10 p-5">
+          <Link to={homeLink} className="text-2xl font-playfair font-bold text-white hover:text-sky-100 drop-shadow-sm tracking-wide">
             ResManager
           </Link>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-sky-200">
             {ROLE_LABELS[displayRole]}
           </p>
         </div>
@@ -352,18 +352,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <Link
                 key={link.to}
                 to={link.to}
-                className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-blue-700 text-white"
-                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
+                className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isActive
+                  ? "bg-white/20 text-white font-bold border border-white/10 shadow-sm"
+                  : "text-sky-100 hover:bg-white/10 hover:text-white border border-transparent"
+                  }`}
               >
                 <span className="flex items-center gap-2.5">
                   {link.icon}
                   {link.label}
                 </span>
                 {link.badge !== undefined && link.badge > 0 && (
-                  <span className="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  <span className="rounded bg-sky-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                     {link.badge}
                   </span>
                 )}
@@ -372,23 +371,23 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           })}
         </nav>
 
-        <div className="hidden border-t border-gray-800 p-4 text-xs text-gray-400 md:flex md:items-center md:gap-2">
-          <Database size={12} className="text-green-400" />
+        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:items-center md:gap-2">
+          <Database size={12} className="text-green-300" />
           Hệ thống online
-          <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-400" />
+          <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+      <div className="flex flex-1 flex-col overflow-hidden relative">
+        <header className="flex items-center justify-between bg-white/80 backdrop-blur-xl px-6 py-4 z-10 border-b border-sky-100 shadow-sm relative">
           <div className="relative hidden max-w-sm flex-1 sm:block">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder="Tìm kiếm..."
               value={searchQuery}
               onChange={(e) => dispatch(setSearchQuery(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-8 text-sm focus:border-blue-700 focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-white/50 py-2 pl-9 pr-8 text-sm text-slate-700 placeholder-slate-400 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
             />
             {searchQuery && (
               <button
@@ -406,13 +405,12 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <button
                 type="button"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${
-                  dropdownOpen ? "bg-gray-150 text-gray-800" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                }`}
+                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${dropdownOpen ? "bg-sky-100 text-sky-600" : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
+                  }`}
               >
                 <Bell size={18} />
                 {notifications.filter((n) => !n.is_read).length > 0 && (
-                  <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-red-650 text-[8px] font-bold text-white px-1 shadow bg-red-600">
+                  <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-sky-500 text-white text-[8px] font-bold px-1 shadow-sm">
                     {notifications.filter((n) => !n.is_read).length}
                   </span>
                 )}
@@ -425,16 +423,16 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                     className="fixed inset-0 z-40"
                     onClick={() => setDropdownOpen(false)}
                   />
-                  
+
                   {/* Dropdown Container */}
-                  <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-white border border-gray-200 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                     {/* Header */}
-                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
-                      <span className="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Thông báo</span>
+                    <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+                      <span className="text-xs font-playfair font-bold text-sky-700 uppercase tracking-widest">Thông báo</span>
                       {notifications.filter((n) => !n.is_read).length > 0 && (
                         <button
                           onClick={handleMarkAllAsRead}
-                          className="text-[11px] font-bold text-blue-700 hover:text-blue-800 transition-colors cursor-pointer"
+                          className="text-[11px] font-bold text-sky-600 hover:text-sky-700 transition-colors cursor-pointer"
                         >
                           Đọc tất cả
                         </button>
@@ -442,10 +440,10 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                     </div>
 
                     {/* Notification list */}
-                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
                       {notifications.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-center text-gray-400">
-                          <Bell size={24} className="mb-2 text-gray-300" />
+                        <div className="flex flex-col items-center justify-center py-8 text-center text-slate-500">
+                          <Bell size={24} className="mb-2 text-slate-400" />
                           <p className="text-xs italic">Không có thông báo nào</p>
                         </div>
                       ) : (
@@ -453,19 +451,18 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                           <div
                             key={item.id}
                             onClick={() => handleNotificationClick(item)}
-                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${
-                              item.is_read ? "bg-white hover:bg-gray-50" : "bg-blue-50/40 hover:bg-blue-50/70"
-                            }`}
+                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${item.is_read ? "bg-transparent hover:bg-slate-50" : "bg-sky-50/50 hover:bg-sky-50"
+                              }`}
                           >
                             <div className="flex items-start justify-between gap-1.5">
-                              <span className={`text-[12px] leading-tight ${item.is_read ? "text-gray-700 font-medium" : "text-gray-900 font-bold"}`}>
+                              <span className={`text-[12px] leading-tight ${item.is_read ? "text-slate-600 font-medium" : "text-sky-900 font-bold"}`}>
                                 {item.message}
                               </span>
                               {!item.is_read && (
-                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-600 animate-pulse" />
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.6)]" />
                               )}
                             </div>
-                            <span className="text-[10px] text-gray-400 font-medium">
+                            <span className="text-[10px] text-slate-400 font-medium">
                               {formatTime(item.created_at)}
                             </span>
                           </div>
@@ -478,24 +475,24 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-gray-700 flex items-center justify-end gap-1.5">
+                <p className="text-sm font-semibold text-slate-700 flex items-center justify-end gap-1.5">
                   <span>{user?.full_name || "Demo User"}</span>
                   {user && (
-                    <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                    <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-200">
                       {user.employee_code || `NV${String(user.id).padStart(3, "0")}`}
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-gray-400">{ROLE_LABELS[displayRole]}</p>
+                <p className="text-xs text-slate-500">{ROLE_LABELS[displayRole]}</p>
               </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-50 text-sky-600 border border-sky-100">
                 <User size={16} />
               </div>
               <button
                 type="button"
-                onClick={() => dispatch(logoutAction())}
+                onClick={() => setShowLogoutModal(true)}
                 title="Đăng xuất"
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors cursor-pointer ml-1"
               >
                 <LogOut size={16} />
                 <span className="hidden sm:inline">Đăng xuất</span>
@@ -508,6 +505,35 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           <Outlet />
         </main>
       </div>
+
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        title="Xác nhận đăng xuất"
+        size="sm"
+        theme="light"
+        footer={
+          <div className="flex w-full gap-3 justify-end">
+            <button
+              onClick={() => setShowLogoutModal(false)}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              Hủy
+            </button>
+            <button
+              onClick={() => {
+                setShowLogoutModal(false);
+                dispatch(logoutAction());
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-rose-500 text-white hover:bg-rose-600 transition-colors cursor-pointer shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+            >
+              Đăng xuất
+            </button>
+          </div>
+        }
+      >
+        <p className="text-slate-600 text-sm">Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?</p>
+      </Modal>
     </div>
   );
 };
