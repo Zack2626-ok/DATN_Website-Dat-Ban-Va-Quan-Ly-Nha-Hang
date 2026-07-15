@@ -53,7 +53,7 @@ export const getResmanagerTableHandler = async (req: Request, res: Response): Pr
 export const updateResmanagerTableStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, maintenance_note } = req.body;
 
     const validStatuses = ["empty", "reserved", "serving", "pending_payment", "maintenance"];
     if (!status || !validStatuses.includes(status)) {
@@ -61,13 +61,23 @@ export const updateResmanagerTableStatusHandler = async (req: Request, res: Resp
       return;
     }
 
-    const success = await db.updateResmanagerTableStatus(Number(id), status);
+    // Bắt buộc phải có lý do khi chuyển sang bảo trì
+    if (status === "maintenance" && !maintenance_note?.trim()) {
+      sendError(res, "Vui lòng nhập lý do bảo trì (maintenance_note)", 400);
+      return;
+    }
+
+    const success = await db.updateResmanagerTableStatus(
+      Number(id),
+      status,
+      maintenance_note?.trim() || undefined,
+    );
     if (!success) {
       sendError(res, "Không tìm thấy bàn", 404);
       return;
     }
 
-    sendSuccess(res, { id, status }, "Cập nhật trạng thái bàn thành công");
+    sendSuccess(res, { id, status, maintenance_note: maintenance_note?.trim() || null }, "Cập nhật trạng thái bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

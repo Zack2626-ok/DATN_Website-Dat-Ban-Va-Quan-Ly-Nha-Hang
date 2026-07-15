@@ -98,25 +98,29 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     }
   };
 
-  // Fetch notifications and poll
+  // Fetch notifications and poll every 30s (only when tab is visible)
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   React.useEffect(() => {
     let active = true;
-    
+
     const fetchNotifications = async () => {
+      // Không fetch khi tab bị ẩn (tiết kiệm request)
+      if (document.visibilityState === "hidden") return;
       try {
         const data = await getNotificationsApi(displayRole);
         if (!active) return;
-        
+
         const unreadCount = data.filter((n: any) => !n.is_read).length;
-        
+
         setNotifications((prev) => {
           const prevUnreadCount = prev.filter((n: any) => !n.is_read).length;
-          
+
           if (prev.length > 0 && unreadCount > prevUnreadCount) {
             const newN = data.filter(
               (item: any) => !item.is_read && !prev.some((oldItem) => oldItem.id === item.id)
             );
-            
+
             newN.forEach((notif: any) => {
               toast.success(notif.message, { duration: 5000 });
             });
@@ -129,12 +133,18 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       }
     };
 
+    // Xóa interval cũ nếu có (tránh chồng)
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 5000);
+    intervalRef.current = setInterval(fetchNotifications, 30000); // 30 giây
 
     return () => {
       active = false;
-      clearInterval(interval);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [displayRole]);
 

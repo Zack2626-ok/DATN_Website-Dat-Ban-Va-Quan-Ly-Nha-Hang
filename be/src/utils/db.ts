@@ -998,10 +998,39 @@ export const getResmanagerTableById = async (id: number): Promise<any | null> =>
 
 export const updateResmanagerTableStatus = async (
   id: number,
-  status: "empty" | "reserved" | "serving" | "pending_payment",
+  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance",
+  maintenanceNote?: string,
 ): Promise<boolean> => {
-  const result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
-  
+  let result;
+
+  try {
+    if (status === "maintenance" && maintenanceNote) {
+      // Cập nhật status + lý do bảo trì
+      result = await query<any>(
+        "UPDATE tables SET status = ?, maintenance_note = ? WHERE id = ? AND is_deleted = 0",
+        [status, maintenanceNote, id]
+      );
+    } else if (status === "empty") {
+      // Xóa note khi bàn được đưa về trống
+      result = await query<any>(
+        "UPDATE tables SET status = ?, maintenance_note = NULL WHERE id = ? AND is_deleted = 0",
+        [status, id]
+      );
+    } else {
+      result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
+    }
+  } catch (err: any) {
+    // Fallback: nếu cột maintenance_note chưa tồn tại → chỉ update status
+    const isUnknownColumn =
+      err?.message?.includes("Unknown column") || err?.code === "ER_BAD_FIELD_ERROR";
+    if (isUnknownColumn) {
+      console.warn("[db] maintenance_note column not found, falling back to status-only update. Run: ALTER TABLE tables ADD COLUMN maintenance_note TEXT DEFAULT NULL;");
+      result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
+    } else {
+      throw err;
+    }
+  }
+
   if (result.affectedRows > 0) {
     if (status === "empty") {
       // Hủy bỏ các booking liên quan đến bàn này nếu chuyển về trống
@@ -1202,7 +1231,12 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     FROM tables t
     LEFT JOIN table_areas a ON t.area_id = a.id
     LEFT JOIN orders o ON o.table_id = t.id AND o.status IN ('open', 'serving', 'pending_payment')
-    LEFT JOIN bookings b ON b.table_id = t.id AND b.status IN ('pending', 'confirmed') AND NOW() BETWEEN b.start_time AND b.end_time
+    LEFT JOIN bookings b ON b.id = (
+      SELECT id FROM bookings
+      WHERE table_id = t.id AND status IN ('pending', 'confirmed')
+      ORDER BY start_time ASC
+      LIMIT 1
+    )
     WHERE t.is_deleted = 0
   `;
   const params: any[] = [];
