@@ -303,8 +303,9 @@ export const BookingPage: React.FC = () => {
                   >
                     <option value="">Chọn giờ</option>
                     {[
-                      "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
-                      "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"
+                      "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
+                      "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
+                      "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00"
                     ].map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
@@ -318,7 +319,7 @@ export const BookingPage: React.FC = () => {
                     min="1"
                     max="30"
                     value={form.guests}
-                    onChange={(e) => setField("guests", e.target.value)}
+                    onChange={(e) => setField("guests", e.target.value.replace(/[^0-9]/g, ""))}
                     className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
                     placeholder="2"
                   />
