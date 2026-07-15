@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: Props) {
-  const { user, isLoading } = useAppSelector((state) => state.auth);
+  const {user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
     return (

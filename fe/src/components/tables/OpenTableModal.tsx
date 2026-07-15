@@ -97,15 +97,20 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
         <GuestCounter 
           value={guestCount} 
           min={1} 
-          max={table.capacity} 
+          max={30} 
           onChange={setGuestCount} 
         />
         
         {guestCount > table.capacity && (
-          <p className="text-xs text-rose-400 flex items-center gap-1">
-            <AlertCircle size={12} />
-            Vượt quá sức chứa tối đa ({table.capacity} khách)
-          </p>
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300 space-y-1">
+            <p className="font-bold flex items-center gap-1.5">
+              <AlertCircle size={14} className="text-amber-400" />
+              Bàn phát sinh vượt sức chứa ({guestCount}/{table.capacity} khách)
+            </p>
+            <p className="text-[11px] text-amber-400/80">
+              Hệ thống sẽ tự động gửi cảnh báo lên Quản lý và mặc định thêm {guestCount} Khăn ướt vào đơn hàng. Bạn có thể chuyển/gộp bàn sau khi mở.
+            </p>
+          </div>
         )}
 
         <div className="border-t border-white/5" />

@@ -1,5 +1,5 @@
 import React from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { Bell, Database, LogOut, Search, User, X } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
@@ -20,13 +20,13 @@ const formatTime = (timeStr: string) => {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return "Vừa xong";
     if (diffMins < 60) return `${diffMins} phút trước`;
-    
+
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours} giờ trước`;
-    
+
     return date.toLocaleDateString("vi-VN", {
       hour: "2-digit",
       minute: "2-digit"
@@ -188,6 +188,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 }) => {
   const location = useLocation();
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || actorRole;
@@ -206,20 +207,20 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
       if (!AudioContextClass) return;
       const audioCtx = new AudioContextClass();
-      
+
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      
+
       osc.type = "sine";
       osc.frequency.setValueAtTime(660, audioCtx.currentTime);
       gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
-      
+
       osc.start();
       osc.stop(audioCtx.currentTime + 0.3);
-      
+
       setTimeout(() => {
         audioCtx.close();
       }, 500);
@@ -229,24 +230,27 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   };
 
   // Fetch notifications and poll
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   React.useEffect(() => {
     let active = true;
-    
+
     const fetchNotifications = async () => {
+      if (document.visibilityState === "hidden") return;
       try {
         const data = await getNotificationsApi(displayRole);
         if (!active) return;
-        
+
         const unreadCount = data.filter((n: any) => !n.is_read).length;
-        
+
         setNotifications((prev) => {
           const prevUnreadCount = prev.filter((n: any) => !n.is_read).length;
-          
+
           if (prev.length > 0 && unreadCount > prevUnreadCount) {
             const newN = data.filter(
               (item: any) => !item.is_read && !prev.some((oldItem) => oldItem.id === item.id)
             );
-            
+
             newN.forEach((notif: any) => {
               toast.success(notif.message, { duration: 5000 });
             });
@@ -259,12 +263,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       }
     };
 
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 5000);
+    intervalRef.current = setInterval(fetchNotifications, 30000); // 30s
 
     return () => {
       active = false;
-      clearInterval(interval);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [displayRole]);
 
@@ -277,6 +286,40 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       );
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
+    }
+  };
+
+  // Parse tên bàn từ message: "Bàn B02" hoặc "bàn B02"
+  const parseTableNameFromMessage = (message: string): string | null => {
+    const match = message.match(/[Bb]àn\s+([A-Z0-9]+)/i);
+    return match ? match[1].toUpperCase() : null;
+  };
+
+  // Click notification: mark as read + navigate tới trang gọi món (waiter)
+  const handleNotificationClick = async (item: any) => {
+    // Mark as read
+    await handleMarkAsRead(item.id, item.is_read);
+    setDropdownOpen(false);
+
+    // Chỉ navigate nếu là waiter
+    if (displayRole !== "waiter" && displayRole !== "manager" && displayRole !== "admin") return;
+
+    // Parse tên bàn từ message
+    const tableName = parseTableNameFromMessage(item.message || "");
+    if (!tableName) return;
+
+    // Lấy danh sách bàn để tìm tableId
+    try {
+      const { getTablesV1 } = await import("../../services/tableService");
+      const tables = await getTablesV1();
+      const found = tables.find(
+        (t: any) => t.name.toUpperCase() === tableName
+      );
+      if (found) {
+        navigate(`/waiter/orders/${found.id}`);
+      }
+    } catch (err) {
+      console.error("Failed to navigate to order page:", err);
     }
   };
 
@@ -309,11 +352,10 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <Link
                 key={link.to}
                 to={link.to}
-                className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                    : "text-slate-400 hover:bg-[#0B132B]/60 hover:text-amber-300 border border-transparent"
-                }`}
+                className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isActive
+                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  : "text-slate-400 hover:bg-[#0B132B]/60 hover:text-amber-300 border border-transparent"
+                  }`}
               >
                 <span className="flex items-center gap-2.5">
                   {link.icon}
@@ -363,9 +405,8 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <button
                 type="button"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${
-                  dropdownOpen ? "bg-amber-500/20 text-amber-400" : "text-slate-400 hover:bg-[#1C2541] hover:text-amber-300"
-                }`}
+                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${dropdownOpen ? "bg-amber-500/20 text-amber-400" : "text-slate-400 hover:bg-[#1C2541] hover:text-amber-300"
+                  }`}
               >
                 <Bell size={18} />
                 {notifications.filter((n) => !n.is_read).length > 0 && (
@@ -382,7 +423,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                     className="fixed inset-0 z-40"
                     onClick={() => setDropdownOpen(false)}
                   />
-                  
+
                   {/* Dropdown Container */}
                   <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-[#0B132B]/95 backdrop-blur-xl border border-amber-500/30 shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                     {/* Header */}
@@ -409,10 +450,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                         notifications.map((item) => (
                           <div
                             key={item.id}
-                            onClick={() => handleMarkAsRead(item.id, item.is_read)}
-                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${
-                              item.is_read ? "bg-transparent hover:bg-white/5" : "bg-amber-500/10 hover:bg-amber-500/20"
-                            }`}
+                            onClick={() => handleNotificationClick(item)}
+                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${item.is_read ? "bg-transparent hover:bg-white/5" : "bg-amber-500/10 hover:bg-amber-500/20"
+                              }`}
                           >
                             <div className="flex items-start justify-between gap-1.5">
                               <span className={`text-[12px] leading-tight ${item.is_read ? "text-slate-400 font-medium" : "text-amber-100 font-bold"}`}>
