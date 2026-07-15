@@ -1,17 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-  --font-sans: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-display: "Playfair Display", serif;
+  --font-sans: "Outfit", system-ui, sans-serif;
 
-  --color-brand-primary: #c5a880; /* Elegant Warm Gold/Champagne */
+  --color-brand-primary: #D4AF37; /* Gold */
   --color-brand-primary-hover: #b3946b;
   --color-brand-secondary: #e2ba7d;
-  --color-brand-dark: #07070a;
-  --color-brand-dark-light: #12121a;
-  --color-brand-dark-card: #161622;
-  --color-brand-accent: #a8ff78;
+  --color-brand-dark: #0B132B; /* Deep Blue */
+  --color-brand-dark-light: #1C2541;
+  --color-brand-dark-card: #1C2541;
+  --color-brand-accent: #fbbf24;
 
   --color-status-available: #10b981;
   --color-status-reserved: #f59e0b;
@@ -35,9 +35,17 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: #0a0a0f;
-  color: #f0efe8;
+  background: #0B132B;
+  background-image: radial-gradient(circle at top right, rgba(16, 185, 129, 0.05), transparent 400px), 
+                    radial-gradient(circle at bottom left, rgba(212, 175, 55, 0.05), transparent 400px);
+  background-attachment: fixed;
+  color: #f8fafc;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-playfair {
+  font-family: var(--font-display);
 }
 
 h1, h2, h3, h4, h5, h6 {
