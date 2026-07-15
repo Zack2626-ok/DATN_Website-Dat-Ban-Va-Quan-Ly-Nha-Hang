@@ -196,19 +196,19 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
       <div className="relative w-full max-w-lg bg-white shadow-xl h-full flex flex-col z-10 animate-slide-in">
         
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10">
+        <div className="sticky top-0 bg-white border-b border-sky-100 px-6 py-4 flex justify-between items-center z-10">
           <div>
-            <h2 className="text-lg font-bold text-gray-800">
+            <h2 className="text-lg font-bold text-slate-700">
               {editingPackage ? "Cập nhật gói set menu" : "Thêm gói set menu mới"}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Thiết lập thực đơn trọn gói cho tiệc hội nghị, tiệc cưới</p>
+            <p className="text-xs text-slate-400 mt-0.5">Thiết lập thực đơn trọn gói cho tiệc hội nghị, tiệc cưới</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 hover:bg-sky-100 rounded-full transition-colors"
             disabled={loading}
           >
-            <X size={20} className="text-gray-600" />
+            <X size={20} className="text-slate-500" />
           </button>
         </div>
 
@@ -230,8 +230,8 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
 
           {/* Package Name */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Tên gói set menu <span className="text-[#FF5A5F]">*</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+              Tên gói set menu <span className="text-sky-600">*</span>
             </label>
             <input
               type="text"
@@ -243,7 +243,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                 errors.name
                   ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                  : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                  : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
               }`}
               placeholder="Ví dụ: Gói Tiệc Cưới VIP, Gói Buffet Hội Nghị..."
               disabled={loading}
@@ -253,8 +253,8 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
 
           {/* Price per person */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Đơn giá trên mỗi khách (VNĐ/Khách) <span className="text-[#FF5A5F]">*</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+              Đơn giá trên mỗi khách (VNĐ/Khách) <span className="text-sky-600">*</span>
             </label>
             <input
               type="number"
@@ -266,7 +266,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                 errors.price_per_person
                   ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                  : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                  : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
               }`}
               placeholder="Nhập đơn giá mỗi khách"
               disabled={loading}
@@ -279,28 +279,28 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Mô tả gói tiệc</label>
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">Mô tả gói tiệc</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] transition-shadow h-20 resize-none"
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-shadow h-20 resize-none"
               placeholder="Bao gồm các dịch vụ khuyến mãi, trang trí đi kèm..."
               disabled={loading}
             />
           </div>
 
           {/* Package Items Builder (Set Menu) */}
-          <div className="border-t border-gray-200 pt-6">
+          <div className="border-t border-sky-100 pt-6">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="text-sm font-bold text-gray-800">Danh sách món trong Set Menu</h3>
+                <h3 className="text-sm font-bold text-slate-700">Danh sách món trong Set Menu</h3>
                 <p className="text-xs text-gray-400 mt-0.5">Xây dựng định lượng món ăn đi kèm gói</p>
               </div>
               <button
                 type="button"
                 onClick={handleAddItemRow}
                 disabled={loading || menuItems.length === 0}
-                className="px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-100 hover:border-gray-300 transition-colors font-semibold text-xs flex items-center gap-1"
+                className="px-3 py-1.5 bg-sky-50/50 border border-sky-100 text-slate-600 rounded-lg hover:bg-sky-100 hover:border-sky-200 transition-colors font-semibold text-xs flex items-center gap-1"
               >
                 <Plus size={14} />
                 Thêm món ăn
@@ -328,7 +328,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
                         className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white text-sm transition-shadow ${
                           isItemDuplicate || errors[`item_${index}`]
                             ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                            : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                            : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
                         }`}
                       >
                         <option value={0} disabled>-- Chọn món ăn --</option>
@@ -357,7 +357,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
                         className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 text-sm transition-shadow ${
                           errors[`quantity_${index}`]
                             ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                            : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                            : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
                         }`}
                       />
                       {errors[`quantity_${index}`] && (
@@ -372,7 +372,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
                       type="button"
                       onClick={() => handleRemoveItemRow(index)}
                       disabled={loading}
-                      className="p-2 border border-gray-200 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                      className="p-2 border border-sky-100 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -381,7 +381,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
               })}
 
               {packageItems.length === 0 && (
-                <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl text-gray-400 text-xs">
+                <div className="text-center py-6 border border-dashed border-sky-100 rounded-xl text-gray-400 text-xs">
                   Chưa có món ăn nào trong gói tiệc. Nhấp "Thêm món ăn" để chọn.
                 </div>
               )}
@@ -389,9 +389,9 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
           </div>
 
           {/* Active Switch */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+          <div className="flex items-center justify-between p-4 bg-sky-50/50 rounded-xl border border-sky-50">
             <div>
-              <span className="block text-sm font-semibold text-gray-700">Trạng thái hoạt động</span>
+              <span className="block text-sm font-semibold text-slate-600">Trạng thái hoạt động</span>
               <span className="block text-xs text-gray-400 mt-0.5">Cho phép áp dụng gói tiệc khi lập hợp đồng</span>
             </div>
             <button
@@ -404,7 +404,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
               }
               disabled={loading}
               className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 focus:outline-none ${
-                formData.is_active === 1 ? "bg-[#FF5A5F]" : "bg-gray-300"
+                formData.is_active === 1 ? "bg-sky-500" : "bg-gray-300"
               }`}
             >
               <div
@@ -417,12 +417,12 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
         </form>
 
         {/* Sticky Actions Footer */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex gap-3 z-10 shadow-lg">
+        <div className="sticky bottom-0 bg-white border-t border-sky-100 px-6 py-4 flex gap-3 z-10 shadow-lg">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm disabled:opacity-50"
+            className="flex-1 px-4 py-2.5 border border-sky-200 text-slate-600 rounded-lg hover:bg-sky-50/50 transition-colors font-medium text-sm disabled:opacity-50"
           >
             Hủy bỏ
           </button>
@@ -430,7 +430,7 @@ export const EventPackageDrawer: React.FC<EventPackageDrawerProps> = ({
             type="submit"
             form="package-drawer-form"
             disabled={loading}
-            className="flex-1 px-4 py-2.5 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/30 disabled:opacity-50"
+            className="flex-1 px-4 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:opacity-50"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

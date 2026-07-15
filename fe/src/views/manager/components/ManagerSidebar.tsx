@@ -31,7 +31,7 @@ export const ManagerSidebar: React.FC = () => {
   };
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-gray-200 bg-gray-900 md:w-64 md:border-b-0 md:border-r">
+    <aside className="flex w-full shrink-0 flex-col border-b border-sky-100 bg-gray-900 md:w-64 md:border-b-0 md:border-r">
       {/* Header */}
       <div className="border-b border-gray-800 p-5">
         <Link to="/manager/dashboard" className="text-lg font-bold text-white hover:text-gray-200">
@@ -49,7 +49,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/dashboard"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/dashboard")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -64,7 +64,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/tables"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/tables")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -79,7 +79,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/bookings"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/bookings")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -94,7 +94,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/shifts"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/shifts")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -133,7 +133,7 @@ export const ManagerSidebar: React.FC = () => {
                 to="/manager/staff"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isRouteActive("/manager/staff")
-                    ? "bg-[#FF5A5F] text-white"
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >
@@ -148,7 +148,7 @@ export const ManagerSidebar: React.FC = () => {
                 to="/manager/menu"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isRouteActive("/manager/menu")
-                    ? "bg-[#FF5A5F] text-white"
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >
@@ -163,7 +163,7 @@ export const ManagerSidebar: React.FC = () => {
                 to="/manager/events"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isRouteActive("/manager/events")
-                    ? "bg-[#FF5A5F] text-white"
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >
@@ -178,7 +178,7 @@ export const ManagerSidebar: React.FC = () => {
                 to="/manager/analytics"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isRouteActive("/manager/analytics")
-                    ? "bg-[#FF5A5F] text-white"
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >

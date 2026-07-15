@@ -140,7 +140,7 @@ export const CashierPOS: React.FC = () => {
         {/* Horizontal table picker */}
         <div className="flex flex-wrap gap-2">
           {occupiedTables.length === 0 ? (
-            <span className="text-xs text-slate-400 font-semibold bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+            <span className="text-xs text-slate-500 font-semibold bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
               Không có bàn nào cần thanh toán lúc này.
             </span>
           ) : (
@@ -194,7 +194,7 @@ export const CashierPOS: React.FC = () => {
               <h4 className="text-base font-black text-slate-900 font-display">
                 Hóa đơn chi tiết
               </h4>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 {selectedTable.name} - Xử lý thanh toán và tách bill
               </p>
             </div>
@@ -250,7 +250,7 @@ export const CashierPOS: React.FC = () => {
                     className="w-16 bg-transparent text-right font-bold focus:outline-none text-slate-900 text-xs"
                     placeholder="0"
                   />
-                  <span className="text-[11px] text-slate-400 ml-1">
+                  <span className="text-[11px] text-slate-500 ml-1">
                     .000 vnđ
                   </span>
                 </div>
@@ -267,7 +267,7 @@ export const CashierPOS: React.FC = () => {
                   />
                   <label htmlFor="vat">Áp thuế VAT 10%</label>
                 </span>
-                <span className="text-xs text-slate-400">{vatEnabled ? "Bật" : "Tắt"}</span>
+                <span className="text-xs text-slate-500">{vatEnabled ? "Bật" : "Tắt"}</span>
               </div>
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
@@ -281,7 +281,7 @@ export const CashierPOS: React.FC = () => {
                   />
                   <label htmlFor="round">Làm tròn</label>
                 </span>
-                <span className="text-xs text-slate-400">{roundEnabled ? "Bật" : "Tắt"}</span>
+                <span className="text-xs text-slate-500">{roundEnabled ? "Bật" : "Tắt"}</span>
               </div>
 
               <div className="flex justify-between items-center border-t border-slate-100 pt-4 mt-1">
@@ -301,7 +301,7 @@ export const CashierPOS: React.FC = () => {
               <h4 className="text-base font-black text-slate-900 font-display">
                 Tách hóa đơn
               </h4>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Hỗ trợ chia đều hoặc chia theo món ăn
               </p>
             </div>
@@ -338,7 +338,7 @@ export const CashierPOS: React.FC = () => {
                     Số người chia
                   </label>
                   <div className="relative rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 flex items-center">
-                    <Users size={16} className="text-slate-400 mr-2.5" />
+                    <Users size={16} className="text-slate-500 mr-2.5" />
                     <input
                       type="number"
                       min={1}
@@ -372,7 +372,7 @@ export const CashierPOS: React.FC = () => {
                       className="flex justify-between items-center text-xs font-bold py-2.5 px-3.5 bg-slate-50/50 rounded-xl border border-slate-100"
                     >
                       <span className="text-slate-500 flex items-center gap-2">
-                        <Users size={12} className="text-slate-400" /> Khách{" "}
+                        <Users size={12} className="text-slate-500" /> Khách{" "}
                         {i + 1}
                       </span>
                       <span className="text-slate-900 font-extrabold">
@@ -407,7 +407,7 @@ export const CashierPOS: React.FC = () => {
                         <span className="font-bold text-slate-800">
                           {item.name}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
+                        <span className="text-[10px] text-slate-500 font-medium">
                           Đơn giá: {(item.price * 1000).toLocaleString("vi-VN")}{" "}
                           vnđ
                         </span>
@@ -460,8 +460,8 @@ export const CashierPOS: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center text-slate-400">
-          <Info size={40} className="mx-auto text-slate-300 mb-3" />
+        <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center text-slate-500">
+          <Info size={40} className="mx-auto text-slate-600 mb-3" />
           <h4 className="font-bold text-sm text-slate-700">
             Chưa chọn bàn nào để thanh toán
           </h4>

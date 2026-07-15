@@ -75,22 +75,22 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
           </div>
           <div>
             <p className="text-xs font-bold text-blue-500 uppercase tracking-wider">Bàn nguồn</p>
-            <p className="font-black text-gray-900 text-xl">{sourceTable.name}</p>
-            <p className="text-xs text-gray-500">{sourceTable.capacity} chỗ — Đang phục vụ</p>
+            <p className="font-black text-slate-800 text-xl">{sourceTable.name}</p>
+            <p className="text-xs text-slate-400">{sourceTable.capacity} chỗ — Đang phục vụ</p>
           </div>
         </div>
 
         {/* Target table selection */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Chọn bàn đích (cùng {(sourceTable as any).area_name || "khu vực"} — đang trống)
             </label>
             <span className="text-xs text-gray-400">{emptyTables.length} bàn trống</span>
           </div>
 
           {emptyTables.length === 0 ? (
-            <div className="py-8 text-center rounded-2xl bg-gray-50 border border-dashed border-gray-200">
+            <div className="py-8 text-center rounded-2xl bg-sky-50/50 border border-dashed border-sky-100">
               <p className="text-sm text-gray-400 font-medium">Không có bàn trống nào để chuyển</p>
             </div>
           ) : (
@@ -102,7 +102,7 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
                   className={`relative py-4 rounded-2xl border-2 font-bold text-sm transition-all ${
                     targetId === t.id.toString()
                       ? "border-blue-600 bg-blue-50 text-blue-700 shadow-md shadow-blue-100"
-                      : "border-gray-100 bg-white text-gray-700 hover:border-blue-200 hover:shadow-sm"
+                      : "border-sky-50 bg-white text-slate-600 hover:border-blue-200 hover:shadow-sm"
                   }`}
                 >
                   {targetId === t.id.toString() && (
@@ -134,7 +134,7 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
         <div className="flex gap-3 pt-1">
           <button
             onClick={handleClose}
-            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
+            className="flex-1 py-2.5 bg-sky-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
           >
             Hủy
           </button>

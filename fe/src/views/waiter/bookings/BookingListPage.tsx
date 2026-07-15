@@ -225,7 +225,7 @@ export const BookingListPage: React.FC = () => {
             placeholder="Tìm mã, tên, SĐT..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-lg text-sm outline-none border border-admin-border focus:ring-2 focus:ring-admin-primary/20"
+            className="w-full pl-10 pr-4 py-2 bg-sky-50/50 rounded-lg text-sm outline-none border border-admin-border focus:ring-2 focus:ring-admin-primary/20"
           />
         </div>
         {/* Status filter tabs */}
@@ -243,7 +243,7 @@ export const BookingListPage: React.FC = () => {
               onClick={() => setFilterStatus(s.key)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === s.key
                 ? "bg-admin-primary text-white"
-                : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
+                : "bg-sky-100 text-admin-text-sub hover:bg-gray-200"
                 }`}
             >
               {s.label}
@@ -256,7 +256,7 @@ export const BookingListPage: React.FC = () => {
       {/* ── Table ── */}
       <div className="bg-admin-card rounded-2xl border border-admin-border shadow-sm overflow-hidden">
         <table className="w-full text-left text-base">
-          <thead className="bg-gray-50 text-admin-text-sub font-semibold uppercase text-sm">
+          <thead className="bg-sky-50/50 text-admin-text-sub font-semibold uppercase text-sm">
             <tr>
               <th className="px-6 py-4">Mã</th>
               <th className="px-6 py-4">Khách</th>
@@ -347,7 +347,7 @@ export const BookingListPage: React.FC = () => {
                         {b.status === "cancelled" && (
                           <button
                             onClick={() => handleDeleteBooking(b.id)}
-                            className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-50 hover:text-red-600"
+                            className="p-2 bg-sky-100 text-slate-500 rounded-lg hover:bg-red-50 hover:text-red-600"
                             title="Xóa booking đã hủy"
                           >
                             <Trash2 size={16} />
@@ -375,7 +375,7 @@ export const BookingListPage: React.FC = () => {
           <div className="space-y-5">
             <div className="flex justify-between items-center p-4 bg-blue-50 rounded-xl border border-blue-100">
               <div>
-                <p className="text-xs text-gray-500 font-medium mb-0.5">Mã xác nhận</p>
+                <p className="text-xs text-slate-400 font-medium mb-0.5">Mã xác nhận</p>
                 <span className="font-black text-blue-700 text-lg">#{selectedBooking.confirmation_code}</span>
               </div>
               <Badge status={selectedBooking.status as any} type="booking" theme="light" />
@@ -393,11 +393,11 @@ export const BookingListPage: React.FC = () => {
                 { icon: <MapPin size={15} className="text-admin-primary" />, label: "Bàn", value: selectedBooking.table_name || "Chưa gán bàn" },
                 { icon: <Users size={15} className="text-admin-primary" />, label: "Số người", value: `${selectedBooking.party_size} người` },
               ].map((item, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                <div key={i} className="flex items-start gap-3 p-3 bg-sky-50/50 rounded-xl">
                   <span className="mt-0.5 shrink-0">{item.icon}</span>
                   <div>
                     <p className="text-[10px] font-bold text-gray-400 uppercase">{item.label}</p>
-                    <p className="font-medium text-gray-800">{item.value}</p>
+                    <p className="font-medium text-slate-700">{item.value}</p>
                   </div>
                 </div>
               ))}
@@ -406,7 +406,7 @@ export const BookingListPage: React.FC = () => {
                   <FileText size={15} className="text-amber-600 mt-0.5 shrink-0" />
                   <div>
                     <p className="text-[10px] font-bold text-amber-600 uppercase">Ghi chú khách</p>
-                    <p className="font-medium text-gray-700 italic">"{selectedBooking.guest_note}"</p>
+                    <p className="font-medium text-slate-600 italic">"{selectedBooking.guest_note}"</p>
                   </div>
                 </div>
               )}
@@ -439,7 +439,7 @@ export const BookingListPage: React.FC = () => {
               )}
               <button
                 onClick={() => setSelectedBooking(null)}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200"
+                className="flex-1 py-2.5 bg-sky-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-gray-200"
               >
                 Đóng
               </button>
@@ -453,16 +453,16 @@ export const BookingListPage: React.FC = () => {
         <form className="space-y-0" onSubmit={handleCreateBooking}>
           {/* Section 1: Thông tin khách */}
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-sky-50">
               <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
                 <User size={14} className="text-blue-600" />
               </div>
-              <h3 className="font-bold text-gray-700 text-sm">Thông tin khách hàng</h3>
+              <h3 className="font-bold text-slate-600 text-sm">Thông tin khách hàng</h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Tên khách */}
               <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">
                   Tên khách hàng <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -472,13 +472,13 @@ export const BookingListPage: React.FC = () => {
                     placeholder="Ví dụ: Nguyễn Văn A"
                     value={formData.guest_name}
                     onChange={(e) => setFormData({ ...formData, guest_name: e.target.value })}
-                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 placeholder-gray-400"
+                    className="w-full pl-9 pr-4 py-3 bg-sky-50/50 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700 placeholder-gray-400"
                   />
                 </div>
               </div>
               {/* SĐT */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">
                   Số điện thoại <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -488,13 +488,13 @@ export const BookingListPage: React.FC = () => {
                     placeholder="0901 234 567"
                     value={formData.guest_phone}
                     onChange={(e) => setFormData({ ...formData, guest_phone: e.target.value })}
-                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 placeholder-gray-400"
+                    className="w-full pl-9 pr-4 py-3 bg-sky-50/50 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700 placeholder-gray-400"
                   />
                 </div>
               </div>
               {/* Số người */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">
                   Số lượng người <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -507,7 +507,7 @@ export const BookingListPage: React.FC = () => {
                     placeholder="2"
                     value={formData.party_size}
                     onChange={(e) => setFormData({ ...formData, party_size: Number(e.target.value) })}
-                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800"
+                    className="w-full pl-9 pr-4 py-3 bg-sky-50/50 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700"
                   />
                 </div>
               </div>
@@ -516,16 +516,16 @@ export const BookingListPage: React.FC = () => {
 
           {/* Section 2: Thông tin bàn */}
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-sky-50">
               <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center">
                 <Table2 size={14} className="text-green-600" />
               </div>
-              <h3 className="font-bold text-gray-700 text-sm">Thông tin đặt bàn</h3>
+              <h3 className="font-bold text-slate-600 text-sm">Thông tin đặt bàn</h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Ngày giờ */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">
                   Ngày & Giờ đặt <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -535,7 +535,7 @@ export const BookingListPage: React.FC = () => {
                     required
                     value={formData.start_time}
                     onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800"
+                    className="w-full pl-9 pr-4 py-3 bg-sky-50/50 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700"
                   />
                 </div>
                 <p className="text-[10px] text-gray-400 mt-1 ml-1">Vui lòng chọn ngày giờ TRƯỚC khi chọn bàn</p>
@@ -543,7 +543,7 @@ export const BookingListPage: React.FC = () => {
 
               {/* Chọn bàn - chỉ bàn trống */}
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">
                   Chọn bàn trống <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -553,7 +553,7 @@ export const BookingListPage: React.FC = () => {
                     required
                     value={formData.table_id}
                     onChange={(e) => setFormData({ ...formData, table_id: e.target.value })}
-                    className="w-full pl-9 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 appearance-none"
+                    className="w-full pl-9 pr-8 py-3 bg-sky-50/50 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700 appearance-none"
                   >git status
                     <option value="">-- Chọn bàn --</option>
                     {emptyTables.length === 0 ? (
@@ -576,7 +576,7 @@ export const BookingListPage: React.FC = () => {
 
               {/* Ghi chú */}
               <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5">
                   Ghi chú (tùy chọn)
                 </label>
                 <div className="relative">
@@ -586,7 +586,7 @@ export const BookingListPage: React.FC = () => {
                     value={formData.guest_note}
                     onChange={(e) => setFormData({ ...formData, guest_note: e.target.value })}
                     rows={3}
-                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 placeholder-gray-400 resize-none"
+                    className="w-full pl-9 pr-4 py-3 bg-sky-50/50 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700 placeholder-gray-400 resize-none"
                   />
                 </div>
               </div>
@@ -594,11 +594,11 @@ export const BookingListPage: React.FC = () => {
           </div>
 
           {/* Submit */}
-          <div className="flex gap-3 pt-2 border-t border-gray-100">
+          <div className="flex gap-3 pt-2 border-t border-sky-50">
             <button
               type="button"
               onClick={() => setIsAddModalOpen(false)}
-              className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
+              className="flex-1 py-3 bg-sky-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
             >
               Hủy
             </button>
@@ -641,7 +641,7 @@ export const BookingListPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
                 Lý do hủy <span className="text-red-500">*</span>
               </label>
               <textarea
@@ -649,13 +649,13 @@ export const BookingListPage: React.FC = () => {
                 placeholder="Nhập lý do hủy (VD: Khách gọi báo hủy, khách không đến sau 30 phút...)"
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 resize-none bg-gray-50"
+                className="w-full px-4 py-3 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 resize-none bg-sky-50/50"
               />
             </div>
             <div className="flex gap-3">
               <button
                 onClick={() => setCancelTarget(null)}
-                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200"
+                className="flex-1 py-2.5 bg-sky-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-gray-200"
               >
                 Giữ lại
               </button>

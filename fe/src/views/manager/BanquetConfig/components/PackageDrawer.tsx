@@ -63,38 +63,38 @@ export const PackageDrawer: React.FC<PackageDrawerProps> = ({
 
       {/* Drawer */}
       <div className="relative w-full max-w-md bg-white shadow-xl h-full overflow-y-auto animate-slide-in">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10">
-          <h2 className="text-lg font-bold text-gray-800">
+        <div className="sticky top-0 bg-white border-b border-sky-100 px-6 py-4 flex justify-between items-center z-10">
+          <h2 className="text-lg font-bold text-slate-700">
             {editingPackage ? "Sửa gói tiệc" : "Thêm gói tiệc mới"}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 hover:bg-sky-100 rounded-full transition-colors"
           >
-            <X size={20} className="text-gray-600" />
+            <X size={20} className="text-slate-500" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Name */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Tên gói <span className="text-[#FF5A5F]">*</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-2">
+              Tên gói <span className="text-sky-600">*</span>
             </label>
             <input
               type="text"
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/50 focus:border-[#FF5A5F]"
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
               placeholder="Nhập tên gói"
             />
           </div>
 
           {/* Price */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Giá / Người (VNĐ) <span className="text-[#FF5A5F]">*</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-2">
+              Giá / Người (VNĐ) <span className="text-sky-600">*</span>
             </label>
             <input
               type="number"
@@ -102,33 +102,33 @@ export const PackageDrawer: React.FC<PackageDrawerProps> = ({
               min="0"
               value={formData.price_per_person}
               onChange={(e) => setFormData({ ...formData, price_per_person: parseInt(e.target.value) || 0 })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/50 focus:border-[#FF5A5F]"
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
               placeholder="Nhập giá"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-slate-600 mb-2">
               Mô tả
             </label>
             <textarea
               rows={4}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/50 focus:border-[#FF5A5F]"
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
               placeholder="Mô tả chi tiết về gói"
             />
           </div>
 
           {/* Toggle */}
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Kích hoạt</span>
+            <span className="text-sm font-medium text-slate-600">Kích hoạt</span>
             <button
               type="button"
               onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
               className={`w-11 h-6 rounded-full transition-colors ${
-                formData.is_active ? "bg-[#FF5A5F]" : "bg-gray-300"
+                formData.is_active ? "bg-sky-500" : "bg-gray-300"
               }`}
             >
               <div
@@ -140,17 +140,17 @@ export const PackageDrawer: React.FC<PackageDrawerProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-4 border-t border-gray-200 flex gap-3">
+          <div className="pt-4 border-t border-sky-100 flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              className="flex-1 px-4 py-2 border border-sky-200 text-slate-600 rounded-lg hover:bg-sky-50/50 transition-colors font-medium"
             >
               Hủy
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium flex items-center justify-center gap-2"
             >
               <Save size={18} />
               Lưu

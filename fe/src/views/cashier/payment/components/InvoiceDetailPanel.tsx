@@ -43,8 +43,8 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
 }) => {
   if (!invoice) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-slate-200 text-slate-400 gap-3">
-        <FileText size={48} className="text-slate-200" />
+      <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-slate-200 text-slate-500 gap-3">
+        <FileText size={48} className="text-slate-700" />
         <p className="text-sm font-semibold">Chọn hóa đơn để xem chi tiết</p>
         <p className="text-xs">Danh sách hóa đơn ở bên trái</p>
       </div>
@@ -117,16 +117,16 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
           <div className="mt-3 flex items-center gap-4 text-xs text-slate-600 bg-slate-50 rounded-xl p-3">
             {invoice.customerName && (
               <span className="flex items-center gap-1.5">
-                <User size={12} className="text-slate-400" /> {invoice.customerName}
+                <User size={12} className="text-slate-500" /> {invoice.customerName}
               </span>
             )}
             {invoice.customerPhone && (
               <span className="flex items-center gap-1.5">
-                <Phone size={12} className="text-slate-400" /> {invoice.customerPhone}
+                <Phone size={12} className="text-slate-500" /> {invoice.customerPhone}
               </span>
             )}
             <span className="flex items-center gap-1.5">
-              <Users size={12} className="text-slate-400" /> {invoice.guestCount} khách
+              <Users size={12} className="text-slate-500" /> {invoice.guestCount} khách
             </span>
           </div>
         )}
@@ -134,7 +134,7 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
 
       {/* Items */}
       <div className="flex-1 overflow-y-auto p-5">
-        <h4 className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mb-3">
+        <h4 className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider mb-3">
           Chi tiết món ({invoice.items.length})
         </h4>
         <div className="space-y-2">

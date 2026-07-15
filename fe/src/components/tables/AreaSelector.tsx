@@ -14,7 +14,7 @@ const AreaSelector: React.FC<AreaSelectorProps> = ({ areas, selectedAreaId, onSe
         onClick={() => onSelectArea(null)}
         className={`px-4 py-2 rounded-full whitespace-nowrap transition-colors ${selectedAreaId === null
             ? 'bg-blue-700 text-white'
-            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            : 'bg-white text-slate-600 border border-sky-100 hover:bg-sky-50/50'
           }`}
       >
         Tất cả
@@ -25,7 +25,7 @@ const AreaSelector: React.FC<AreaSelectorProps> = ({ areas, selectedAreaId, onSe
           onClick={() => onSelectArea(area.id)}
           className={`px-4 py-2 rounded-full whitespace-nowrap transition-colors ${selectedAreaId === area.id
               ? 'bg-blue-700 text-white'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              : 'bg-white text-slate-600 border border-sky-100 hover:bg-sky-50/50'
             }`}
         >
           {area.name}

@@ -23,7 +23,7 @@ export const HomeView: React.FC = () => {
 
         <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8">
           <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
-            <Star size={14} className="fill-amber-400 text-amber-400" />
+            <Star size={14} className="fill-amber-400 text-sky-700" />
             Nhà hàng đa mô hình — Dine-in & Sự kiện
           </span>
           <h1 className="max-w-2xl text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-6xl">
@@ -57,8 +57,8 @@ export const HomeView: React.FC = () => {
         <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Thực đơn</p>
-            <h2 className="mt-1 text-2xl font-bold text-gray-700 sm:text-3xl">Món nổi bật</h2>
-            <p className="mt-1 text-sm text-gray-500">Được yêu thích nhất tại nhà hàng</p>
+            <h2 className="mt-1 text-2xl font-bold text-slate-600 sm:text-3xl">Món nổi bật</h2>
+            <p className="mt-1 text-sm text-slate-400">Được yêu thích nhất tại nhà hàng</p>
           </div>
           <Link
             to="/menu"
@@ -77,12 +77,12 @@ export const HomeView: React.FC = () => {
       </section>
 
       {/* Ưu đãi đang active */}
-      <section className="border-y border-gray-200 bg-white py-16">
+      <section className="border-y border-sky-100 bg-white py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Khuyến mãi</p>
-              <h2 className="mt-1 text-2xl font-bold text-gray-700 sm:text-3xl">Ưu đãi đang diễn ra</h2>
+              <h2 className="mt-1 text-2xl font-bold text-slate-600 sm:text-3xl">Ưu đãi đang diễn ra</h2>
             </div>
             <Link
               to="/promotions"
@@ -106,8 +106,8 @@ export const HomeView: React.FC = () => {
         <div className="grid gap-10 lg:grid-cols-2">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Liên hệ</p>
-            <h2 className="mt-1 text-2xl font-bold text-gray-700 sm:text-3xl">Ghé thăm ResManager</h2>
-            <p className="mt-3 text-gray-500">
+            <h2 className="mt-1 text-2xl font-bold text-slate-600 sm:text-3xl">Ghé thăm ResManager</h2>
+            <p className="mt-3 text-slate-400">
               Nằm tại trung tâm Quận 1, chúng tôi mang đến không gian ẩm thực ấm cúng phù hợp cho bữa
               ăn gia đình, hẹn hò và tiệc sự kiện.
             </p>
@@ -118,8 +118,8 @@ export const HomeView: React.FC = () => {
                   <MapPin size={20} />
                 </span>
                 <div>
-                  <p className="font-semibold text-gray-700">Địa chỉ</p>
-                  <p className="text-sm text-gray-500">123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM</p>
+                  <p className="font-semibold text-slate-600">Địa chỉ</p>
+                  <p className="text-sm text-slate-400">123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM</p>
                 </div>
               </li>
               <li className="flex items-start gap-4">
@@ -127,8 +127,8 @@ export const HomeView: React.FC = () => {
                   <Phone size={20} />
                 </span>
                 <div>
-                  <p className="font-semibold text-gray-700">Hotline đặt bàn</p>
-                  <p className="text-sm text-gray-500">028 3829 4000 — Hỗ trợ 10:00–22:00 hàng ngày</p>
+                  <p className="font-semibold text-slate-600">Hotline đặt bàn</p>
+                  <p className="text-sm text-slate-400">028 3829 4000 — Hỗ trợ 10:00–22:00 hàng ngày</p>
                 </div>
               </li>
               <li className="flex items-start gap-4">
@@ -136,8 +136,8 @@ export const HomeView: React.FC = () => {
                   <Clock size={20} />
                 </span>
                 <div>
-                  <p className="font-semibold text-gray-700">Giờ mở cửa</p>
-                  <p className="text-sm text-gray-500">Thứ 2 – Chủ nhật: 10:00 – 22:00</p>
+                  <p className="font-semibold text-slate-600">Giờ mở cửa</p>
+                  <p className="text-sm text-slate-400">Thứ 2 – Chủ nhật: 10:00 – 22:00</p>
                 </div>
               </li>
             </ul>
@@ -151,7 +151,7 @@ export const HomeView: React.FC = () => {
             </Link>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-gray-200 shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-sky-100 shadow-sm">
             <iframe
               title="Vị trí ResManager trên Google Maps"
               src="https://maps.google.com/maps?q=Nguy%E1%BB%85n+Hu%E1%BB%87,+Qu%E1%BA%ADn+1,+Ho+Chi+Minh+City&t=&z=15&ie=UTF8&iwloc=&output=embed"

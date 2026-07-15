@@ -174,8 +174,8 @@ export const EventConfig: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Cấu hình Sự kiện & Tiệc</h1>
-          <p className="text-gray-500 mt-1">Cấu hình sảnh tổ chức tiệc và các gói set menu định lượng</p>
+          <h1 className="text-2xl font-bold text-slate-700">Cấu hình Sự kiện & Tiệc</h1>
+          <p className="text-slate-400 mt-1">Cấu hình sảnh tổ chức tiệc và các gói set menu định lượng</p>
         </div>
         <button
           onClick={() => {
@@ -187,7 +187,7 @@ export const EventConfig: React.FC = () => {
               setIsPackageOpen(true);
             }
           }}
-          className="px-4 py-2 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium flex items-center gap-2 shadow-sm"
+          className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium flex items-center gap-2 shadow-sm"
         >
           <Plus size={18} />
           {activeTab === "halls" ? "Thêm sảnh tiệc" : "Thêm gói set menu"}
@@ -195,7 +195,7 @@ export const EventConfig: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-sky-100 mb-6">
         <div className="flex gap-8">
           <button
             onClick={() => {
@@ -205,8 +205,8 @@ export const EventConfig: React.FC = () => {
             }}
             className={`pb-4 text-sm font-semibold transition-colors border-b-2 ${
               activeTab === "halls"
-                ? "border-[#FF5A5F] text-[#FF5A5F]"
-                : "border-transparent text-gray-400 hover:text-gray-600"
+                ? "border-sky-500 text-sky-600"
+                : "border-transparent text-gray-400 hover:text-slate-500"
             }`}
           >
             Quản lý Sảnh Tiệc ({halls.length})
@@ -219,8 +219,8 @@ export const EventConfig: React.FC = () => {
             }}
             className={`pb-4 text-sm font-semibold transition-colors border-b-2 ${
               activeTab === "packages"
-                ? "border-[#FF5A5F] text-[#FF5A5F]"
-                : "border-transparent text-gray-400 hover:text-gray-600"
+                ? "border-sky-500 text-sky-600"
+                : "border-transparent text-gray-400 hover:text-slate-500"
             }`}
           >
             Gói Set Menu Tiệc ({packages.length})
@@ -239,14 +239,14 @@ export const EventConfig: React.FC = () => {
             }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] text-sm"
+            className="w-full pl-10 pr-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-sm"
           />
         </div>
 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] bg-white text-sm"
+          className="w-full sm:w-auto px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white text-sm"
         >
           <option value="all">Tất cả trạng thái</option>
           <option value="active">Đang hoạt động</option>
@@ -257,34 +257,34 @@ export const EventConfig: React.FC = () => {
       {/* Data Table */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-4 border-[#FF5A5F] border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : activeTab === "halls" ? (
         // Halls Table
-        <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <div className="overflow-x-auto rounded-lg border border-sky-100 shadow-sm">
           <table className="w-full text-left border-collapse bg-white">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Tên Sảnh</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Sức chứa tối đa</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Mô tả</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Trạng thái</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Hành động</th>
+              <tr className="bg-sky-50/50 border-b border-sky-100">
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Tên Sảnh</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Sức chứa tối đa</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Mô tả</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Trạng thái</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Hành động</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredHalls.map((hall) => (
-                <tr key={hall.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-4 font-bold text-gray-800">{hall.name}</td>
-                  <td className="px-5 py-4 text-gray-600 font-semibold">{hall.capacity} Khách</td>
-                  <td className="px-5 py-4 text-gray-500 max-w-sm truncate" title={hall.description}>
+                <tr key={hall.id} className="hover:bg-sky-50/50 transition-colors">
+                  <td className="px-5 py-4 font-bold text-slate-700">{hall.name}</td>
+                  <td className="px-5 py-4 text-slate-500 font-semibold">{hall.capacity} Khách</td>
+                  <td className="px-5 py-4 text-slate-400 max-w-sm truncate" title={hall.description}>
                     {hall.description || "-"}
                   </td>
                   <td className="px-5 py-4">
                     <span className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-full ${
                       hall.is_active === 1
                         ? "bg-green-50 text-green-700 border border-green-150"
-                        : "bg-gray-100 text-gray-500 border border-gray-200"
+                        : "bg-sky-100 text-slate-400 border border-sky-100"
                     }`}>
                       {hall.is_active === 1 ? "Hoạt động" : "Vô hiệu hóa"}
                     </span>
@@ -306,7 +306,7 @@ export const EventConfig: React.FC = () => {
                         className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold transition-colors ${
                           hall.is_active === 1
                             ? "border-red-200 text-red-600 hover:bg-red-50"
-                            : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                            : "border-sky-200 text-slate-500 hover:bg-sky-50/50"
                         }`}
                       >
                         {hall.is_active === 1 ? "Vô hiệu hóa" : "Kích hoạt"}
@@ -327,38 +327,38 @@ export const EventConfig: React.FC = () => {
         </div>
       ) : (
         // Packages Table
-        <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+        <div className="overflow-x-auto rounded-lg border border-sky-100 shadow-sm">
           <table className="w-full text-left border-collapse bg-white">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Tên Gói</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Đơn giá / Khách</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Số món ăn</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Mô tả</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider">Trạng thái</th>
-                <th className="px-5 py-3.5 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Hành động</th>
+              <tr className="bg-sky-50/50 border-b border-sky-100">
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Tên Gói</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Đơn giá / Khách</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Số món ăn</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Mô tả</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider">Trạng thái</th>
+                <th className="px-5 py-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Hành động</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredPackages.map((pkg) => (
-                <tr key={pkg.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-4 font-bold text-gray-800">{pkg.name}</td>
-                  <td className="px-5 py-4 text-gray-600 font-semibold">
+                <tr key={pkg.id} className="hover:bg-sky-50/50 transition-colors">
+                  <td className="px-5 py-4 font-bold text-slate-700">{pkg.name}</td>
+                  <td className="px-5 py-4 text-slate-500 font-semibold">
                     {Number(pkg.price_per_person).toLocaleString("vi-VN")}đ / khách
                   </td>
                   <td className="px-5 py-4">
-                    <span className="font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">
+                    <span className="font-semibold text-slate-600 bg-sky-100 px-2 py-0.5 rounded">
                       {pkg.items?.length || 0} món
                     </span>
                   </td>
-                  <td className="px-5 py-4 text-gray-500 max-w-sm truncate" title={pkg.description}>
+                  <td className="px-5 py-4 text-slate-400 max-w-sm truncate" title={pkg.description}>
                     {pkg.description || "-"}
                   </td>
                   <td className="px-5 py-4">
                     <span className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-full ${
                       pkg.is_active === 1
                         ? "bg-green-50 text-green-700 border border-green-150"
-                        : "bg-gray-100 text-gray-500 border border-gray-200"
+                        : "bg-sky-100 text-slate-400 border border-sky-100"
                     }`}>
                       {pkg.is_active === 1 ? "Hoạt động" : "Vô hiệu hóa"}
                     </span>
@@ -380,7 +380,7 @@ export const EventConfig: React.FC = () => {
                         className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold transition-colors ${
                           pkg.is_active === 1
                             ? "border-red-200 text-red-600 hover:bg-red-50"
-                            : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                            : "border-sky-200 text-slate-500 hover:bg-sky-50/50"
                         }`}
                       >
                         {pkg.is_active === 1 ? "Vô hiệu hóa" : "Kích hoạt"}

@@ -20,7 +20,7 @@ export const PromotionCard: React.FC<PromotionCardProps> = ({ promotion }) => {
       : `-${formatCurrency(promotion.discountValue)}`;
 
   return (
-    <article className="relative w-[280px] shrink-0 snap-start overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm sm:w-[320px]">
+    <article className="relative w-[280px] shrink-0 snap-start overflow-hidden rounded-xl border border-sky-100 bg-white shadow-sm sm:w-[320px]">
       <div className="relative h-36 overflow-hidden">
         <img src={promotion.imageUrl} alt={promotion.title} className="h-full w-full object-cover" />
         <span className="absolute left-3 top-3 rounded-lg bg-red-700 px-2.5 py-1 text-xs font-bold text-white">
@@ -28,8 +28,8 @@ export const PromotionCard: React.FC<PromotionCardProps> = ({ promotion }) => {
         </span>
       </div>
       <div className="p-4">
-        <h3 className="font-semibold text-gray-700">{promotion.title}</h3>
-        <p className="mt-1 line-clamp-2 text-sm text-gray-500">{promotion.description}</p>
+        <h3 className="font-semibold text-slate-600">{promotion.title}</h3>
+        <p className="mt-1 line-clamp-2 text-sm text-slate-400">{promotion.description}</p>
         <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
           <CalendarDays size={14} />
           Đến {formatEndDate(promotion.endDate)}

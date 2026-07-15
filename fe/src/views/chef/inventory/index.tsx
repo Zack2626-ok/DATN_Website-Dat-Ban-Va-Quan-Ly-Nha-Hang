@@ -93,7 +93,7 @@ export const InventoryControl: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
                   Mức tối thiểu: {ing.threshold} {ing.unit}
                 </span>
               </div>

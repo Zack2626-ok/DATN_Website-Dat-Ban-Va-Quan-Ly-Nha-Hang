@@ -125,7 +125,7 @@ const TableMapPage: React.FC = () => {
       </div>
 
       {/* Table Grid */}
-      <div className="bg-white p-8 rounded-xl border border-gray-100 min-h-[500px]">
+      <div className="bg-white p-8 rounded-xl border border-sky-50 min-h-[500px]">
         {isLoadingAreas || isLoadingTables ? (
           <div className="flex items-center justify-center h-full min-h-[400px]">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>

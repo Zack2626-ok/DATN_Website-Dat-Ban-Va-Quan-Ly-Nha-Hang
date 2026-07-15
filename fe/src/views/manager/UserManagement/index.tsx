@@ -106,18 +106,18 @@ const UserManagement: React.FC = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
-            <Users className="w-7 h-7 text-[#FF5A5F]" />
+          <h1 className="text-2xl font-bold text-slate-700 flex items-center gap-3">
+            <Users className="w-7 h-7 text-sky-600" />
             Quản lý người dùng
           </h1>
-          <p className="text-gray-500 mt-1">Quản lý tài khoản và vai trò của nhân viên</p>
+          <p className="text-slate-400 mt-1">Quản lý tài khoản và vai trò của nhân viên</p>
         </div>
         <button
           onClick={() => {
             setEditingUser(null);
             setIsDrawerOpen(true);
           }}
-          className="px-4 py-2 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium flex items-center gap-2"
+          className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium flex items-center gap-2"
         >
           <Plus size={18} />
           Thêm người dùng

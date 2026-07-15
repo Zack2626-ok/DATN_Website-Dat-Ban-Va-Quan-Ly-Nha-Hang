@@ -63,42 +63,42 @@ export const PackagesTab: React.FC<PackagesTabProps> = ({ isDrawerOpen, onDrawer
           placeholder="Tìm kiếm gói tiệc..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/50 focus:border-[#FF5A5F]"
+          className="w-full pl-10 pr-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
         />
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-sky-100 bg-white">
         <table className="w-full text-left">
-          <thead className="border-b border-gray-200 bg-gray-50">
+          <thead className="border-b border-sky-100 bg-sky-50/50">
             <tr>
-              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Tên Gói
               </th>
-              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Giá / Người
               </th>
-              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Mô tả
               </th>
-              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Trạng thái
               </th>
-              <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">
+              <th className="px-6 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">
                 Hành động
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filteredPackages.map(pkg => (
-              <tr key={pkg.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">
+              <tr key={pkg.id} className="hover:bg-sky-50/50">
+                <td className="px-6 py-4 text-sm font-medium text-slate-800">
                   {pkg.name}
                 </td>
-                <td className="px-6 py-4 text-sm font-semibold text-[#FF5A5F]">
+                <td className="px-6 py-4 text-sm font-semibold text-sky-600">
                   {pkg.price_per_person.toLocaleString("vi-VN")}₫
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
+                <td className="px-6 py-4 text-sm text-slate-500">
                   {pkg.description}
                 </td>
                 <td className="px-6 py-4">
@@ -114,7 +114,7 @@ export const PackagesTab: React.FC<PackagesTabProps> = ({ isDrawerOpen, onDrawer
                   <div className="flex items-center justify-end gap-2">
                     <button
                       onClick={() => setViewingPackage(pkg)}
-                      className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                      className="p-2 text-slate-500 hover:bg-sky-100 rounded-lg transition-colors"
                       title="Xem chi tiết"
                     >
                       <Eye size={18} />

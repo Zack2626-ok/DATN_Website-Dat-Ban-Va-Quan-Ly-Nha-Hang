@@ -519,7 +519,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
       {loading && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <ChefHat size={48} className="text-slate-400 animate-bounce" />
+          <ChefHat size={48} className="text-slate-500 animate-bounce" />
           <span className="text-sm text-slate-500 italic animate-pulse">Đang tải danh sách món ăn từ bếp...</span>
         </div>
       ) : activeTab === "kanban" ? (
@@ -540,7 +540,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
             <div className="flex flex-col gap-3 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
               {columns.pending.length === 0 ? (
-                <div className="text-center py-24 text-slate-400 text-xs italic flex flex-col items-center gap-2">
+                <div className="text-center py-24 text-slate-500 text-xs italic flex flex-col items-center gap-2">
                   <Inbox size={20} />
                   Chưa có món ăn nào chờ nấu
                 </div>
@@ -563,7 +563,7 @@ export const ChefKitchenQueue: React.FC = () => {
                           </span>
                           <span
                             className={`text-[10px] font-bold flex items-center gap-1 ${
-                              isDelayed ? "text-rose-500" : "text-slate-400"
+                              isDelayed ? "text-rose-500" : "text-slate-500"
                             }`}
                           >
                             <Clock size={10} /> {timeStr}
@@ -583,7 +583,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               {getStationLabel(item.kitchenStation)}
                             </span>
                             {item.orderType && (
-                              <span className="text-slate-400">
+                              <span className="text-slate-500">
                                 ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
                               </span>
                             )}
@@ -615,7 +615,7 @@ export const ChefKitchenQueue: React.FC = () => {
           <div className="flex flex-col gap-4 bg-slate-100/70 p-4 rounded-xl border border-slate-200 shadow-inner">
             <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
               <span className="text-xs font-black uppercase text-amber-600 tracking-wider flex items-center gap-1.5">
-                <Flame size={13} className="text-amber-500 animate-bounce" />
+                <Flame size={13} className="text-sky-600 animate-bounce" />
                 Đang nấu (Cooking)
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-[10px] font-bold text-amber-800 border border-amber-200">
@@ -625,7 +625,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
             <div className="flex flex-col gap-3 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
               {columns.cooking.length === 0 ? (
-                <div className="text-center py-24 text-slate-400 text-xs italic flex flex-col items-center gap-2">
+                <div className="text-center py-24 text-slate-500 text-xs italic flex flex-col items-center gap-2">
                   <Inbox size={20} />
                   Không có món nào đang nấu
                 </div>
@@ -649,7 +649,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             <button
                               onClick={() => handleRecallStatus(item.id)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
+                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-700 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
                               title="Hoàn tác về Chờ nấu"
                             >
                               <Undo2 size={11} />
@@ -677,7 +677,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               {getStationLabel(item.kitchenStation)}
                             </span>
                             {item.orderType && (
-                              <span className="text-slate-400">
+                              <span className="text-slate-500">
                                 ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
                               </span>
                             )}
@@ -719,7 +719,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
             <div className="flex flex-col gap-3 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
               {columns.done.length === 0 ? (
-                <div className="text-center py-24 text-slate-400 text-xs italic flex flex-col items-center gap-2">
+                <div className="text-center py-24 text-slate-500 text-xs italic flex flex-col items-center gap-2">
                   <Inbox size={20} />
                   Chưa có món nào đã sẵn sàng
                 </div>
@@ -739,7 +739,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             <button
                               onClick={() => handleRecallStatus(item.id)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
+                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-700 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
                               title="Hoàn tác về Đang nấu"
                             >
                               <Undo2 size={11} />
@@ -758,7 +758,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               x{item.quantity}
                             </span>
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1 font-semibold flex items-center gap-1.5">
+                          <div className="text-[10px] text-slate-500 mt-1 font-semibold flex items-center gap-1.5">
                             <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider text-slate-500 border border-slate-200">
                               {getStationLabel(item.kitchenStation)}
                             </span>
@@ -795,7 +795,7 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {batchGroups.length === 0 ? (
-            <div className="text-center py-24 text-slate-400 text-xs italic bg-slate-100/30 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
+            <div className="text-center py-24 text-slate-500 text-xs italic bg-slate-100/30 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
               <Inbox size={24} />
               Không có món ăn nào đang hoạt động để gộp mẻ
             </div>
@@ -827,7 +827,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Detail list per table */}
                       <div className="mt-4 flex flex-col gap-1.5 border-t border-slate-100 pt-3">
-                        <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Chi tiết bàn:</span>
+                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Chi tiết bàn:</span>
                         {group.items.map((item, idy) => {
                           const noteText = item.kitchenNote || (item as any).kitchen_note;
                           return (

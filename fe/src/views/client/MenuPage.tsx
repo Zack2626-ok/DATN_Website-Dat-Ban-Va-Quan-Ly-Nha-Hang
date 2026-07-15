@@ -48,14 +48,14 @@ export const MenuPage: React.FC = () => {
               placeholder="Tìm kiếm món ăn..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 rounded-xl bg-white text-gray-700 shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="w-full pl-11 pr-4 py-3 rounded-xl bg-white text-slate-600 shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
         </div>
       </section>
 
       {/* Category Filter */}
-      <section className="border-b border-gray-200 bg-white sticky top-[73px] z-30">
+      <section className="border-b border-sky-100 bg-white sticky top-[73px] z-30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex gap-2 overflow-x-auto py-4 scrollbar-thin">
             {categories.map((cat) => (
@@ -65,7 +65,7 @@ export const MenuPage: React.FC = () => {
                 className={`shrink-0 rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
                   activeCategory === cat
                     ? "bg-blue-700 text-white shadow-md"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    : "bg-sky-100 text-slate-500 hover:bg-gray-200"
                 }`}
               >
                 {cat}
@@ -78,10 +78,10 @@ export const MenuPage: React.FC = () => {
       {/* Dishes Grid */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="mb-6 flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            <span className="font-semibold text-gray-700">{filteredDishes.length}</span> món ăn
+          <p className="text-sm text-slate-400">
+            <span className="font-semibold text-slate-600">{filteredDishes.length}</span> món ăn
           </p>
-          <button className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
+          <button className="flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-600">
             <Filter size={14} /> Sắp xếp
           </button>
         </div>
@@ -101,7 +101,7 @@ export const MenuPage: React.FC = () => {
             {filteredDishes.map((dish: any) => (
               <div
                 key={dish.id}
-                className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1"
+                className="group overflow-hidden rounded-xl border border-sky-100 bg-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1"
               >
                 <div className="relative h-48 overflow-hidden">
                   <img
@@ -114,15 +114,15 @@ export const MenuPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="p-4">
-                  <h3 className="font-bold text-gray-700">{dish.name}</h3>
-                  <p className="mt-1 text-sm text-gray-500 line-clamp-2">{dish.description || "Hương vị thơm ngon khó cưỡng từ ResManager"}</p>
+                  <h3 className="font-bold text-slate-600">{dish.name}</h3>
+                  <p className="mt-1 text-sm text-slate-400 line-clamp-2">{dish.description || "Hương vị thơm ngon khó cưỡng từ ResManager"}</p>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-lg font-bold text-blue-700">
                       {dish.price.toLocaleString("vi-VN")}đ
                     </span>
-                    <div className="flex items-center gap-1 text-amber-500">
+                    <div className="flex items-center gap-1 text-sky-600">
                       <Star size={14} className="fill-amber-400" />
-                      <span className="text-sm font-medium text-gray-600">{(4.5 + (dish.price % 5) / 10).toFixed(1)}</span>
+                      <span className="text-sm font-medium text-slate-500">{(4.5 + (dish.price % 5) / 10).toFixed(1)}</span>
                     </div>
                   </div>
                 </div>

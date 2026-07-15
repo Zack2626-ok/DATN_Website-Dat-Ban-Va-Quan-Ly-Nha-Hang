@@ -43,13 +43,13 @@ export const ShiftTab: React.FC<ShiftTabProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Tìm nhân viên, vai trò hoặc ghi chú..."
-            className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-3 text-xs focus:border-[#FF5A5F] focus:outline-none"
+            className="w-full rounded-lg border border-sky-100 py-2 pl-10 pr-3 text-xs focus:border-sky-500 focus:outline-none"
           />
         </div>
 
         <button
           onClick={onOpenShiftClick}
-          className="flex items-center justify-center gap-2 rounded-lg bg-[#FF5A5F] hover:bg-[#e04f53] px-4 py-2 text-xs font-bold text-white transition-all cursor-pointer shadow-sm"
+          className="flex items-center justify-center gap-2 rounded-lg bg-sky-500 hover:bg-[#e04f53] px-4 py-2 text-xs font-bold text-white transition-all cursor-pointer shadow-sm"
         >
           <Plus size={14} />
           Mở ca làm việc mới
@@ -57,10 +57,10 @@ export const ShiftTab: React.FC<ShiftTabProps> = ({
       </div>
 
       {/* Danh sách bảng ca làm việc */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs">
+      <div className="overflow-hidden rounded-xl border border-sky-100 bg-white shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-500 border-b border-gray-200">
+            <thead className="bg-sky-50/50 text-[10px] uppercase font-bold text-slate-400 border-b border-sky-100">
               <tr>
                 <th className="px-5 py-3">Nhân viên</th>
                 <th className="px-5 py-3">Vai trò</th>
@@ -78,7 +78,7 @@ export const ShiftTab: React.FC<ShiftTabProps> = ({
                 <tr>
                   <td colSpan={9} className="px-5 py-10 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="w-6 h-6 border-2 border-[#FF5A5F] border-t-transparent rounded-full animate-spin" />
+                      <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
                       <span>Đang tải thông tin ca làm việc...</span>
                     </div>
                   </td>
@@ -93,17 +93,17 @@ export const ShiftTab: React.FC<ShiftTabProps> = ({
                 filtered.map((row) => {
                   const isActive = !row.end_time;
                   return (
-                    <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-5 py-4 font-bold text-gray-800">{row.employee_name}</td>
-                      <td className="px-5 py-4 text-gray-500 font-medium">{row.employee_role}</td>
-                      <td className="px-5 py-4 text-gray-600 font-mono">{formatDateTime(row.start_time)}</td>
-                      <td className="px-5 py-4 text-gray-600 font-mono">
+                    <tr key={row.id} className="hover:bg-sky-50/50/50 transition-colors">
+                      <td className="px-5 py-4 font-bold text-slate-700">{row.employee_name}</td>
+                      <td className="px-5 py-4 text-slate-400 font-medium">{row.employee_role}</td>
+                      <td className="px-5 py-4 text-slate-500 font-mono">{formatDateTime(row.start_time)}</td>
+                      <td className="px-5 py-4 text-slate-500 font-mono">
                         {row.end_time ? formatDateTime(row.end_time) : <span className="text-gray-400 italic">chưa đóng ca</span>}
                       </td>
-                      <td className="px-5 py-4 text-right font-semibold text-gray-700 font-mono">
+                      <td className="px-5 py-4 text-right font-semibold text-slate-600 font-mono">
                         {formatVnd(row.cash_open)}
                       </td>
-                      <td className="px-5 py-4 text-right font-semibold text-gray-700 font-mono">
+                      <td className="px-5 py-4 text-right font-semibold text-slate-600 font-mono">
                         {row.cash_close !== null ? formatVnd(row.cash_close) : <span className="text-gray-400 italic">-</span>}
                       </td>
                       <td className="px-5 py-4">
@@ -113,13 +113,13 @@ export const ShiftTab: React.FC<ShiftTabProps> = ({
                             Đang mở
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-55 px-2 py-1 text-[10px] font-bold text-gray-600 border border-gray-200">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-55 px-2 py-1 text-[10px] font-bold text-slate-500 border border-sky-100">
                             <Lock size={10} />
                             Đã đóng
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-gray-500 max-w-xs truncate" title={row.note || ""}>
+                      <td className="px-5 py-4 text-slate-400 max-w-xs truncate" title={row.note || ""}>
                         {row.note || <span className="text-gray-300">-</span>}
                       </td>
                       <td className="px-5 py-4 text-center">

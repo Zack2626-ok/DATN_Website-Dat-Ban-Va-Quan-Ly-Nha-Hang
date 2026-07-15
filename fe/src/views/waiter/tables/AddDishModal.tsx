@@ -63,21 +63,21 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
       <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-fade-in flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-sky-50 bg-sky-50/50 px-6 py-4">
           <div className="flex items-center gap-2">
-            <Utensils className="text-[#FF5A5F]" size={20} />
-            <h3 className="text-base font-bold text-gray-800">Thêm món ăn • {tableName}</h3>
+            <Utensils className="text-sky-600" size={20} />
+            <h3 className="text-base font-bold text-slate-700">Thêm món ăn • {tableName}</h3>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/60 hover:text-gray-600 cursor-pointer"
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/60 hover:text-slate-500 cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Search & Categories */}
-        <div className="p-4 border-b border-gray-100 space-y-3">
+        <div className="p-4 border-b border-sky-50 space-y-3">
           <div className="relative">
             <Search className="absolute left-3.5 top-2.5 text-gray-400" size={16} />
             <input
@@ -85,7 +85,7 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
               placeholder="Tìm kiếm món ăn theo tên..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-2 text-sm outline-none focus:border-[#FF5A5F]"
+              className="w-full rounded-xl border border-sky-100 pl-10 pr-4 py-2 text-sm outline-none focus:border-sky-500"
             />
           </div>
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -93,8 +93,8 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
               onClick={() => setSelectedCat("all")}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 selectedCat === "all"
-                  ? "bg-[#FF5A5F] text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ? "bg-sky-500 text-white"
+                  : "bg-sky-100 text-slate-500 hover:bg-gray-200"
               }`}
             >
               Tất cả
@@ -105,8 +105,8 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
                 onClick={() => setSelectedCat(c.id.toString())}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                   selectedCat === c.id.toString()
-                    ? "bg-[#FF5A5F] text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-sky-500 text-white"
+                    : "bg-sky-100 text-slate-500 hover:bg-gray-200"
                 }`}
               >
                 {c.name}
@@ -118,7 +118,7 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
         {/* Danh sách món ăn hoặc Form chọn số lượng */}
         <div className="flex-1 overflow-y-auto p-4">
           {selectedItem ? (
-            <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+            <div className="space-y-4 bg-sky-50/50 p-4 rounded-xl border border-sky-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <img
@@ -127,33 +127,33 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
                     className="w-14 h-14 rounded-xl object-cover"
                   />
                   <div>
-                    <h4 className="font-bold text-gray-900">{selectedItem.name}</h4>
-                    <p className="text-sm font-bold text-[#FF5A5F]">
+                    <h4 className="font-bold text-slate-800">{selectedItem.name}</h4>
+                    <p className="text-sm font-bold text-sky-600">
                       {Number(selectedItem.price).toLocaleString("vi-VN")} đ
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedItem(null)}
-                  className="text-xs font-bold text-gray-500 hover:text-gray-800 underline cursor-pointer"
+                  className="text-xs font-bold text-slate-400 hover:text-slate-700 underline cursor-pointer"
                 >
                   Chọn món khác
                 </button>
               </div>
 
-              <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-200">
-                <span className="text-xs font-bold text-gray-600">Số lượng:</span>
+              <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-sky-100">
+                <span className="text-xs font-bold text-slate-500">Số lượng:</span>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer font-bold"
+                    className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center text-slate-600 hover:bg-gray-200 cursor-pointer font-bold"
                   >
                     <Minus size={14} />
                   </button>
                   <span className="font-black text-base w-6 text-center">{quantity}</span>
                   <button
                     onClick={() => setQuantity((q) => q + 1)}
-                    className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-700 hover:bg-gray-200 cursor-pointer font-bold"
+                    className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center text-slate-600 hover:bg-gray-200 cursor-pointer font-bold"
                   >
                     <Plus size={14} />
                   </button>
@@ -161,13 +161,13 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-600 mb-1">Ghi chú bếp (tùy chọn)</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Ghi chú bếp (tùy chọn)</label>
                 <input
                   type="text"
                   placeholder="VD: ít cay, không hành..."
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs outline-none focus:border-[#FF5A5F] bg-white"
+                  className="w-full rounded-xl border border-sky-100 px-3.5 py-2 text-xs outline-none focus:border-sky-500 bg-white"
                 />
               </div>
 
@@ -175,7 +175,7 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
                 <button
                   type="button"
                   onClick={() => setSelectedItem(null)}
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
+                  className="rounded-xl border border-sky-100 bg-white px-4 py-2 text-xs font-bold text-slate-500 hover:bg-sky-100 cursor-pointer"
                 >
                   Hủy
                 </button>
@@ -183,7 +183,7 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
                   type="button"
                   onClick={handleConfirmAdd}
                   disabled={adding}
-                  className="flex items-center gap-1.5 rounded-xl bg-[#FF5A5F] px-4 py-2 text-xs font-bold text-white hover:bg-[#e0484d] disabled:opacity-50 cursor-pointer shadow-sm"
+                  className="flex items-center gap-1.5 rounded-xl bg-sky-500 px-4 py-2 text-xs font-bold text-white hover:bg-sky-600 disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   <Check size={14} />
                   {adding ? "Đang thêm..." : `Xác nhận thêm (${(selectedItem.price * quantity).toLocaleString()}đ)`}
@@ -196,7 +196,7 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
                 <div
                   key={item.id}
                   onClick={() => setSelectedItem(item)}
-                  className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:border-[#FF5A5F] transition-all cursor-pointer bg-white shadow-xs hover:shadow-md"
+                  className="flex items-center justify-between p-3 rounded-xl border border-sky-100 hover:border-sky-500 transition-all cursor-pointer bg-white shadow-xs hover:shadow-md"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <img
@@ -205,8 +205,8 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
                       className="w-12 h-12 rounded-lg object-cover shrink-0"
                     />
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-800 truncate">{item.name}</p>
-                      <p className="text-xs font-semibold text-[#FF5A5F] mt-0.5">
+                      <p className="text-xs font-bold text-slate-700 truncate">{item.name}</p>
+                      <p className="text-xs font-semibold text-sky-600 mt-0.5">
                         {Number(item.price).toLocaleString("vi-VN")} đ
                       </p>
                     </div>
@@ -223,10 +223,10 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
           )}
         </div>
 
-        <div className="border-t border-gray-100 bg-gray-50 px-6 py-3 flex justify-end">
+        <div className="border-t border-sky-50 bg-sky-50/50 px-6 py-3 flex justify-end">
           <button
             onClick={onClose}
-            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 cursor-pointer"
+            className="rounded-xl border border-sky-100 bg-white px-4 py-2 text-xs font-bold text-slate-500 hover:bg-sky-100 cursor-pointer"
           >
             Đóng
           </button>
