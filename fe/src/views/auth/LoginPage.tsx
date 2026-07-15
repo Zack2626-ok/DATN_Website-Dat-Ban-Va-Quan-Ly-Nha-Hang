@@ -49,14 +49,14 @@ export default function LoginPage() {
           "url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070')",
       }}
     >
-      <div className="absolute inset-0 bg-[#062d2d]/80 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-sky-900/20" />
 
       <div className="relative z-10 w-full max-w-md px-6">
         {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="text-6xl mb-2">🍽️</h1>
 
-          <h1 className="text-5xl font-bold text-[#f4d27c]">ResManager</h1>
+          <h1 className="text-5xl font-bold text-sky-300 drop-shadow-sm">ResManager</h1>
 
           <p className="text-gray-300 mt-4">
             Hệ thống quản lý nhà hàng hiện đại
@@ -75,7 +75,7 @@ export default function LoginPage() {
         p-8
       "
         >
-          <h2 className="text-4xl font-bold text-center text-[#f4d27c]">
+          <h2 className="text-4xl font-bold text-center text-sky-300">
             Đăng nhập
           </h2>
 
@@ -113,7 +113,7 @@ export default function LoginPage() {
               text-white
               placeholder-gray-400
               focus:ring-2
-              focus:ring-[#f4d27c]
+              focus:ring-sky-400
               outline-none
             "
               />
@@ -142,7 +142,7 @@ export default function LoginPage() {
               text-white
               placeholder-gray-400
               focus:ring-2
-              focus:ring-[#f4d27c]
+              focus:ring-sky-400
               outline-none
             "
               />
@@ -155,15 +155,28 @@ export default function LoginPage() {
             w-full
             py-3
             rounded-xl
-            bg-[#f4d27c]
-            text-[#062d2d]
+            bg-sky-500
+            text-white
             font-bold
+            hover:bg-sky-400
             hover:scale-[1.02]
             transition
+            shadow-[0_0_15px_rgba(14,165,233,0.5)]
           "
             >
               {isLoading ? "Đang đăng nhập..." : "Đăng nhập"}
             </button>
+            
+            <div className="mt-4 text-center">
+              <span className="text-gray-300">Chưa có tài khoản? </span>
+              <button
+                type="button"
+                onClick={() => navigate('/auth/register')}
+                className="text-sky-300 font-bold hover:text-sky-200 underline transition cursor-pointer"
+              >
+                Đăng ký ngay
+              </button>
+            </div>
           </form>
         </div>
       </div>

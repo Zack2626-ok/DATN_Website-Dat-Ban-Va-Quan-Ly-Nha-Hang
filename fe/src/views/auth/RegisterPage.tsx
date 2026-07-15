@@ -64,7 +64,7 @@ export default function RegisterPage() {
       }}
     >
       {/* Overlay */}
-      <div className="absolute inset-0 bg-[#062d2d]/80 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-sky-900/20" />
 
       <div
         className="
@@ -83,7 +83,7 @@ export default function RegisterPage() {
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">🍽️</div>
 
-          <h1 className="text-4xl font-bold text-[#f4d27c]">
+          <h1 className="text-4xl font-bold text-sky-300 drop-shadow-sm">
             Đăng ký tài khoản
           </h1>
 
@@ -91,13 +91,6 @@ export default function RegisterPage() {
             Tạo tài khoản nhân viên mới cho hệ thống
           </p>
         </div>
-
-        <button
-          onClick={() => navigate(-1)}
-          className="mb-6 text-[#f4d27c] hover:text-yellow-300 transition"
-        >
-          ← Quay lại
-        </button>
 
         {error && (
           <div className="mb-5 rounded-xl border border-red-400 bg-red-500/20 p-3 text-red-100">
@@ -130,7 +123,7 @@ export default function RegisterPage() {
               text-white
               placeholder-gray-400
               focus:ring-2
-              focus:ring-[#f4d27c]
+              focus:ring-sky-400
               outline-none
             "
             />
@@ -155,7 +148,7 @@ export default function RegisterPage() {
               text-white
               placeholder-gray-400
               focus:ring-2
-              focus:ring-[#f4d27c]
+              focus:ring-sky-400
               outline-none
             "
             />
@@ -181,7 +174,7 @@ export default function RegisterPage() {
               text-white
               placeholder-gray-400
               focus:ring-2
-              focus:ring-[#f4d27c]
+              focus:ring-sky-400
               outline-none
             "
             />
@@ -208,7 +201,7 @@ export default function RegisterPage() {
               text-white
               placeholder-gray-400
               focus:ring-2
-              focus:ring-[#f4d27c]
+              focus:ring-sky-400
               outline-none
             "
             />
@@ -231,7 +224,7 @@ export default function RegisterPage() {
               px-4 py-3
               text-white
               focus:ring-2
-              focus:ring-[#f4d27c]
+              focus:ring-sky-400
               outline-none
             "
             >
@@ -251,17 +244,30 @@ export default function RegisterPage() {
             md:col-span-2
             py-3
             rounded-xl
-            bg-[#f4d27c]
-            text-[#062d2d]
+            bg-sky-500
+            text-white
             font-bold
             text-lg
+            hover:bg-sky-400
             hover:scale-[1.01]
             transition
             disabled:opacity-50
+            shadow-[0_0_15px_rgba(14,165,233,0.5)]
           "
           >
             {loading ? "Đang tạo tài khoản..." : "Tạo tài khoản"}
           </button>
+          
+          <div className="md:col-span-2 mt-2 text-center">
+            <span className="text-gray-300">Đã có tài khoản? </span>
+            <button
+              type="button"
+              onClick={() => navigate('/auth/login')}
+              className="text-sky-300 font-bold hover:text-sky-200 underline transition cursor-pointer"
+            >
+              Đăng nhập ngay
+            </button>
+          </div>
         </form>
       </div>
     </div>

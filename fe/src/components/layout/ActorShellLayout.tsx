@@ -333,13 +333,13 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-transparent text-slate-200 md:flex-row">
-      <aside className="flex w-full shrink-0 flex-col border-b border-white/5 bg-[#1C2541]/40 backdrop-blur-xl md:w-64 md:border-b-0 md:border-r z-20 shadow-xl">
-        <div className="border-b border-white/5 p-5">
-          <Link to={homeLink} className="text-2xl font-playfair font-bold text-amber-400 hover:text-amber-300 drop-shadow-sm tracking-wide">
+    <div className="flex min-h-screen flex-col bg-transparent text-slate-800 md:flex-row">
+      <aside className="flex w-full shrink-0 flex-col border-b border-sky-700 bg-gradient-to-b from-sky-600 to-sky-800 md:w-64 md:border-b-0 md:border-r z-20 shadow-xl">
+        <div className="border-b border-white/10 p-5">
+          <Link to={homeLink} className="text-2xl font-playfair font-bold text-white hover:text-sky-100 drop-shadow-sm tracking-wide">
             ResManager
           </Link>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-sky-200">
             {ROLE_LABELS[displayRole]}
           </p>
         </div>
@@ -353,8 +353,8 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 key={link.to}
                 to={link.to}
                 className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isActive
-                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                  : "text-slate-400 hover:bg-[#0B132B]/60 hover:text-amber-300 border border-transparent"
+                  ? "bg-white/20 text-white font-bold border border-white/10 shadow-sm"
+                  : "text-sky-100 hover:bg-white/10 hover:text-white border border-transparent"
                   }`}
               >
                 <span className="flex items-center gap-2.5">
@@ -362,7 +362,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                   {link.label}
                 </span>
                 {link.badge !== undefined && link.badge > 0 && (
-                  <span className="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  <span className="rounded bg-sky-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                     {link.badge}
                   </span>
                 )}
@@ -371,15 +371,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           })}
         </nav>
 
-        <div className="hidden border-t border-white/5 p-4 text-xs text-slate-400 md:flex md:items-center md:gap-2">
-          <Database size={12} className="text-emerald-400" />
+        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:items-center md:gap-2">
+          <Database size={12} className="text-green-300" />
           Hệ thống online
-          <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+          <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-amber-500/20 bg-[#0B132B]/80 backdrop-blur-xl px-6 py-4 z-10">
+      <div className="flex flex-1 flex-col overflow-hidden relative">
+        <header className="flex items-center justify-between bg-white/80 backdrop-blur-xl px-6 py-4 z-10 border-b border-sky-100 shadow-sm relative">
           <div className="relative hidden max-w-sm flex-1 sm:block">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -387,7 +387,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               placeholder="Tìm kiếm..."
               value={searchQuery}
               onChange={(e) => dispatch(setSearchQuery(e.target.value))}
-              className="w-full rounded-lg border border-white/10 bg-[#1C2541]/50 py-2 pl-9 pr-8 text-sm text-slate-200 placeholder-slate-500 focus:border-amber-500/50 focus:outline-none"
+              className="w-full rounded-lg border border-slate-200 bg-white/50 py-2 pl-9 pr-8 text-sm text-slate-700 placeholder-slate-400 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
             />
             {searchQuery && (
               <button
@@ -405,12 +405,12 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <button
                 type="button"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${dropdownOpen ? "bg-amber-500/20 text-amber-400" : "text-slate-400 hover:bg-[#1C2541] hover:text-amber-300"
+                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${dropdownOpen ? "bg-sky-100 text-sky-600" : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
                   }`}
               >
                 <Bell size={18} />
                 {notifications.filter((n) => !n.is_read).length > 0 && (
-                  <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-amber-500 text-[#0B132B] text-[8px] font-bold px-1 shadow">
+                  <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-sky-500 text-white text-[8px] font-bold px-1 shadow-sm">
                     {notifications.filter((n) => !n.is_read).length}
                   </span>
                 )}
@@ -425,14 +425,14 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                   />
 
                   {/* Dropdown Container */}
-                  <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-[#0B132B]/95 backdrop-blur-xl border border-amber-500/30 shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                     {/* Header */}
-                    <div className="flex items-center justify-between border-b border-white/5 bg-[#1C2541]/80 px-4 py-3">
-                      <span className="text-xs font-playfair font-bold text-amber-400 uppercase tracking-widest">Thông báo</span>
+                    <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+                      <span className="text-xs font-playfair font-bold text-sky-700 uppercase tracking-widest">Thông báo</span>
                       {notifications.filter((n) => !n.is_read).length > 0 && (
                         <button
                           onClick={handleMarkAllAsRead}
-                          className="text-[11px] font-bold text-amber-500 hover:text-amber-300 transition-colors cursor-pointer"
+                          className="text-[11px] font-bold text-sky-600 hover:text-sky-700 transition-colors cursor-pointer"
                         >
                           Đọc tất cả
                         </button>
@@ -440,10 +440,10 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                     </div>
 
                     {/* Notification list */}
-                    <div className="max-h-80 overflow-y-auto divide-y divide-white/5">
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
                       {notifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-8 text-center text-slate-500">
-                          <Bell size={24} className="mb-2 text-slate-600" />
+                          <Bell size={24} className="mb-2 text-slate-400" />
                           <p className="text-xs italic">Không có thông báo nào</p>
                         </div>
                       ) : (
@@ -451,18 +451,18 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                           <div
                             key={item.id}
                             onClick={() => handleNotificationClick(item)}
-                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${item.is_read ? "bg-transparent hover:bg-white/5" : "bg-amber-500/10 hover:bg-amber-500/20"
+                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${item.is_read ? "bg-transparent hover:bg-slate-50" : "bg-sky-50/50 hover:bg-sky-50"
                               }`}
                           >
                             <div className="flex items-start justify-between gap-1.5">
-                              <span className={`text-[12px] leading-tight ${item.is_read ? "text-slate-400 font-medium" : "text-amber-100 font-bold"}`}>
+                              <span className={`text-[12px] leading-tight ${item.is_read ? "text-slate-600 font-medium" : "text-sky-900 font-bold"}`}>
                                 {item.message}
                               </span>
                               {!item.is_read && (
-                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(212,175,55,0.8)] animate-pulse" />
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.6)]" />
                               )}
                             </div>
-                            <span className="text-[10px] text-slate-500 font-medium">
+                            <span className="text-[10px] text-slate-400 font-medium">
                               {formatTime(item.created_at)}
                             </span>
                           </div>
@@ -475,10 +475,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-amber-400">{user?.full_name || "Demo User"}</p>
-                <p className="text-xs text-slate-400">{ROLE_LABELS[displayRole]}</p>
+                <p className="text-sm font-semibold text-slate-700 flex items-center justify-end gap-1.5">
+                  <span>{user?.full_name || "Demo User"}</span>
+                  {user && (
+                    <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-200">
+                      {user.employee_code || `NV${String(user.id).padStart(3, "0")}`}
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-slate-500">{ROLE_LABELS[displayRole]}</p>
               </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1C2541] text-amber-400 border border-amber-500/30">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-50 text-sky-600 border border-sky-100">
                 <User size={16} />
               </div>
               <button
@@ -504,12 +511,12 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
         onClose={() => setShowLogoutModal(false)}
         title="Xác nhận đăng xuất"
         size="sm"
-        theme="dark"
+        theme="light"
         footer={
           <div className="flex w-full gap-3 justify-end">
             <button
               onClick={() => setShowLogoutModal(false)}
-              className="px-4 py-2 rounded-lg text-sm font-medium border border-amber-500/30 text-slate-300 hover:bg-white/5 transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Hủy
             </button>
@@ -525,7 +532,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           </div>
         }
       >
-        <p className="text-slate-300 text-sm">Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?</p>
+        <p className="text-slate-600 text-sm">Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?</p>
       </Modal>
     </div>
   );
