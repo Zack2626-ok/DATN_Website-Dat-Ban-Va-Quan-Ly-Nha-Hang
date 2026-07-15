@@ -525,23 +525,26 @@ export const ChefKitchenQueue: React.FC = () => {
       ) : activeTab === "kanban" ? (
         
         /* 4. Kanban View */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Cột 1: Chờ nấu */}
-          <div className="flex flex-col gap-4 bg-slate-100/70 p-4 rounded-xl border border-slate-200 shadow-inner">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
-              <span className="text-xs font-black uppercase text-blue-600 tracking-wider flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <span className="text-xs font-black uppercase text-blue-700 tracking-wider flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+                </span>
                 Chờ nấu (Pending)
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-[10px] font-bold text-blue-800 border border-blue-200">
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-[10px] font-extrabold text-blue-700 border border-blue-200/60 shadow-sm">
                 {columns.pending.length}
               </span>
             </div>
 
-            <div className="flex flex-col gap-3 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
               {columns.pending.length === 0 ? (
-                <div className="text-center py-24 text-slate-400 text-xs italic flex flex-col items-center gap-2">
-                  <Inbox size={20} />
+                <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
+                  <Inbox size={22} className="text-slate-350" />
                   Chưa có món ăn nào chờ nấu
                 </div>
               ) : (
@@ -550,20 +553,20 @@ export const ChefKitchenQueue: React.FC = () => {
                   return (
                     <div
                       key={item.id}
-                      className={`bg-white border border-slate-200 border-l-4 rounded-xl p-4 flex flex-col justify-between gap-3 shadow hover:shadow-md transition-all hover:-translate-y-0.5 ${
+                      className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
                         isDelayed
-                          ? "border-l-rose-500 border-2 border-rose-500/30 shadow-rose-100/50 animate-pulse"
-                          : "border-l-blue-500"
+                          ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
+                          : "border-slate-200/80 border-l-blue-500 hover:border-blue-300"
                       }`}
                     >
                       <div>
-                        <div className="flex justify-between items-start gap-2">
-                          <span className="text-xs font-extrabold text-slate-700 px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
                             Bàn: {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}
                           </span>
                           <span
-                            className={`text-[10px] font-bold flex items-center gap-1 ${
-                              isDelayed ? "text-rose-500" : "text-slate-400"
+                            className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
+                              isDelayed ? "text-rose-600 bg-rose-50" : "text-slate-500 bg-slate-50 border border-slate-100"
                             }`}
                           >
                             <Clock size={10} /> {timeStr}
@@ -571,19 +574,19 @@ export const ChefKitchenQueue: React.FC = () => {
                         </div>
 
                         {/* Dish Details */}
-                        <div className="mt-2.5">
-                          <div className="flex justify-between items-center text-sm font-extrabold text-slate-800">
-                            <span className="truncate max-w-[80%]">{item.name}</span>
-                            <span className="text-blue-600 text-md bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        <div className="mt-3">
+                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-800">
+                            <span className="truncate max-w-[80%] leading-snug">{item.name}</span>
+                            <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-1 rounded-lg border border-blue-200/60 shadow-sm">
                               x{item.quantity}
                             </span>
                           </div>
-                          <div className="text-[10px] text-slate-500 mt-1 font-semibold flex items-center gap-1.5">
-                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider text-blue-600 border border-slate-200">
+                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
+                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
                               {getStationLabel(item.kitchenStation)}
                             </span>
                             {item.orderType && (
-                              <span className="text-slate-400">
+                              <span className="text-slate-400 font-semibold">
                                 ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
                               </span>
                             )}
@@ -591,7 +594,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                           {/* Notes */}
                           {(item.kitchenNote || (item as any).kitchen_note) && (
-                            <div className="mt-2 text-xs text-red-700 bg-red-50 border-2 border-red-400 px-2.5 py-1.5 rounded-lg font-black animate-pulse flex items-center gap-1.5 shadow-sm">
+                            <div className="mt-2.5 text-[11px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm animate-pulse">
                               📝 {item.kitchenNote || (item as any).kitchen_note}
                             </div>
                           )}
@@ -600,9 +603,9 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       <button
                         onClick={() => handleUpdateStatus(item.id, "cooking")}
-                        className="w-full py-2 bg-[#0f62fe] hover:bg-blue-600 active:scale-95 text-white rounded-lg text-xs font-extrabold tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all"
+                        className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/20 active:scale-95"
                       >
-                        <Play size={12} /> Bắt đầu nấu
+                        <Play size={11} className="fill-white" /> Bắt đầu nấu
                       </button>
                     </div>
                   );
@@ -612,72 +615,72 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {/* Cột 2: Đang nấu */}
-          <div className="flex flex-col gap-4 bg-slate-100/70 p-4 rounded-xl border border-slate-200 shadow-inner">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
-              <span className="text-xs font-black uppercase text-amber-600 tracking-wider flex items-center gap-1.5">
-                <Flame size={13} className="text-amber-500 animate-bounce" />
+          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <span className="text-xs font-black uppercase text-amber-700 tracking-wider flex items-center gap-2">
+                <Flame size={14} className="text-amber-500 animate-pulse" />
                 Đang nấu (Cooking)
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-[10px] font-bold text-amber-800 border border-amber-200">
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-[10px] font-extrabold text-amber-700 border border-amber-200/60 shadow-sm">
                 {columns.cooking.length}
               </span>
             </div>
 
-            <div className="flex flex-col gap-3 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
               {columns.cooking.length === 0 ? (
-                <div className="text-center py-24 text-slate-400 text-xs italic flex flex-col items-center gap-2">
-                  <Inbox size={20} />
+                <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
+                  <Inbox size={22} className="text-slate-350" />
                   Không có món nào đang nấu
                 </div>
               ) : (
                 columns.cooking.map((item) => {
-                  const { timeStr, isDelayed } = getTimerInfo(item.createdAt);
+                  const { timeStr, isDelayed } = getTimerInfo(item.updatedAt || item.createdAt);
                   return (
                     <div
                       key={item.id}
-                      className={`bg-white border border-slate-200 border-l-4 rounded-xl p-4 flex flex-col justify-between gap-3 shadow hover:shadow-md transition-all hover:-translate-y-0.5 ${
+                      className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
                         isDelayed
-                          ? "border-l-rose-500 border-2 border-rose-500/30 shadow-rose-100/50 animate-pulse"
-                          : "border-l-amber-500"
+                          ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
+                          : "border-slate-200/80 border-l-amber-500 hover:border-amber-300"
                       }`}
                     >
                       <div>
-                        <div className="flex justify-between items-start gap-2">
+                        <div className="flex justify-between items-center gap-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-extrabold text-slate-700 px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
+                            <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
                               Bàn: {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}
                             </span>
                             <button
                               onClick={() => handleRecallStatus(item.id)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
+                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 border border-slate-100 hover:border-slate-200/80 transition-all cursor-pointer shadow-sm hover:shadow"
                               title="Hoàn tác về Chờ nấu"
                             >
                               <Undo2 size={11} />
                             </button>
                           </div>
                           <span
-                            className={`text-[10px] font-bold flex items-center gap-1 ${
-                              isDelayed ? "text-rose-500" : "text-amber-600"
+                            className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
+                              isDelayed ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50/55 border border-amber-100/50"
                             }`}
                           >
-                            <Clock size={10} className="animate-spin" style={{ animationDuration: "3s" }} /> {timeStr}
+                            <Clock size={10} className="animate-[spin_4s_linear_infinite]" /> {timeStr}
                           </span>
                         </div>
 
                         {/* Dish Details */}
-                        <div className="mt-2.5">
-                          <div className="flex justify-between items-center text-sm font-extrabold text-slate-800">
-                            <span className="truncate max-w-[80%]">{item.name}</span>
-                            <span className="text-amber-600 text-md bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        <div className="mt-3">
+                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-800">
+                            <span className="truncate max-w-[80%] leading-snug">{item.name}</span>
+                            <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 shadow-sm">
                               x{item.quantity}
                             </span>
                           </div>
-                          <div className="text-[10px] text-slate-500 mt-1 font-semibold flex items-center gap-1.5">
-                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider text-amber-600 border border-slate-200">
+                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
+                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
                               {getStationLabel(item.kitchenStation)}
                             </span>
                             {item.orderType && (
-                              <span className="text-slate-400">
+                              <span className="text-slate-400 font-semibold">
                                 ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
                               </span>
                             )}
@@ -685,7 +688,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                           {/* Notes */}
                           {(item.kitchenNote || (item as any).kitchen_note) && (
-                            <div className="mt-2 text-xs text-red-700 bg-red-50 border-2 border-red-400 px-2.5 py-1.5 rounded-lg font-black animate-pulse flex items-center gap-1.5 shadow-sm">
+                            <div className="mt-2.5 text-[11px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm animate-pulse">
                               📝 {item.kitchenNote || (item as any).kitchen_note}
                             </div>
                           )}
@@ -694,9 +697,9 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       <button
                         onClick={() => handleUpdateStatus(item.id, "done")}
-                        className="w-full py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-lg text-xs font-extrabold tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all"
+                        className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95"
                       >
-                        <Check size={12} /> Hoàn thành
+                        <Check size={11} /> Hoàn thành
                       </button>
                     </div>
                   );
@@ -706,64 +709,64 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {/* Cột 3: Sẵn sàng */}
-          <div className="flex flex-col gap-4 bg-slate-100/70 p-4 rounded-xl border border-slate-200 shadow-inner">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2.5">
-              <span className="text-xs font-black uppercase text-emerald-600 tracking-wider flex items-center gap-1.5">
+          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <span className="text-xs font-black uppercase text-emerald-700 tracking-wider flex items-center gap-2">
                 <CheckCheck size={14} className="text-emerald-500" />
                 Sẵn sàng (Done)
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-[10px] font-extrabold text-emerald-700 border border-emerald-200/60 shadow-sm">
                 {columns.done.length}
               </span>
             </div>
 
-            <div className="flex flex-col gap-3 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
               {columns.done.length === 0 ? (
-                <div className="text-center py-24 text-slate-400 text-xs italic flex flex-col items-center gap-2">
-                  <Inbox size={20} />
+                <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
+                  <Inbox size={22} className="text-slate-350" />
                   Chưa có món nào đã sẵn sàng
                 </div>
               ) : (
                 columns.done.map((item) => {
-                  const { timeStr } = getTimerInfo(item.createdAt);
+                  const { timeStr } = getTimerInfo(item.updatedAt || item.createdAt);
                   return (
                     <div
                       key={item.id}
-                      className="bg-white border border-slate-200 border-l-4 border-l-emerald-500 rounded-xl p-4 flex flex-col justify-between gap-3 shadow hover:shadow-md transition-all hover:-translate-y-0.5"
+                      className="bg-white border-l-[5px] border-l-emerald-500 border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250"
                     >
                       <div>
-                        <div className="flex justify-between items-start gap-2">
+                        <div className="flex justify-between items-center gap-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-extrabold text-slate-700 px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
+                            <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
                               Bàn: {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}
                             </span>
                             <button
                               onClick={() => handleRecallStatus(item.id)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
+                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 border border-slate-100 hover:border-slate-200/80 transition-all cursor-pointer shadow-sm hover:shadow"
                               title="Hoàn tác về Đang nấu"
                             >
                               <Undo2 size={11} />
                             </button>
                           </div>
-                          <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-600">
+                          <span className="text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md text-emerald-600 bg-emerald-55/40 bg-emerald-50 border border-emerald-100">
                             <Clock size={10} /> {timeStr}
                           </span>
                         </div>
 
                         {/* Dish Details */}
-                        <div className="mt-2.5">
-                          <div className="flex justify-between items-center text-sm font-extrabold text-slate-650">
-                            <span className="line-through truncate max-w-[85%]">{item.name}</span>
-                            <span className="text-emerald-600 text-md bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        <div className="mt-3">
+                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-650">
+                            <span className="line-through text-slate-400 truncate max-w-[80%] leading-snug">{item.name}</span>
+                            <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-1 rounded-lg border border-emerald-200/60 shadow-sm">
                               x{item.quantity}
                             </span>
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1 font-semibold flex items-center gap-1.5">
-                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider text-slate-500 border border-slate-200">
+                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
+                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
                               {getStationLabel(item.kitchenStation)}
                             </span>
                             {item.orderType && (
-                              <span>
+                              <span className="text-slate-400 font-semibold">
                                 ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
                               </span>
                             )}
@@ -773,9 +776,9 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       <button
                         onClick={() => handleDeliver(item.id)}
-                        className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white rounded-lg text-xs font-extrabold tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all"
+                        className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-95"
                       >
-                        <CheckCheck size={12} /> Đã phục vụ
+                        <CheckCheck size={11} /> Đã phục vụ
                       </button>
                     </div>
                   );

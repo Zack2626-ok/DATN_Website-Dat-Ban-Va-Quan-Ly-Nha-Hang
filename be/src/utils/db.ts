@@ -261,6 +261,15 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added order_items.is_held");
     }
 
+    const colsUpdatedAt = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'updated_at'`,
+    );
+    if (colsUpdatedAt.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`);
+      console.log("✅ Migration: added order_items.updated_at");
+    }
+
     // Đồng bộ bàn reserved với booking pending/confirmed còn hiệu lực
     await query(`
       UPDATE tables t
