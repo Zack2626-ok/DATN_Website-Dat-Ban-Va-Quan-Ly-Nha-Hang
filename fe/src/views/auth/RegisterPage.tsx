@@ -192,6 +192,10 @@ export default function RegisterPage() {
             <label className="block text-white mb-2">Số điện thoại</label>
 
             <input
+              required
+              type="tel"
+              pattern="[0-9]{10}"
+              title="Số điện thoại phải bao gồm 10 chữ số"
               value={form.phone ?? ""}
               onChange={(e) => setField("phone", e.target.value)}
               placeholder="0912345678"

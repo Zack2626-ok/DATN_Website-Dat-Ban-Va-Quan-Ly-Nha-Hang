@@ -49,6 +49,135 @@ interface ActorShellLayoutProps {
   mainClassName?: string;
 }
 
+/* 
+/** Bell thông báo món xong — chỉ dùng cho waiter * /
+const WaiterNotificationBell: React.FC = () => {
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState<Set<number>>(new Set());
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifications = async () => {
+    try {
+      // const data = await getWaiterNotifications();
+      // setNotifications(data);
+    } catch {
+      // silent fail
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 20000); // poll mỗi 20 giây
+    return () => clearInterval(interval);
+  }, []);
+
+  // Đóng dropdown khi click ra ngoài
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const visible = notifications.filter((n) => !dismissed.has(n.item_id));
+  const count = visible.length;
+
+  const dismissOne = (id: number) => setDismissed((prev) => new Set(prev).add(id));
+  const dismissAll = () => setDismissed(new Set(notifications.map((n) => n.item_id)));
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100 transition-colors"
+        title="Thông báo"
+      >
+        <Bell size={18} />
+        {count > 0 && (
+          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white animate-pulse">
+            {count > 9 ? "9+" : count}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-gray-100 bg-white shadow-xl">
+          {/* Header * /}
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <UtensilsCrossed size={15} className="text-orange-500" />
+              <span className="text-sm font-bold text-gray-800">Món đã xong — cần mang ra</span>
+            </div>
+            {count > 0 && (
+              <button
+                onClick={dismissAll}
+                className="text-[11px] text-blue-600 hover:underline font-medium"
+              >
+                Đánh dấu tất cả
+              </button>
+            )}
+          </div>
+
+          {/* List * /}
+          <div className="max-h-72 overflow-y-auto">
+            {visible.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-8 text-gray-400">
+                <CheckCircle size={28} className="text-green-400" />
+                <p className="text-sm">Không có món nào cần mang ra</p>
+              </div>
+            ) : (
+              visible.map((n) => (
+                <div
+                  key={n.item_id}
+                  className="flex items-start gap-3 border-b border-gray-50 px-4 py-3 hover:bg-orange-50 transition-colors"
+                >
+                  {/* Click vào phần text → điều hướng đến trang Order của bàn * /}
+                  <Link
+                    to={n.table_id ? \`/waiter/orders/\${n.table_id}\` : "/waiter/tables"}
+                    onClick={() => setOpen(false)}
+                    className="flex flex-1 items-start gap-3 min-w-0"
+                  >
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-100">
+                      <UtensilsCrossed size={13} className="text-orange-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{n.item_name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {n.table_name ? \`Bàn \${n.table_name}\` : "Mang về / Tại quầy"}
+                        {" · "}Order #{n.order_id}
+                      </p>
+                      <p className="text-[10px] text-orange-500 font-medium mt-0.5">Nhấn để xem bàn →</p>
+                    </div>
+                  </Link>
+                  <button
+                    onClick={() => dismissOne(n.item_id)}
+                    className="shrink-0 rounded p-1 text-gray-300 hover:text-gray-500 hover:bg-gray-100"
+                    title="Bỏ qua"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer * /}
+          {visible.length > 0 && (
+            <div className="border-t border-gray-100 px-4 py-2.5 text-center">
+              <p className="text-xs text-gray-400">Cập nhật tự động mỗi 20 giây</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+*/
 
 export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   actorRole,

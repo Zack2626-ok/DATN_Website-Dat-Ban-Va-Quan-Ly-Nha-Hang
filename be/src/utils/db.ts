@@ -214,6 +214,49 @@ const createDatabaseTables = async (): Promise<void> => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS events (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      customer_name VARCHAR(255) NOT NULL,
+      customer_phone VARCHAR(50) NOT NULL,
+      event_type VARCHAR(100),
+      guest_count INT NOT NULL,
+      event_date DATE NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      area_id INT,
+      deposit_amount DOUBLE DEFAULT 0,
+      total_estimated_amount DOUBLE DEFAULT 0,
+      status VARCHAR(50) NOT NULL DEFAULT 'lead',
+      sales_id INT,
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS event_menu_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      event_id INT NOT NULL,
+      menu_item_id VARCHAR(50) NOT NULL,
+      quantity INT NOT NULL DEFAULT 1,
+      price DOUBLE NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS event_services (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      event_id INT NOT NULL,
+      service_name VARCHAR(255) NOT NULL,
+      price DOUBLE NOT NULL,
+      vendor_name VARCHAR(255),
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
 };
 
 export const initDb = async (): Promise<boolean> => {
@@ -1564,6 +1607,113 @@ export const updateEventPackage = async (id: number | string, data: any): Promis
       `, [id, item.menu_item_id, item.quantity || 1]);
     }
   }
+  return true;
+};
+
+// ===== EVENT BOOKING OPERATIONS =====
+export const getEvents = async (): Promise<any[]> => {
+  return query(`
+    SELECT e.*, a.name AS area_name, u.full_name AS sales_name 
+    FROM events e
+    LEFT JOIN table_areas a ON e.area_id = a.id
+    LEFT JOIN users u ON e.sales_id = u.id
+    ORDER BY e.event_date ASC, e.start_time ASC
+  `);
+};
+
+export const getEventById = async (id: number | string): Promise<any | null> => {
+  const events = await query(`
+    SELECT e.*, a.name AS area_name, u.full_name AS sales_name 
+    FROM events e
+    LEFT JOIN table_areas a ON e.area_id = a.id
+    LEFT JOIN users u ON e.sales_id = u.id
+    WHERE e.id = ?
+  `, [id]);
+  
+  if (events.length === 0) return null;
+  const event = events[0];
+
+  event.menu_items = await query(`
+    SELECT emi.*, m.name, m.image_url 
+    FROM event_menu_items emi
+    JOIN menu_items m ON emi.menu_item_id = m.id
+    WHERE emi.event_id = ?
+  `, [id]);
+
+  event.services = await query("SELECT * FROM event_services WHERE event_id = ?", [id]);
+
+  return event;
+};
+
+export const createEvent = async (data: any): Promise<any> => {
+  const result = await query(`
+    INSERT INTO events (
+      customer_name, customer_phone, event_type, guest_count, 
+      event_date, start_time, end_time, area_id, 
+      deposit_amount, total_estimated_amount, status, sales_id, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    data.customer_name, data.customer_phone, data.event_type || null, data.guest_count,
+    data.event_date, data.start_time, data.end_time, data.area_id || null,
+    data.deposit_amount || 0, data.total_estimated_amount || 0, data.status || 'lead', data.sales_id || null, data.notes || null
+  ]);
+  const eventId = result.insertId;
+
+  if (data.menu_items && data.menu_items.length > 0) {
+    for (const item of data.menu_items) {
+      await query(`
+        INSERT INTO event_menu_items (event_id, menu_item_id, quantity, price)
+        VALUES (?, ?, ?, ?)
+      `, [eventId, item.menu_item_id, item.quantity || 1, item.price]);
+    }
+  }
+
+  if (data.services && data.services.length > 0) {
+    for (const srv of data.services) {
+      await query(`
+        INSERT INTO event_services (event_id, service_name, price, vendor_name)
+        VALUES (?, ?, ?, ?)
+      `, [eventId, srv.service_name, srv.price, srv.vendor_name || null]);
+    }
+  }
+
+  return getEventById(eventId);
+};
+
+export const updateEvent = async (id: number | string, data: any): Promise<boolean> => {
+  const { menu_items, services, ...eventData } = data;
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (Object.keys(eventData).length > 0) {
+    Object.keys(eventData).forEach((key) => {
+      fields.push(`\`${key}\` = ?`);
+      values.push(eventData[key]);
+    });
+    values.push(id);
+    await query(`UPDATE events SET ${fields.join(", ")} WHERE id = ?`, values);
+  }
+
+  if (menu_items) {
+    await query("DELETE FROM event_menu_items WHERE event_id = ?", [id]);
+    for (const item of menu_items) {
+      await query(`
+        INSERT INTO event_menu_items (event_id, menu_item_id, quantity, price)
+        VALUES (?, ?, ?, ?)
+      `, [id, item.menu_item_id, item.quantity || 1, item.price]);
+    }
+  }
+
+  if (services) {
+    await query("DELETE FROM event_services WHERE event_id = ?", [id]);
+    for (const srv of services) {
+      await query(`
+        INSERT INTO event_services (event_id, service_name, price, vendor_name)
+        VALUES (?, ?, ?, ?)
+      `, [id, srv.service_name, srv.price, srv.vendor_name || null]);
+    }
+  }
+
   return true;
 };
 

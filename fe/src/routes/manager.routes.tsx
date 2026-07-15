@@ -16,7 +16,7 @@ export const ManagerRoutes = () => (
   <Route
     path="/manager"
     element={
-      <ProtectedRoute allowedRoles={["manager"]}>
+      <ProtectedRoute allowedRoles={["manager", "admin"]}>
         <ManagerLayout />
       </ProtectedRoute>
     }
