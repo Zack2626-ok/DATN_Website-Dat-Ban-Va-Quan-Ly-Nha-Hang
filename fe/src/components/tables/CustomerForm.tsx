@@ -33,7 +33,10 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ name, phone, onNameC
       <input
         type="tel"
         value={phone}
-        onChange={(e) => onPhoneChange(e.target.value)}
+        onChange={(e) => {
+          const cleaned = e.target.value.replace(/[^0-9+\s-]/g, '');
+          onPhoneChange(cleaned);
+        }}
         placeholder="Nhập số điện thoại..."
         className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-zinc-200 placeholder-zinc-600 outline-none focus:border-brand-primary/40 focus:ring-2 focus:ring-brand-primary/10 transition-all font-medium text-sm"
       />

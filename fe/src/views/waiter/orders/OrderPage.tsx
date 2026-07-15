@@ -134,7 +134,7 @@ export const OrderPage: React.FC = () => {
             name: i.item_name,
             price: Number(i.unit_price),
             quantity: i.quantity,
-            status: (table?.status === "pending_payment" ? "served" : i.status) as OrderItemStatus,
+            status: i.status as OrderItemStatus, // Lấy đúng status từ DB
             kitchenNote: i.kitchen_note,
             held: Boolean(i.is_held),
           })),
@@ -144,13 +144,7 @@ export const OrderPage: React.FC = () => {
         setOrderItems([]);
       })
       .finally(() => setOrderLoading(false));
-  }, [tableId, table?.status]);
-
-  useEffect(() => {
-    if (table?.status === "pending_payment") {
-      setOrderItems((prev) => prev.map((i) => ({ ...i, status: "served" as OrderItemStatus })));
-    }
-  }, [table?.status]);
+  }, [tableId]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
@@ -342,7 +336,7 @@ export const OrderPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/waiter/tables")}
+            onClick={() => navigate("/waiter/tables", { state: { selectedTableId: tableId } })}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowLeft size={20} className="text-gray-600" />
@@ -359,24 +353,9 @@ export const OrderPage: React.FC = () => {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={handleHold}
-            disabled={pendingCount === 0 || holding}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl font-bold text-sm hover:bg-amber-100 disabled:opacity-50"
-          >
-            {holding ? <Loader2 size={16} className="animate-spin" /> : <Pause size={16} />}
-            Hold ({pendingCount})
-          </button>
-          <button
-            onClick={handleSendHeldToKitchen}
-            disabled={heldCount === 0 || sending}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 disabled:opacity-50"
-          >
-            Gửi hold ({heldCount})
-          </button>
-          <button
             onClick={handleSendToKitchen}
             disabled={pendingCount === 0 || sending}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl font-bold text-sm hover:bg-orange-700 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl font-bold text-sm hover:bg-orange-700 disabled:opacity-50 cursor-pointer"
           >
             {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             Gửi bếp ({pendingCount})
@@ -558,7 +537,7 @@ export const OrderPage: React.FC = () => {
               <span className="text-3xl font-black text-gray-900">{total.toLocaleString("vi-VN")}₫</span>
             </div>
             <button
-              onClick={() => navigate("/waiter/tables")}
+              onClick={() => navigate("/waiter/tables", { state: { selectedTableId: tableId } })}
               className="w-full py-3.5 bg-gray-800 text-white rounded-xl font-bold text-base hover:bg-gray-900"
             >
               Quay lại sơ đồ bàn
