@@ -16,6 +16,7 @@ export interface ResmanagerTable {
   guest_phone?: string | null;
   guest_count?: number | null;
   start_time?: string | null;
+  maintenance_note?: string | null;
   is_merged_primary?: boolean;
   merged_tables?: { id: number; name: string }[];
   is_merged_child?: boolean;
@@ -47,8 +48,13 @@ export const getEmptyTables = async (startTime?: string): Promise<ResmanagerTabl
 export const updateTableStatus = async (
   tableId: number,
   status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance",
+  maintenanceNote?: string,
 ): Promise<void> => {
-  await api.patch(`/v1/tables/${tableId}/status`, { status });
+  const body: Record<string, any> = { status };
+  if (status === "maintenance" && maintenanceNote) {
+    body.maintenance_note = maintenanceNote;
+  }
+  await api.patch(`/v1/tables/${tableId}/status`, body);
 };
 
 /** Chuyển bàn: di chuyển order từ source sang target table */

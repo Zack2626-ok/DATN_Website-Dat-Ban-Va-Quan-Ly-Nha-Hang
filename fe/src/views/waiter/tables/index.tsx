@@ -14,7 +14,12 @@ import {
   Clock,
   Wrench,
   CheckCircle,
+  Phone,
+  UserCheck,
+  ExternalLink,
 } from "lucide-react";
+import { useAppSelector } from "../../../store/hooks";
+import { useNavigate } from "react-router-dom";
 import OpenTableModal from "../../../components/tables/OpenTableModal";
 import { TableArea } from "../../../interfaces/table.interface";
 import { toast } from "react-hot-toast";
@@ -208,9 +213,22 @@ export const WaiterTableMap: React.FC = () => {
     }
   }, [selectedTableId, loadActiveOrder]);
 
+  const searchQuery = useAppSelector((state) => state.ui.searchQuery);
+
   const filteredTables = useMemo(() => {
-    return selectedAreaId ? tables.filter((t) => t.area_id === selectedAreaId) : tables;
-  }, [selectedAreaId, tables]);
+    let result = selectedAreaId ? tables.filter((t) => t.area_id === selectedAreaId) : tables;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      // Smart match: "25" → khớp "B25", "25"; "b25" → khớp "B25"
+      result = result.filter((t) => {
+        const name = t.name.toLowerCase();
+        // Nếu query là số thuần, thử ghép thêm "b" phía trước
+        const isNumeric = /^\d+$/.test(q);
+        return name.includes(q) || (isNumeric && name.includes("b" + q));
+      });
+    }
+    return result;
+  }, [selectedAreaId, tables, searchQuery]);
 
   const selectedTable = useMemo(
     () => tables.find((t) => t.id.toString() === selectedTableId?.toString()) || null,
@@ -340,10 +358,13 @@ export const WaiterTableMap: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (newStatus: "empty" | "serving" | "pending_payment" | "maintenance") => {
+  const handleStatusChange = async (
+    newStatus: "empty" | "serving" | "pending_payment" | "maintenance",
+    maintenanceNote?: string,
+  ) => {
     if (!selectedTableId) return;
     try {
-      await updateTableStatus(Number(selectedTableId), newStatus);
+      await updateTableStatus(Number(selectedTableId), newStatus, maintenanceNote);
       toast.success("Đã cập nhật trạng thái bàn");
       fetchData();
     } catch {
@@ -352,6 +373,21 @@ export const WaiterTableMap: React.FC = () => {
   };
 
   const userInfo = getCurrentUserInfo();
+  const navigate = useNavigate();
+
+  // State modal bảo trì
+  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
+  const [maintenanceReason, setMaintenanceReason] = useState("");
+
+  const handleMaintenanceConfirm = async () => {
+    if (!maintenanceReason.trim()) {
+      toast.error("Vui lòng nhập lý do bảo trì");
+      return;
+    }
+    await handleStatusChange("maintenance", maintenanceReason.trim());
+    setIsMaintenanceModalOpen(false);
+    setMaintenanceReason("");
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -473,9 +509,10 @@ export const WaiterTableMap: React.FC = () => {
                           {t.guest_name && (
                             <p className="font-bold text-gray-900 truncate">Khách: {t.guest_name}</p>
                           )}
-                          {t.guest_phone && (
-                            <p className="text-gray-500 truncate">SĐT: {t.guest_phone}</p>
-                          )}
+                          <p className="text-gray-500 truncate flex items-center gap-1">
+                            <Phone size={10} />
+                            {t.guest_phone || <span className="italic text-gray-400">Không ghi</span>}
+                          </p>
                           {t.start_time && (
                             <p className="text-gray-500 flex items-center gap-1">
                               <Clock size={11} /> Đến: {t.start_time}
@@ -485,8 +522,13 @@ export const WaiterTableMap: React.FC = () => {
                       )}
 
                       {t.status === "maintenance" && (
-                        <div className="mt-3 border-t border-purple-200 pt-2 text-[11px] font-bold text-purple-700 flex items-center gap-1">
-                          <Wrench size={13} /> Bảo trì thiết bị
+                        <div className="mt-3 border-t border-purple-200 pt-2 text-[11px] text-purple-700 space-y-0.5">
+                          <p className="font-bold flex items-center gap-1">
+                            <Wrench size={13} /> Đang bảo trì
+                          </p>
+                          {t.maintenance_note && (
+                            <p className="text-[10px] text-purple-500 italic truncate">↳ {t.maintenance_note}</p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -539,7 +581,7 @@ export const WaiterTableMap: React.FC = () => {
                       Mở bàn phục vụ ngay
                     </button>
                     <button
-                      onClick={() => handleStatusChange("maintenance")}
+                      onClick={() => setIsMaintenanceModalOpen(true)}
                       className="w-full rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Wrench size={14} />
@@ -570,12 +612,12 @@ export const WaiterTableMap: React.FC = () => {
                           {selectedTable.guest_name || "Khách tại bàn"}
                         </span>
                       </div>
-                      {selectedTable.guest_phone && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Số điện thoại:</span>
-                          <span className="font-medium text-gray-800">{selectedTable.guest_phone}</span>
-                        </div>
-                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 flex items-center gap-1"><Phone size={11} /> SĐT:</span>
+                        <span className="font-medium text-gray-800">
+                          {selectedTable.guest_phone || <span className="italic text-gray-400">Không ghi</span>}
+                        </span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Thời gian đến / đặt:</span>
                         <span className="font-semibold text-gray-800">
@@ -583,6 +625,23 @@ export const WaiterTableMap: React.FC = () => {
                         </span>
                       </div>
                     </div>
+
+                    {/* NÚT KHÁCH ĐÃ ĐẾN — chỉ hiện khi bàn là reserved */}
+                    {selectedTable.status === "reserved" && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await handleStatusChange("serving");
+                            toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
+                          } catch {
+                            toast.error("Không thể cập nhật trạng thái");
+                          }
+                        }}
+                        className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
+                      </button>
+                    )}
 
                     {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
                     {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
@@ -615,105 +674,109 @@ export const WaiterTableMap: React.FC = () => {
                       </div>
                     )}
 
-                    {/* DANH SÁCH MÓN ĐÃ GỌI (TÍCH HỢP GỌI MÓN) */}
-                    <div className="border-t border-gray-100 pt-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Utensils size={15} className="text-[#FF5A5F]" />
-                          <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                            Món ăn đã gọi
-                          </h4>
+                    {/* DANH SÁCH MÓN ĐÃ GỌI (chỉ hiển khi đang phục vụ / chờ thanh toán) */}
+                    {(selectedTable.status === "serving" || selectedTable.status === "pending_payment") && (
+                      <div className="border-t border-gray-100 pt-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Utensils size={15} className="text-[#FF5A5F]" />
+                            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+                              Món ăn đã gọi
+                            </h4>
+                          </div>
+                          <button
+                            onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
+                            className="flex items-center gap-1 rounded-lg bg-[#FF5A5F] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-[#e0484d] transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Plus size={13} /> Thêm món
+                          </button>
                         </div>
-                        <button
-                          onClick={() => setIsAddDishOpen(true)}
-                          className="flex items-center gap-1 rounded-lg bg-[#FF5A5F] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-[#e0484d] transition-colors cursor-pointer shadow-2xs"
-                        >
-                          <Plus size={13} /> Thêm món
-                        </button>
-                      </div>
 
-                      {loadingOrder ? (
-                        <div className="py-8 text-center text-xs text-gray-400">
-                          Đang tải danh sách món...
-                        </div>
-                      ) : !activeOrder || activeOrder.items.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
-                          Chưa có món ăn nào trong order. Nhấn &ldquo;Thêm món&rdquo; để gọi món.
-                        </div>
-                      ) : (
-                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                          {activeOrder.items
-                            .filter((i) => i.status !== "voided" && i.status !== "cancelled")
-                            .map((item) => {
-                              const st = ITEM_STATUS_LABELS[item.status] || ITEM_STATUS_LABELS.pending;
-                              return (
-                                <div
-                                  key={item.id}
-                                  className="flex items-center justify-between p-2.5 rounded-xl border border-gray-100 bg-gray-50/50 text-xs"
-                                >
-                                  <div className="min-w-0 flex-1 pr-2">
-                                    <p className="font-bold text-gray-800 truncate">{item.item_name}</p>
-                                    <p className="text-[11px] text-gray-500">
-                                      {item.quantity} x {Number(item.unit_price).toLocaleString()}đ
-                                    </p>
-                                    {item.kitchen_note && (
-                                      <p className="text-[10px] text-amber-600 italic">
-                                        📝 {item.kitchen_note}
+                        {loadingOrder ? (
+                          <div className="py-8 text-center text-xs text-gray-400">
+                            Đang tải danh sách món...
+                          </div>
+                        ) : !activeOrder || activeOrder.items.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center text-xs text-gray-400">
+                            Chưa có món ăn nào trong order. Nhấn &ldquo;Thêm món&rdquo; để gọi món.
+                          </div>
+                        ) : (
+                          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            {activeOrder.items
+                              .filter((i) => i.status !== "voided" && i.status !== "cancelled")
+                              .map((item) => {
+                                const st = ITEM_STATUS_LABELS[item.status] || ITEM_STATUS_LABELS.pending;
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="flex items-center justify-between p-2.5 rounded-xl border border-gray-100 bg-gray-50/50 text-xs"
+                                  >
+                                    <div className="min-w-0 flex-1 pr-2">
+                                      <p className="font-bold text-gray-800 truncate">{item.item_name}</p>
+                                      <p className="text-[11px] text-gray-500">
+                                        {item.quantity} x {Number(item.unit_price).toLocaleString()}đ
                                       </p>
-                                    )}
+                                      {item.kitchen_note && (
+                                        <p className="text-[10px] text-amber-600 italic">
+                                          📝 {item.kitchen_note}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
+                                      >
+                                        {st.label}
+                                      </span>
+                                      <button
+                                        onClick={() => handleVoidItem(item)}
+                                        className="text-[10px] text-rose-500 hover:text-rose-700 underline font-semibold cursor-pointer"
+                                      >
+                                        Xóa món
+                                      </button>
+                                    </div>
                                   </div>
+                                );
+                              })}
+                          </div>
+                        )}
 
-                                  <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                    <span
-                                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
-                                    >
-                                      {st.label}
-                                    </span>
-                                    <button
-                                      onClick={() => handleVoidItem(item)}
-                                      className="text-[10px] text-rose-500 hover:text-rose-700 underline font-semibold cursor-pointer"
-                                    >
-                                      Xóa món
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                        {/* TỔNG TIỀN VÀ IN PHIẾU TẠM TÍNH — chỉ hiển thị khi có món */}
+                        {activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                          <div className="rounded-xl bg-gray-900 p-3.5 text-white flex items-center justify-between mt-3">
+                            <div>
+                              <p className="text-[10px] text-gray-400 uppercase font-bold">Tạm tính order:</p>
+                              <p className="text-base font-black text-[#FF5A5F]">
+                                {(activeOrder?.totalAmount || 0).toLocaleString("vi-VN")} đ
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setIsPrintBillOpen(true)}
+                              className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer shadow-md"
+                            >
+                              <Printer size={14} /> In phiếu tạm tính
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Nút thao tác chuyển/gộp */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <button
+                            onClick={() => setActiveAction("transfer")}
+                            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <ArrowRightLeft size={13} /> Chuyển bàn
+                          </button>
+                          <button
+                            onClick={() => setActiveAction("merge")}
+                            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <GitMerge size={13} /> Gộp bàn
+                          </button>
                         </div>
-                      )}
-
-                      {/* TỔNG TIỀN VÀ IN PHIẾU TẠM TÍNH */}
-                      <div className="rounded-xl bg-gray-900 p-3.5 text-white flex items-center justify-between mt-3">
-                        <div>
-                          <p className="text-[10px] text-gray-400 uppercase font-bold">Tạm tính order:</p>
-                          <p className="text-base font-black text-[#FF5A5F]">
-                            {(activeOrder?.totalAmount || 0).toLocaleString("vi-VN")} đ
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setIsPrintBillOpen(true)}
-                          className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer shadow-md"
-                        >
-                          <Printer size={14} /> In phiếu tạm tính
-                        </button>
                       </div>
-
-                      {/* Nút thao tác chuyển/gộp */}
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <button
-                          onClick={() => setActiveAction("transfer")}
-                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <ArrowRightLeft size={13} /> Chuyển bàn
-                        </button>
-                        <button
-                          onClick={() => setActiveAction("merge")}
-                          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <GitMerge size={13} /> Gộp bàn
-                        </button>
-                      </div>
-                    </div>
+                    )}
                   </>
                 )}
               </div>
@@ -838,6 +901,49 @@ export const WaiterTableMap: React.FC = () => {
           setActiveAction(null);
         }}
       />
+
+      {/* ── Modal Lý Do Bảo Trì ── */}
+      {isMaintenanceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl animate-fade-in p-6 space-y-4">
+            <div className="flex items-center gap-2 text-purple-700">
+              <Wrench size={18} />
+              <h3 className="font-bold text-base">Lý do bảo trì — Bàn {selectedTable?.name}</h3>
+            </div>
+            <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 text-xs text-purple-700">
+              Bàn sẽ được chuyển sang trạng thái <strong>Bảo trì</strong> và tạm thời không nhận khách. Vui lòng ghi rõ lý do để theo dõi.
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+                Lý do bảo trì <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                placeholder="VD: Sửa chữa ghế, vệ sinh bàn, thay bóng đèn..."
+                value={maintenanceReason}
+                onChange={(e) => setMaintenanceReason(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-400 resize-none bg-gray-50"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setIsMaintenanceModalOpen(false); setMaintenanceReason(""); }}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleMaintenanceConfirm}
+                disabled={!maintenanceReason.trim()}
+                className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl font-bold text-sm hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Xác nhận Bảo trì
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

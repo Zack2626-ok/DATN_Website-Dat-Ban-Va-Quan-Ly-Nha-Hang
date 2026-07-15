@@ -15,6 +15,7 @@ import {
   Table2,
   ChevronDown,
   Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
@@ -40,6 +41,10 @@ export const BookingListPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // State cho modal hủy có lý do
+  const [cancelTarget, setCancelTarget] = useState<{ id: number; name: string } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
 
   const getLocalNowString = () => {
     const now = new Date();
@@ -84,14 +89,33 @@ export const BookingListPage: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleStatusChange = async (id: number, newStatus: Booking["status"]) => {
+  const handleStatusChange = async (id: number, newStatus: Booking["status"], reason?: string) => {
     try {
-      await updateBookingStatus(id, newStatus);
+      await updateBookingStatus(id, newStatus, reason);
       setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b)));
       toast.success(`Cập nhật booking #${id} thành công`);
     } catch (err) {
       toast.error("Lỗi cập nhật trạng thái");
     }
+  };
+
+  // Mở modal hủy có lý do
+  const openCancelModal = (id: number, guestName: string) => {
+    setCancelTarget({ id, name: guestName });
+    setCancelReason("");
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!cancelTarget) return;
+    if (!cancelReason.trim()) {
+      toast.error("Vui lòng nhập lý do hủy");
+      return;
+    }
+    await handleStatusChange(cancelTarget.id, "cancelled", cancelReason.trim());
+    setCancelTarget(null);
+    setCancelReason("");
+    // Đóng detail modal nếu đang mở
+    setSelectedBooking(null);
   };
 
   const handleDeleteBooking = async (id: number) => {
@@ -113,6 +137,12 @@ export const BookingListPage: React.FC = () => {
     }
     if (!formData.guest_phone.trim()) {
       toast.error("Vui lòng nhập số điện thoại");
+      return;
+    }
+    // Validate số điện thoại VN: bắt đầu 0, 10 số, chỉ chứa số
+    const phoneRegex = /^(0[3|5|7|8|9])[0-9]{8}$/;
+    if (!phoneRegex.test(formData.guest_phone.replace(/\s/g, ""))) {
+      toast.error("Ố số điện thoại không hợp lệ. Vui lòng nhập số VN (10 số, bắt đầu 03/05/07/08/09)");
       return;
     }
     if (!formData.table_id) {
@@ -166,6 +196,7 @@ export const BookingListPage: React.FC = () => {
     all: bookings.length,
     pending: bookings.filter((b) => b.status === "pending").length,
     confirmed: bookings.filter((b) => b.status === "confirmed").length,
+    arrived: bookings.filter((b) => b.status === "arrived").length,
     completed: bookings.filter((b) => b.status === "completed").length,
     cancelled: bookings.filter((b) => b.status === "cancelled").length,
   };
@@ -203,6 +234,7 @@ export const BookingListPage: React.FC = () => {
             { key: "all", label: "Tất cả" },
             { key: "pending", label: "Chờ xác nhận" },
             { key: "confirmed", label: "Đã xác nhận" },
+            { key: "arrived", label: "Khách đã đến" },
             { key: "completed", label: "Hoàn thành" },
             { key: "cancelled", label: "Đã hủy" },
           ].map((s) => (
@@ -277,7 +309,7 @@ export const BookingListPage: React.FC = () => {
                               <CheckCircle size={16} />
                             </button>
                             <button
-                              onClick={() => handleStatusChange(b.id, "cancelled")}
+                              onClick={() => openCancelModal(b.id, b.guest_name)}
                               className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
                               title="Hủy"
                             >
@@ -288,20 +320,29 @@ export const BookingListPage: React.FC = () => {
                         {b.status === "confirmed" && (
                           <>
                             <button
-                              onClick={() => handleStatusChange(b.id, "completed")}
-                              className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
-                              title="Hoàn thành (Khách đã đến)"
+                              onClick={() => handleStatusChange(b.id, "arrived")}
+                              className="p-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100"
+                              title="Khách đã đến"
                             >
                               <UserCheck size={16} />
                             </button>
                             <button
-                              onClick={() => handleStatusChange(b.id, "cancelled")}
+                              onClick={() => openCancelModal(b.id, b.guest_name)}
                               className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
                               title="Hủy"
                             >
                               <XCircle size={16} />
                             </button>
                           </>
+                        )}
+                        {b.status === "arrived" && (
+                          <button
+                            onClick={() => handleStatusChange(b.id, "completed")}
+                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
+                            title="Hoàn thành"
+                          >
+                            <CheckCircle size={16} />
+                          </button>
                         )}
                         {b.status === "cancelled" && (
                           <button
@@ -378,6 +419,22 @@ export const BookingListPage: React.FC = () => {
                   className="flex-1 py-2.5 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover"
                 >
                   ✓ Xác nhận đặt bàn
+                </button>
+              )}
+              {(selectedBooking.status === "pending" || selectedBooking.status === "confirmed") && (
+                <button
+                  onClick={() => { openCancelModal(selectedBooking.id, selectedBooking.guest_name); }}
+                  className="flex-1 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 border border-red-200"
+                >
+                  ✕ Hủy booking
+                </button>
+              )}
+              {selectedBooking.status === "confirmed" && (
+                <button
+                  onClick={() => { handleStatusChange(selectedBooking.id, "arrived"); setSelectedBooking(null); }}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700"
+                >
+                  ✓ Khách đã đến
                 </button>
               )}
               <button
@@ -564,6 +621,54 @@ export const BookingListPage: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* ── Modal Hủy Booking có Lý Do ── */}
+      <Modal
+        isOpen={!!cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        title="Xác nhận Hủy Booking"
+        size="sm"
+        theme="light"
+      >
+        {cancelTarget && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+              <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-red-700 text-sm">Hủy booking của khách: {cancelTarget.name}</p>
+                <p className="text-xs text-red-500 mt-0.5">Hành động này sẽ đầy booking sang trạng thái "Đã hủy".</p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+                Lý do hủy <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Nhập lý do hủy (VD: Khách gọi báo hủy, khách không đến sau 30 phút...)"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 resize-none bg-gray-50"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCancelTarget(null)}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200"
+              >
+                Giữ lại
+              </button>
+              <button
+                onClick={handleConfirmCancel}
+                disabled={!cancelReason.trim()}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Xác nhận Hủy
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

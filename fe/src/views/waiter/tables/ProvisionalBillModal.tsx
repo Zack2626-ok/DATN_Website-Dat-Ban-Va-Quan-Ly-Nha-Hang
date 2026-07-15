@@ -30,14 +30,8 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
   if (!isOpen) return null;
 
   const now = new Date();
-  const printDateTime = now.toLocaleString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  const printDate = now.toLocaleDateString("vi-VN");
+  const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
   const validItems = items.filter((item) => item.status !== "voided" && item.status !== "cancelled");
   const totalAmount = validItems.reduce(
@@ -46,17 +40,100 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
   );
 
   const handlePrint = () => {
-    window.print();
+    const printContent = document.getElementById("bill-print-area");
+    if (!printContent) return;
+
+    const printWindow = window.open("", "_blank", "width=380,height=600");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="vi">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Phiếu tạm tính - ${tableName}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            width: 80mm;
+            padding: 8px 10px;
+            color: #111;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .lg { font-size: 14px; }
+          .xl { font-size: 16px; }
+          .divider { border-top: 1px dashed #999; margin: 6px 0; }
+          .row { display: flex; justify-content: space-between; margin: 3px 0; }
+          .col-name { flex: 1; padding-right: 6px; }
+          .col-qty { width: 60px; text-align: center; }
+          .col-price { width: 70px; text-align: right; }
+          .total-row { font-size: 15px; font-weight: bold; margin-top: 6px; }
+          .note { font-size: 10px; color: #555; font-style: italic; margin-top: 4px; }
+          .item-note { font-size: 10px; color: #777; padding-left: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold lg">NHÀ HÀNG RESMANAGER</div>
+        <div class="center" style="font-size:10px; margin-bottom:4px;">Hệ thống quản lý nhà hàng đa mô hình</div>
+        <div class="divider"></div>
+        <div class="center bold xl" style="margin: 4px 0;">PHIẾU TẠM TÍNH</div>
+        <div class="center bold" style="font-size:14px; margin-bottom:6px;">${tableName}</div>
+        <div class="divider"></div>
+        <div class="row"><span>Mã Order:</span><span class="bold">#${orderId || "N/A"}</span></div>
+        <div class="row"><span>Ngày:</span><span>${printDate}</span></div>
+        <div class="row"><span>Giờ in:</span><span>${printTime}</span></div>
+        <div class="row"><span>Nhân viên:</span><span>${waiterName || "Nhân viên"}${employeeCode ? " (" + employeeCode + ")" : ""}</span></div>
+        ${guestName || guestPhone || startTime ? `
+        <div class="divider"></div>
+        ${guestName ? `<div class="row"><span>Khách:</span><span class="bold">${guestName}</span></div>` : ""}
+        ${guestPhone ? `<div class="row"><span>SĐT:</span><span>${guestPhone}</span></div>` : ""}
+        ${startTime ? `<div class="row"><span>Giờ đến:</span><span>${startTime}</span></div>` : ""}
+        ` : ""}
+        <div class="divider"></div>
+        <div class="row bold" style="font-size:11px; color:#555;">
+          <span class="col-name">TÊN MÓN</span>
+          <span class="col-qty">SL x ĐG</span>
+          <span class="col-price">T.TIỀN</span>
+        </div>
+        <div class="divider"></div>
+        ${validItems.map(item => `
+          <div class="row">
+            <span class="col-name">${item.item_name || (item as any).menu_item_name || "—"}</span>
+            <span class="col-qty">${item.quantity} × ${Number(item.unit_price).toLocaleString("vi-VN")}</span>
+            <span class="col-price">${(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
+          </div>
+          ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
+        `).join("")}
+        <div class="divider"></div>
+        <div class="row total-row">
+          <span>TỔNG CỘNG:</span>
+          <span>${totalAmount.toLocaleString("vi-VN")} đ</span>
+        </div>
+        <div class="divider"></div>
+        <div class="center note" style="margin-top:8px;">Quý khách vui lòng ra quầy Thu Ngân để thanh toán.</div>
+        <div class="center note">Xin chân thành cảm ơn quý khách!</div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 300);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
       <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-fade-in">
-        {/* Header Modal - Ẩn khi in */}
-        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4 print:hidden">
+        {/* Header Modal */}
+        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4">
           <div className="flex items-center gap-2">
             <Receipt className="text-[#FF5A5F]" size={20} />
-            <h3 className="text-base font-bold text-gray-800">In phiếu tạm tính</h3>
+            <h3 className="text-base font-bold text-gray-800">Phiếu tạm tính — {tableName}</h3>
           </div>
           <button
             onClick={onClose}
@@ -66,131 +143,76 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
           </button>
         </div>
 
-        {/* Nội dung Phiếu Tạm Tính */}
-        <div className="p-6 print:p-0 max-h-[75vh] overflow-y-auto" id="printable-provisional-bill">
-          {/* Tiêu đề */}
-          <div className="text-center border-b border-dashed border-gray-300 pb-4 mb-4">
-            <h2 className="text-lg font-black tracking-wide text-gray-900 uppercase">NHÀ HÀNG RESMANAGER</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Hệ thống quản lý nhà hàng đa mô hình</p>
-            <div className="mt-3 inline-block rounded-md bg-gray-100 px-3 py-1 text-xs font-bold text-gray-800">
-              PHIẾU TẠM TÍNH • {tableName}
-            </div>
+        {/* Preview nội dung phiếu */}
+        <div id="bill-print-area" className="p-6 max-h-[65vh] overflow-y-auto font-mono text-xs text-gray-800">
+          {/* Tên nhà hàng */}
+          <div className="text-center mb-1">
+            <p className="font-black text-sm tracking-wider text-gray-900">NHÀ HÀNG RESMANAGER</p>
+            <p className="text-[10px] text-gray-400">Hệ thống quản lý nhà hàng đa mô hình</p>
+          </div>
+          <div className="border-t border-dashed border-gray-300 my-2" />
+
+          <div className="text-center font-black text-base text-gray-900 mb-0.5">PHIẾU TẠM TÍNH</div>
+          <div className="text-center font-bold text-sm text-[#FF5A5F] mb-3">Bàn {tableName}</div>
+
+          {/* Meta info */}
+          <div className="space-y-1 text-[11px]">
+            <div className="flex justify-between"><span className="text-gray-500">Mã Order:</span><span className="font-bold">#{orderId || "N/A"}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><Clock size={10} /> Ngày giờ:</span><span>{printDate} {printTime}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><User size={10} /> Nhân viên:</span><span>{waiterName}{employeeCode ? ` (${employeeCode})` : ""}</span></div>
           </div>
 
-          {/* Thông tin phiếu */}
-          <div className="space-y-1.5 text-xs text-gray-600 border-b border-dashed border-gray-300 pb-4 mb-4">
-            <div className="flex justify-between">
-              <span>Mã Order:</span>
-              <span className="font-semibold text-gray-800">#{orderId || "N/A"}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="flex items-center gap-1">
-                <Clock size={12} className="text-gray-400" />
-                Ngày giờ in phiếu:
-              </span>
-              <span className="font-bold text-gray-900">{printDateTime}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="flex items-center gap-1">
-                <User size={12} className="text-gray-400" />
-                Nhân viên phục vụ:
-              </span>
-              <span className="font-medium text-gray-800">
-                {waiterName || "Nhân viên"} {employeeCode ? `(${employeeCode})` : ""}
-              </span>
-            </div>
-          </div>
-
-          {/* Thông tin khách */}
+          {/* Khách hàng */}
           {(guestName || guestPhone || startTime) && (
-            <div className="space-y-1 text-xs text-gray-600 border-b border-dashed border-gray-300 pb-4 mb-4 bg-gray-50 rounded-lg p-3">
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Thông tin khách hàng</p>
-              {guestName && (
-                <div className="flex justify-between">
-                  <span className="flex items-center gap-1">
-                    <User size={11} className="text-gray-400" />
-                    Tên khách:
-                  </span>
-                  <span className="font-semibold text-gray-800">{guestName}</span>
-                </div>
-              )}
-              {guestPhone && (
-                <div className="flex justify-between">
-                  <span className="flex items-center gap-1">
-                    <Phone size={11} className="text-gray-400" />
-                    Số điện thoại:
-                  </span>
-                  <span className="font-medium text-gray-800">{guestPhone}</span>
-                </div>
-              )}
-              {startTime && (
-                <div className="flex justify-between">
-                  <span className="flex items-center gap-1">
-                    <Clock size={11} className="text-gray-400" />
-                    Thời gian đến:
-                  </span>
-                  <span className="font-medium text-gray-800">{startTime}</span>
-                </div>
-              )}
-            </div>
+            <>
+              <div className="border-t border-dashed border-gray-300 my-2" />
+              <div className="space-y-1 text-[11px] bg-gray-50 rounded-lg p-2">
+                {guestName && <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><User size={10} /> Khách:</span><span className="font-bold">{guestName}</span></div>}
+                {guestPhone && <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><Phone size={10} /> SĐT:</span><span>{guestPhone}</span></div>}
+                {startTime && <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><Clock size={10} /> Giờ đến:</span><span>{startTime}</span></div>}
+              </div>
+            </>
           )}
 
-          {/* Bảng món ăn - dùng grid 3 cột cố định */}
-          <div className="mb-4">
-            {/* Header bảng */}
-            <div className="grid text-[11px] font-bold text-gray-400 uppercase border-b border-gray-200 pb-2 mb-2" style={{ gridTemplateColumns: "1fr 130px 80px" }}>
-              <span>Tên món</span>
-              <span className="text-center">SL × Đơn giá</span>
-              <span className="text-right">Thành tiền</span>
-            </div>
-
-            {/* Danh sách món */}
-            <div className="space-y-2 max-h-56 overflow-y-auto print:max-h-none">
-              {validItems.length === 0 ? (
-                <p className="text-center text-xs text-gray-400 py-4">Chưa có món ăn nào trong order.</p>
-              ) : (
-                validItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="grid text-xs items-start py-1 border-b border-gray-50"
-                    style={{ gridTemplateColumns: "1fr 130px 80px" }}
-                  >
-                    {/* Tên món */}
-                    <div className="text-gray-900 font-medium pr-2 min-w-0">
-                      <span className="block">{item.item_name || (item as any).menu_item_name || "—"}</span>
-                      {item.kitchen_note && (
-                        <span className="text-[10px] text-gray-400 italic">{item.kitchen_note}</span>
-                      )}
-                    </div>
-                    {/* SL × đơn giá */}
-                    <div className="text-center text-gray-500 whitespace-nowrap">
-                      {item.quantity} × {Number(item.unit_price).toLocaleString("vi-VN")}đ
-                    </div>
-                    {/* Thành tiền */}
-                    <div className="text-right font-semibold text-gray-800 whitespace-nowrap">
-                      {(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ
-                    </div>
+          {/* Danh sách món */}
+          <div className="border-t border-dashed border-gray-300 my-2" />
+          <div className="grid text-[10px] font-bold text-gray-400 uppercase pb-1.5 mb-1 border-b border-gray-200" style={{ gridTemplateColumns: "1fr 110px 70px" }}>
+            <span>TÊN MÓN</span>
+            <span className="text-center">SL × ĐG</span>
+            <span className="text-right">T.TIỀN</span>
+          </div>
+          <div className="space-y-1.5">
+            {validItems.length === 0 ? (
+              <p className="text-center text-gray-400 py-4">Chưa có món ăn nào.</p>
+            ) : (
+              validItems.map((item) => (
+                <div key={item.id}>
+                  <div className="grid text-[11px]" style={{ gridTemplateColumns: "1fr 110px 70px" }}>
+                    <span className="text-gray-900 font-medium truncate pr-1">{item.item_name || (item as any).menu_item_name || "—"}</span>
+                    <span className="text-center text-gray-500 whitespace-nowrap">{item.quantity} × {Number(item.unit_price).toLocaleString("vi-VN")}đ</span>
+                    <span className="text-right font-semibold text-gray-800 whitespace-nowrap">{(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
                   </div>
-                ))
-              )}
-            </div>
+                  {item.kitchen_note && (
+                    <p className="text-[10px] text-amber-500 italic pl-1">↳ {item.kitchen_note}</p>
+                  )}
+                </div>
+              ))
+            )}
           </div>
 
-          {/* Tổng cộng */}
-          <div className="border-t-2 border-gray-800 pt-3 pb-2 flex justify-between items-center">
-            <span className="text-sm font-bold text-gray-900">TỔNG CỘNG:</span>
-            <span className="text-lg font-black text-[#FF5A5F]">
-              {totalAmount.toLocaleString("vi-VN")} đ
-            </span>
+          {/* Tổng */}
+          <div className="border-t-2 border-gray-800 mt-3 pt-2 flex justify-between items-center">
+            <span className="font-black text-sm text-gray-900">TỔNG CỘNG:</span>
+            <span className="font-black text-base text-[#FF5A5F]">{totalAmount.toLocaleString("vi-VN")} đ</span>
           </div>
 
-          <p className="text-[11px] text-center text-gray-400 italic mt-3">
-            Quý khách vui lòng cầm phiếu tạm tính ra quầy Thu Ngân để thanh toán. Xin cảm ơn!
-          </p>
+          <div className="border-t border-dashed border-gray-300 mt-3 pt-2 text-center text-[10px] text-gray-400 italic">
+            Quý khách vui lòng ra quầy Thu Ngân để thanh toán. Xin cảm ơn!
+          </div>
         </div>
 
-        {/* Footer actions - Ẩn khi in */}
-        <div className="flex items-center justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 print:hidden">
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4">
           <button
             onClick={onClose}
             className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
