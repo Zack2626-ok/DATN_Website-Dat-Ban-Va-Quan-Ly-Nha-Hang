@@ -48,7 +48,7 @@ export const getOrderItemsHandler = async (req: Request, res: Response): Promise
 // Tạo order mới (resmanager)
 export const createResmanagerOrderHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone } = req.body;
+    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count } = req.body;
 
     if (!created_by) {
       sendError(res, "created_by (waiter id) là bắt buộc", 400);
@@ -63,6 +63,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       note: note || undefined,
       guest_name: guest_name || null,
       guest_phone: guest_phone || null,
+      guest_count: guest_count ? Number(guest_count) : null,
     });
 
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'

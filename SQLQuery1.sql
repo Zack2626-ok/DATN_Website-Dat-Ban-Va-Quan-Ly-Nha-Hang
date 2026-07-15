@@ -35,6 +35,7 @@ INSERT INTO roles (name, description) VALUES
 CREATE TABLE users (
     id            INT          NOT NULL AUTO_INCREMENT,
     role_id       INT          NOT NULL,
+    employee_code VARCHAR(20)  DEFAULT NULL,
     full_name     VARCHAR(100) NOT NULL,
     email         VARCHAR(150) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -48,18 +49,19 @@ CREATE TABLE users (
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_users_email (email),
+    UNIQUE KEY uq_users_code (employee_code),
     CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- password thật: "123456", hash bcrypt cost 10
-INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES
- (1, N'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
- (2, N'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
- (4, N'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
- (3, N'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
- (3, N'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
- (5, N'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006'),
- (6, N'Sales Event 1',      'sales@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000007');
+INSERT INTO users (role_id, employee_code, full_name, email, password_hash, phone) VALUES
+ (1, 'NV001', N'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
+ (2, 'NV002', N'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
+ (4, 'NV003', N'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
+ (3, 'NV004', N'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
+ (3, 'NV005', N'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
+ (5, 'NV006', N'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006'),
+ (6, 'NV007', N'Sales Event 1',      'sales@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000007');
 
 CREATE TABLE customers (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -190,12 +192,16 @@ CREATE TABLE tables (
     capacity    INT          NOT NULL DEFAULT 4,
     row_pos     CHAR(1)      NOT NULL DEFAULT 'A',
     col_pos     TINYINT      NOT NULL DEFAULT 1,
-    status      ENUM('empty','reserved','serving','pending_payment') NOT NULL DEFAULT 'empty',
-    is_deleted  TINYINT(1)   NOT NULL DEFAULT 0,
-    deleted_at  DATETIME     DEFAULT NULL,
+    status      ENUM('empty','reserved','serving','pending_payment','maintenance') NOT NULL DEFAULT 'empty',
+    is_deleted        TINYINT(1)   NOT NULL DEFAULT 0,
+    deleted_at        DATETIME     DEFAULT NULL,
+    maintenance_note  TEXT         DEFAULT NULL COMMENT 'Lý do bảo trì (nhân viên nhập khi chuyển trạng thái maintenance)',
     PRIMARY KEY (id),
     CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Nếu database đã tồn tại, chạy lệnh sau để thêm cột:
+-- ALTER TABLE tables ADD COLUMN maintenance_note TEXT DEFAULT NULL COMMENT 'Lý do bảo trì';
 
 INSERT INTO tables (area_id, name, capacity, row_pos, col_pos, status) VALUES
  (1,'B01',4,'A',1,'empty'),
@@ -231,6 +237,18 @@ CREATE TABLE bookings (
     CONSTRAINT fk_bookings_promotion FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE SET NULL,
     INDEX idx_bookings_table_time (table_id, start_time, end_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- [TODO BACKEND] Bảng bookings còn thiếu 2 cột — nhóm cần ALTER TABLE trước khi deploy:
+--
+--   1. Thêm cột lý do hủy booking:
+--      ALTER TABLE bookings ADD COLUMN cancel_reason TEXT DEFAULT NULL COMMENT 'Lý do hủy booking';
+--
+--   2. Thêm trạng thái 'arrived' (Khách đã đến — bước trung gian giữa confirmed và completed):
+--      ALTER TABLE bookings MODIFY COLUMN status
+--        ENUM('pending','confirmed','arrived','cancelled','completed')
+--        NOT NULL DEFAULT 'pending';
+-- ============================================================================
 
 INSERT INTO bookings (table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note) VALUES
  (6, 1, 1, N'Nguyen Van A', '0911111111', 4, '2026-06-24 18:00:00', '2026-06-24 21:00:00', 'BK20260624001', 'confirmed', N'Có trẻ em', NULL),

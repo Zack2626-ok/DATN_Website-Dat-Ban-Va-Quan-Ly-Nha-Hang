@@ -303,6 +303,30 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added order_items.is_held");
     }
 
+    // Add employee_code if not exists
+    const empCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'employee_code'`,
+    );
+    if (empCols.length === 0) {
+      await query(`ALTER TABLE users ADD COLUMN employee_code VARCHAR(20) DEFAULT NULL AFTER role_id`);
+      await query(`UPDATE users SET employee_code = CONCAT('NV', LPAD(id, 3, '0')) WHERE employee_code IS NULL`);
+      console.log("✅ Migration: added users.employee_code");
+    }
+
+    // Ensure tables.status includes 'maintenance'
+    await query(`ALTER TABLE tables MODIFY COLUMN status ENUM('empty','reserved','serving','pending_payment','maintenance') NOT NULL DEFAULT 'empty'`);
+
+    // Add guest_count to orders if not exists
+    const guestCountCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'guest_count'`,
+    );
+    if (guestCountCols.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN guest_count INT DEFAULT NULL AFTER guest_phone`);
+      console.log("✅ Migration: added orders.guest_count");
+    }
+
     // Đồng bộ bàn reserved với booking pending/confirmed còn hiệu lực
     await query(`
       UPDATE tables t
@@ -333,9 +357,11 @@ const mapRoleName = (roleId: any): string => {
 
 const mapUserRow = (user: any): User => {
   const roleName = user.role_name || mapRoleName(user.role_id);
+  const empCode = user.employee_code || `NV${String(user.id).padStart(3, "0")}`;
   return {
     ...user,
     id: String(user.id),
+    employee_code: empCode,
     password: user.password || user.password_hash,
     role: roleName,
     role_name: roleName,
@@ -1015,10 +1041,39 @@ export const getResmanagerTableById = async (id: number): Promise<any | null> =>
 
 export const updateResmanagerTableStatus = async (
   id: number,
-  status: "empty" | "reserved" | "serving" | "pending_payment",
+  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance",
+  maintenanceNote?: string,
 ): Promise<boolean> => {
-  const result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
-  
+  let result;
+
+  try {
+    if (status === "maintenance" && maintenanceNote) {
+      // Cập nhật status + lý do bảo trì
+      result = await query<any>(
+        "UPDATE tables SET status = ?, maintenance_note = ? WHERE id = ? AND is_deleted = 0",
+        [status, maintenanceNote, id]
+      );
+    } else if (status === "empty") {
+      // Xóa note khi bàn được đưa về trống
+      result = await query<any>(
+        "UPDATE tables SET status = ?, maintenance_note = NULL WHERE id = ? AND is_deleted = 0",
+        [status, id]
+      );
+    } else {
+      result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
+    }
+  } catch (err: any) {
+    // Fallback: nếu cột maintenance_note chưa tồn tại → chỉ update status
+    const isUnknownColumn =
+      err?.message?.includes("Unknown column") || err?.code === "ER_BAD_FIELD_ERROR";
+    if (isUnknownColumn) {
+      console.warn("[db] maintenance_note column not found, falling back to status-only update. Run: ALTER TABLE tables ADD COLUMN maintenance_note TEXT DEFAULT NULL;");
+      result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
+    } else {
+      throw err;
+    }
+  }
+
   if (result.affectedRows > 0) {
     if (status === "empty") {
       // Hủy bỏ các booking liên quan đến bàn này nếu chuyển về trống
@@ -1212,10 +1267,19 @@ export const deleteCancelledBooking = async (id: number): Promise<boolean> => {
 export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any[]> => {
   let sql = `
     SELECT t.*, a.name AS area_name,
-           b.guest_name, b.guest_phone
+           COALESCE(o.guest_name, b.guest_name) AS guest_name,
+           COALESCE(o.guest_phone, b.guest_phone) AS guest_phone,
+           COALESCE(o.guest_count, b.party_size) AS guest_count,
+           DATE_FORMAT(COALESCE(o.created_at, b.start_time), '%H:%i %d/%m/%Y') AS start_time
     FROM tables t
     LEFT JOIN table_areas a ON t.area_id = a.id
-    LEFT JOIN bookings b ON b.table_id = t.id AND b.status IN ('pending', 'confirmed') AND NOW() BETWEEN b.start_time AND b.end_time
+    LEFT JOIN orders o ON o.table_id = t.id AND o.status IN ('open', 'serving', 'pending_payment')
+    LEFT JOIN bookings b ON b.id = (
+      SELECT id FROM bookings
+      WHERE table_id = t.id AND status IN ('pending', 'confirmed')
+      ORDER BY start_time ASC
+      LIMIT 1
+    )
     WHERE t.is_deleted = 0
   `;
   const params: any[] = [];
@@ -1362,7 +1426,11 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
 
 export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> => {
   return query(`
-    SELECT oi.*, m.name, m.price, m.image_url, m.kitchen_station
+    SELECT oi.*,
+           m.name AS item_name,
+           m.price AS menu_price,
+           m.image_url,
+           m.kitchen_station
     FROM order_items oi
     JOIN menu_items m ON oi.menu_item_id = m.id
     WHERE oi.order_id = ?
@@ -1371,8 +1439,8 @@ export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> =
 
 export const createResmanagerOrder = async (data: any): Promise<any> => {
   const result = await query(`
-    INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'open')
+    INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
   `, [
     data.table_id,
     data.customer_id || null,
@@ -1380,7 +1448,8 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     data.order_type || 'dine_in',
     data.note || null,
     data.guest_name || null,
-    data.guest_phone || null
+    data.guest_phone || null,
+    data.guest_count || null
   ]);
   return { id: result.insertId, ...data, status: 'open' };
 };

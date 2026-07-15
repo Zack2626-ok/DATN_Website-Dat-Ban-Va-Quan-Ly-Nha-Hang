@@ -1,5 +1,5 @@
 import React from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { Bell, Database, LogOut, Search, User, X } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
@@ -187,6 +187,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 }) => {
   const location = useLocation();
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || actorRole;
@@ -226,25 +227,29 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     }
   };
 
-  // Fetch notifications and poll
+  // Fetch notifications and poll every 30s (only when tab is visible)
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   React.useEffect(() => {
     let active = true;
-    
+
     const fetchNotifications = async () => {
+      // Không fetch khi tab bị ẩn (tiết kiệm request)
+      if (document.visibilityState === "hidden") return;
       try {
         const data = await getNotificationsApi(displayRole);
         if (!active) return;
-        
+
         const unreadCount = data.filter((n: any) => !n.is_read).length;
-        
+
         setNotifications((prev) => {
           const prevUnreadCount = prev.filter((n: any) => !n.is_read).length;
-          
+
           if (prev.length > 0 && unreadCount > prevUnreadCount) {
             const newN = data.filter(
               (item: any) => !item.is_read && !prev.some((oldItem) => oldItem.id === item.id)
             );
-            
+
             newN.forEach((notif: any) => {
               toast.success(notif.message, { duration: 5000 });
             });
@@ -257,12 +262,18 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       }
     };
 
+    // Xóa interval cũ nếu có (tránh chồng)
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 5000);
+    intervalRef.current = setInterval(fetchNotifications, 30000); // 30 giây
 
     return () => {
       active = false;
-      clearInterval(interval);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [displayRole]);
 
@@ -275,6 +286,40 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       );
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
+    }
+  };
+
+  // Parse tên bàn từ message: "Bàn B02" hoặc "bàn B02"
+  const parseTableNameFromMessage = (message: string): string | null => {
+    const match = message.match(/[Bb]àn\s+([A-Z0-9]+)/i);
+    return match ? match[1].toUpperCase() : null;
+  };
+
+  // Click notification: mark as read + navigate tới trang gọi món (waiter)
+  const handleNotificationClick = async (item: any) => {
+    // Mark as read
+    await handleMarkAsRead(item.id, item.is_read);
+    setDropdownOpen(false);
+
+    // Chỉ navigate nếu là waiter
+    if (displayRole !== "waiter" && displayRole !== "manager" && displayRole !== "admin") return;
+
+    // Parse tên bàn từ message
+    const tableName = parseTableNameFromMessage(item.message || "");
+    if (!tableName) return;
+
+    // Lấy danh sách bàn để tìm tableId
+    try {
+      const { getTablesV1 } = await import("../../services/tableService");
+      const tables = await getTablesV1();
+      const found = tables.find(
+        (t: any) => t.name.toUpperCase() === tableName
+      );
+      if (found) {
+        navigate(`/waiter/orders/${found.id}`);
+      }
+    } catch (err) {
+      console.error("Failed to navigate to order page:", err);
     }
   };
 
@@ -407,7 +452,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                         notifications.map((item) => (
                           <div
                             key={item.id}
-                            onClick={() => handleMarkAsRead(item.id, item.is_read)}
+                            onClick={() => handleNotificationClick(item)}
                             className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${
                               item.is_read ? "bg-white hover:bg-gray-50" : "bg-blue-50/40 hover:bg-blue-50/70"
                             }`}
@@ -433,7 +478,14 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-gray-700">{user?.full_name || "Demo User"}</p>
+                <p className="text-sm font-semibold text-gray-700 flex items-center justify-end gap-1.5">
+                  <span>{user?.full_name || "Demo User"}</span>
+                  {user && (
+                    <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                      {user.employee_code || `NV${String(user.id).padStart(3, "0")}`}
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-400">{ROLE_LABELS[displayRole]}</p>
               </div>
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500">
