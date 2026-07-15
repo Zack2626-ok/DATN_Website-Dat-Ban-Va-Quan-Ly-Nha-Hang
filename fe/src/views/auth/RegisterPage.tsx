@@ -30,6 +30,16 @@ export default function RegisterPage() {
     e.preventDefault();
     setError("");
     setSuccess("");
+    
+    if (form.phone) {
+      const cleanedPhone = form.phone.trim();
+      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        setError("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       await registerApi(form);
@@ -190,7 +200,7 @@ export default function RegisterPage() {
               pattern="[0-9]{10}"
               title="Số điện thoại phải bao gồm 10 chữ số"
               value={form.phone ?? ""}
-              onChange={(e) => setField("phone", e.target.value)}
+              onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
               placeholder="0912345678"
               className="
               w-full
