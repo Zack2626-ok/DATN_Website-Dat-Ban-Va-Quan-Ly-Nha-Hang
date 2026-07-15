@@ -6,7 +6,7 @@ export const ChefRoutes = () => (
   <Route
     path="/chef"
     element={
-      <ProtectedRoute allowedRoles={["chef"]}>
+      <ProtectedRoute allowedRoles={["chef", "manager", "admin"]}>
         <ChefLayout />
       </ProtectedRoute>
     }

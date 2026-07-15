@@ -15,17 +15,19 @@ import tableRoutes from "./routes/table.routes";
 import menuRoutes from "./routes/menu.routes";
 import inventoryRoutes from "./routes/inventory.routes";
 import paymentRoutes from "./routes/payment.routes";
+import { initDb } from "./utils/db";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
 
-// Tải biến môi trường từ file v
 import bookingRoutes from "./routes/booking.routes";
-import waitlistRoutes from "./routes/waitlist.routes";
 import resmanagerTableRoutes from "./routes/resmanager-table.routes";
 import waiterRoutes from "./routes/waiter.routes";
 import invoiceRoutes from "./routes/invoice.routes";
 import eventConfigRoutes from "./routes/eventConfig.routes";
+import eventRoutes from "./routes/event.routes";
+import customerAuthRoutes from "./routes/customerAuth.routes";
+import customerPublicRoutes from "./routes/customerPublic.routes";
 import notificationRoutes from "./routes/notification.routes";
-import { initDb } from "./utils/db";
+
 
 dotenv.config();
 
@@ -38,7 +40,7 @@ console.log("Server configuration:", {
   nodeEnv: process.env.NODE_ENV || "development",
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
   dbHost: process.env.DB_HOST || "localhost",
-  dbName: process.env.DB_NAME || "todo_app",
+  dbName: process.env.DB_NAME || "resmanager",
 });
 
 const startServer = (port: number): void => {
@@ -73,7 +75,11 @@ initDb()
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: [
+      process.env.FRONTEND_URL || "http://localhost:5173",
+      "http://localhost:5173",
+      "http://localhost:5174",
+    ],
     credentials: true,
   }),
 );
@@ -93,14 +99,17 @@ app.use("/api/payments", paymentRoutes)
 // Specific routes before wildcard /api fallback
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
+app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
 app.use("/api/v1/tables", resmanagerTableRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
-app.use("/api/v1/waitlist", waitlistRoutes);
 app.use("/api/v1/waiter", waiterRoutes);
+
+app.use("/api/v1/customer", customerAuthRoutes);
+app.use("/api/v1/public", customerPublicRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

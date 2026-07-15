@@ -6,7 +6,7 @@ export const CashierRoutes = () => (
   <Route
     path="/cashier"
     element={
-      <ProtectedRoute allowedRoles={["cashier"]}>
+      <ProtectedRoute allowedRoles={["cashier", "manager", "admin"]}>
         <CashierLayout />
       </ProtectedRoute>
     }

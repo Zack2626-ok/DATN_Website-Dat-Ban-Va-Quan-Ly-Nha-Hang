@@ -9,14 +9,13 @@ import {
   AnalyticsView,
   TableMapIndex,
 } from "../views/manager";
-import { BookingListPage, WaitlistPage } from "../views/waiter";
 import UserManagement from "../views/manager/UserManagement";
 
 export const ManagerRoutes = () => (
   <Route
     path="/manager"
     element={
-      <ProtectedRoute allowedRoles={["manager"]}>
+      <ProtectedRoute allowedRoles={["manager", "admin"]}>
         <ManagerLayout />
       </ProtectedRoute>
     }
@@ -24,8 +23,6 @@ export const ManagerRoutes = () => (
     <Route index element={<Navigate to="/manager/dashboard" replace />} />
     <Route path="dashboard" element={<ManagerDashboard />} />
     <Route path="tables" element={<TableMapIndex />} />
-    <Route path="bookings" element={<BookingListPage />} />
-    <Route path="waitlist" element={<WaitlistPage />} />
     <Route path="staff" element={<UserManagement />} />
     <Route path="menu" element={<MenuManagement />} />
     <Route path="shifts" element={<ShiftManagement />} />
@@ -33,3 +30,4 @@ export const ManagerRoutes = () => (
     <Route path="analytics" element={<AnalyticsView />} />
   </Route>
 );
+

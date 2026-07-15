@@ -28,6 +28,11 @@ declare global {
   namespace Express {
     interface Request {
       user?: JwtPayload;
+      customer?: {
+        id: number;
+        email: string;
+        name: string;
+      };
     }
   }
 }
