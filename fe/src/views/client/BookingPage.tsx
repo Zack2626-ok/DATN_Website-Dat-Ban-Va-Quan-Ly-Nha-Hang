@@ -31,7 +31,7 @@ export const BookingPage: React.FC = () => {
   const [promotionsList, setPromotionsList] = useState<any[]>([]);
   const [menuItemsList, setMenuItemsList] = useState<any[]>([]);
   const [selectedPromoId, setSelectedPromoId] = useState<string>("");
-  const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: string]: { name: string; price: number; quantity: number } }>({});
+  const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: string]: { name: string; price: number; quantity: number; image_url?: string; description?: string } }>({});
   const [showMenuModal, setShowMenuModal] = useState(false);
 
   // Fetch promotions and menu items
@@ -800,12 +800,38 @@ export const BookingPage: React.FC = () => {
 
                     {/* Hiển thị danh sách món đã chọn */}
                     {Object.keys(preOrderedDishes).length > 0 && (
-                      <div className="mt-4 space-y-2 max-h-48 overflow-y-auto bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                        {Object.entries(preOrderedDishes).map(([idStr, d]) => (
-                          <div key={idStr} className="flex justify-between items-center text-xs text-gray-700">
-                            <span className="font-semibold">{d.name}</span>
-                            <div className="flex items-center gap-3">
-                              <span className="text-gray-500">{Number(d.price).toLocaleString("vi-VN")}đ x {d.quantity}</span>
+                      <div className="mt-4 space-y-2.5 max-h-60 overflow-y-auto bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        {Object.entries(preOrderedDishes).map(([idStr, d]) => {
+                          const imageUrl = d.image_url
+                            ? (d.image_url.startsWith("http") ? d.image_url : `${import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000"}/uploads/${d.image_url}`)
+                            : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120";
+
+                          return (
+                            <div key={idStr} className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-gray-100 shadow-3xs transition-all hover:border-gray-200">
+                              {/* Dish Image */}
+                              <img
+                                src={imageUrl}
+                                alt={d.name}
+                                className="w-12 h-12 rounded-lg object-cover bg-gray-100 border border-gray-100/80 shrink-0"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120";
+                                }}
+                              />
+                              
+                              {/* Dish Info */}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-extrabold text-slate-800 text-xs truncate leading-snug">{d.name}</h4>
+                                {d.description && (
+                                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{d.description}</p>
+                                )}
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="text-blue-700 font-bold text-[10px]">{Number(d.price).toLocaleString("vi-VN")}đ</span>
+                                  <span className="text-gray-400 text-[10px]">x</span>
+                                  <span className="text-gray-700 font-bold text-[10px] bg-gray-100 px-1.5 py-0.5 rounded-md">SL: {d.quantity}</span>
+                                </div>
+                              </div>
+
+                              {/* Action Button */}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -815,13 +841,14 @@ export const BookingPage: React.FC = () => {
                                     return copy;
                                   });
                                 }}
-                                className="text-red-500 hover:text-red-750 transition-colors"
+                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors shrink-0"
+                                title="Xóa món ăn"
                               >
-                                <Trash2 size={14} />
+                                <Trash2 size={13} />
                               </button>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -947,30 +974,52 @@ export const BookingPage: React.FC = () => {
               ) : (
                 menuItemsList.map((item) => {
                   const qty = preOrderedDishes[item.id]?.quantity || 0;
+                  const imageUrl = item.image_url
+                    ? (item.image_url.startsWith("http") ? item.image_url : `${import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000"}/uploads/${item.image_url}`)
+                    : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120";
+
                   return (
-                    <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                      <div>
-                        <h4 className="text-sm font-semibold text-gray-800">{item.name}</h4>
-                        <p className="text-xs text-gray-500">{Number(item.price).toLocaleString("vi-VN")}đ</p>
+                    <div key={item.id} className="flex items-center gap-4 border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+                      {/* Dish image */}
+                      <img
+                        src={imageUrl}
+                        alt={item.name}
+                        className="w-16 h-16 rounded-xl object-cover bg-gray-50 border border-gray-100 shrink-0"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120";
+                        }}
+                      />
+
+                      {/* Dish details */}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-bold text-gray-900 truncate leading-snug">{item.name}</h4>
+                        {item.category_name && (
+                          <span className="inline-block text-[9px] font-extrabold text-blue-600 bg-blue-50/60 border border-blue-100 rounded-md px-1.5 py-0.5 mt-1">
+                            {item.category_name}
+                          </span>
+                        )}
+                        <p className="text-xs text-gray-400 truncate mt-1">{item.description || "Món ăn ngon miệng từ thực đơn nhà hàng"}</p>
+                        <p className="text-xs font-black text-rose-600 mt-1">{Number(item.price).toLocaleString("vi-VN")}đ</p>
                       </div>
-                      <div className="flex items-center gap-2">
+
+                      <div className="flex items-center gap-2 shrink-0">
                         {qty > 0 ? (
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => {
-                                setPreOrderedDishes((prev) => {
-                                  const current = prev[item.id];
-                                  if (current.quantity <= 1) {
-                                    const copy = { ...prev };
-                                    delete copy[item.id];
-                                    return copy;
-                                  }
-                                  return {
-                                    ...prev,
-                                    [item.id]: { ...current, quantity: current.quantity - 1 },
-                                  };
-                                });
+                                  setPreOrderedDishes((prev) => {
+                                    const current = prev[item.id];
+                                    if (current.quantity <= 1) {
+                                      const copy = { ...prev };
+                                      delete copy[item.id];
+                                      return copy;
+                                    }
+                                    return {
+                                      ...prev,
+                                      [item.id]: { ...current, quantity: current.quantity - 1 },
+                                    };
+                                  });
                               }}
                               className="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
                             >
@@ -980,13 +1029,13 @@ export const BookingPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => {
-                                setPreOrderedDishes((prev) => {
-                                  const current = prev[item.id];
-                                  return {
-                                    ...prev,
-                                    [item.id]: { ...current, quantity: current.quantity + 1 },
-                                  };
-                                });
+                                  setPreOrderedDishes((prev) => {
+                                    const current = prev[item.id];
+                                    return {
+                                      ...prev,
+                                      [item.id]: { ...current, quantity: current.quantity + 1 },
+                                    };
+                                  });
                               }}
                               className="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
                             >
@@ -999,7 +1048,13 @@ export const BookingPage: React.FC = () => {
                             onClick={() => {
                               setPreOrderedDishes((prev) => ({
                                 ...prev,
-                                [item.id]: { name: item.name, price: item.price, quantity: 1 },
+                                [item.id]: { 
+                                  name: item.name, 
+                                  price: item.price, 
+                                  quantity: 1,
+                                  image_url: item.image_url,
+                                  description: item.description
+                                },
                               }));
                             }}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-50 px-3 py-1.5 text-xs font-bold transition-all"
