@@ -154,9 +154,9 @@ export const AccountPage: React.FC = () => {
     e.preventDefault();
     if (profileForm.phone && profileForm.phone.trim()) {
       const cleanedPhone = profileForm.phone.trim().replace(/[\s-]/g, '');
-      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
-      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
-        toast.error("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+      const phoneRegex = /^(03|09)\d{8}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        toast.error("Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)");
         return;
       }
     }

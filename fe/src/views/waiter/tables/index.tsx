@@ -313,7 +313,7 @@ export const WaiterTableMap: React.FC = () => {
       );
       toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
-      loadActiveOrder(selectedTableId);
+      navigate(`/waiter/orders/${selectedTableId}`);
     } catch (err) {
       toast.error("Không thể mở bàn. Vui lòng thử lại.");
       console.error(err);
@@ -671,7 +671,7 @@ export const WaiterTableMap: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Thời gian đến / đặt:</span>
+                        <span className="text-gray-500">Thời gian đến:</span>
                         <span className="font-semibold text-gray-800">
                           {selectedTable.start_time || "Vừa đến"}
                         </span>
@@ -684,10 +684,41 @@ export const WaiterTableMap: React.FC = () => {
                         <button
                           onClick={async () => {
                             try {
-                              await handleStatusChange("serving");
+                              const userId = userInfo?.id || 1;
+                              const newOrder = await createOrder({
+                                table_id: Number(selectedTable.id),
+                                created_by: userId,
+                                order_type: "dine_in",
+                                guest_name: selectedTable.guest_name || undefined,
+                                guest_phone: selectedTable.guest_phone || undefined,
+                                guest_count: selectedTable.guest_count || undefined,
+                              });
+
+                              try {
+                                if (selectedTable.guest_count && selectedTable.guest_count > 0) {
+                                  const menuItems = await getWaiterMenuItems();
+                                  const wetTissue = menuItems.find(
+                                    (m) =>
+                                      m.name.toLowerCase().includes("khăn ướt") ||
+                                      m.name.toLowerCase().includes("khăn lạnh")
+                                  );
+                                  if (wetTissue) {
+                                    await addOrderItem(newOrder.id, {
+                                      menu_item_id: wetTissue.id,
+                                      quantity: selectedTable.guest_count,
+                                      unit_price: wetTissue.price,
+                                      kitchen_note: "Mặc định theo số khách",
+                                    });
+                                  }
+                                }
+                              } catch (err) {
+                                console.warn("Lỗi thêm khăn ướt mặc định:", err);
+                              }
+
                               toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
+                              navigate(`/waiter/orders/${selectedTable.id}`);
                             } catch {
-                              toast.error("Không thể cập nhật trạng thái");
+                              toast.error("Không thể xác nhận khách đến");
                             }
                           }}
                           className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"

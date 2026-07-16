@@ -1356,8 +1356,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     )
     LEFT JOIN bookings b ON b.id = (
       SELECT id FROM bookings
-      WHERE table_id = t.id AND status IN ('pending', 'confirmed')
-      ORDER BY start_time ASC
+      WHERE table_id = t.id AND (
+        status IN ('pending', 'confirmed') OR 
+        (t.status IN ('serving', 'pending_payment') AND status = 'completed')
+      )
+      ORDER BY FIELD(status, 'pending', 'confirmed', 'completed'), start_time DESC
       LIMIT 1
     )
     WHERE t.is_deleted = 0

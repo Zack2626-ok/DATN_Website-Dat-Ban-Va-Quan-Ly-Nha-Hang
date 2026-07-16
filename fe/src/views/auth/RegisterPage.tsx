@@ -33,9 +33,9 @@ export default function RegisterPage() {
     
     if (form.phone) {
       const cleanedPhone = form.phone.trim();
-      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+      const phoneRegex = /^(03|09)\d{8}$/;
       if (!phoneRegex.test(cleanedPhone)) {
-        setError("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+        setError("Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)");
         return;
       }
     }

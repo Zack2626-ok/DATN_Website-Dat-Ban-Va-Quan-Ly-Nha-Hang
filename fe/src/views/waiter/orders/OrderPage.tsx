@@ -170,6 +170,9 @@ export const OrderPage: React.FC = () => {
           table_id: Number(tableId),
           created_by: getCurrentUserId(),
           order_type: "dine_in",
+          guest_name: table?.guest_name || undefined,
+          guest_phone: table?.guest_phone || undefined,
+          guest_count: table?.guest_count || undefined,
         });
         currentOrderId = newOrder.id;
         setOrderId(currentOrderId);
@@ -349,8 +352,13 @@ export const OrderPage: React.FC = () => {
             <ArrowLeft size={20} className="text-gray-600" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 font-display">
-              Gọi món — Bàn {table.name}
+            <h1 className="text-2xl font-bold text-gray-900 font-display flex items-center gap-2">
+              <span>Gọi món — Bàn {table.name}</span>
+              {table.guest_name && (
+                <span className="text-base font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                  👤 {table.guest_name} {table.guest_phone ? `(${table.guest_phone})` : ""}
+                </span>
+              )}
             </h1>
             <p className="text-sm text-gray-500">
               {orderId ? `Order #${orderId}` : "Chưa có order"} • {table.capacity} chỗ
