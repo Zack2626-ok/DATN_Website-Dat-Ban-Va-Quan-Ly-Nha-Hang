@@ -1312,14 +1312,38 @@ export const createBooking = async (data: any): Promise<any> => {
     throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
   }
 
+  // Validate customer_id to prevent foreign key constraint failure
+  let validCustomerId: number | null = null;
+  if (data.customer_id) {
+    const custRows = await query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
+    if (custRows.length > 0) {
+      validCustomerId = Number(custRows[0].id);
+    }
+  }
+  if (!validCustomerId && data.guest_phone) {
+    const custByPhone = await query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.guest_phone]);
+    if (custByPhone.length > 0) {
+      validCustomerId = Number(custByPhone[0].id);
+    }
+  }
+
+  // Validate promotion_id to prevent foreign key constraint failure
+  let validPromotionId: number | null = null;
+  if (data.promotion_id) {
+    const promoRows = await query<any[]>("SELECT id FROM promotions WHERE id = ? LIMIT 1", [data.promotion_id]);
+    if (promoRows.length > 0) {
+      validPromotionId = Number(promoRows[0].id);
+    }
+  }
+
   const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
   const result = await query(`
     INSERT INTO bookings (table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
   `, [
     data.table_id,
-    data.customer_id || null,
-    data.promotion_id || null,
+    validCustomerId,
+    validPromotionId,
     data.guest_name,
     data.guest_phone,
     data.party_size,
@@ -1632,12 +1656,26 @@ export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> =
 };
 
 export const createResmanagerOrder = async (data: any): Promise<any> => {
+  let validCustomerId: number | null = null;
+  if (data.customer_id) {
+    const custRows = await query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
+    if (custRows.length > 0) {
+      validCustomerId = Number(custRows[0].id);
+    }
+  }
+  if (!validCustomerId && data.guest_phone) {
+    const custByPhone = await query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.guest_phone]);
+    if (custByPhone.length > 0) {
+      validCustomerId = Number(custByPhone[0].id);
+    }
+  }
+
   const result = await query(`
     INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
   `, [
     data.table_id,
-    data.customer_id || null,
+    validCustomerId,
     data.created_by,
     data.order_type || 'dine_in',
     data.note || null,
@@ -1645,7 +1683,7 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     data.guest_phone || null,
     data.guest_count || null
   ]);
-  return { id: result.insertId, ...data, status: 'open' };
+  return { id: result.insertId, ...data, status: 'open', customer_id: validCustomerId };
 };
 
 export const completeActiveBookingForTable = async (tableId: number): Promise<boolean> => {
@@ -2062,6 +2100,20 @@ export const getCustomerBookings = async (customerId: number | string): Promise<
 };
 
 export const createCustomerEventContract = async (data: any): Promise<any> => {
+  let validCustomerId: number | null = null;
+  if (data.customer_id) {
+    const custRows = await query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
+    if (custRows.length > 0) {
+      validCustomerId = Number(custRows[0].id);
+    }
+  }
+  if (!validCustomerId && data.contact_phone) {
+    const custByPhone = await query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.contact_phone]);
+    if (custByPhone.length > 0) {
+      validCustomerId = Number(custByPhone[0].id);
+    }
+  }
+
   const result = await query(`
     INSERT INTO event_contracts (
       hall_id, customer_id, package_id, contact_name, contact_phone,
@@ -2070,11 +2122,11 @@ export const createCustomerEventContract = async (data: any): Promise<any> => {
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0.00, ?, 'draft', ?, 1)
   `, [
-    data.hall_id, data.customer_id, data.package_id || null, data.contact_name, data.contact_phone,
+    data.hall_id, validCustomerId, data.package_id || null, data.contact_name, data.contact_phone,
     data.event_date, data.guest_count, data.table_count, data.total_amount, data.total_amount,
     data.note || null
   ]);
-  return { id: result.insertId, ...data, status: 'draft', deposit_amount: 0, remaining: data.total_amount };
+  return { id: result.insertId, ...data, status: 'draft', deposit_amount: 0, remaining: data.total_amount, customer_id: validCustomerId };
 };
 
 export const getCustomerEventContracts = async (customerId: number | string): Promise<any[]> => {
