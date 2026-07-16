@@ -192,7 +192,7 @@ CREATE TABLE tables (
     capacity    INT          NOT NULL DEFAULT 4,
     row_pos     CHAR(1)      NOT NULL DEFAULT 'A',
     col_pos     TINYINT      NOT NULL DEFAULT 1,
-    status      ENUM('empty','reserved','serving','pending_payment','maintenance') NOT NULL DEFAULT 'empty',
+    status      ENUM('empty','reserved','serving','pending_payment','cleaning','maintenance') NOT NULL DEFAULT 'empty',
     is_deleted        TINYINT(1)   NOT NULL DEFAULT 0,
     deleted_at        DATETIME     DEFAULT NULL,
     maintenance_note  TEXT         DEFAULT NULL COMMENT 'Lý do bảo trì (nhân viên nhập khi chuyển trạng thái maintenance)',

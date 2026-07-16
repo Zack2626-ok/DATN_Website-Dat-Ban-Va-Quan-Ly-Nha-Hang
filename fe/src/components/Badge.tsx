@@ -68,11 +68,17 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
             dot: isLight ? "bg-rose-500" : "bg-rose-400",
             label: "Đang phục vụ",
           };
+        case TABLE_STATUS.PENDING_PAYMENT:
+          return {
+            bg: isLight ? "bg-rose-50 border-rose-200 text-rose-700" : "bg-rose-500/10 border-rose-500/20 text-rose-400",
+            dot: isLight ? "bg-rose-500" : "bg-rose-400",
+            label: "Chờ thanh toán",
+          };
         case TABLE_STATUS.CLEANING:
           return {
             bg: isLight ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/10 border-blue-500/20 text-blue-400",
             dot: isLight ? "bg-blue-500" : "bg-blue-400 animate-bounce",
-            label: "Chờ thanh toán",
+            label: "🧹 Đang dọn dẹp",
           };
         default:
           return {

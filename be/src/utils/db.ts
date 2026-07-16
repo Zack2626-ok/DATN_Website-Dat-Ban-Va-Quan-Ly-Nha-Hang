@@ -388,8 +388,8 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added users.employee_code");
     }
 
-    // Ensure tables.status includes 'maintenance'
-    await query(`ALTER TABLE tables MODIFY COLUMN status ENUM('empty','reserved','serving','pending_payment','maintenance') NOT NULL DEFAULT 'empty'`);
+    // Ensure tables.status includes 'cleaning' and 'maintenance'
+    await query(`ALTER TABLE tables MODIFY COLUMN status ENUM('empty','reserved','serving','pending_payment','cleaning','maintenance') NOT NULL DEFAULT 'empty'`);
 
     // Add guest_count to orders if not exists
     const guestCountCols = await query<any[]>(
@@ -1115,7 +1115,7 @@ export const getResmanagerTableById = async (id: number): Promise<any | null> =>
 
 export const updateResmanagerTableStatus = async (
   id: number,
-  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance",
+  status: "empty" | "reserved" | "serving" | "pending_payment" | "cleaning" | "maintenance",
   maintenanceNote?: string,
 ): Promise<boolean> => {
   let result;
