@@ -7,7 +7,7 @@ const getImageUrl = (imagePath?: string) => {
   if (!imagePath) return "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80";
   if (imagePath.startsWith("http")) return imagePath;
   const serverUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
-  return `${serverUrl}/${imagePath}`;
+  return `${serverUrl}/uploads/${imagePath}`;
 };
 
 export const MenuPage: React.FC = () => {
@@ -105,7 +105,7 @@ export const MenuPage: React.FC = () => {
               >
                 <div className="relative h-48 overflow-hidden">
                   <img
-                    src={getImageUrl(dish.image)}
+                    src={getImageUrl(dish.image_url || dish.image)}
                     alt={dish.name}
                     className="h-full w-full object-cover transition-transform group-hover:scale-105"
                   />
@@ -118,7 +118,7 @@ export const MenuPage: React.FC = () => {
                   <p className="mt-1 text-sm text-slate-400 line-clamp-2">{dish.description || "Hương vị thơm ngon khó cưỡng từ ResManager"}</p>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-lg font-bold text-blue-700">
-                      {dish.price.toLocaleString("vi-VN")}đ
+                      {Number(dish.price).toLocaleString("vi-VN")}đ
                     </span>
                     <div className="flex items-center gap-1 text-sky-600">
                       <Star size={14} className="fill-amber-400" />
