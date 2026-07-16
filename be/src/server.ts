@@ -28,6 +28,7 @@ import eventRoutes from "./routes/event.routes";
 import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
 import notificationRoutes from "./routes/notification.routes";
+import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
  
  
 dotenv.config();
@@ -112,6 +113,8 @@ app.use("/api/v1/waiter", waiterRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
+app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
+app.use("/api/restaurant-info", restaurantInfoRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

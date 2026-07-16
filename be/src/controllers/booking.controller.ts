@@ -3,9 +3,10 @@ import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { isValidPhoneNumber, getPhoneNumberValidationError } from "../utils/validation";
 
-export const getAllBookings = async (_req: Request, res: Response): Promise<void> => {
+export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
-    const bookings = await db.getBookings();
+    const status = req.query.status as string | undefined;
+    const bookings = await db.getBookings(status);
     sendSuccess(res, bookings, "Lấy danh sách đặt bàn thành công");
   } catch (error) {
     console.error("Error fetching bookings:", error);
@@ -29,7 +30,7 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, pre_ordered_items } =
+    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
       req.body;
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
@@ -67,19 +68,21 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       end_time,
       guest_note,
       note,
-      pre_ordered_items,
+      pre_ordered_items: pre_ordered_items || items,
     });
 
     sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const msg = (error as Error).message;
+    sendError(res, msg, msg.includes("trùng") ? 400 : 500);
   }
 };
+
 
 export const updateBookingStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, cancel_reason } = req.body;
 
     const validStatuses = ["pending", "confirmed", "cancelled", "completed"];
     if (!status || !validStatuses.includes(status)) {
@@ -88,7 +91,7 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     }
 
     const userId = req.user?.userId ? Number(req.user.userId) : undefined;
-    const success = await db.updateBookingStatus(Number(id), status, userId);
+    const success = await db.updateBookingStatus(Number(id), status, userId, cancel_reason);
     if (!success) {
       sendError(res, "Không tìm thấy đặt bàn", 404);
       return;

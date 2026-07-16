@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed } from "lucide-react";
+import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
@@ -12,6 +12,7 @@ import {
 } from "../../services/api";
 import { toast } from "react-hot-toast";
 import { Modal } from "../Modal";
+import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
 
 const formatTime = (timeStr: string) => {
   try {
@@ -203,6 +204,14 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   };
   const defaultName = defaultNames[displayRole] || "Demo User";
 
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+
+  useEffect(() => {
+    getRestaurantInfo()
+      .then(setRestaurantInfo)
+      .catch(() => {});
+  }, []);
+
   // Clear search query on route changes to prevent query leakage
   React.useEffect(() => {
     dispatch(clearSearchQuery());
@@ -381,10 +390,21 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           })}
         </nav>
 
-        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:items-center md:gap-2">
-          <Database size={12} className="text-green-300" />
-          Hệ thống online
-          <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
+        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:flex-col md:gap-2">
+          {restaurantInfo && (
+            <a
+              href={`tel:${restaurantInfo.hotline.replace(/\s/g, "")}`}
+              className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-white hover:bg-white/20 transition-colors mb-1"
+            >
+              <Phone size={13} className="text-green-300" />
+              <span className="font-bold text-[11px]">{restaurantInfo.hotline}</span>
+            </a>
+          )}
+          <div className="flex items-center gap-2">
+            <Database size={12} className="text-green-300" />
+            Hệ thống online
+            <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
+          </div>
         </div>
       </aside>
 

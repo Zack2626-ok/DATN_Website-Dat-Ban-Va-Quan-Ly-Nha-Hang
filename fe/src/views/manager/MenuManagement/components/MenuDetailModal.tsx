@@ -33,14 +33,14 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-150">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Chi tiết món ăn</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Thông tin chi tiết và tùy chọn tùy chỉnh</p>
+            <h2 className="text-lg font-bold text-slate-800">Chi tiết món ăn</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Thông tin chi tiết và tùy chọn tùy chỉnh</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors focus:outline-none"
+            className="p-2 hover:bg-sky-100 rounded-full transition-colors focus:outline-none"
           >
-            <X size={20} className="text-gray-600" />
+            <X size={20} className="text-slate-500" />
           </button>
         </div>
 
@@ -60,16 +60,16 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
           {/* Name & Price */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Tên món
               </label>
-              <p className="text-base font-bold text-gray-900">{menuItem.name}</p>
+              <p className="text-base font-bold text-slate-800">{menuItem.name}</p>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Giá bán
               </label>
-              <p className="text-base font-bold text-[#FF5A5F]">
+              <p className="text-base font-bold text-sky-600">
                 {menuItem.price.toLocaleString("vi-VN")}₫
               </p>
             </div>
@@ -78,13 +78,13 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
           {/* Category & Kitchen Station */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Danh mục
               </label>
-              <p className="text-sm font-medium text-gray-800">{menuItem.category_name || "Món chính"}</p>
+              <p className="text-sm font-medium text-slate-700">{menuItem.category_name || "Món chính"}</p>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Trạm chế biến
               </label>
               <div>
@@ -98,10 +98,10 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
           {/* Description */}
           {menuItem.description && (
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Mô tả
               </label>
-              <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">
+              <p className="text-sm text-slate-600 leading-relaxed bg-sky-50/50 p-3 rounded-lg border border-sky-50">
                 {menuItem.description}
               </p>
             </div>
@@ -110,7 +110,7 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
           {/* Status Badges */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Trạng thái hoạt động
               </label>
               <div className="flex items-center gap-2">
@@ -129,7 +129,7 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Trang chủ nổi bật
               </label>
               <div className="flex items-center gap-2">
@@ -152,15 +152,15 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
           {/* Modifier Groups Detail */}
           {menuItem.modifier_groups && menuItem.modifier_groups.length > 0 && (
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
                 Nhóm tùy chọn đi kèm
               </label>
-              <div className="space-y-3 bg-gray-50 p-3 rounded-xl border border-gray-150 max-h-48 overflow-y-auto">
+              <div className="space-y-3 bg-sky-50/50 p-3 rounded-xl border border-gray-150 max-h-48 overflow-y-auto">
                 {menuItem.modifier_groups.map((group, idx) => (
-                  <div key={idx} className="text-sm border-b border-gray-200/50 last:border-0 pb-2.5 last:pb-0">
-                    <div className="flex items-center justify-between font-bold text-gray-800">
+                  <div key={idx} className="text-sm border-b border-sky-100/50 last:border-0 pb-2.5 last:pb-0">
+                    <div className="flex items-center justify-between font-bold text-slate-700">
                       <span>{group.name}</span>
-                      <span className="text-[10px] font-normal text-gray-400 bg-white px-2 py-0.5 rounded border border-gray-200">
+                      <span className="text-[10px] font-normal text-gray-400 bg-white px-2 py-0.5 rounded border border-sky-100">
                         {group.is_required
                           ? `Bắt buộc (Chọn ${group.min_select} - ${group.max_select})`
                           : `Tự chọn (Tối đa ${group.max_select})`}
@@ -170,11 +170,11 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
                       {group.modifiers.map((m, mIdx) => (
                         <span
                           key={mIdx}
-                          className="inline-flex items-center px-2 py-0.5 rounded bg-white text-xs font-medium border border-gray-200 text-gray-600 shadow-sm"
+                          className="inline-flex items-center px-2 py-0.5 rounded bg-white text-xs font-medium border border-sky-100 text-slate-500 shadow-sm"
                         >
                           {m.name}
                           {Number(m.extra_price) > 0 && (
-                            <span className="text-[#FF5A5F] ml-0.5">
+                            <span className="text-sky-600 ml-0.5">
                               (+{Number(m.extra_price).toLocaleString("vi-VN")}₫)
                             </span>
                           )}
@@ -189,10 +189,10 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 flex justify-end">
+        <div className="p-6 border-t border-sky-100 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm focus:outline-none"
+            className="px-5 py-2 bg-sky-100 text-slate-600 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm focus:outline-none"
           >
             Đóng lại
           </button>

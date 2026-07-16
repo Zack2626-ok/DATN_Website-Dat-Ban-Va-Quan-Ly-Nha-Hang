@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Outlet, Link, NavLink } from "react-router-dom";
 import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed } from "lucide-react";
+import { HotlineButton } from "../../components/client/HotlineButton";
 
 const navLinks = [
   { to: "/", label: "Trang chủ", end: true },
@@ -27,18 +28,18 @@ export const ClientLayout: React.FC = () => {
   }
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `text-sm font-medium transition-colors ${isActive ? "text-blue-700" : "text-gray-600 hover:text-blue-700"}`;
+    `text-sm font-medium transition-colors ${isActive ? "text-blue-700" : "text-slate-500 hover:text-blue-700"}`;
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 text-gray-700">
+    <div className="flex min-h-screen flex-col bg-sky-50/50 text-slate-600">
       {/* Navbar */}
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white shadow-sm">
+      <header className="sticky top-0 z-40 border-b border-sky-100 bg-white shadow-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-700 text-white">
               <UtensilsCrossed size={18} />
             </span>
-            <span className="text-xl font-bold text-gray-700">ResManager</span>
+            <span className="text-xl font-bold text-slate-600">ResManager</span>
           </Link>
 
           <nav className="hidden items-center gap-8 md:flex">
@@ -57,7 +58,7 @@ export const ClientLayout: React.FC = () => {
           <div className="hidden items-center gap-3 md:flex">
             <Link
               to="/admin"
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+              className="rounded-lg border border-sky-100 px-4 py-2 text-sm font-semibold text-slate-400 hover:text-slate-600 hover:bg-sky-50/50 transition-colors"
             >
               Nhân viên
             </Link>
@@ -87,7 +88,7 @@ export const ClientLayout: React.FC = () => {
           <button
             type="button"
             onClick={() => setMobileOpen((v) => !v)}
-            className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+            className="rounded-lg p-2 text-slate-500 hover:bg-sky-100 md:hidden"
             aria-label="Mở menu"
           >
             {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -95,7 +96,7 @@ export const ClientLayout: React.FC = () => {
         </div>
 
         {mobileOpen && (
-          <div className="border-t border-gray-200 bg-white px-4 py-4 md:hidden">
+          <div className="border-t border-sky-100 bg-white px-4 py-4 md:hidden">
             <nav className="flex flex-col gap-1">
               {navLinks.map((link) => (
                 <NavLink
@@ -104,7 +105,7 @@ export const ClientLayout: React.FC = () => {
                   end={link.end}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"
+                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-sky-50/50"
                     }`
                   }
                 >
@@ -116,7 +117,7 @@ export const ClientLayout: React.FC = () => {
                   to="/account"
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"
+                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-sky-50/50"
                     }`
                   }
                 >
@@ -127,7 +128,7 @@ export const ClientLayout: React.FC = () => {
                 <Link
                   to="/customer/login"
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-lg px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-gray-50"
+                  className="rounded-lg px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-sky-50/50"
                 >
                   Đăng nhập khách hàng
                 </Link>
@@ -135,7 +136,7 @@ export const ClientLayout: React.FC = () => {
               <Link
                 to="/admin"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-50"
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-sky-50/50"
               >
                 Nhân viên đăng nhập
               </Link>
@@ -149,7 +150,7 @@ export const ClientLayout: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white">
+      <footer className="border-t border-sky-100 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -157,16 +158,16 @@ export const ClientLayout: React.FC = () => {
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-700 text-white">
                   <UtensilsCrossed size={16} />
                 </span>
-                <span className="font-bold text-gray-700">ResManager</span>
+                <span className="font-bold text-slate-600">ResManager</span>
               </div>
-              <p className="mt-3 text-sm text-gray-500">
+              <p className="mt-3 text-sm text-slate-400">
                 Hệ thống quản lý nhà hàng & đặt bàn trực tuyến — trải nghiệm ẩm thực hiện đại.
               </p>
             </div>
 
             <div>
-              <h4 className="font-semibold text-gray-700">Liên kết</h4>
-              <ul className="mt-3 space-y-2 text-sm text-gray-500">
+              <h4 className="font-semibold text-slate-600">Liên kết</h4>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
                 <li>
                   <Link to="/menu" className="hover:text-blue-700">
                     Thực đơn
@@ -186,8 +187,8 @@ export const ClientLayout: React.FC = () => {
             </div>
 
             <div>
-              <h4 className="font-semibold text-gray-700">Liên hệ</h4>
-              <ul className="mt-3 space-y-2 text-sm text-gray-500">
+              <h4 className="font-semibold text-slate-600">Liên hệ</h4>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
                 <li className="flex items-center gap-2">
                   <Phone size={14} className="shrink-0 text-blue-700" />
                   028 3829 4000
@@ -204,8 +205,8 @@ export const ClientLayout: React.FC = () => {
             </div>
 
             <div>
-              <h4 className="font-semibold text-gray-700">Giờ mở cửa</h4>
-              <ul className="mt-3 space-y-2 text-sm text-gray-500">
+              <h4 className="font-semibold text-slate-600">Giờ mở cửa</h4>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
                 <li className="flex items-center gap-2">
                   <Clock size={14} className="shrink-0 text-blue-700" />
                   T2 – CN: 10:00 – 22:00
@@ -215,11 +216,13 @@ export const ClientLayout: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-10 border-t border-gray-200 pt-6 text-center text-sm text-gray-400">
+          <div className="mt-10 border-t border-sky-100 pt-6 text-center text-sm text-gray-400">
             © 2026 ResManager. Mọi quyền được bảo lưu.
           </div>
         </div>
       </footer>
+
+      <HotlineButton />
     </div>
   );
 };

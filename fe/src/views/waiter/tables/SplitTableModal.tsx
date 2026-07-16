@@ -102,15 +102,15 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
           </div>
           <div>
             <p className="text-xs font-bold text-violet-500 uppercase tracking-wider">Tách từ bàn</p>
-            <p className="font-black text-gray-900 text-xl">{tableName}</p>
-            <p className="text-xs text-gray-500">{orderItems.length} món trong order</p>
+            <p className="font-black text-slate-800 text-xl">{tableName}</p>
+            <p className="text-xs text-slate-400">{orderItems.length} món trong order</p>
           </div>
         </div>
 
         {/* Items selection */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Chọn món cần tách sang bàn mới
             </label>
             <button
@@ -122,7 +122,7 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
           </div>
 
           {orderItems.length === 0 ? (
-            <div className="py-6 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+            <div className="py-6 text-center bg-sky-50/50 rounded-2xl border border-dashed border-sky-100">
               <p className="text-sm text-gray-400">Chưa có món nào trong order</p>
             </div>
           ) : (
@@ -135,11 +135,11 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
                     className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
                       isSelected
                         ? "border-violet-400 bg-violet-50 shadow-sm"
-                        : "border-gray-100 bg-white hover:border-violet-200"
+                        : "border-sky-50 bg-white hover:border-violet-200"
                     }`}
                   >
                     <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
-                      isSelected ? "bg-violet-600 border-violet-600" : "border-gray-300"
+                      isSelected ? "bg-violet-600 border-violet-600" : "border-sky-200"
                     }`}>
                       {isSelected && <CheckCircle2 size={12} className="text-white" />}
                     </div>
@@ -150,10 +150,10 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
                       className="hidden"
                     />
                     <div className="flex-1">
-                      <span className="font-bold text-gray-800">{item.name}</span>
+                      <span className="font-bold text-slate-700">{item.name}</span>
                       <span className="text-gray-400 text-xs ml-1.5">× {item.quantity}</span>
                     </div>
-                    <span className="font-bold text-gray-700 text-sm shrink-0">
+                    <span className="font-bold text-slate-600 text-sm shrink-0">
                       {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                     </span>
                   </label>
@@ -175,11 +175,11 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
 
         {/* Target table selection */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
             Bàn đích (đang trống)
           </label>
           {availableEmptyTables.length === 0 ? (
-            <div className="py-4 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+            <div className="py-4 text-center bg-sky-50/50 rounded-2xl border border-dashed border-sky-100">
               <p className="text-sm text-gray-400 font-medium">Không có bàn trống để tách</p>
             </div>
           ) : (
@@ -188,7 +188,7 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
               <select
                 value={targetId}
                 onChange={(e) => setTargetId(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all text-gray-800 appearance-none"
+                className="w-full px-4 py-3 bg-sky-50/50 border-2 border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all text-slate-700 appearance-none"
               >
                 <option value="">-- Chọn bàn đích --</option>
                 {availableEmptyTables.map((t) => (
@@ -205,7 +205,7 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
         <div className="flex gap-3 pt-1">
           <button
             onClick={handleClose}
-            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
+            className="flex-1 py-2.5 bg-sky-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
           >
             Hủy
           </button>

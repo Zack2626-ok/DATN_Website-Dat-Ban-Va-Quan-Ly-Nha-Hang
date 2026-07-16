@@ -20,16 +20,31 @@ const STATUS_OPTIONS: { value: InvoiceStatus | "all"; label: string }[] = [
   { value: "cancelled", label: "Đã hủy" },
 ];
 
-const statusBadge = (status: InvoiceStatus) => {
-  const map: Record<InvoiceStatus, { bg: string; text: string; icon: React.ReactNode; label: string }> = {
-    unpaid: { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", icon: <Clock size={12} />, label: "Chưa TT" },
-    paid: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", icon: <CheckCircle2 size={12} />, label: "Đã TT" },
-    cancelled: { bg: "bg-red-50 border-red-200", text: "text-red-700", icon: <XCircle size={12} />, label: "Đã hủy" },
-  };
-  const s = map[status];
+const statusBadge = (inv: Invoice) => {
+  if (inv.invoiceStatus === "unpaid") {
+    if (inv.status === "pending_payment") {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold border bg-red-50 border-red-300 text-red-700 animate-pulse shadow-2xs">
+          <Clock size={12} /> Chờ TT (Quầy)
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 border-amber-200 text-amber-700">
+        <Clock size={12} /> Đang phục vụ
+      </span>
+    );
+  }
+  if (inv.invoiceStatus === "paid") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-50 border-emerald-200 text-emerald-700">
+        <CheckCircle2 size={12} /> Đã TT
+      </span>
+    );
+  }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${s.bg} ${s.text}`}>
-      {s.icon} {s.label}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-red-50 border-red-200 text-red-700">
+      <XCircle size={12} /> Đã hủy
     </span>
   );
 };
@@ -74,7 +89,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
 
         {/* Search */}
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             value={searchQuery}
@@ -83,7 +98,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
             className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-blue-400"
           />
           {searchQuery && (
-            <button onClick={() => onSearchChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+            <button onClick={() => onSearchChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 cursor-pointer">
               <X size={14} />
             </button>
           )}
@@ -110,10 +125,10 @@ export const InvoiceListPanel: React.FC<Props> = ({
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-xs text-slate-400">Đang tải...</div>
+          <div className="flex items-center justify-center h-32 text-xs text-slate-500">Đang tải...</div>
         ) : invoices.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-xs text-slate-400 gap-2">
-            <Filter size={20} className="text-slate-300" />
+          <div className="flex flex-col items-center justify-center h-32 text-xs text-slate-500 gap-2">
+            <Filter size={20} className="text-slate-600" />
             Không có hóa đơn nào
           </div>
         ) : (
@@ -131,7 +146,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-black text-slate-900 truncate">{inv.tableName || "Mang về"}</span>
-                      {statusBadge(inv.invoiceStatus)}
+                      {statusBadge(inv)}
                     </div>
                     <p className="text-[10px] text-slate-500 truncate">
                       {inv.customerName || "Khách lẻ"} &middot; {inv.items.length} món
@@ -139,9 +154,9 @@ export const InvoiceListPanel: React.FC<Props> = ({
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs font-black text-slate-900">
-                      {(inv.totalAmount * 1000).toLocaleString("vi-VN")}
+                      {Number(inv.totalAmount).toLocaleString("vi-VN")}
                     </p>
-                    <p className="text-[10px] text-slate-400">{timeAgo(inv.createdAt)}</p>
+                    <p className="text-[10px] text-slate-500">{timeAgo(inv.createdAt)}</p>
                   </div>
                 </div>
               </button>

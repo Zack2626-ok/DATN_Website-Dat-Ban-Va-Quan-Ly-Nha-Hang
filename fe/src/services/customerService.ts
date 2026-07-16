@@ -146,6 +146,13 @@ export const createBooking = async (data: {
   end_time: string;
   guest_note?: string;
   pre_ordered_items?: any[];
+  items?: {
+    menu_item_id: number;
+    quantity: number;
+    unit_price?: number;
+    name?: string;
+    note?: string;
+  }[];
 }): Promise<any> => {
   const response = await customerApi.post("/v1/bookings", data);
   return response.data.data;

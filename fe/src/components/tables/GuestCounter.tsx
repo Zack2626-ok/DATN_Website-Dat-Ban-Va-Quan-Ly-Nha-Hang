@@ -19,7 +19,7 @@ export const GuestCounter: React.FC<GuestCounterProps> = ({ value, min, max, onC
         type="button"
         onClick={() => onChange(Math.max(min, value - 1))}
         disabled={value <= min}
-        className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center font-black text-lg text-zinc-300 hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-30 cursor-pointer"
+        className="w-11 h-11 rounded-xl bg-white/5 border border-slate-200 flex items-center justify-center font-black text-lg text-zinc-300 hover:bg-sky-100 hover:border-white/20 transition-all disabled:opacity-30 cursor-pointer"
       >
         −
       </button>
@@ -27,13 +27,13 @@ export const GuestCounter: React.FC<GuestCounterProps> = ({ value, min, max, onC
         type="number"
         value={value}
         readOnly
-        className="w-20 text-center font-black text-2xl bg-white/5 border border-white/10 rounded-xl py-2.5 text-zinc-100 outline-none"
+        className="w-20 text-center font-black text-2xl bg-white/5 border border-slate-200 rounded-xl py-2.5 text-zinc-100 outline-none"
       />
       <button
         type="button"
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={value >= max}
-        className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center font-black text-lg text-zinc-300 hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-30 cursor-pointer"
+        className="w-11 h-11 rounded-xl bg-white/5 border border-slate-200 flex items-center justify-center font-black text-lg text-zinc-300 hover:bg-sky-100 hover:border-white/20 transition-all disabled:opacity-30 cursor-pointer"
       >
         +
       </button>

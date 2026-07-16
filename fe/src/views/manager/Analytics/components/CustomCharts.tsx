@@ -155,9 +155,9 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="h-80 animate-pulse rounded-2xl border border-gray-100 bg-white lg:col-span-2" />
-        <div className="h-80 animate-pulse rounded-2xl border border-gray-100 bg-white lg:col-span-1" />
-        <div className="h-64 animate-pulse rounded-2xl border border-gray-100 bg-white lg:col-span-3" />
+        <div className="h-80 animate-pulse rounded-2xl border border-sky-50 bg-white lg:col-span-2" />
+        <div className="h-80 animate-pulse rounded-2xl border border-sky-50 bg-white lg:col-span-1" />
+        <div className="h-64 animate-pulse rounded-2xl border border-sky-50 bg-white lg:col-span-3" />
       </div>
     );
   }
@@ -166,9 +166,9 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       
       {/* 1. BIỂU ĐỒ DOANH THU THEO THỜI GIAN (LINE CHART) */}
-      <div className="relative rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
+      <div className="relative rounded-2xl border border-sky-100 bg-white p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
         <div>
-          <h3 className="text-base font-black text-gray-800 font-display">
+          <h3 className="text-base font-black text-slate-700 font-display">
             Diễn biến doanh thu & Đơn hàng
           </h3>
           <p className="text-[10px] text-gray-400 mt-0.5">Biểu đồ biểu diễn dòng tiền bán lẻ theo thời gian thực</p>
@@ -332,7 +332,7 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
           {/* Hộp Tooltip động vẽ bằng HTML phủ lên SVG */}
           {hoveredTimelineIdx !== null && lineChartData.points[hoveredTimelineIdx] && (
             <div
-              className="absolute pointer-events-none rounded-xl border border-gray-100 bg-white/95 p-3 shadow-md backdrop-blur-xs flex flex-col gap-0.5 transition-all duration-75"
+              className="absolute pointer-events-none rounded-xl border border-sky-50 bg-white/95 p-3 shadow-md backdrop-blur-xs flex flex-col gap-0.5 transition-all duration-75"
               style={{
                 left: `${(lineChartData.points[hoveredTimelineIdx].x / lineChartData.width) * 100}%`,
                 top: `${(lineChartData.points[hoveredTimelineIdx].y / lineChartData.height) * 100}%`,
@@ -344,10 +344,10 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
               <span className="text-[10px] font-black text-gray-400">
                 Mốc: {lineChartData.points[hoveredTimelineIdx].label}
               </span>
-              <span className="text-xs font-black text-[#FF5A5F]">
+              <span className="text-xs font-black text-sky-600">
                 DT: {formatCurrency(lineChartData.points[hoveredTimelineIdx].revenue)}
               </span>
-              <span className="text-[10px] font-semibold text-gray-600">
+              <span className="text-[10px] font-semibold text-slate-500">
                 Sản lượng: {lineChartData.points[hoveredTimelineIdx].orderCount} hóa đơn
               </span>
             </div>
@@ -357,18 +357,18 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
         {/* Chú giải chân trang */}
         <div className="mt-2 flex items-center justify-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[#FF5A5F]" /> Doanh thu (đơn vị: VNĐ)
+            <span className="h-2 w-2 rounded-full bg-sky-500" /> Doanh thu (đơn vị: VNĐ)
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full border border-[#FF5A5F] bg-white" /> Điểm mốc thống kê
+            <span className="h-2 w-2 rounded-full border border-sky-500 bg-white" /> Điểm mốc thống kê
           </span>
         </div>
       </div>
 
       {/* 2. BIỂU ĐỒ TOP 5 MÓN ĂN BÁN CHẠY (DOUGHNUT CHART) */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:col-span-1 flex flex-col justify-between">
+      <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm lg:col-span-1 flex flex-col justify-between">
         <div>
-          <h3 className="text-base font-black text-gray-800 font-display">
+          <h3 className="text-base font-black text-slate-700 font-display">
             Top 5 món ăn bán chạy nhất
           </h3>
           <p className="text-[10px] text-gray-400 mt-0.5">Xếp hạng theo sản lượng đĩa phục vụ hoàn tất</p>
@@ -404,7 +404,7 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 {hoveredDoughnutIdx !== null && doughnutSegments[hoveredDoughnutIdx] ? (
                   <>
-                    <span className="text-lg font-black text-gray-800 leading-none">
+                    <span className="text-lg font-black text-slate-700 leading-none">
                       {doughnutSegments[hoveredDoughnutIdx].percentageVal}%
                     </span>
                     <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mt-1">
@@ -413,7 +413,7 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
                   </>
                 ) : (
                   <>
-                    <span className="text-sm font-black text-gray-800 leading-none">TOP 5</span>
+                    <span className="text-sm font-black text-slate-700 leading-none">TOP 5</span>
                     <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mt-1">
                       Món nổi bật
                     </span>
@@ -423,14 +423,14 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
             </div>
 
             {/* Danh sách chú thích bên dưới */}
-            <div className="w-full space-y-1.5 border-t border-gray-100 pt-3 text-[11px] font-semibold text-gray-600">
+            <div className="w-full space-y-1.5 border-t border-sky-50 pt-3 text-[11px] font-semibold text-slate-500">
               {doughnutSegments.map((seg, idx) => (
                 <div
                   key={idx}
                   onMouseEnter={() => setHoveredDoughnutIdx(idx)}
                   onMouseLeave={() => setHoveredDoughnutIdx(null)}
                   className={`flex items-center justify-between rounded-lg p-1 transition-all ${
-                    hoveredDoughnutIdx === idx ? "bg-gray-50 scale-102" : ""
+                    hoveredDoughnutIdx === idx ? "bg-sky-50/50 scale-102" : ""
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -440,7 +440,7 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
                     />
                     <span className="truncate max-w-[120px]">{seg.item.name}</span>
                   </span>
-                  <span className="font-black text-gray-800">
+                  <span className="font-black text-slate-700">
                     {seg.item.quantity} đĩa ({seg.percentageVal}%)
                   </span>
                 </div>
@@ -455,9 +455,9 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
       </div>
 
       {/* 3. BIỂU ĐỒ GIỜ CAO ĐIỂM (BAR CHART) */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:col-span-3 flex flex-col justify-between">
+      <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm lg:col-span-3 flex flex-col justify-between">
         <div>
-          <h3 className="text-base font-black text-gray-800 font-display">
+          <h3 className="text-base font-black text-slate-700 font-display">
             Phân tích giờ cao điểm trong ngày
           </h3>
           <p className="text-[10px] text-gray-400 mt-0.5">Số lượng đơn hàng được mở theo giờ để bố trí nhân lực bếp & phục vụ</p>
@@ -466,10 +466,10 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
         {barChartData.bars.length > 0 ? (
           <div className="relative mt-5 flex-1">
             {/* Lưới phân phối Bar Chart bằng HTML/Tailwind */}
-            <div className="relative flex h-40 items-end justify-between border-b border-gray-100 pb-2 px-2">
+            <div className="relative flex h-40 items-end justify-between border-b border-sky-50 pb-2 px-2">
               
               {/* Thước kẻ trục ngang chỉ dẫn */}
-              <div className="absolute left-0 bottom-2 w-full border-b border-gray-100 pointer-events-none" />
+              <div className="absolute left-0 bottom-2 w-full border-b border-sky-50 pointer-events-none" />
 
               {barChartData.bars.map((bar, idx) => {
                 const isHovered = hoveredBarHour === bar.hour;
@@ -487,10 +487,10 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
                       style={{ height: `${bar.barHeight}px` }}
                       className={`w-4/5 sm:w-8 max-w-10 rounded-t-md transition-all duration-300 cursor-pointer ${
                         isHovered 
-                          ? "bg-[#FF5A5F]" 
+                          ? "bg-sky-500" 
                           : bar.count === barChartData.maxCount 
-                          ? "bg-[#FF5A5F]/80" // Cột max nhất thì màu đậm hơn tí
-                          : "bg-[#FF5A5F]/40 hover:bg-[#FF5A5F]/60"
+                          ? "bg-sky-500/80" // Cột max nhất thì màu đậm hơn tí
+                          : "bg-sky-500/40 hover:bg-sky-500/60"
                       }`}
                     />
 
@@ -503,7 +503,7 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
                     {isHovered && (
                       <div className="absolute -top-12 z-10 w-24 rounded-lg bg-gray-900 px-2 py-1.5 text-center text-[9px] font-bold text-white shadow-md animate-fade-in pointer-events-none">
                         <div>Giờ: {bar.hour}:00</div>
-                        <div className="text-[#FF5A5F]">{bar.count} đơn ({bar.percentage}%)</div>
+                        <div className="text-sky-600">{bar.count} đơn ({bar.percentage}%)</div>
                       </div>
                     )}
                   </div>
@@ -519,10 +519,10 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
 
         <div className="mt-3 flex items-center justify-center gap-6 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
           <span className="flex items-center gap-1.5">
-            <span className="h-3 w-6 rounded-xs bg-[#FF5A5F]/40" /> Thấp điểm
+            <span className="h-3 w-6 rounded-xs bg-sky-500/40" /> Thấp điểm
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-3 w-6 rounded-xs bg-[#FF5A5F]" /> Cao điểm
+            <span className="h-3 w-6 rounded-xs bg-sky-500" /> Cao điểm
           </span>
         </div>
       </div>

@@ -119,18 +119,18 @@ const MenuManagement: React.FC = () => {
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-sky-50/50 min-h-screen">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Quản lý thực đơn</h1>
-          <p className="text-gray-600 mt-1">Thiết lập món ăn, giá cả và các nhóm tùy chọn modifier</p>
+          <h1 className="text-2xl font-bold text-slate-700">Quản lý thực đơn</h1>
+          <p className="text-slate-500 mt-1">Thiết lập món ăn, giá cả và các nhóm tùy chọn modifier</p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={fetchData}
             disabled={loading}
-            className="p-2.5 bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-150 transition-colors shadow-sm focus:outline-none disabled:opacity-50"
+            className="p-2.5 bg-white border border-sky-100 rounded-lg text-slate-500 hover:bg-gray-150 transition-colors shadow-sm focus:outline-none disabled:opacity-50"
             title="Làm mới dữ liệu"
           >
             <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
@@ -140,7 +140,7 @@ const MenuManagement: React.FC = () => {
               setEditingItem(null);
               setIsDrawerOpen(true);
             }}
-            className="px-5 py-2.5 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-semibold flex items-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20"
+            className="px-5 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-semibold flex items-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20"
           >
             <Plus size={20} />
             Thêm món mới
@@ -149,7 +149,7 @@ const MenuManagement: React.FC = () => {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4">
+      <div className="bg-white p-4 rounded-xl border border-sky-100 shadow-sm mb-6 flex flex-col md:flex-row gap-4">
         {/* Search */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
@@ -158,7 +158,7 @@ const MenuManagement: React.FC = () => {
             placeholder="Tìm kiếm món ăn theo tên..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] transition-shadow text-sm"
+            className="w-full pl-10 pr-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-shadow text-sm"
           />
         </div>
 
@@ -168,7 +168,7 @@ const MenuManagement: React.FC = () => {
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] bg-white text-sm"
+            className="px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white text-sm"
           >
             <option value="all">Tất cả danh mục</option>
             {categories.map((cat) => (
@@ -181,47 +181,47 @@ const MenuManagement: React.FC = () => {
       </div>
 
       {/* Main Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-xl rounded-xl border border-sky-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3">
-            <div className="w-10 h-10 border-4 border-gray-200 border-t-[#FF5A5F] rounded-full animate-spin" />
-            <p className="text-sm font-medium text-gray-500">Đang tải danh sách món ăn...</p>
+            <div className="w-10 h-10 border-4 border-sky-100 border-t-[#FF5A5F] rounded-full animate-spin" />
+            <p className="text-sm font-medium text-slate-400">Đang tải danh sách món ăn...</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-sky-50/50 border-b border-sky-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Món ăn
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Danh mục
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Giá bán
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Nhóm tùy chọn
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Trạm bếp
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Trạng thái
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-bold text-slate-400 uppercase tracking-wider">
                     Hành động
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={item.id} className="hover:bg-sky-50/50/50 transition-colors">
                     {/* Image & Name */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 flex items-center justify-center">
+                        <div className="w-12 h-12 bg-sky-100 rounded-lg overflow-hidden border border-sky-100 flex-shrink-0 flex items-center justify-center">
                           {item.image_url ? (
                             <img
                               src={item.image_url}
@@ -233,7 +233,7 @@ const MenuManagement: React.FC = () => {
                           )}
                         </div>
                         <div>
-                          <div className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                          <div className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
                             {item.name}
                             {item.is_featured ? (
                               <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
@@ -251,13 +251,13 @@ const MenuManagement: React.FC = () => {
                     </td>
 
                     {/* Category */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                       {item.category_name || "Món chính"}
                     </td>
 
                     {/* Price */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-bold text-gray-900">
+                      <span className="text-sm font-bold text-slate-800">
                         {item.price.toLocaleString("vi-VN")}₫
                       </span>
                     </td>
@@ -265,7 +265,7 @@ const MenuManagement: React.FC = () => {
                     {/* Modifier Count */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       {item.modifier_groups && item.modifier_groups.length > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-250">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 bg-sky-100 px-2.5 py-0.5 rounded-full border border-gray-250">
                           {item.modifier_groups.length} nhóm tùy chọn
                         </span>
                       ) : (
@@ -302,7 +302,7 @@ const MenuManagement: React.FC = () => {
                             setViewingItem(item);
                             setIsDetailModalOpen(true);
                           }}
-                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors focus:outline-none"
+                          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-sky-100 rounded-lg transition-colors focus:outline-none"
                           title="Xem chi tiết"
                         >
                           <Eye size={18} />
@@ -339,7 +339,7 @@ const MenuManagement: React.FC = () => {
             <div className="text-gray-300 mb-3">
               <Search size={48} className="mx-auto opacity-40" />
             </div>
-            <h4 className="text-gray-700 font-semibold text-base">Không tìm thấy món ăn nào</h4>
+            <h4 className="text-slate-600 font-semibold text-base">Không tìm thấy món ăn nào</h4>
             <p className="text-gray-400 text-xs mt-1">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm</p>
           </div>
         )}

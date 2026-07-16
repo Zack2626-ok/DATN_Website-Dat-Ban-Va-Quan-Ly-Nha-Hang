@@ -164,22 +164,12 @@ export const BookingPage: React.FC = () => {
 
   const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.phone.trim()) {
+    const phone = form.phone.trim();
+    if (!form.name.trim() || !phone) {
       toast.error("Vui lòng điền họ tên và số điện thoại liên hệ!");
       return;
     }
 
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      toast.error("Email không đúng định dạng!");
-      return;
-    }
-
-    // Chi tiết validate số điện thoại ở Frontend
-    const phone = form.phone.trim();
-    if (!phone) {
-      toast.error("Số điện thoại không được để trống.");
-      return;
-    }
     const hasLetters = /[a-zA-Z]/g.test(phone);
     const cleanRegex = /^[0-9+\s-]+$/;
     if (hasLetters || !cleanRegex.test(phone)) {
@@ -213,6 +203,12 @@ export const BookingPage: React.FC = () => {
       return;
     }
 
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      toast.error("Email không đúng định dạng!");
+      return;
+    }
+
+
     setSubmitting(true);
     try {
       const startTimeStr = `${form.date} ${form.time}:00`;
@@ -223,8 +219,13 @@ export const BookingPage: React.FC = () => {
 
       let customerId: number | null = null;
       const infoStr = localStorage.getItem("customer_info");
-      if (infoStr) {
-        customerId = JSON.parse(infoStr).id || null;
+      const tokenStr = localStorage.getItem("customer_token");
+      if (infoStr && tokenStr) {
+        try {
+          customerId = JSON.parse(infoStr).id || null;
+        } catch (e) {
+          console.error("Error parsing customer_info", e);
+        }
       }
 
       // Tổng hợp món ăn đặt trước gửi lên API
@@ -537,7 +538,7 @@ export const BookingPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-sky-50/50 pb-20">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 py-6">
         <div className={`mx-auto px-6 flex items-center justify-between transition-all ${step === 2 ? "max-w-7xl" : "max-w-3xl"}`}>
@@ -546,8 +547,8 @@ export const BookingPage: React.FC = () => {
               <UtensilsCrossed size={20} />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900 font-display">Đặt bàn trực tuyến</h1>
-              <p className="text-xs text-gray-500">Chống trùng lịch · Đặt chỗ thời gian thực</p>
+              <h1 className="text-lg font-bold text-slate-800 font-display">Đặt bàn trực tuyến</h1>
+              <p className="text-xs text-slate-400">Chống trùng lịch · Đặt chỗ thời gian thực</p>
             </div>
           </div>
           {/* Progress stepper */}
@@ -563,29 +564,29 @@ export const BookingPage: React.FC = () => {
       <main className={`mx-auto px-6 mt-8 transition-all ${step === 2 ? "max-w-7xl" : "max-w-3xl"}`}>
         {step === 1 && (
           <form onSubmit={handleNextToStep2} className="space-y-6">
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-              <h2 className="text-lg font-bold text-gray-900 font-display mb-6 border-b border-gray-50 pb-4 flex items-center gap-2">
+            <div className="bg-white rounded-3xl shadow-sm border border-sky-50 p-8">
+              <h2 className="text-lg font-bold text-slate-800 font-display mb-6 border-b border-gray-50 pb-4 flex items-center gap-2">
                 <Calendar size={18} className="text-blue-600" /> Chọn lịch trình đặt bàn
               </h2>
               <div className="grid gap-6 sm:grid-cols-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ngày đến *</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ngày đến *</label>
                   <input
                     required
                     type="date"
                     value={form.date}
                     onChange={(e) => setField("date", e.target.value)}
                     min={new Date().toISOString().split("T")[0]}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    className="w-full rounded-xl border border-sky-200 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Giờ đến *</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Giờ đến *</label>
                   <select
                     required
                     value={form.time}
                     onChange={(e) => setField("time", e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
+                    className="w-full rounded-xl border border-sky-200 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
                   >
                     <option value="">Chọn giờ</option>
                     {[
@@ -598,7 +599,7 @@ export const BookingPage: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Số khách *</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Số khách *</label>
                   <input
                     required
                     type="number"
@@ -606,7 +607,7 @@ export const BookingPage: React.FC = () => {
                     max="30"
                     value={form.guests}
                     onChange={(e) => setField("guests", e.target.value.replace(/[^0-9]/g, ""))}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
+                    className="w-full rounded-xl border border-sky-200 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
                     placeholder="2"
                   />
                 </div>
@@ -671,7 +672,7 @@ export const BookingPage: React.FC = () => {
                           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                             selectedArea === area
                               ? "bg-blue-700 text-white shadow-xs"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                              : "bg-sky-50 text-slate-600 hover:bg-sky-100"
                           }`}
                         >
                           {area}
@@ -698,25 +699,7 @@ export const BookingPage: React.FC = () => {
                                   onClick={() => handleSelectTable(table)}
                                   className={`cursor-pointer p-4 rounded-xl border-2 transition-all text-center flex flex-col justify-center items-center gap-1 w-[120px] ${
                                     isSelected
-                                      ? "bg-blue-50 border-blue-700 text-blue-800 shadow-sm"
-                                      : "bg-emerald-50 border-emerald-200 hover:border-emerald-300 text-emerald-800"
-                                  }`}
-                                >
-                                  <span className="text-base font-bold font-display">{table.name}</span>
-                                  <span className="text-xs opacity-75">{table.capacity} chỗ</span>
-                                  <span className="text-[10px] font-extrabold uppercase mt-1">Đang hoạt động</span>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Cột bên phải: Thông tin liên hệ & Đặt bàn (40%) */}
+                           {/* Cột bên phải: Thông tin liên hệ & Đặt bàn (40%) */}
             <div className="lg:col-span-4 space-y-6">
               {/* Form nhập thông tin */}
               <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
@@ -835,12 +818,31 @@ export const BookingPage: React.FC = () => {
                       placeholder="Các yêu cầu đặc biệt..."
                       className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all"
                     />
+                    {/* Tag ghi chú nhanh */}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {["Đặt trước món ăn", "Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh"].map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            setForm((prev) => {
+                              const trimmed = prev.note.trim();
+                              if (trimmed.includes(tag)) return prev;
+                              const separator = trimmed ? ", " : "";
+                              return { ...prev, note: trimmed + separator + tag };
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-gray-150 text-gray-500 hover:bg-gray-250 hover:text-gray-700 transition-all"
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
               {/* Tóm tắt đặt bàn */}
-              <div className="bg-blue-50/50 border border-blue-100 rounded-3xl p-6 flex flex-col gap-3 text-sm text-blue-900 font-semibold shadow-2xs">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-3xl p-6 flex flex-col gap-3 text-sm text-blue-900 font-semibold shadow-2xs mt-6">
                 <h4 className="font-extrabold uppercase text-xs text-blue-500 tracking-wider">Thông tin tóm tắt đặt bàn</h4>
                 <div className="grid grid-cols-1 gap-y-2">
                   <div>Ngày đến: <span className="font-bold text-gray-900">{new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
@@ -873,11 +875,11 @@ export const BookingPage: React.FC = () => {
               </div>
 
               {/* Nút bấm hành động */}
-              <div className="flex gap-4">
+              <div className="flex gap-4 mt-6">
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="flex-1 py-4 border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                  className="flex-1 py-4 border border-gray-250 bg-white hover:bg-gray-50 text-gray-600 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
                 >
                   <ArrowLeft size={16} /> Quay lại
                 </button>

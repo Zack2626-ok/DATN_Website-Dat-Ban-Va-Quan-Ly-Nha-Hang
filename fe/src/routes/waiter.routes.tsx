@@ -6,6 +6,7 @@ import {
   OrderPage,
   OrderTableListPage,
 } from "../views/waiter";
+import { BookingListPage } from "../views/manager";
 
 export const WaiterRoutes = () => (
   <Route
@@ -18,6 +19,7 @@ export const WaiterRoutes = () => (
   >
     <Route index element={<Navigate to="/waiter/tables" replace />} />
     <Route path="tables" element={<WaiterTableMap />} />
+    <Route path="bookings" element={<BookingListPage />} />
     <Route path="orders" element={<OrderTableListPage />} />
     <Route path="orders/:tableId" element={<OrderPage />} />
   </Route>
