@@ -38,24 +38,26 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
     onClose();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim()) {
       import('react-hot-toast').then(m => m.toast.error('Vui lòng nhập tên khách hàng'));
       return;
     }
+    if (customerPhone.trim()) {
+      const cleanedPhone = customerPhone.trim().replace(/[\s-]/g, '');
+      const phoneRegex = /^(03|09)\d{8}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        import('react-hot-toast').then(m => m.toast.error('Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)'));
+        return;
+      }
+    }
     setIsSubmitting(true);
-
-    setTimeout(() => {
+    try {
+      await onConfirm({ guestCount, customerName: customerName.trim(), customerPhone: customerPhone.trim() });
+    } finally {
       setIsSubmitting(false);
-      setShowSuccess(true);
-
-      onConfirm({ guestCount, customerName, customerPhone });
-
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
-    }, 800);
+    }
   };
 
   if (!table) return null;
@@ -97,15 +99,20 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
         <GuestCounter 
           value={guestCount} 
           min={1} 
-          max={table.capacity} 
+          max={30} 
           onChange={setGuestCount} 
         />
         
         {guestCount > table.capacity && (
-          <p className="text-xs text-rose-400 flex items-center gap-1">
-            <AlertCircle size={12} />
-            Vượt quá sức chứa tối đa ({table.capacity} khách)
-          </p>
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300 space-y-1">
+            <p className="font-bold flex items-center gap-1.5">
+              <AlertCircle size={14} className="text-amber-400" />
+              Bàn phát sinh vượt sức chứa ({guestCount}/{table.capacity} khách)
+            </p>
+            <p className="text-[11px] text-amber-400/80">
+              Hệ thống sẽ tự động gửi cảnh báo lên Quản lý và mặc định thêm {guestCount} Khăn ướt vào đơn hàng. Bạn có thể chuyển/gộp bàn sau khi mở.
+            </p>
+          </div>
         )}
 
         <div className="border-t border-white/5" />

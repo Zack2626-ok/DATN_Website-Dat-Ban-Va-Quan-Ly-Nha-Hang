@@ -11,7 +11,6 @@ import {
   Database,
   Grid,
   CalendarDays,
-  UserCheck,
   Clock,
   LineChart,
 } from "lucide-react";
@@ -87,21 +86,6 @@ export const ManagerSidebar: React.FC = () => {
           <span className="flex items-center gap-2.5">
             <CalendarDays size={16} />
             Đặt bàn
-          </span>
-        </Link>
-
-        {/* Danh sách chờ - Top Level Item */}
-        <Link
-          to="/manager/waitlist"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/waitlist")
-              ? "bg-[#FF5A5F] text-white"
-              : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <UserCheck size={16} />
-            Danh sách chờ
           </span>
         </Link>
 

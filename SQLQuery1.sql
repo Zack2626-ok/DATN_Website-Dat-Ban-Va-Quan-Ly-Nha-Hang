@@ -35,6 +35,7 @@ INSERT INTO roles (name, description) VALUES
 CREATE TABLE users (
     id            INT          NOT NULL AUTO_INCREMENT,
     role_id       INT          NOT NULL,
+    employee_code VARCHAR(20)  DEFAULT NULL,
     full_name     VARCHAR(100) NOT NULL,
     email         VARCHAR(150) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -48,18 +49,19 @@ CREATE TABLE users (
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_users_email (email),
+    UNIQUE KEY uq_users_code (employee_code),
     CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- password thật: "123456", hash bcrypt cost 10
-INSERT INTO users (role_id, full_name, email, password_hash, phone) VALUES
- (1, N'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
- (2, N'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
- (4, N'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
- (3, N'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
- (3, N'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
- (5, N'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006'),
- (6, N'Sales Event 1',      'sales@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000007');
+INSERT INTO users (role_id, employee_code, full_name, email, password_hash, phone) VALUES
+ (1, 'NV001', N'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
+ (2, 'NV002', N'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
+ (4, 'NV003', N'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
+ (3, 'NV004', N'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
+ (3, 'NV005', N'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
+ (5, 'NV006', N'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006'),
+ (6, 'NV007', N'Sales Event 1',      'sales@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000007');
 
 CREATE TABLE customers (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -190,17 +192,28 @@ CREATE TABLE tables (
     capacity    INT          NOT NULL DEFAULT 4,
     row_pos     CHAR(1)      NOT NULL DEFAULT 'A',
     col_pos     TINYINT      NOT NULL DEFAULT 1,
-    status      ENUM('empty','reserved','serving','pending_payment') NOT NULL DEFAULT 'empty',
-    is_deleted  TINYINT(1)   NOT NULL DEFAULT 0,
-    deleted_at  DATETIME     DEFAULT NULL,
+    status      ENUM('empty','reserved','serving','pending_payment','cleaning','maintenance') NOT NULL DEFAULT 'empty',
+    is_deleted        TINYINT(1)   NOT NULL DEFAULT 0,
+    deleted_at        DATETIME     DEFAULT NULL,
+    maintenance_note  TEXT         DEFAULT NULL COMMENT 'Lý do bảo trì (nhân viên nhập khi chuyển trạng thái maintenance)',
     PRIMARY KEY (id),
     CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+<<<<<<< HEAD
 INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUES
  -- Tầng 1 (12 bàn: B01 - B12)
  (1,  1, 'B01', 4, 'A', 1, 'empty'),
  (2,  1, 'B02', 4, 'A', 2, 'empty'),
+=======
+-- Nếu database đã tồn tại, chạy lệnh sau để thêm cột:
+-- ALTER TABLE tables ADD COLUMN maintenance_note TEXT DEFAULT NULL COMMENT 'Lý do bảo trì';
+
+INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUES
+ -- Tầng 1 (12 bàn: B01 - B12)
+ (1,  1, 'B01', 4, 'A', 1, 'empty'),
+ (2,  1, 'B02', 4, 'A', 2, 'cleaning'),
+>>>>>>> 67006d6d4832d3c0aac66f59fd0ca96dc65ce09a
  (3,  1, 'B03', 6, 'A', 3, 'reserved'),
  (4,  1, 'B04', 8, 'A', 4, 'pending_payment'),
  (5,  1, 'B05', 4, 'B', 1, 'empty'),
@@ -226,7 +239,11 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUE
  (23, 2, 'B23', 4, 'C', 3, 'empty'),
  (24, 2, 'B24', 4, 'C', 4, 'empty'),
 
+<<<<<<< HEAD
  -- Sân vườn (16 bàn: B25 - B40)
+=======
+ -- Sân vườn (9 bàn: B25 - B33)
+>>>>>>> 67006d6d4832d3c0aac66f59fd0ca96dc65ce09a
  (25, 3, 'B25', 4, 'A', 1, 'empty'),
  (26, 3, 'B26', 4, 'A', 2, 'empty'),
  (27, 3, 'B27', 4, 'A', 3, 'empty'),
@@ -235,6 +252,7 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUE
  (30, 3, 'B30', 4, 'B', 2, 'empty'),
  (31, 3, 'B31', 4, 'B', 3, 'empty'),
  (32, 3, 'B32', 4, 'B', 4, 'empty'),
+<<<<<<< HEAD
  (33, 3, 'B33', 4, 'C', 1, 'empty'),
  (34, 3, 'B34', 4, 'C', 2, 'empty'),
  (35, 3, 'B35', 4, 'C', 3, 'empty'),
@@ -243,6 +261,9 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUE
  (38, 3, 'B38', 4, 'D', 2, 'empty'),
  (39, 3, 'B39', 4, 'D', 3, 'empty'),
  (40, 3, 'B40', 4, 'D', 4, 'empty');
+=======
+ (33, 3, 'B33', 4, 'C', 1, 'empty');
+>>>>>>> 67006d6d4832d3c0aac66f59fd0ca96dc65ce09a
 
 CREATE TABLE bookings (
     id                INT          NOT NULL AUTO_INCREMENT,
@@ -266,6 +287,18 @@ CREATE TABLE bookings (
     CONSTRAINT fk_bookings_promotion FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE SET NULL,
     INDEX idx_bookings_table_time (table_id, start_time, end_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- [TODO BACKEND] Bảng bookings còn thiếu 2 cột — nhóm cần ALTER TABLE trước khi deploy:
+--
+--   1. Thêm cột lý do hủy booking:
+--      ALTER TABLE bookings ADD COLUMN cancel_reason TEXT DEFAULT NULL COMMENT 'Lý do hủy booking';
+--
+--   2. Thêm trạng thái 'arrived' (Khách đã đến — bước trung gian giữa confirmed và completed):
+--      ALTER TABLE bookings MODIFY COLUMN status
+--        ENUM('pending','confirmed','arrived','cancelled','completed')
+--        NOT NULL DEFAULT 'pending';
+-- ============================================================================
 
 INSERT INTO bookings (table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note) VALUES
  (6, 1, 1, N'Nguyen Van A', '0911111111', 4, '2026-06-24 18:00:00', '2026-06-24 21:00:00', 'BK20260624001', 'confirmed', N'Có trẻ em', NULL),
@@ -467,7 +500,9 @@ INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, 
  (8, NULL, 5, 'dine_in', NULL, 'serving',        NULL,                     N'Nguyễn Văn Bình', '0912345678',   '2026-06-23 18:15:00', NULL),
  (4, 3, 4, 'dine_in',  NULL, 'pending_payment', NULL,                     NULL,               NULL,           '2026-06-23 19:00:00', NULL),
  (4, NULL, 4, 'dine_in', NULL, 'pending_payment', NULL,                   N'Lê Thị C',        '0933333333',   '2026-06-23 19:00:00', NULL),
- (NULL, NULL, 4, 'takeaway', NULL, 'completed',   N'Mang về',               NULL,               NULL,           '2026-06-23 11:00:00', '2026-06-23 11:20:00');
+ (NULL, NULL, 4, 'takeaway', NULL, 'completed',   N'Mang về',               NULL,               NULL,           '2026-06-23 11:00:00', '2026-06-23 11:20:00'),
+ -- Order 6 (bàn B02 vừa thanh toán thành công, đang chờ dọn bàn)
+ (2, 2, 4, 'dine_in',  NULL, 'completed',      N'Khách vừa thanh toán chuyển khoản thành công', N'Trần Văn Dũng', '0988888888', '2026-06-24 19:30:00', '2026-06-24 20:45:00');
 
 
 CREATE TABLE order_items (
@@ -479,7 +514,7 @@ CREATE TABLE order_items (
     seat_number   TINYINT       DEFAULT NULL,
     course_number INT           NOT NULL DEFAULT 1,
     kitchen_note  TEXT          DEFAULT NULL,
-    status        ENUM('pending','cooking','done','served','cancelled','voided') NOT NULL DEFAULT 'pending',
+    status        ENUM('pending','cooking','done','cancelled','voided') NOT NULL DEFAULT 'pending',
     is_held       TINYINT(1)   NOT NULL DEFAULT 0,
     voided_at     DATETIME      DEFAULT NULL,
     void_reason   VARCHAR(255)  DEFAULT NULL,
@@ -510,7 +545,11 @@ INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_numb
  (4,12, 2,  40000.00, NULL,2, NULL,              'done'),
  -- Order 5 (takeaway completed)
  (5, 2, 2,  80000.00, NULL, 1, NULL,             'done'),
- (5,11, 1,  45000.00, NULL, 1, NULL,             'done');
+ (5,11, 1,  45000.00, NULL, 1, NULL,             'done'),
+ -- Order 6 (bàn B02 completed)
+ (6, 3, 2, 180000.00, NULL, 1, N'Bò lúc lắc vừa chín', 'done'),
+ (6,10, 2,  35000.00, NULL, 2, N'Trà đào ít đá',       'done'),
+ (6,12, 1,  40000.00, NULL, 3, N'Chè thái',            'done');
 
 CREATE TABLE order_item_status_log (
     id            INT         NOT NULL AUTO_INCREMENT,
@@ -747,7 +786,9 @@ INSERT INTO invoices (order_id, parent_invoice_id, subtotal, discount, tax, serv
 -- Invoice 4: Order 4 tách bill (nhóm 4:2)
  (4, NULL, 630000.00, 0.00,     63000.00, 31500.00, 50000.00, 774500.00, NULL, 'draft', NULL, 3),
 -- Invoice 5: Order 5 (takeaway)
- (5, NULL, 205000.00, 0.00,     20500.00, 0.00,     0.00,   225500.00, NULL, 'paid',  '2026-06-23 11:20:00', 3);
+ (5, NULL, 205000.00, 0.00,     20500.00, 0.00,     0.00,   225500.00, NULL, 'paid',  '2026-06-23 11:20:00', 3),
+-- Invoice 6: Order 6 (bàn B02 vừa thanh toán thành công, đang dọn bàn)
+ (6, NULL, 470000.00, 0.00,     47000.00, 0.00,     0.00,   517000.00, NULL, 'paid',  '2026-06-24 20:45:00', 3);
 
 CREATE TABLE invoice_items (
     id            INT           NOT NULL AUTO_INCREMENT,
@@ -775,7 +816,11 @@ INSERT INTO invoice_items (invoice_id, order_item_id, amount) VALUES
  (3,13,   80000.00),
  -- Invoice 4 ← order_items 14–15 (order 5)
  (4,14,  160000.00),
- (4,15,   45000.00);
+ (4,15,   45000.00),
+ -- Invoice 6 ← order_items 16–18 (order 6 bàn B02)
+ (6,16,  360000.00),
+ (6,17,   70000.00),
+ (6,18,   40000.00);
 
 CREATE TABLE payments (
     id          INT           NOT NULL AUTO_INCREMENT,
@@ -790,7 +835,8 @@ CREATE TABLE payments (
 
 INSERT INTO payments (invoice_id, method, amount, note, paid_at) VALUES
  (1, 'cash',          745200.00, N'Thanh toán tiền mặt',       '2026-06-23 13:30:00'),
- (4, 'momo',          225500.00, N'Thanh toán MoMo mang về',   '2026-06-23 11:20:00');
+ (4, 'momo',          225500.00, N'Thanh toán MoMo mang về',   '2026-06-23 11:20:00'),
+ (6, 'bank_transfer', 517000.00, N'Thanh toán chuyển khoản Vietcombank thành công', '2026-06-24 20:45:00');
 
 
 -- ============================================================================
@@ -966,13 +1012,3 @@ INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, not
 --  CẬP NHẬT used_count voucher sau khi đã dùng
 -- ============================================================================
 UPDATE vouchers SET used_count = 1 WHERE code = 'SAVE10';
-
--- ============================================================================
---  THÊM TRẠNG THÁI 'served' VÀO order_items (v2 — waiter xác nhận đã mang ra)
---  Chạy script này nếu database đã được tạo trước khi có thay đổi này.
---  Nếu chạy schema từ đầu thì KHÔNG cần chạy lại dòng này.
--- ============================================================================
-ALTER TABLE order_items
-  MODIFY COLUMN status
-  ENUM('pending','cooking','done','served','cancelled','voided')
-  NOT NULL DEFAULT 'pending';

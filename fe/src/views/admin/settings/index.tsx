@@ -1,33 +1,74 @@
-import React, { useState } from "react";
-import { Save, Settings } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Save, Settings, Loader2 } from "lucide-react";
+import {
+  getRestaurantInfo,
+  updateRestaurantInfo,
+  type RestaurantInfo,
+} from "../../../services/restaurantInfoService";
 
 export const AdminSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"general" | "tax">("general");
   const [savedMessage, setSavedMessage] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [info, setInfo] = useState<RestaurantInfo | null>(null);
 
-  const handleSave = () => {
-    setSavedMessage(true);
-    setTimeout(() => setSavedMessage(false), 3000);
+  useEffect(() => {
+    getRestaurantInfo()
+      .then((data) => {
+        setInfo(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleChange = (field: keyof RestaurantInfo, value: string | number) => {
+    if (!info) return;
+    setInfo({ ...info, [field]: value });
   };
+
+  const handleSave = async () => {
+    if (!info) return;
+    setSaving(true);
+    try {
+      const updated = await updateRestaurantInfo(info);
+      setInfo(updated);
+      setSavedMessage(true);
+      setTimeout(() => setSavedMessage(false), 3000);
+    } catch (err) {
+      console.error("Failed to save restaurant info:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={32} className="animate-spin text-amber-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 border-b border-gray-200 pb-4 md:flex-row md:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-amber-500/20 pb-4 md:flex-row md:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-700">Cấu hình hệ thống</h1>
-          <p className="mt-1 text-sm text-gray-500">Thiết lập thông tin nhà hàng, thuế và phí dịch vụ</p>
+          <h1 className="text-2xl font-bold text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Cấu hình hệ thống</h1>
+          <p className="mt-1 text-sm text-slate-400">Thiết lập thông tin nhà hàng, thuế và phí dịch vụ</p>
         </div>
         <button
           type="button"
           onClick={handleSave}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-lg bg-amber-500/20 border-amber-500/30 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 cursor-pointer"
         >
-          <Save size={16} />
-          Lưu cấu hình
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          {saving ? "Đang lưu..." : "Lưu cấu hình"}
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-gray-200 bg-white p-2">
+      <div className="flex flex-wrap gap-2 rounded-xl border border-amber-500/20 bg-[#1C2541]/40 backdrop-blur-xl p-2">
         {[
           { key: "general" as const, label: "Thông tin chung" },
           { key: "tax" as const, label: "Thuế & Phí DV" },
@@ -36,8 +77,8 @@ export const AdminSettings: React.FC = () => {
             key={tab.key}
             type="button"
             onClick={() => setActiveTab(tab.key)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              activeTab === tab.key ? "bg-blue-700 text-white" : "text-gray-600 hover:bg-gray-50"
+            className={`rounded-lg px-4 py-2 text-sm font-medium cursor-pointer ${
+              activeTab === tab.key ? "bg-amber-500/20 border-amber-500/30 text-white" : "text-slate-300 hover:bg-[#1C2541]/80 backdrop-blur-md"
             }`}
           >
             {tab.label}
@@ -51,71 +92,111 @@ export const AdminSettings: React.FC = () => {
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-amber-500/20 bg-[#1C2541]/40 backdrop-blur-xl p-6 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
         {activeTab === "general" ? (
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium text-gray-700">Tên nhà hàng</span>
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Tên nhà hàng</span>
               <input
                 type="text"
-                defaultValue="ResManager Bistro"
-                className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-700 focus:outline-none"
+                value={info?.name || ""}
+                onChange={(e) => handleChange("name", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
               />
             </label>
             <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium text-gray-700">Địa chỉ</span>
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Địa chỉ</span>
               <input
                 type="text"
-                defaultValue="123 Nguyễn Huệ, Quận 1, TP.HCM"
-                className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-700 focus:outline-none"
+                value={info?.address || ""}
+                onChange={(e) => handleChange("address", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
               />
             </label>
             <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium text-gray-700">Hotline</span>
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Hotline</span>
               <input
                 type="text"
-                defaultValue="028 3829 4000"
-                className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-700 focus:outline-none"
+                value={info?.hotline || ""}
+                onChange={(e) => handleChange("hotline", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
               />
             </label>
             <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium text-gray-700">Múi giờ</span>
-              <select className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-700 focus:outline-none">
-                <option>GMT+07:00 (Hà Nội, TP.HCM)</option>
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Giờ hỗ trợ hotline</span>
+              <input
+                type="text"
+                value={info?.hotline_hours || ""}
+                onChange={(e) => handleChange("hotline_hours", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Email</span>
+              <input
+                type="email"
+                value={info?.email || ""}
+                onChange={(e) => handleChange("email", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Giờ mở cửa</span>
+              <input
+                type="text"
+                value={info?.opening_hours || ""}
+                onChange={(e) => handleChange("opening_hours", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Múi giờ</span>
+              <select
+                value={info?.timezone || "GMT+07:00"}
+                onChange={(e) => handleChange("timezone", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              >
+                <option value="GMT+07:00">GMT+07:00 (Hà Nội, TP.HCM)</option>
               </select>
             </label>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium text-gray-700">VAT (%)</span>
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">VAT (%)</span>
               <input
                 type="number"
-                defaultValue={10}
-                className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-700 focus:outline-none"
+                value={info?.tax_rate ?? 10}
+                onChange={(e) => handleChange("tax_rate", Number(e.target.value))}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
               />
             </label>
             <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium text-gray-700">Phí dịch vụ (%)</span>
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Phí dịch vụ (%)</span>
               <input
                 type="number"
-                defaultValue={5}
-                className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-700 focus:outline-none"
+                value={info?.service_fee_rate ?? 5}
+                onChange={(e) => handleChange("service_fee_rate", Number(e.target.value))}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
               />
             </label>
             <label className="flex flex-col gap-1.5 text-sm md:col-span-2">
-              <span className="font-medium text-gray-700">Phương thức thanh toán mặc định</span>
-              <select className="rounded-lg border border-gray-200 px-3 py-2 focus:border-blue-700 focus:outline-none">
-                <option>Tiền mặt</option>
-                <option>Chuyển khoản</option>
-                <option>Thẻ / Ví điện tử</option>
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Phương thức thanh toán mặc định</span>
+              <select
+                value={info?.default_payment_method || "cash"}
+                onChange={(e) => handleChange("default_payment_method", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              >
+                <option value="cash">Tiền mặt</option>
+                <option value="bank_transfer">Chuyển khoản</option>
+                <option value="card">Thẻ / Ví điện tử</option>
               </select>
             </label>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-gray-400">
+      <div className="flex items-center gap-2 text-xs text-slate-500">
         <Settings size={14} />
         Chỉ Admin/Chủ nhà hàng có quyền thay đổi cấu hình hệ thống
       </div>

@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Outlet, Link, NavLink } from "react-router-dom";
 import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed } from "lucide-react";
+import { HotlineButton } from "../../components/client/HotlineButton";
 
 const navLinks = [
+  { to: "/", label: "Trang chủ", end: true },
   { to: "/menu", label: "Thực đơn" },
   { to: "/promotions", label: "Ưu đãi" },
   { to: "/booking", label: "Đặt bàn" },
@@ -14,10 +16,19 @@ const navLinks = [
  */
 export const ClientLayout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const customerToken = localStorage.getItem("customer_token");
+  const customerInfoStr = localStorage.getItem("customer_info");
+  let customerName = "";
+  if (customerInfoStr) {
+    try {
+      customerName = JSON.parse(customerInfoStr).name || "Khách hàng";
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `text-sm font-medium transition-colors ${isActive ? "text-blue-700" : "text-gray-600 hover:text-blue-700"
-    }`;
+    `text-sm font-medium transition-colors ${isActive ? "text-blue-700" : "text-gray-600 hover:text-blue-700"}`;
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 text-gray-700">
@@ -33,19 +44,39 @@ export const ClientLayout: React.FC = () => {
 
           <nav className="hidden items-center gap-8 md:flex">
             {navLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} className={navClass}>
+              <NavLink key={link.to} to={link.to} end={link.end} className={navClass}>
                 {link.label}
               </NavLink>
             ))}
+            {customerToken && (
+              <NavLink to="/account" className={navClass}>
+                Tài khoản
+              </NavLink>
+            )}
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
             <Link
               to="/admin"
-              className="rounded-lg border border-blue-700/30 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              Quản trị viên
+              Nhân viên
             </Link>
+            {customerToken ? (
+              <Link
+                to="/account"
+                className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
+              >
+                Xin chào, {customerName}
+              </Link>
+            ) : (
+              <Link
+                to="/customer/login"
+                className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
+              >
+                Đăng nhập
+              </Link>
+            )}
             <Link
               to="/booking"
               className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
@@ -71,6 +102,7 @@ export const ClientLayout: React.FC = () => {
                 <NavLink
                   key={link.to}
                   to={link.to}
+                  end={link.end}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
                     `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"
@@ -80,12 +112,33 @@ export const ClientLayout: React.FC = () => {
                   {link.label}
                 </NavLink>
               ))}
+              {customerToken && (
+                <NavLink
+                  to="/account"
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-50"
+                    }`
+                  }
+                >
+                  Tài khoản của tôi
+                </NavLink>
+              )}
+              {!customerToken && (
+                <Link
+                  to="/customer/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="rounded-lg px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-gray-50"
+                >
+                  Đăng nhập khách hàng
+                </Link>
+              )}
               <Link
                 to="/admin"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-50"
               >
-                Quản trị viên
+                Nhân viên đăng nhập
               </Link>
             </nav>
           </div>
@@ -168,6 +221,8 @@ export const ClientLayout: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      <HotlineButton />
     </div>
   );
 };

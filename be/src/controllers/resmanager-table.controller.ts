@@ -53,21 +53,31 @@ export const getResmanagerTableHandler = async (req: Request, res: Response): Pr
 export const updateResmanagerTableStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, maintenance_note } = req.body;
 
-    const validStatuses = ["empty", "reserved", "serving", "pending_payment"];
+    const validStatuses = ["empty", "reserved", "serving", "pending_payment", "cleaning", "maintenance"];
     if (!status || !validStatuses.includes(status)) {
       sendError(res, `Trạng thái phải là: ${validStatuses.join(", ")}`, 400);
       return;
     }
 
-    const success = await db.updateResmanagerTableStatus(Number(id), status);
+    // Bắt buộc phải có lý do khi chuyển sang bảo trì
+    if (status === "maintenance" && !maintenance_note?.trim()) {
+      sendError(res, "Vui lòng nhập lý do bảo trì (maintenance_note)", 400);
+      return;
+    }
+
+    const success = await db.updateResmanagerTableStatus(
+      Number(id),
+      status,
+      maintenance_note?.trim() || undefined,
+    );
     if (!success) {
       sendError(res, "Không tìm thấy bàn", 404);
       return;
     }
 
-    sendSuccess(res, { id, status }, "Cập nhật trạng thái bàn thành công");
+    sendSuccess(res, { id, status, maintenance_note: maintenance_note?.trim() || null }, "Cập nhật trạng thái bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
@@ -116,6 +126,7 @@ export const mergeTableHandler = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    const clusterTables = [primaryTable];
     for (const mergedId of merged_table_ids.map(Number)) {
       const mergedTable = await db.getResmanagerTableById(mergedId);
       if (!mergedTable) {
@@ -126,9 +137,30 @@ export const mergeTableHandler = async (req: Request, res: Response): Promise<vo
         sendError(res, `Chỉ gộp được bàn cùng khu vực (${primaryTable.area_name})`, 400);
         return;
       }
+
+      // Kiểm tra tính liền kề (Adjacency check theo grid row/col hoặc số thứ tự tên bàn)
+      const isAdjacent = clusterTables.some((t) => {
+        const rowDiff = Math.abs((t.row_pos || 'A').charCodeAt(0) - (mergedTable.row_pos || 'A').charCodeAt(0));
+        const colDiff = Math.abs(Number(t.col_pos || 1) - Number(mergedTable.col_pos || 1));
+        const isGridAdjacent = (rowDiff === 0 && colDiff === 1) || (colDiff === 0 && rowDiff === 1);
+
+        const num1 = parseInt((t.name || "").replace(/\D/g, ""), 10);
+        const num2 = parseInt((mergedTable.name || "").replace(/\D/g, ""), 10);
+        const isNumAdjacent = !isNaN(num1) && !isNaN(num2) && Math.abs(num1 - num2) === 1;
+
+        return isGridAdjacent || isNumAdjacent;
+      });
+
+      if (!isAdjacent) {
+        sendError(res, `Bàn ${mergedTable.name} không liền kề với các bàn đang chọn gộp. Chỉ được phép gộp các bàn liền kề nhau (ví dụ B08 gộp B09)!`, 400);
+        return;
+      }
+
+      clusterTables.push(mergedTable);
     }
 
     const success = await db.mergeResmanagerTables(primaryTableId, merged_table_ids.map(Number));
+
     if (!success) {
       sendError(res, "Không thể gộp bàn", 400);
       return;

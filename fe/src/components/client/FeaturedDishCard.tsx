@@ -1,17 +1,23 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { formatCurrency } from "../../utils/formatCurrency";
-import type { FeaturedDish } from "../../data/mockLandingData";
+
+const getImageUrl = (imagePath?: string) => {
+  if (!imagePath) return "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80";
+  if (imagePath.startsWith("http")) return imagePath;
+  const serverUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+  return `${serverUrl}/${imagePath}`;
+};
 
 interface FeaturedDishCardProps {
-  dish: FeaturedDish;
+  dish: any;
 }
 
 export const FeaturedDishCard: React.FC<FeaturedDishCardProps> = ({ dish }) => (
   <article className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md">
     <div className="aspect-[4/3] overflow-hidden">
       <img
-        src={dish.imageUrl}
+        src={getImageUrl(dish.image || dish.imageUrl)}
         alt={dish.name}
         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
       />

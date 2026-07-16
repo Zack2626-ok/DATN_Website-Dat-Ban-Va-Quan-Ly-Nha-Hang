@@ -12,9 +12,10 @@ export interface Booking {
   start_time: string;
   end_time: string;
   confirmation_code: string;
-  status: "pending" | "confirmed" | "cancelled" | "completed";
+  status: "pending" | "confirmed" | "cancelled" | "completed" | "arrived";
   guest_note?: string;
   note?: string;
+  cancel_reason?: string | null;
   created_at: string;
 }
 
@@ -44,9 +45,12 @@ export const createBooking = async (data: {
 
 export const updateBookingStatus = async (
   id: number,
-  status: "pending" | "confirmed" | "cancelled" | "completed",
+  status: "pending" | "confirmed" | "cancelled" | "completed" | "arrived",
+  cancel_reason?: string,
 ): Promise<void> => {
-  await api.patch(`/v1/bookings/${id}/status`, { status });
+  const body: Record<string, any> = { status };
+  if (cancel_reason) body.cancel_reason = cancel_reason;
+  await api.patch(`/v1/bookings/${id}/status`, body);
 };
 
 export const deleteBooking = async (id: number): Promise<void> => {

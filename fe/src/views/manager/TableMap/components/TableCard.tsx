@@ -8,6 +8,7 @@ interface TableCardProps {
   isBottomRow?: boolean;
   showMenu: boolean;
   onToggleMenu: (isOpen: boolean) => void;
+  showCrud?: boolean;
 }
 
 export const TableCard: React.FC<TableCardProps> = ({
@@ -16,6 +17,7 @@ export const TableCard: React.FC<TableCardProps> = ({
   isBottomRow = false,
   showMenu,
   onToggleMenu,
+  showCrud = true,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +65,13 @@ export const TableCard: React.FC<TableCardProps> = ({
           text: "text-rose-700",
           badge: "bg-rose-100 text-rose-700 border-rose-300",
           label: "Chờ thanh toán",
+        };
+      case "cleaning":
+        return {
+          bg: "bg-blue-50 border-blue-200 hover:bg-blue-100/80",
+          text: "text-blue-700",
+          badge: "bg-blue-100 text-blue-700 border-blue-300",
+          label: "🧹 Đang dọn dẹp",
         };
       default:
         return {
@@ -215,26 +224,28 @@ export const TableCard: React.FC<TableCardProps> = ({
               )}
 
               {/* Quản lý danh sách bàn (CRUD) */}
-              <div className="border-t border-gray-100 mt-1 pt-1">
-                <button
-                  type="button"
-                  onClick={(e) => handleMenuClick(e, "edit_table")}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  <Edit size={12} className="text-gray-500" />
-                  Sửa thông tin
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleMenuClick(e, "delete_table")}
-                  disabled={!canDelete}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors font-medium"
-                  title={!canDelete ? "Chỉ được xóa khi bàn trống và không có lịch đặt trước" : ""}
-                >
-                  <Trash2 size={12} className="text-red-500" />
-                  Xóa bàn ăn
-                </button>
-              </div>
+              {showCrud && (
+                <div className="border-t border-gray-100 mt-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={(e) => handleMenuClick(e, "edit_table")}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <Edit size={12} className="text-gray-500" />
+                    Sửa thông tin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleMenuClick(e, "delete_table")}
+                    disabled={!canDelete}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors font-medium"
+                    title={!canDelete ? "Chỉ được xóa khi bàn trống và không có lịch đặt trước" : ""}
+                  >
+                    <Trash2 size={12} className="text-red-500" />
+                    Xóa bàn ăn
+                  </button>
+                </div>
+              )}
             </div>
         )}
       </div>
