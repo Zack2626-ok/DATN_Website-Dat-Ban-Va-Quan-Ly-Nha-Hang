@@ -5,7 +5,6 @@ import {
   ManagerDashboard,
   MenuManagement,
   ShiftManagement,
-  BanquetConfig,
   AnalyticsView,
   TableMapIndex,
   PromotionManagement,
@@ -31,7 +30,6 @@ export const ManagerRoutes = () => (
       <Route path="staff" element={<UserManagement />} />
       <Route path="menu" element={<MenuManagement />} />
       <Route path="shifts" element={<ShiftManagement />} />
-      <Route path="events" element={<BanquetConfig />} />
       <Route path="analytics" element={<AnalyticsView />} />
       <Route path="promotions" element={<PromotionManagement />} />
     </Route>

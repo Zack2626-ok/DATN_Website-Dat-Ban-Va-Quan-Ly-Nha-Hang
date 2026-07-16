@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Users,
   Utensils,
-  Calendar,
   Database,
   Grid,
   CalendarDays,
@@ -155,21 +154,6 @@ export const ManagerSidebar: React.FC = () => {
                 <span className="flex items-center gap-2.5">
                   <Utensils size={14} />
                   Quản lý Thực đơn
-                </span>
-              </Link>
-
-              {/* Cấu hình Sự kiện & Tiệc */}
-              <Link
-                to="/manager/events"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/events")
-                    ? "bg-[#FF5A5F] text-white"
-                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Calendar size={14} />
-                  Cấu hình Sự kiện & Tiệc
                 </span>
               </Link>
 
