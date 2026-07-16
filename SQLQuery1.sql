@@ -997,3 +997,14 @@ INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, not
 --  CẬP NHẬT used_count voucher sau khi đã dùng
 -- ============================================================================
 UPDATE vouchers SET used_count = 1 WHERE code = 'SAVE10';
+
+-- ============================================================================
+--  BOOKINGS SEEDS (Lịch sử đặt bàn bao gồm cả lịch đặt đã hủy)
+-- ============================================================================
+INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note, created_at) VALUES
+ (1, 1, 1, NULL, N'Nguyễn Văn A', '0912345678', 4, '2026-07-16 18:00:00', '2026-07-16 20:00:00', 'BK2026071601', 'confirmed', N'Bàn gần cửa sổ', NULL, '2026-07-16 10:00:00'),
+ (2, 2, 2, NULL, N'Trần Thị B', '0987654321', 2, '2026-07-16 19:00:00', '2026-07-16 21:00:00', 'BK2026071602', 'cancelled', N'Cần ghế trẻ em', N'Khách gọi điện báo hủy do bận việc đột xuất', '2026-07-16 11:00:00'),
+ (3, 3, NULL, NULL, N'Phan Thanh C', '0905556677', 6, '2026-07-17 12:00:00', '2026-07-17 14:00:00', 'BK2026071701', 'pending', NULL, NULL, '2026-07-16 12:00:00'),
+ (4, 5, 3, NULL, N'Lê Hoàng D', '0933445566', 4, '2026-07-15 18:30:00', '2026-07-15 20:30:00', 'BK2026071501', 'completed', N'Tiệc kỷ niệm ngày cưới', NULL, '2026-07-15 09:00:00'),
+ (5, 6, NULL, NULL, N'Đặng Thị E', '0977889900', 8, '2026-07-16 20:00:00', '2026-07-16 22:00:00', 'BK2026071603', 'cancelled', N'Tổ chức sinh nhật', N'Đổi kế hoạch tổ chức tiệc tại nhà', '2026-07-16 13:00:00'),
+ (6, 10, 4, NULL, N'Bùi Quang F', '0944556677', 4, '2026-07-16 19:30:00', '2026-07-16 21:30:00', 'BK2026071604', 'cancelled', NULL, N'Muốn đổi sang sảnh sự kiện lớn', '2026-07-16 14:00:00');

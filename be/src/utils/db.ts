@@ -1397,13 +1397,31 @@ export const createBooking = async (data: any): Promise<any> => {
 };
 
 
-export const updateBookingStatus = async (id: number, status: string, userId?: number): Promise<boolean> => {
+export const updateBookingStatus = async (
+  id: number,
+  status: string,
+  userId?: number,
+  cancelReason?: string
+): Promise<boolean> => {
   const booking = await getBookingById(id);
   if (!booking) return false;
 
-  await query(`
-    UPDATE bookings SET status = ?, note = COALESCE(?, note) WHERE id = ?
-  `, [status, userId ? `Updated by staff id: ${userId}` : null, id]);
+  let noteValue: string | null = null;
+  if (status === 'cancelled' && cancelReason) {
+    noteValue = cancelReason;
+  } else if (userId) {
+    noteValue = `Updated by staff id: ${userId}`;
+  }
+
+  if (noteValue !== null) {
+    await query(`
+      UPDATE bookings SET status = ?, note = ? WHERE id = ?
+    `, [status, noteValue, id]);
+  } else {
+    await query(`
+      UPDATE bookings SET status = ? WHERE id = ?
+    `, [status, id]);
+  }
 
   // Update table status accordingly
   if (status === 'cancelled' || status === 'completed') {

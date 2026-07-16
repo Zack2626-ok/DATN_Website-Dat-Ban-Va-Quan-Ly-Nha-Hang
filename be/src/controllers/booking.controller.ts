@@ -81,7 +81,7 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
 export const updateBookingStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, cancel_reason } = req.body;
 
     const validStatuses = ["pending", "confirmed", "cancelled", "completed"];
     if (!status || !validStatuses.includes(status)) {
@@ -90,7 +90,7 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     }
 
     const userId = req.user?.userId ? Number(req.user.userId) : undefined;
-    const success = await db.updateBookingStatus(Number(id), status, userId);
+    const success = await db.updateBookingStatus(Number(id), status, userId, cancel_reason);
     if (!success) {
       sendError(res, "Không tìm thấy đặt bàn", 404);
       return;
