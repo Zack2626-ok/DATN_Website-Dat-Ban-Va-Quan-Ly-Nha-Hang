@@ -91,13 +91,13 @@ const filterToQueryParams = (filter: DateFilter) => {
 export const analyticsService = {
   getSummaryKpis: async (filter: DateFilter): Promise<SummaryKpis> => {
     const params = filterToQueryParams(filter);
-    const res = await api.get("/reports/revenue-overview", { params });
+    const res = await api.get("/v1/reports/revenue-overview", { params });
     return res.data.data.kpis;
   },
 
   getRevenueTimeline: async (filter: DateFilter): Promise<RevenueTimePoint[]> => {
     const params = filterToQueryParams(filter);
-    const res = await api.get("/reports/revenue-overview", { params });
+    const res = await api.get("/v1/reports/revenue-overview", { params });
     const rawTimeline = res.data.data.timeline || [];
     
     if (filter.type === "today") {
@@ -121,7 +121,7 @@ export const analyticsService = {
 
   getPeakHours: async (filter: DateFilter): Promise<PeakHourData[]> => {
     const params = filterToQueryParams(filter);
-    const res = await api.get("/reports/peak-hours", { params });
+    const res = await api.get("/v1/reports/peak-hours", { params });
     return (res.data.data || []).map((item: any) => ({
       hour: Number(item.hour),
       count: Number(item.count),
@@ -131,7 +131,7 @@ export const analyticsService = {
 
   getTopSellingItems: async (filter: DateFilter): Promise<TopItem[]> => {
     const params = filterToQueryParams(filter);
-    const res = await api.get("/reports/top-items", { params });
+    const res = await api.get("/v1/reports/top-items", { params });
     const rawItems = res.data.data || [];
     
     const totalTopQuantity = rawItems.reduce((sum: number, item: any) => sum + Number(item.quantity), 0) || 1;
@@ -147,7 +147,7 @@ export const analyticsService = {
 
   getPaymentMethodStats: async (filter: DateFilter): Promise<PaymentMethodStat[]> => {
     const params = filterToQueryParams(filter);
-    const res = await api.get("/reports/payment-methods", { params });
+    const res = await api.get("/v1/reports/payment-methods", { params });
     const rawStats = res.data.data || [];
     
     const methodNames: Record<string, string> = {
@@ -172,7 +172,7 @@ export const analyticsService = {
 
   getCashFlow: async (filter: DateFilter): Promise<CashFlowSummary> => {
     const params = filterToQueryParams(filter);
-    const res = await api.get("/reports/cash-flow", { params });
+    const res = await api.get("/v1/reports/cash-flow", { params });
     const data = res.data.data;
     return {
       income: Number(data.income),
