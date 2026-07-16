@@ -814,6 +814,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                           {selectedTable.start_time || "Vừa đến"}
                         </span>
                       </div>
+
                         <div className="flex justify-between">
                           <span className="text-gray-500">Số khách đặt/đang ngồi:</span>
                           <span className="font-bold text-emerald-700">

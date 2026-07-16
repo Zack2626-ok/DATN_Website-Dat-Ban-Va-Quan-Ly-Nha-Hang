@@ -6,8 +6,7 @@ import {
   type RestaurantInfo,
 } from "../../../services/restaurantInfoService";
 
-export const AdminSettings: React.FC = () => {
-  const [activeTab, _setActiveTab] = useState<"general" | "tax">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "tax">("general");
   const [savedMessage, setSavedMessage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -76,6 +75,7 @@ export const AdminSettings: React.FC = () => {
           <button
             key={tab.key}
             type="button"
+            onClick={() => setActiveTab(tab.key)}
             className={`rounded-lg px-4 py-2 text-sm font-medium cursor-pointer ${
               activeTab === tab.key ? "bg-sky-100 border-sky-200 text-white" : "text-slate-600 hover:bg-white/80 backdrop-blur-xl"
             }`}

@@ -411,6 +411,40 @@ const runSchemaMigrations = async (): Promise<void> => {
           WHERE b.table_id = t.id AND b.status IN ('pending', 'confirmed')
         )
     `);
+
+    // Migration: Thêm các cột cọc tiền vào bookings nếu chưa có
+    const bookingCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
+    );
+    if (bookingCols.length === 0) {
+      await query(`
+        ALTER TABLE bookings 
+        ADD COLUMN pre_order_total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'
+      `);
+      console.log("✅ Migration: added bookings deposit columns");
+    }
+
+    // Migration: Tạo bảng booking_menu_items để lưu món đặt trước nếu chưa có
+    const bookingMenuItemsTable = await query<any[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_menu_items'`,
+    );
+    if (bookingMenuItemsTable.length === 0) {
+      await query(`
+        CREATE TABLE booking_menu_items (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            booking_id INT NOT NULL,
+            menu_item_id VARCHAR(50) NOT NULL,
+            quantity INT NOT NULL DEFAULT 1,
+            unit_price DECIMAL(10,2) NOT NULL,
+            FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      console.log("✅ Migration: created booking_menu_items table");
+    }
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -1296,7 +1330,17 @@ export const getBookingById = async (id: number): Promise<any | null> => {
     LEFT JOIN table_areas a ON t.area_id = a.id
     WHERE b.id = ?
   `, [id]);
-  return rows[0] || null;
+  if (!rows[0]) return null;
+
+  const booking = rows[0];
+  const items = await query(`
+    SELECT bmi.*, mi.name AS menu_item_name
+    FROM booking_menu_items bmi
+    JOIN menu_items mi ON bmi.menu_item_id = mi.id
+    WHERE bmi.booking_id = ?
+  `, [id]);
+  booking.pre_ordered_items = items;
+  return booking;
 };
 
 export const createBooking = async (data: any): Promise<any> => {
@@ -1337,9 +1381,41 @@ export const createBooking = async (data: any): Promise<any> => {
   }
 
   const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
+  
+  let preOrderTotal = 0;
+  let depositAmount = 0;
+  let depositStatus = 'none';
+  const preOrderedItems = data.pre_ordered_items || data.items || [];
+
+  if (preOrderedItems.length > 0) {
+    const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
+    const placeholders = itemIds.map(() => "?").join(",");
+    const menuItems = await query<any[]>(
+      `SELECT id, price FROM menu_items WHERE id IN (${placeholders})`,
+      itemIds
+    );
+    
+    const priceMap = new Map<string, number>();
+    menuItems.forEach((item) => {
+      priceMap.set(String(item.id), Number(item.price));
+    });
+
+    preOrderedItems.forEach((item: any) => {
+      const price = priceMap.get(String(item.menu_item_id)) || 0;
+      preOrderTotal += price * item.quantity;
+    });
+
+    depositAmount = preOrderTotal * 0.20;
+    depositStatus = 'unpaid';
+  }
+
   const result = await query(`
-    INSERT INTO bookings (table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    INSERT INTO bookings (
+      table_id, customer_id, promotion_id, guest_name, guest_phone, 
+      party_size, start_time, end_time, confirmation_code, status, 
+      guest_note, note, pre_order_total, deposit_amount, deposit_status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
   `, [
     data.table_id,
     validCustomerId,
@@ -1351,12 +1427,38 @@ export const createBooking = async (data: any): Promise<any> => {
     data.end_time,
     code,
     data.guest_note || null,
-    data.note || null
+    data.note || null,
+    preOrderTotal,
+    depositAmount,
+    depositStatus
   ]);
   const insertId = result.insertId;
 
-  // Nếu có món đặt trước (data.items), tạo ngay 1 đơn hàng pre_order và chi tiết order_items để chuyển xuống bếp
-  if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+  if (preOrderedItems.length > 0) {
+    const placeholders = preOrderedItems.map(() => "(?, ?, ?, ?)").join(",");
+    const insertParams: any[] = [];
+    
+    const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
+    const menuItems = await query<any[]>(
+      `SELECT id, price FROM menu_items WHERE id IN (${itemIds.map(() => "?").join(",")})`,
+      itemIds
+    );
+    const priceMap = new Map<string, number>();
+    menuItems.forEach((item) => {
+      priceMap.set(String(item.id), Number(item.price));
+    });
+
+    preOrderedItems.forEach((item: any) => {
+      const price = priceMap.get(String(item.menu_item_id)) || 0;
+      insertParams.push(insertId, item.menu_item_id, item.quantity, price);
+    });
+
+    await query(
+      `INSERT INTO booking_menu_items (booking_id, menu_item_id, quantity, unit_price) VALUES ${placeholders}`,
+      insertParams
+    );
+
+    // Thêm logic của main branch: tạo ngay 1 đơn hàng pre_order và chi tiết order_items để chuyển xuống bếp
     const orderResult = await query(`
       INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
       VALUES (?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
@@ -1371,8 +1473,9 @@ export const createBooking = async (data: any): Promise<any> => {
     ]);
     const preOrderId = orderResult.insertId;
 
-    for (const item of data.items) {
+    for (const item of preOrderedItems) {
       if (!item.menu_item_id || !item.quantity) continue;
+      const price = priceMap.get(String(item.menu_item_id)) || 0;
       await query(`
         INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, kitchen_note, status)
         VALUES (?, ?, ?, ?, ?, 'pending')
@@ -1380,20 +1483,41 @@ export const createBooking = async (data: any): Promise<any> => {
         preOrderId,
         item.menu_item_id,
         item.quantity,
-        item.unit_price || 0,
-        item.note || `Món đặt trước - Booking ${code}`
+        price,
+        data.note || `Món đặt trước - Booking ${code}`
       ]);
     }
   }
 
-  // Chỉ khóa bàn (chuyển sang reserved) nếu lịch đặt diễn ra trong vòng 2 giờ tới
-  const bookingTime = new Date(data.start_time).getTime();
-  const now = Date.now();
-  if (bookingTime - now <= 2 * 60 * 60 * 1000) {
-    await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
-  }
+  // Khóa bàn (chuyển sang 'reserved') ngay lập tức khi tạo booking thành công để phản ánh trực tiếp trên sơ đồ quản lý
+  await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
 
-  return { id: insertId, confirmation_code: code, ...data, status: 'pending' };
+  const bookingDetails = await getBookingById(insertId);
+  return bookingDetails;
+};
+
+export const transferBookingItemsToOrder = async (tableId: number, orderId: string): Promise<void> => {
+  const activeBookings = await query<any[]>(
+    `SELECT id FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1`,
+    [tableId]
+  );
+  if (activeBookings.length === 0) return;
+  const bookingId = activeBookings[0].id;
+
+  const items = await query<any[]>(
+    `SELECT menu_item_id, quantity, unit_price FROM booking_menu_items WHERE booking_id = ?`,
+    [bookingId]
+  );
+
+  if (items.length > 0) {
+    for (const item of items) {
+      await query(
+        `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status) VALUES (?, ?, ?, ?, 'pending')`,
+        [orderId, item.menu_item_id, item.quantity, item.unit_price]
+      );
+    }
+    console.log(`✅ Transferred ${items.length} items from booking ${bookingId} to order ${orderId}`);
+  }
 };
 
 
@@ -1437,6 +1561,18 @@ export const deleteCancelledBooking = async (id: number): Promise<boolean> => {
     DELETE FROM bookings WHERE id = ? AND status = 'cancelled'
   `, [id]);
   return result.affectedRows > 0;
+};
+
+export const payBookingDeposit = async (id: number): Promise<boolean> => {
+  const booking = await getBookingById(id);
+  if (!booking) return false;
+
+  await query(`
+    UPDATE bookings 
+    SET deposit_status = 'paid' 
+    WHERE id = ?
+  `, [id]);
+  return true;
 };
 
 // ===== RESMANAGER TABLE DATABASE OPERATIONS =====

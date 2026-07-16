@@ -145,6 +145,7 @@ export const createBooking = async (data: {
   start_time: string;
   end_time: string;
   guest_note?: string;
+  pre_ordered_items?: any[];
   items?: {
     menu_item_id: number;
     quantity: number;
@@ -159,6 +160,11 @@ export const createBooking = async (data: {
 
 export const cancelBooking = async (id: number): Promise<void> => {
   await customerApi.patch(`/v1/customer/bookings/${id}/cancel`);
+};
+
+export const payBookingDeposit = async (id: number): Promise<any> => {
+  const response = await customerApi.patch(`/v1/bookings/${id}/pay-deposit`);
+  return response.data.data;
 };
 
 export const createEventContract = async (data: {

@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
-import { isValidPhoneNumber } from "../utils/validation";
+import { isValidPhoneNumber, getPhoneNumberValidationError } from "../utils/validation";
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -30,7 +30,7 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, items } =
+    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
       req.body;
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
@@ -38,8 +38,9 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
 
-    if (!isValidPhoneNumber(guest_phone)) {
-      sendError(res, "Số điện thoại không hợp lệ (phải từ 10-11 chữ số)", 400);
+    const phoneError = getPhoneNumberValidationError(guest_phone);
+    if (phoneError) {
+      sendError(res, phoneError, 400);
       return;
     }
 
@@ -49,9 +50,16 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
 
-    const bookingStart = new Date(start_time);
+    // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
+    // Chuỗi dạng "2026-07-16 21:00:00" nếu parse thẳng sẽ bị Node.js hiểu là UTC → sai 7 tiếng
+    const normalizedStart = start_time.trim().replace(' ', 'T');
+    const bookingStart = new Date(normalizedStart.includes('+') || normalizedStart.endsWith('Z')
+      ? normalizedStart
+      : normalizedStart + '+07:00'
+    );
     const now = new Date();
-    if (bookingStart < now) {
+    // Cho phép dung sai 60 phút phòng trường hợp chọn slot sắp qua và điền form lâu
+    if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
       return;
     }
@@ -67,7 +75,7 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       end_time,
       guest_note,
       note,
-      items: Array.isArray(items) ? items : undefined,
+      pre_ordered_items: pre_ordered_items || items,
     });
 
     sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
@@ -111,6 +119,20 @@ export const deleteBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
     sendSuccess(res, { id: Number(id) }, "Đã xóa booking");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const payBookingDepositHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const success = await db.payBookingDeposit(Number(id));
+    if (!success) {
+      sendError(res, "Không tìm thấy đặt bàn hoặc đơn không thể đặt cọc", 404);
+      return;
+    }
+    sendSuccess(res, { id: Number(id), deposit_status: "paid" }, "Thanh toán tiền cọc thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
