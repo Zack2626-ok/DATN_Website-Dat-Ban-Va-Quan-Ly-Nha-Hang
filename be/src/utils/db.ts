@@ -1289,6 +1289,18 @@ export const getBookingById = async (id: number): Promise<any | null> => {
 };
 
 export const createBooking = async (data: any): Promise<any> => {
+  // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
+  const overlaps = await query<any[]>(`
+    SELECT id FROM bookings
+    WHERE table_id = ? AND status IN ('pending', 'confirmed')
+      AND start_time < ? AND end_time > ?
+    LIMIT 1
+  `, [data.table_id, data.end_time, data.start_time]);
+
+  if (overlaps.length > 0) {
+    throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
+  }
+
   const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
   const result = await query(`
     INSERT INTO bookings (table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note)
@@ -1308,11 +1320,16 @@ export const createBooking = async (data: any): Promise<any> => {
   ]);
   const insertId = result.insertId;
 
-  // Update table status to reserved
-  await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
+  // Chỉ khóa bàn (chuyển sang reserved) nếu lịch đặt diễn ra trong vòng 2 giờ tới
+  const bookingTime = new Date(data.start_time).getTime();
+  const now = Date.now();
+  if (bookingTime - now <= 2 * 60 * 60 * 1000) {
+    await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
+  }
 
   return { id: insertId, confirmation_code: code, ...data, status: 'pending' };
 };
+
 
 export const updateBookingStatus = async (id: number, status: string, userId?: number): Promise<boolean> => {
   const booking = await getBookingById(id);
@@ -1428,21 +1445,47 @@ export const transferResmanagerOrder = async (sourceTableId: number, targetTable
 };
 
 export const mergeResmanagerTables = async (primaryTableId: number, mergedTableIds: number[]): Promise<boolean> => {
+  // Tìm order đang phục vụ của bàn chính
+  let primaryOrders = await query<any[]>("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving') LIMIT 1", [primaryTableId]);
+  let primaryOrderId = primaryOrders.length > 0 ? primaryOrders[0].id : null;
+
   for (const mergedId of mergedTableIds) {
     await query("INSERT INTO table_merges (primary_table_id, merged_table_id) VALUES (?, ?)", [primaryTableId, mergedId]);
     await query("UPDATE tables SET status = 'serving' WHERE id = ?", [mergedId]);
+
+    // Xử lý gộp đơn hàng / món ăn từ bàn phụ sang bàn chính
+    const mergedOrders = await query<any[]>("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving')", [mergedId]);
+    for (const mOrder of mergedOrders) {
+      if (!primaryOrderId) {
+        // Nếu bàn chính chưa có order, chuyển order của bàn phụ thành order của bàn chính
+        await query("UPDATE orders SET table_id = ? WHERE id = ?", [primaryTableId, mOrder.id]);
+        primaryOrderId = mOrder.id;
+      } else if (primaryOrderId !== mOrder.id) {
+        // Nếu bàn chính đã có order, gộp tất cả món từ order bàn phụ sang order bàn chính
+        await query("UPDATE order_items SET order_id = ? WHERE order_id = ?", [primaryOrderId, mOrder.id]);
+        await query("UPDATE orders SET status = 'cancelled', note = CONCAT(COALESCE(note, ''), ' [Gộp vào bàn chính #${primaryTableId}]') WHERE id = ?", [mOrder.id]);
+      }
+    }
   }
+
+  // Đảm bảo bàn chính cũng sang trạng thái serving
+  await query("UPDATE tables SET status = 'serving' WHERE id = ?", [primaryTableId]);
   return true;
 };
 
 export const unmergeResmanagerTable = async (primaryTableId: number): Promise<boolean> => {
   const mergedTables = await query("SELECT merged_table_id FROM table_merges WHERE primary_table_id = ?", [primaryTableId]);
   for (const m of mergedTables) {
-    await query("UPDATE tables SET status = 'empty' WHERE id = ?", [m.merged_table_id]);
+    // Chỉ trả bàn phụ về empty nếu trên bàn phụ không còn order nào active
+    const activeOrders = await query<any[]>("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving')", [m.merged_table_id]);
+    if (activeOrders.length === 0) {
+      await query("UPDATE tables SET status = 'empty' WHERE id = ?", [m.merged_table_id]);
+    }
   }
   await query("DELETE FROM table_merges WHERE primary_table_id = ?", [primaryTableId]);
   return true;
 };
+
 
 export const splitResmanagerTable = async (
   parentTableId: number,
@@ -1450,9 +1493,10 @@ export const splitResmanagerTable = async (
   targetTableId: number,
   itemIds: number[]
 ): Promise<{ success: boolean; newOrderId?: number }> => {
-  const rows = await query("SELECT * FROM orders WHERE table_id = ? AND status = 'serving'", [parentTableId]);
+  const rows = await query("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving') LIMIT 1", [parentTableId]);
   if (rows.length === 0) return { success: false };
   const originalOrder = rows[0];
+
 
   const result = await query(`
     INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, guest_name, guest_phone)
@@ -1585,6 +1629,43 @@ export const completeActiveBookingForTable = async (tableId: number): Promise<bo
 };
 
 export const addResmanagerOrderItem = async (data: any): Promise<any> => {
+  // Kiểm tra món đã có trong order với trạng thái pending và chưa hold hay chưa
+  const existingRows = await query<any>(`
+    SELECT id, quantity, kitchen_note 
+    FROM order_items 
+    WHERE order_id = ? AND menu_item_id = ? AND status = 'pending' AND (is_held = 0 OR is_held IS NULL)
+    LIMIT 1
+  `, [data.order_id, data.menu_item_id]);
+
+  if (existingRows.length > 0) {
+    const existing = existingRows[0];
+    const newQuantity = Number(existing.quantity) + Number(data.quantity);
+    let newNote = existing.kitchen_note;
+    if (data.kitchen_note && data.kitchen_note.trim()) {
+      const trimmedNew = data.kitchen_note.trim();
+      if (!existing.kitchen_note || !existing.kitchen_note.trim()) {
+        newNote = trimmedNew;
+      } else if (!existing.kitchen_note.includes(trimmedNew)) {
+        newNote = `${existing.kitchen_note}; ${trimmedNew}`;
+      }
+    }
+
+    await query(`
+      UPDATE order_items 
+      SET quantity = ?, kitchen_note = ? 
+      WHERE id = ?
+    `, [newQuantity, newNote, existing.id]);
+
+    return { 
+      id: existing.id, 
+      ...data, 
+      quantity: newQuantity, 
+      kitchen_note: newNote, 
+      status: 'pending', 
+      merged: true 
+    };
+  }
+
   const result = await query(`
     INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
@@ -1597,7 +1678,7 @@ export const addResmanagerOrderItem = async (data: any): Promise<any> => {
     data.course_number || 1,
     data.kitchen_note || null
   ]);
-  return { id: result.insertId, ...data, status: 'pending' };
+  return { id: result.insertId, ...data, status: 'pending', merged: false };
 };
 
 export const voidResmanagerOrderItem = async (itemId: number, reason: string): Promise<boolean> => {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2 } from "lucide-react";
+import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, CheckCircle } from "lucide-react";
 import { Modal } from "../../../components/Modal";
 import { VoidItemModal, type OrderItemStatus } from "./VoidItemModal";
 import { toast } from "react-hot-toast";
@@ -88,6 +88,11 @@ export const OrderPage: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [holding, setHolding] = useState(false);
 
+  // State xử lý khi thanh toán mà còn món chưa ra (pending / cooking)
+  const [unfinishedPaymentModal, setUnfinishedPaymentModal] = useState<DisplayOrderItem[] | null>(null);
+  const [unfinishedVoidReason, setUnfinishedVoidReason] = useState("Khách yêu cầu thanh toán sớm - Không chờ món nữa");
+  const [processingPaymentRequest, setProcessingPaymentRequest] = useState(false);
+
   // Tải thông tin bàn
   useEffect(() => {
     if (!tableId) return;
@@ -159,9 +164,7 @@ export const OrderPage: React.FC = () => {
   const pendingCount = orderItems.filter((i) => i.status === "pending" && !i.held).length;
   const heldCount = orderItems.filter((i) => i.status === "pending" && i.held).length;
 
-  const handleAddToOrder = async () => {
-    if (!addItemTarget) return;
-    setAddingItem(true);
+  const handleAddItemToOrder = async (targetItem: WaiterMenuItem, qty: number, note?: string) => {
     try {
       let currentOrderId = orderId;
       // Nếu chưa có order, tạo mới
@@ -179,35 +182,77 @@ export const OrderPage: React.FC = () => {
       }
 
       const newItem = await addOrderItem(currentOrderId, {
-        menu_item_id: addItemTarget.id,
-        quantity: addQty,
-        unit_price: addItemTarget.price,
-        kitchen_note: addNote.trim() || undefined,
+        menu_item_id: targetItem.id,
+        quantity: qty,
+        unit_price: targetItem.price,
+        kitchen_note: note?.trim() || undefined,
       });
 
-      setOrderItems((prev) => [
-        ...prev,
-        {
-          id: newItem.id,
-          menuItemId: addItemTarget.id,
-          name: addItemTarget.name,
-          price: addItemTarget.price,
-          quantity: addQty,
-          status: "pending" as OrderItemStatus,
-          kitchenNote: addNote.trim() || undefined,
-          held: false,
-        },
-      ]);
+      setOrderItems((prev) => {
+        const existingIdx = prev.findIndex(
+          (i) =>
+            (newItem.merged && i.id === newItem.id) ||
+            (i.menuItemId === targetItem.id && i.status === "pending" && !i.held)
+        );
 
-      toast.success(`Đã thêm ${addItemTarget.name} vào order`);
+        if (existingIdx !== -1) {
+          const updated = [...prev];
+          const ex = updated[existingIdx];
+          const trimmedNote = note?.trim();
+          const combinedNote = trimmedNote
+            ? ex.kitchenNote
+              ? ex.kitchenNote.includes(trimmedNote)
+                ? ex.kitchenNote
+                : `${ex.kitchenNote}; ${trimmedNote}`
+              : trimmedNote
+            : ex.kitchenNote;
+
+          updated[existingIdx] = {
+            ...ex,
+            quantity: ex.quantity + qty,
+            kitchenNote: combinedNote,
+          };
+          return updated;
+        }
+
+        return [
+          ...prev,
+          {
+            id: newItem.id,
+            menuItemId: targetItem.id,
+            name: targetItem.name,
+            price: targetItem.price,
+            quantity: qty,
+            status: "pending" as OrderItemStatus,
+            kitchenNote: note?.trim() || undefined,
+            held: false,
+          },
+        ];
+      });
+
+      toast.success(`Đã thêm ${qty} phần "${targetItem.name}" vào order`);
+      return true;
+    } catch {
+      toast.error("Không thể thêm món. Vui lòng thử lại.");
+      return false;
+    }
+  };
+
+  const handleAddToOrder = async () => {
+    if (!addItemTarget) return;
+    setAddingItem(true);
+    const success = await handleAddItemToOrder(addItemTarget, addQty, addNote);
+    setAddingItem(false);
+    if (success) {
       setAddItemTarget(null);
       setAddQty(1);
       setAddNote("");
-    } catch {
-      toast.error("Không thể thêm món. Vui lòng thử lại.");
-    } finally {
-      setAddingItem(false);
     }
+  };
+
+  const handleQuickAdd = async (e: React.MouseEvent, targetItem: WaiterMenuItem) => {
+    e.stopPropagation();
+    await handleAddItemToOrder(targetItem, 1, "");
   };
 
   const handleHold = async () => {
@@ -297,16 +342,56 @@ export const OrderPage: React.FC = () => {
   };
 
   const handleRequestPayment = async () => {
+    if (!tableId || activeItems.length === 0) return;
+    const unfinishedItems = orderItems.filter((i) => (i.status === "pending" || i.status === "cooking") && i.status !== "voided");
+    if (unfinishedItems.length > 0) {
+      setUnfinishedPaymentModal(unfinishedItems);
+      return;
+    }
+    await executeRequestPayment();
+  };
+
+  const executeRequestPayment = async () => {
     if (!tableId) return;
     try {
+      setProcessingPaymentRequest(true);
       await updateTableStatus(Number(tableId), "pending_payment");
-      setOrderItems((prev) => prev.map((i) => ({ ...i, status: "served" as OrderItemStatus })));
       toast.success("Đã gửi yêu cầu thanh toán — thu ngân sẽ xử lý tại quầy");
       navigate("/waiter/tables");
     } catch {
       toast.error("Không thể gửi yêu cầu thanh toán");
+    } finally {
+      setProcessingPaymentRequest(false);
     }
   };
+
+  const handleVoidUnfinishedAndRequestPayment = async () => {
+    if (!tableId || !orderId || !unfinishedPaymentModal) return;
+    try {
+      setProcessingPaymentRequest(true);
+      for (const item of unfinishedPaymentModal) {
+        await voidOrderItem(orderId, item.id, unfinishedVoidReason.trim() || "Khách yêu cầu thanh toán sớm");
+      }
+      const remainingActive = orderItems.filter(
+        (i) => i.status !== "voided" && !unfinishedPaymentModal.some((u) => u.id === i.id)
+      ).length;
+
+      if (remainingActive === 0) {
+        await updateTableStatus(Number(tableId), "empty");
+        toast.success("Đã hủy toàn bộ món chưa ra và trả bàn trống thành công!");
+      } else {
+        await updateTableStatus(Number(tableId), "pending_payment");
+        toast.success("Đã hủy các món chưa ra & gửi yêu cầu thanh toán thành công!");
+      }
+      setUnfinishedPaymentModal(null);
+      navigate("/waiter/tables");
+    } catch {
+      toast.error("Có lỗi xảy ra khi hủy món và yêu cầu thanh toán");
+    } finally {
+      setProcessingPaymentRequest(false);
+    }
+  };
+
 
   // Suppress TS6133 compiler warnings for unused imports and methods
   if (typeof Pause === 'object' || typeof Pause === 'function') {}
@@ -426,37 +511,48 @@ export const OrderPage: React.FC = () => {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto">
               {filteredMenu.map((item) => (
-                <button
+                <div
                   key={item.id}
                   onClick={() => item.is_active && setAddItemTarget(item)}
-                  disabled={!item.is_active}
-                  className={`flex flex-col rounded-xl border text-left transition-all hover:shadow-md ${
+                  className={`flex flex-col rounded-xl border text-left transition-all hover:shadow-md relative ${
                     item.is_active
-                      ? "border-gray-100 hover:border-blue-200 cursor-pointer"
+                      ? "border-gray-100 hover:border-blue-200 cursor-pointer group"
                       : "border-gray-100 opacity-50 cursor-not-allowed"
                   }`}
                 >
-                  <div className="w-full h-24 overflow-hidden rounded-t-xl shrink-0">
+                  <div className="w-full h-24 overflow-hidden rounded-t-xl shrink-0 relative">
                     <img
                       src={getImageUrl(item)}
                       alt={item.name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src =
                           "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
                       }}
                     />
                   </div>
-                  <div className="p-2 bg-white rounded-b-xl">
-                    <p className="text-xs font-bold text-gray-800 leading-tight line-clamp-2">{item.name}</p>
-                    <p className="text-xs font-semibold text-blue-600 mt-0.5">
-                      {Number(item.price).toLocaleString("vi-VN")}₫
-                    </p>
-                    {!item.is_active && (
-                      <span className="text-[9px] text-red-500 font-bold">Hết hàng</span>
+                  <div className="p-2.5 bg-white rounded-b-xl flex items-end justify-between gap-1.5 flex-1">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-gray-800 leading-tight line-clamp-2">{item.name}</p>
+                      <p className="text-xs font-semibold text-blue-600 mt-1">
+                        {Number(item.price).toLocaleString("vi-VN")}₫
+                      </p>
+                      {!item.is_active && (
+                        <span className="text-[9px] text-red-500 font-bold block mt-0.5">Hết hàng</span>
+                      )}
+                    </div>
+                    {item.is_active && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleQuickAdd(e, item)}
+                        className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs shrink-0 active:scale-95"
+                        title="Thêm nhanh 1 phần"
+                      >
+                        <Plus size={18} className="stroke-[2.5]" />
+                      </button>
                     )}
                   </div>
-                </button>
+                </div>
               ))}
               {filteredMenu.length === 0 && !menuLoading && (
                 <div className="col-span-3 py-10 text-center text-gray-400 text-sm">
@@ -495,50 +591,52 @@ export const OrderPage: React.FC = () => {
                         <p className="text-xs text-amber-600 mt-1">📝 {item.kitchenNote}</p>
                       )}
                     </div>
-                    <div className="flex flex-col items-end gap-1.5">
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <span className="text-base font-black text-gray-800">
                         {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                       </span>
-                      <span
-                        className={`text-xs font-bold px-2.5 py-1 rounded-full ${STATUS_STYLES[item.status]}`}
-                      >
-                        {STATUS_LABELS[item.status]}
-                      </span>
-                      {/* Nút Đã mang ra — chỉ hiện khi bếp xong (done) */}
-                      {item.status === "done" && (
-                        <button
-                          disabled={servingItemId === item.id}
-                          onClick={async () => {
-                            if (!orderId) return;
-                            setServingItemId(item.id);
-                            try {
-                              await markItemAsServed(orderId, item.id);
-                              setOrderItems((prev) =>
-                                prev.map((i) => i.id === item.id ? { ...i, status: "served" as OrderItemStatus } : i)
-                              );
-                              toast.success(`Đã mang "${item.name}" ra bàn`);
-                            } catch {
-                              toast.error("Không thể cập nhật");
-                            } finally {
-                              setServingItemId(null);
-                            }
-                          }}
-                          className="mt-1 text-sm text-blue-600 font-bold flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 hover:text-blue-800 transition-colors disabled:opacity-50"
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <span
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${STATUS_STYLES[item.status]}`}
                         >
-                          {servingItemId === item.id
-                            ? <Loader2 size={14} className="animate-spin" />
-                            : "🛎"} Đã mang ra
-                        </button>
-                      )}
-                      {/* Nút Hủy — không hiện khi đã served hoặc voided */}
-                      {item.status !== "voided" && item.status !== "served" && (
-                        <button
-                          onClick={() => setVoidTarget(item)}
-                          className="mt-1 text-sm text-red-500 font-bold flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors"
-                        >
-                          <XCircle size={14} /> Hủy
-                        </button>
-                      )}
+                          {STATUS_LABELS[item.status]}
+                        </span>
+                        {/* Nút Đã mang ra — chỉ hiện khi bếp xong (done) */}
+                        {item.status === "done" && (
+                          <button
+                            disabled={servingItemId === item.id}
+                            onClick={async () => {
+                              if (!orderId) return;
+                              setServingItemId(item.id);
+                              try {
+                                await markItemAsServed(orderId, item.id);
+                                setOrderItems((prev) =>
+                                  prev.map((i) => i.id === item.id ? { ...i, status: "served" as OrderItemStatus } : i)
+                                );
+                                toast.success(`Đã mang "${item.name}" ra bàn`);
+                              } catch {
+                                toast.error("Không thể cập nhật");
+                              } finally {
+                                setServingItemId(null);
+                              }
+                            }}
+                            className="text-xs text-blue-600 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 hover:text-blue-800 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            {servingItemId === item.id
+                              ? <Loader2 size={13} className="animate-spin" />
+                              : "🛎"} Đã mang ra
+                          </button>
+                        )}
+                        {/* Nút Hủy — không hiện khi đã served hoặc voided */}
+                        {item.status !== "voided" && item.status !== "served" && (
+                          <button
+                            onClick={() => setVoidTarget(item)}
+                            className="text-xs text-red-500 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors cursor-pointer"
+                          >
+                            <XCircle size={13} /> Hủy
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -557,7 +655,7 @@ export const OrderPage: React.FC = () => {
             >
               Quay lại sơ đồ bàn
             </button>
-            {table.status === "serving" && (
+            {table.status === "serving" && activeItems.length > 0 && (
               <button
                 onClick={handleRequestPayment}
                 className="w-full py-3.5 border-2 border-purple-200 text-purple-700 rounded-xl font-bold text-base hover:bg-purple-50"
@@ -644,6 +742,129 @@ export const OrderPage: React.FC = () => {
         tableName={table.name}
         onConfirm={handleVoidConfirm}
       />
+
+      {/* Modal xử lý nghiệp vụ khi bàn còn món chưa mang ra và bấm Yêu cầu thanh toán */}
+      <Modal
+        isOpen={!!unfinishedPaymentModal}
+        onClose={() => !processingPaymentRequest && setUnfinishedPaymentModal(null)}
+        title="⚠️ Cảnh báo: Bàn vẫn còn món chưa mang ra"
+        size="md"
+        theme="light"
+      >
+        {unfinishedPaymentModal && (
+          <div className="space-y-4 text-sm">
+            <p className="text-gray-600">
+              Bàn <strong className="text-gray-900">{table?.name}</strong> hiện đang có{" "}
+              <strong className="text-amber-600">{unfinishedPaymentModal.length} món</strong> đang chờ gửi bếp hoặc đang chế biến:
+            </p>
+
+            <div className="max-h-48 overflow-y-auto border border-amber-100 rounded-xl bg-amber-50/40 p-3 space-y-2">
+              {unfinishedPaymentModal.map((item) => (
+                <div key={item.id} className="flex justify-between items-center bg-white p-2.5 rounded-lg border border-amber-200/60 shadow-2xs text-xs">
+                  <div>
+                    <p className="font-bold text-gray-800">{item.name}</p>
+                    <p className="text-gray-500">Số lượng: <span className="font-bold text-gray-700">{item.quantity}</span></p>
+                  </div>
+                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${
+                    item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                  }`}>
+                    {item.status === "cooking" ? "⏳ Đang nấu" : "📋 Chờ gửi bếp"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {(() => {
+              const servedOrDoneCount = orderItems.filter((i) => (i.status === "served" || i.status === "done") && i.status !== "voided").length;
+              if (servedOrDoneCount === 0) {
+                return (
+                  <div className="space-y-3">
+                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium space-y-1">
+                      <p className="font-bold text-rose-900 flex items-center gap-1.5 text-sm">
+                        ⛔ Bàn chưa có món nào được mang ra (`Đã mang ra = 0`)
+                      </p>
+                      <p>Khách chưa ăn hoặc bếp chưa làm xong thì không thể yêu cầu thu ngân thanh toán trước! Nếu khách đổi ý rời đi không ăn nữa, vui lòng chọn Hủy toàn bộ món bên dưới.</p>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-xs font-bold text-gray-700">
+                        Lý do hủy toàn bộ món chưa ra:
+                      </label>
+                      <input
+                        type="text"
+                        value={unfinishedVoidReason}
+                        onChange={(e) => setUnfinishedVoidReason(e.target.value)}
+                        placeholder="Khách rời đi không dùng bữa..."
+                        className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2 pt-2">
+                      <button
+                        onClick={handleVoidUnfinishedAndRequestPayment}
+                        disabled={processingPaymentRequest}
+                        className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                      >
+                        {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
+                        Hủy toàn bộ món chưa ra & Trả bàn trống (0đ)
+                      </button>
+
+                      <button
+                        onClick={() => setUnfinishedPaymentModal(null)}
+                        disabled={processingPaymentRequest}
+                        className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
+                      >
+                        Đóng / Tiếp tục chờ bếp phục vụ
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  <div className="space-y-1.5 pt-1">
+                    <label className="block text-xs font-bold text-gray-700">
+                      Lý do hủy món (nếu chọn hủy & tính tiền luôn):
+                    </label>
+                    <input
+                      type="text"
+                      value={unfinishedVoidReason}
+                      onChange={(e) => setUnfinishedVoidReason(e.target.value)}
+                      placeholder="Khách yêu cầu thanh toán sớm..."
+                      className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                  </div>
+
+                  <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-xl space-y-1 border border-gray-100">
+                    <p className="font-bold text-gray-800">💡 Nghiệp vụ xử lý:</p>
+                    <p>• <strong>Hủy món & Thanh toán:</strong> Khách không muốn chờ món đang làm nữa (hủy để không tính tiền vào hóa đơn và gửi thu ngân thanh toán tiền các món đã dùng).</p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-2">
+                    <button
+                      onClick={handleVoidUnfinishedAndRequestPayment}
+                      disabled={processingPaymentRequest}
+                      className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
+                      Hủy các món chưa ra & Yêu cầu thanh toán luôn (Chỉ tính món đã ra)
+                    </button>
+
+                    <button
+                      onClick={() => setUnfinishedPaymentModal(null)}
+                      disabled={processingPaymentRequest}
+                      className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
+                    >
+                      Đóng / Tiếp tục chờ bếp phục vụ xong
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
