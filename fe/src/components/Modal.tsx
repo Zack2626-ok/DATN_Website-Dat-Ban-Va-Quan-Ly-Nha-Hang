@@ -60,13 +60,13 @@ export const Modal: React.FC<ModalProps> = ({
         className={`relative w-full ${sizeClasses[size]} rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden z-[10000] border ${
           isLight
             ? "bg-white border-slate-200 text-admin-text-main"
-            : "glass bg-brand-dark-light/95 border-white/10 text-zinc-200"
+            : "glass bg-brand-dark-light/95 border-slate-200 text-zinc-200"
         }`}
       >
         {/* Header */}
         <div
           className={`flex items-center justify-between px-6 py-5 border-b ${
-            isLight ? "border-slate-100" : "border-white/10"
+            isLight ? "border-slate-100" : "border-slate-200"
           }`}
         >
           <h3
@@ -81,7 +81,7 @@ export const Modal: React.FC<ModalProps> = ({
             className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
               isLight
                 ? "bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
-                : "bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                : "bg-white/5 border-slate-200 text-zinc-400 hover:text-white hover:bg-sky-100"
             }`}
             aria-label="Close modal"
           >
@@ -102,7 +102,7 @@ export const Modal: React.FC<ModalProps> = ({
         {footer && (
           <div
             className={`flex items-center justify-end gap-3 px-6 py-4 border-t ${
-              isLight ? "bg-slate-50 border-slate-100" : "bg-black/40 border-white/10"
+              isLight ? "bg-slate-50 border-slate-100" : "bg-black/40 border-slate-200"
             }`}
           >
             {footer}

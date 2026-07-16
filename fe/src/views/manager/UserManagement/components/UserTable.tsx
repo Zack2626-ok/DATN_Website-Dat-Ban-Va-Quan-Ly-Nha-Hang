@@ -22,14 +22,14 @@ export const UserTable: React.FC<UserTableProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-[#FF5A5F] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (users.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+      <div className="flex flex-col items-center justify-center py-12 text-slate-400">
         <UserIcon className="w-12 h-12 mb-3 text-gray-300" />
         <p className="text-lg">Không có người dùng nào</p>
       </div>
@@ -37,36 +37,36 @@ export const UserTable: React.FC<UserTableProps> = ({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200">
+    <div className="overflow-x-auto rounded-lg border border-sky-100">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="bg-gray-50">
-            <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Avatar</th>
-            <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Họ và tên</th>
-            <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Email</th>
-            <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Số điện thoại</th>
-            <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Vai trò</th>
-            <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Trạng thái</th>
-            <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Hành động</th>
+          <tr className="bg-sky-50/50">
+            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Avatar</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Họ và tên</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Email</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Số điện thoại</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Vai trò</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Trạng thái</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Hành động</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
           {users.map((user) => (
-            <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+            <tr key={user.id} className="hover:bg-sky-50/50 transition-colors">
               <td className="px-4 py-4">
                 <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
                   {user.avatar_url ? (
                     <img src={user.avatar_url} alt={user.full_name} className="w-full h-full rounded-full object-cover" />
                   ) : (
-                    <span className="text-gray-500 font-medium">
+                    <span className="text-slate-400 font-medium">
                       {user.full_name.charAt(0).toUpperCase()}
                     </span>
                   )}
                 </div>
               </td>
-              <td className="px-4 py-4 font-medium text-gray-800">{user.full_name}</td>
-              <td className="px-4 py-4 text-gray-600">{user.email}</td>
-              <td className="px-4 py-4 text-gray-600">{user.phone || "-"}</td>
+              <td className="px-4 py-4 font-medium text-slate-700">{user.full_name}</td>
+              <td className="px-4 py-4 text-slate-500">{user.email}</td>
+              <td className="px-4 py-4 text-slate-500">{user.phone || "-"}</td>
               <td className="px-4 py-4">
                 {user.role && (
                   <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${ROLE_COLORS[user.role.name]}`}>
@@ -78,7 +78,7 @@ export const UserTable: React.FC<UserTableProps> = ({
                 <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${
                   user.status === "active"
                     ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-700"
+                    : "bg-sky-100 text-slate-600"
                 }`}>
                   {user.status === "active" ? "Hoạt động" : "Không hoạt động"}
                 </span>

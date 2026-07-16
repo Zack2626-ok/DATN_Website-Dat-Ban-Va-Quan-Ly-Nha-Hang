@@ -121,10 +121,10 @@ export const AnalyticsView: React.FC = () => {
       </div>
 
       {/* Tiêu đề trang (Ẩn khi in) */}
-      <div className="flex flex-col gap-1 border-b border-gray-200 pb-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
+      <div className="flex flex-col gap-1 border-b border-sky-100 pb-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div>
-          <h1 className="text-2xl font-black text-gray-800 flex items-center gap-2 font-display">
-            <TrendingUp size={24} className="text-[#FF5A5F]" />
+          <h1 className="text-2xl font-black text-slate-700 flex items-center gap-2 font-display">
+            <TrendingUp size={24} className="text-sky-600" />
             Báo cáo & Phân tích kinh doanh
           </h1>
           <p className="mt-1 text-xs text-gray-400">

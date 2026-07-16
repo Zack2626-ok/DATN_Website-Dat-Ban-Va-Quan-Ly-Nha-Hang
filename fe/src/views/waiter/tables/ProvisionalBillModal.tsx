@@ -130,53 +130,53 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
       <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-fade-in">
         {/* Header Modal */}
-        <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-sky-50 bg-sky-50/50 px-6 py-4">
           <div className="flex items-center gap-2">
-            <Receipt className="text-[#FF5A5F]" size={20} />
-            <h3 className="text-base font-bold text-gray-800">Phiếu tạm tính — {tableName}</h3>
+            <Receipt className="text-sky-600" size={20} />
+            <h3 className="text-base font-bold text-slate-700">Phiếu tạm tính — {tableName}</h3>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/60 hover:text-gray-600 transition-colors cursor-pointer"
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/60 hover:text-slate-500 transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Preview nội dung phiếu */}
-        <div id="bill-print-area" className="p-6 max-h-[65vh] overflow-y-auto font-mono text-xs text-gray-800">
+        <div id="bill-print-area" className="p-6 max-h-[65vh] overflow-y-auto font-mono text-xs text-slate-700">
           {/* Tên nhà hàng */}
           <div className="text-center mb-1">
-            <p className="font-black text-sm tracking-wider text-gray-900">NHÀ HÀNG RESMANAGER</p>
+            <p className="font-black text-sm tracking-wider text-slate-800">NHÀ HÀNG RESMANAGER</p>
             <p className="text-[10px] text-gray-400">Hệ thống quản lý nhà hàng đa mô hình</p>
           </div>
-          <div className="border-t border-dashed border-gray-300 my-2" />
+          <div className="border-t border-dashed border-sky-200 my-2" />
 
-          <div className="text-center font-black text-base text-gray-900 mb-0.5">PHIẾU TẠM TÍNH</div>
-          <div className="text-center font-bold text-sm text-[#FF5A5F] mb-3">Bàn {tableName}</div>
+          <div className="text-center font-black text-base text-slate-800 mb-0.5">PHIẾU TẠM TÍNH</div>
+          <div className="text-center font-bold text-sm text-sky-600 mb-3">Bàn {tableName}</div>
 
           {/* Meta info */}
           <div className="space-y-1 text-[11px]">
-            <div className="flex justify-between"><span className="text-gray-500">Mã Order:</span><span className="font-bold">#{orderId || "N/A"}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><Clock size={10} /> Ngày giờ:</span><span>{printDate} {printTime}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><User size={10} /> Nhân viên:</span><span>{waiterName}{employeeCode ? ` (${employeeCode})` : ""}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Mã Order:</span><span className="font-bold">#{orderId || "N/A"}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400 flex items-center gap-1"><Clock size={10} /> Ngày giờ:</span><span>{printDate} {printTime}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400 flex items-center gap-1"><User size={10} /> Nhân viên:</span><span>{waiterName}{employeeCode ? ` (${employeeCode})` : ""}</span></div>
           </div>
 
           {/* Khách hàng */}
           {(guestName || guestPhone || startTime) && (
             <>
-              <div className="border-t border-dashed border-gray-300 my-2" />
-              <div className="space-y-1 text-[11px] bg-gray-50 rounded-lg p-2">
-                {guestName && <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><User size={10} /> Khách:</span><span className="font-bold">{guestName}</span></div>}
-                {guestPhone && <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><Phone size={10} /> SĐT:</span><span>{guestPhone}</span></div>}
-                {startTime && <div className="flex justify-between"><span className="text-gray-500 flex items-center gap-1"><Clock size={10} /> Giờ đến:</span><span>{startTime}</span></div>}
+              <div className="border-t border-dashed border-sky-200 my-2" />
+              <div className="space-y-1 text-[11px] bg-sky-50/50 rounded-lg p-2">
+                {guestName && <div className="flex justify-between"><span className="text-slate-400 flex items-center gap-1"><User size={10} /> Khách:</span><span className="font-bold">{guestName}</span></div>}
+                {guestPhone && <div className="flex justify-between"><span className="text-slate-400 flex items-center gap-1"><Phone size={10} /> SĐT:</span><span>{guestPhone}</span></div>}
+                {startTime && <div className="flex justify-between"><span className="text-slate-400 flex items-center gap-1"><Clock size={10} /> Giờ đến:</span><span>{startTime}</span></div>}
               </div>
             </>
           )}
 
           {/* Danh sách món */}
-          <div className="border-t border-dashed border-gray-300 my-2" />
-          <div className="grid text-[10px] font-bold text-gray-400 uppercase pb-1.5 mb-1 border-b border-gray-200" style={{ gridTemplateColumns: "1fr 110px 70px" }}>
+          <div className="border-t border-dashed border-sky-200 my-2" />
+          <div className="grid text-[10px] font-bold text-gray-400 uppercase pb-1.5 mb-1 border-b border-sky-100" style={{ gridTemplateColumns: "1fr 110px 70px" }}>
             <span>TÊN MÓN</span>
             <span className="text-center">SL × ĐG</span>
             <span className="text-right">T.TIỀN</span>
@@ -188,12 +188,12 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
               validItems.map((item) => (
                 <div key={item.id}>
                   <div className="grid text-[11px]" style={{ gridTemplateColumns: "1fr 110px 70px" }}>
-                    <span className="text-gray-900 font-medium truncate pr-1">{item.item_name || (item as any).menu_item_name || "—"}</span>
-                    <span className="text-center text-gray-500 whitespace-nowrap">{item.quantity} × {Number(item.unit_price).toLocaleString("vi-VN")}đ</span>
-                    <span className="text-right font-semibold text-gray-800 whitespace-nowrap">{(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
+                    <span className="text-slate-800 font-medium truncate pr-1">{item.item_name || (item as any).menu_item_name || "—"}</span>
+                    <span className="text-center text-slate-400 whitespace-nowrap">{item.quantity} × {Number(item.unit_price).toLocaleString("vi-VN")}đ</span>
+                    <span className="text-right font-semibold text-slate-700 whitespace-nowrap">{(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
                   </div>
                   {item.kitchen_note && (
-                    <p className="text-[10px] text-amber-500 italic pl-1">↳ {item.kitchen_note}</p>
+                    <p className="text-[10px] text-sky-600 italic pl-1">↳ {item.kitchen_note}</p>
                   )}
                 </div>
               ))
@@ -202,26 +202,26 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
 
           {/* Tổng */}
           <div className="border-t-2 border-gray-800 mt-3 pt-2 flex justify-between items-center">
-            <span className="font-black text-sm text-gray-900">TỔNG CỘNG:</span>
-            <span className="font-black text-base text-[#FF5A5F]">{totalAmount.toLocaleString("vi-VN")} đ</span>
+            <span className="font-black text-sm text-slate-800">TỔNG CỘNG:</span>
+            <span className="font-black text-base text-sky-600">{totalAmount.toLocaleString("vi-VN")} đ</span>
           </div>
 
-          <div className="border-t border-dashed border-gray-300 mt-3 pt-2 text-center text-[10px] text-gray-400 italic">
+          <div className="border-t border-dashed border-sky-200 mt-3 pt-2 text-center text-[10px] text-gray-400 italic">
             Quý khách vui lòng ra quầy Thu Ngân để thanh toán. Xin cảm ơn!
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-sky-50 bg-sky-50/50 px-6 py-4">
           <button
             onClick={onClose}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+            className="rounded-lg border border-sky-100 bg-white px-4 py-2 text-xs font-bold text-slate-500 hover:bg-sky-100 transition-colors cursor-pointer"
           >
             Đóng
           </button>
           <button
             onClick={handlePrint}
-            className="flex items-center gap-2 rounded-lg bg-[#FF5A5F] px-5 py-2 text-xs font-bold text-white hover:bg-[#e0484d] transition-colors shadow-md cursor-pointer"
+            className="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-xs font-bold text-white hover:bg-sky-600 transition-colors shadow-md cursor-pointer"
           >
             <Printer size={14} />
             In phiếu tạm tính

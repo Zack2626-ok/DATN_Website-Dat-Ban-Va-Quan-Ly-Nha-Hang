@@ -59,9 +59,9 @@ const TableDetailModal: React.FC<TableDetailModalProps> = ({
       case 'reserved':
         return {
           label: 'Đã đặt trước',
-          color: 'text-amber-400',
+          color: 'text-sky-700',
           bgDot: 'bg-amber-400',
-          bgBadge: 'bg-amber-500/10 border-amber-500/20',
+          bgBadge: 'bg-sky-50 border-sky-100',
           icon: '🟡',
         };
       case 'serving':
@@ -85,7 +85,7 @@ const TableDetailModal: React.FC<TableDetailModalProps> = ({
           label: 'Không xác định',
           color: 'text-gray-400',
           bgDot: 'bg-gray-400',
-          bgBadge: 'bg-gray-500/10 border-gray-500/20',
+          bgBadge: 'bg-sky-50/500/10 border-gray-500/20',
           icon: '⚪',
         };
     }
@@ -103,11 +103,11 @@ const TableDetailModal: React.FC<TableDetailModalProps> = ({
       primary:
         'bg-admin-primary/90 hover:bg-admin-primary text-white border-admin-primary/30 shadow-lg shadow-admin-primary/20',
       secondary:
-        'bg-white/5 hover:bg-white/10 text-zinc-200 border-white/10 hover:border-white/20',
+        'bg-white/5 hover:bg-sky-100 text-zinc-200 border-slate-200 hover:border-white/20',
       danger:
         'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20 hover:border-rose-500/30',
       warning:
-        'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20 hover:border-amber-500/30',
+        'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-100 hover:border-sky-200',
     };
 
     return (
@@ -207,7 +207,7 @@ const TableDetailModal: React.FC<TableDetailModalProps> = ({
       <div className="space-y-6">
         {/* Table Info */}
         <div className="flex flex-col items-center gap-4 py-2">
-          <div className="w-20 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+          <div className="w-20 h-20 rounded-2xl bg-white/5 border border-slate-200 flex items-center justify-center">
             <span className="text-3xl font-black text-zinc-100 font-display">{table.name}</span>
           </div>
 
@@ -235,7 +235,7 @@ const TableDetailModal: React.FC<TableDetailModalProps> = ({
         </div>
 
         {/* Divider */}
-        <div className="border-t border-white/5" />
+        <div className="border-t border-slate-100" />
 
         {/* Action Buttons */}
         <div>

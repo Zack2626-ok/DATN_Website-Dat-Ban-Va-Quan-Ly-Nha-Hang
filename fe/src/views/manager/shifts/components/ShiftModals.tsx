@@ -75,9 +75,9 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800">🚀 Mở ca làm việc mới</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700">🚀 Mở ca làm việc mới</h3>
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
@@ -91,12 +91,12 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
           )}
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Nhân viên nhận ca *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Nhân viên nhận ca *</label>
             <select
               required
               value={employeeId}
               onChange={(e) => setEmployeeId(Number(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none bg-white"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none bg-white"
             >
               <option value="">-- Chọn nhân viên --</option>
               {employees.map((emp) => (
@@ -108,18 +108,18 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Giờ bắt đầu ca *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Giờ bắt đầu ca *</label>
             <input
               type="datetime-local"
               required
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Số tiền mặt bàn giao đầu ca (VNĐ) *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Số tiền mặt bàn giao đầu ca (VNĐ) *</label>
             <input
               type="number"
               min={1}
@@ -138,7 +138,7 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
               className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none ${
                 cashOpen !== "" && cashOpen <= 0
                   ? "border-red-300 focus:border-red-500 bg-red-50/25"
-                  : "border-gray-200 focus:border-[#FF5A5F]"
+                  : "border-sky-100 focus:border-sky-500"
               }`}
             />
             <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
@@ -147,13 +147,13 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Ghi chú mở ca</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Ghi chú mở ca</label>
             <textarea
               placeholder="Ghi chú thêm thông tin bàn giao ca..."
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none resize-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none resize-none"
             />
           </div>
 
@@ -162,14 +162,14 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={loading || (cashOpen !== "" && cashOpen <= 0)}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#FF5A5F] hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Đang mở..." : "Mở ca làm"}
             </button>
@@ -242,9 +242,9 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800">🏁 Đóng ca làm việc & Kết toán</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700">🏁 Đóng ca làm việc & Kết toán</h3>
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
@@ -258,34 +258,34 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           )}
 
           {/* Chi tiết ca hiện tại */}
-          <div className="p-3 rounded-xl bg-gray-55/75 border border-gray-100 text-xs space-y-1.5 text-gray-600">
+          <div className="p-3 rounded-xl bg-gray-55/75 border border-sky-50 text-xs space-y-1.5 text-slate-500">
             <div>
-              Nhân viên phụ trách: <strong className="text-gray-800">{shift.employee_name}</strong>
+              Nhân viên phụ trách: <strong className="text-slate-700">{shift.employee_name}</strong>
             </div>
             <div>
-              Vai trò trong ca: <strong className="text-gray-800">{shift.employee_role}</strong>
+              Vai trò trong ca: <strong className="text-slate-700">{shift.employee_role}</strong>
             </div>
             <div>
-              Giờ bắt đầu: <strong className="text-gray-800">{shift.start_time.replace("T", " ")}</strong>
+              Giờ bắt đầu: <strong className="text-slate-700">{shift.start_time.replace("T", " ")}</strong>
             </div>
             <div>
-              Tiền mặt dự phòng đầu ca: <strong className="text-gray-800">{formatVnd(shift.cash_open)}</strong>
+              Tiền mặt dự phòng đầu ca: <strong className="text-slate-700">{formatVnd(shift.cash_open)}</strong>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Giờ kết thúc ca *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Giờ kết thúc ca *</label>
             <input
               type="datetime-local"
               required
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Số tiền mặt thực tế kiểm đếm cuối ca (VNĐ) *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Số tiền mặt thực tế kiểm đếm cuối ca (VNĐ) *</label>
             <input
               type="number"
               min={0}
@@ -304,7 +304,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
               className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none ${
                 cashClose !== "" && cashClose < 0
                   ? "border-red-300 focus:border-red-500 bg-red-50/25"
-                  : "border-gray-200 focus:border-[#FF5A5F]"
+                  : "border-sky-100 focus:border-sky-500"
               }`}
             />
             {cashClose !== "" && Number(cashClose) !== shift.cash_open && (
@@ -315,13 +315,13 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Ghi chú kết toán & chênh lệch</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Ghi chú kết toán & chênh lệch</label>
             <textarea
               placeholder="Nhập ghi chú chênh lệch doanh thu hoặc bàn giao chìa khóa/thiết bị..."
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none resize-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none resize-none"
             />
           </div>
 
@@ -330,7 +330,7 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>

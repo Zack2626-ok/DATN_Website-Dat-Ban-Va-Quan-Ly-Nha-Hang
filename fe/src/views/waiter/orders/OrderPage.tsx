@@ -32,7 +32,7 @@ interface DisplayOrderItem {
 }
 
 const STATUS_STYLES: Record<OrderItemStatus, string> = {
-  pending: "bg-gray-100 text-gray-700",
+  pending: "bg-sky-100 text-slate-600",
   cooking: "bg-orange-100 text-orange-700",
   done: "bg-green-100 text-green-700",
   served: "bg-blue-100 text-blue-700",
@@ -411,7 +411,7 @@ export const OrderPage: React.FC = () => {
   if (!table) {
     return (
       <div className="p-8 text-center">
-        <p className="text-gray-500">Không tìm thấy bàn</p>
+        <p className="text-slate-400">Không tìm thấy bàn</p>
         <Link to="/waiter/tables" className="text-blue-600 font-bold text-sm mt-4 inline-block">
           Quay lại sơ đồ bàn
         </Link>
@@ -432,12 +432,12 @@ export const OrderPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/waiter/tables", { state: { selectedTableId: tableId } })}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-sky-100 rounded-lg transition-colors"
           >
-            <ArrowLeft size={20} className="text-gray-600" />
+            <ArrowLeft size={20} className="text-slate-500" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 font-display flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-800 font-display flex items-center gap-2">
               <span>Gọi món — Bàn {table.name}</span>
               {table.guest_name && (
                 <span className="text-base font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
@@ -445,7 +445,7 @@ export const OrderPage: React.FC = () => {
                 </span>
               )}
             </h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-400">
               {orderId ? `Order #${orderId}` : "Chưa có order"} • {table.capacity} chỗ
               {table.area_name && ` • ${table.area_name}`}
             </p>
@@ -465,13 +465,13 @@ export const OrderPage: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
         {/* Thực đơn */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-sky-100 p-5 flex flex-col gap-4">
           {/* Categories */}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedCategoryId("all")}
               className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${
-                selectedCategoryId === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                selectedCategoryId === "all" ? "bg-blue-600 text-white" : "bg-sky-100 text-slate-500 hover:bg-gray-200"
               }`}
             >
               Tất cả
@@ -483,7 +483,7 @@ export const OrderPage: React.FC = () => {
                 className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${
                   selectedCategoryId === cat.id
                     ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    : "bg-sky-100 text-slate-500 hover:bg-gray-200"
                 }`}
               >
                 {cat.name}
@@ -498,7 +498,7 @@ export const OrderPage: React.FC = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm tên món..."
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="w-full pl-9 pr-4 py-2 bg-sky-50/50 border border-sky-100 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
 
@@ -516,8 +516,8 @@ export const OrderPage: React.FC = () => {
                   onClick={() => item.is_active && setAddItemTarget(item)}
                   className={`flex flex-col rounded-xl border text-left transition-all hover:shadow-md relative ${
                     item.is_active
-                      ? "border-gray-100 hover:border-blue-200 cursor-pointer group"
-                      : "border-gray-100 opacity-50 cursor-not-allowed"
+                      ? "border-sky-100 hover:border-blue-200 cursor-pointer group"
+                      : "border-sky-50 opacity-50 cursor-not-allowed"
                   }`}
                 >
                   <div className="w-full h-24 overflow-hidden rounded-t-xl shrink-0 relative">
@@ -533,7 +533,7 @@ export const OrderPage: React.FC = () => {
                   </div>
                   <div className="p-2.5 bg-white rounded-b-xl flex items-end justify-between gap-1.5 flex-1">
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-gray-800 leading-tight line-clamp-2">{item.name}</p>
+                      <p className="text-xs font-bold text-slate-700 leading-tight line-clamp-2">{item.name}</p>
                       <p className="text-xs font-semibold text-blue-600 mt-1">
                         {Number(item.price).toLocaleString("vi-VN")}₫
                       </p>
@@ -564,10 +564,10 @@ export const OrderPage: React.FC = () => {
         </div>
 
         {/* Order panel */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-5 flex flex-col gap-4">
-          <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-sky-100 p-5 flex flex-col gap-4">
+          <div className="flex items-center gap-2 border-b border-sky-50 pb-3">
             <Utensils size={18} className="text-blue-600" />
-            <h2 className="font-bold text-gray-900">Order hiện tại</h2>
+            <h2 className="font-bold text-slate-800">Order hiện tại</h2>
           </div>
 
           <div className="flex-1 space-y-2 max-h-[calc(100vh-360px)] overflow-y-auto">
@@ -581,18 +581,18 @@ export const OrderPage: React.FC = () => {
               orderItems.map((item) => (
                 <div
                   key={item.id}
-                  className={`p-4 rounded-xl border border-gray-100 ${item.status === "voided" ? "opacity-60" : ""}`}
+                  className={`p-4 rounded-xl border border-sky-50 ${item.status === "voided" ? "opacity-60" : ""}`}
                 >
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-base text-gray-800">{item.name}</p>
-                      <p className="text-sm text-gray-500 mt-0.5">×{item.quantity}</p>
+                      <p className="font-bold text-base text-slate-700">{item.name}</p>
+                      <p className="text-sm text-slate-400 mt-0.5">×{item.quantity}</p>
                       {item.kitchenNote && (
                         <p className="text-xs text-amber-600 mt-1">📝 {item.kitchenNote}</p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <span className="text-base font-black text-gray-800">
+                      <span className="text-base font-black text-slate-700">
                         {(item.price * item.quantity).toLocaleString("vi-VN")}₫
                       </span>
                       <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -644,10 +644,10 @@ export const OrderPage: React.FC = () => {
             )}
           </div>
 
-          <div className="border-t border-gray-100 pt-4 space-y-3">
+          <div className="border-t border-sky-50 pt-4 space-y-3">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-base text-gray-500">Tổng cộng</span>
-              <span className="text-3xl font-black text-gray-900">{total.toLocaleString("vi-VN")}₫</span>
+              <span className="font-bold text-base text-slate-400">Tổng cộng</span>
+              <span className="text-3xl font-black text-slate-800">{total.toLocaleString("vi-VN")}₫</span>
             </div>
             <button
               onClick={() => navigate("/waiter/tables", { state: { selectedTableId: tableId } })}
@@ -692,7 +692,7 @@ export const OrderPage: React.FC = () => {
                 }}
               />
               <div>
-                <p className="font-bold text-gray-900">{addItemTarget.name}</p>
+                <p className="font-bold text-slate-800">{addItemTarget.name}</p>
                 <p className="text-sm text-blue-600 font-bold">
                   {Number(addItemTarget.price).toLocaleString("vi-VN")}₫
                 </p>
@@ -702,14 +702,14 @@ export const OrderPage: React.FC = () => {
             <div className="flex items-center justify-center gap-4">
               <button
                 onClick={() => setAddQty((q) => Math.max(1, q - 1))}
-                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
+                className="p-2 rounded-lg bg-sky-100 hover:bg-gray-200"
               >
                 <Minus size={16} />
               </button>
-              <span className="text-2xl font-black text-gray-900 w-8 text-center">{addQty}</span>
+              <span className="text-2xl font-black text-slate-800 w-8 text-center">{addQty}</span>
               <button
                 onClick={() => setAddQty((q) => q + 1)}
-                className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
+                className="p-2 rounded-lg bg-sky-100 hover:bg-gray-200"
               >
                 <Plus size={16} />
               </button>
@@ -720,7 +720,7 @@ export const OrderPage: React.FC = () => {
               onChange={(e) => setAddNote(e.target.value)}
               placeholder="Ghi chú bếp (tùy chọn)..."
               rows={2}
-              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none"
+              className="w-full p-2.5 bg-sky-50/50 border border-sky-100 rounded-lg text-sm outline-none"
             />
 
             <button

@@ -31,19 +31,19 @@ export const AdminAnalytics: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
-      <div className="border-b border-amber-500/20 pb-4">
-        <h1 className="text-2xl font-bold text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Analytics tổng thể</h1>
-        <p className="mt-1 text-sm text-slate-400">Tổng quan doanh thu, chi phí và hoạt động toàn hệ thống</p>
+      <div className="border-b border-sky-100 pb-4">
+        <h1 className="text-2xl font-bold text-sky-700 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Analytics tổng thể</h1>
+        <p className="mt-1 text-sm text-slate-500">Tổng quan doanh thu, chi phí và hoạt động toàn hệ thống</p>
       </div>
       {/* KPIs Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* KPI 1 */}
-        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-sky-100 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Tổng doanh thu
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <DollarSign size={14} />
             </div>
           </div>
@@ -58,12 +58,12 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* KPI 2 */}
-        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-sky-100 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Bàn đang phục vụ
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <Users size={14} />
             </div>
           </div>
@@ -71,7 +71,7 @@ export const AdminAnalytics: React.FC = () => {
             <span className="text-2xl font-black">
               {stats.occupiedTables + 20}/40
             </span>
-            <span className="text-slate-400 text-[10px] font-bold">
+            <span className="text-slate-500 text-[10px] font-bold">
               {Math.round(((stats.occupiedTables + 20) / 40) * 100)}% đang sử
               dụng
             </span>
@@ -79,12 +79,12 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* KPI 3 */}
-        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-sky-100 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Đơn hàng hoàn thành
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <ShoppingCart size={14} />
             </div>
           </div>
@@ -97,12 +97,12 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* KPI 4 */}
-        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-sky-100 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Cảnh báo tồn kho
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <AlertTriangle size={14} />
             </div>
           </div>
@@ -117,7 +117,7 @@ export const AdminAnalytics: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Doanh thu 7 ngày qua SVG Line Chart */}
-        <div className="lg:col-span-2 bg-[#1C2541]/40 backdrop-blur-xl p-6 rounded-2xl border border-amber-500/20 flex flex-col gap-6 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+        <div className="lg:col-span-2 bg-white/80 backdrop-blur-xl p-6 rounded-2xl border border-sky-100 flex flex-col gap-6 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex flex-col">
             <h3 className="text-base font-extrabold font-display">
               Doanh thu 7 ngày qua
@@ -126,7 +126,7 @@ export const AdminAnalytics: React.FC = () => {
 
           <div className="relative h-64 flex gap-4 pr-4 border-b border-l border-slate-100 pb-6">
             {/* Y axis labels */}
-            <div className="absolute -left-12 top-0 h-full flex flex-col justify-between text-[10px] font-bold text-slate-400 text-right w-10">
+            <div className="absolute -left-12 top-0 h-full flex flex-col justify-between text-[10px] font-bold text-slate-500 text-right w-10">
               <span>26000</span>
               <span>19500</span>
               <span>13000</span>
@@ -247,7 +247,7 @@ export const AdminAnalytics: React.FC = () => {
               </svg>
 
               {/* X axis labels */}
-              <div className="absolute -bottom-6 left-0 w-full flex justify-between text-[10px] font-bold text-slate-400 px-1.5">
+              <div className="absolute -bottom-6 left-0 w-full flex justify-between text-[10px] font-bold text-slate-500 px-1.5">
                 <span>Thứ 2</span>
                 <span>Thứ 3</span>
                 <span>Thứ 4</span>
@@ -266,7 +266,7 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* Doughnut Chart card */}
-        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-6 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-6 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl border border-sky-100 flex flex-col justify-between gap-6 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div>
             <h3 className="text-base font-extrabold font-display">
               Top 5 món bán chạy nhất

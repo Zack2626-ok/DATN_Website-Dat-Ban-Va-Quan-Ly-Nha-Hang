@@ -18,7 +18,7 @@ const TableCard: React.FC<TableCardProps> = ({ table, onClick }) => {
       case 'pending_payment':
         return 'bg-purple-100 text-purple-800 border-purple-300';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return 'bg-sky-100 text-slate-700 border-sky-200';
     }
   };
 

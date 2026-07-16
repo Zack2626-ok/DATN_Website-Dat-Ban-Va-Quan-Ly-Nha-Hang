@@ -14,7 +14,7 @@ interface FeaturedDishCardProps {
 }
 
 export const FeaturedDishCard: React.FC<FeaturedDishCardProps> = ({ dish }) => (
-  <article className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+  <article className="group overflow-hidden rounded-xl border border-sky-100 bg-white shadow-sm transition-shadow hover:shadow-md">
     <div className="aspect-[4/3] overflow-hidden">
       <img
         src={getImageUrl(dish.image || dish.imageUrl)}
@@ -23,7 +23,7 @@ export const FeaturedDishCard: React.FC<FeaturedDishCardProps> = ({ dish }) => (
       />
     </div>
     <div className="p-4">
-      <h3 className="font-semibold text-gray-700">{dish.name}</h3>
+      <h3 className="font-semibold text-slate-600">{dish.name}</h3>
       <p className="mt-1 text-lg font-bold text-blue-700">{formatCurrency(dish.price)}</p>
       <Link
         to="/menu"

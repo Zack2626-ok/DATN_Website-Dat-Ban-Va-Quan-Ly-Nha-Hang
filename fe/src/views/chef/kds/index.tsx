@@ -519,7 +519,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
       {loading && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <ChefHat size={48} className="text-slate-400 animate-bounce" />
+          <ChefHat size={48} className="text-slate-500 animate-bounce" />
           <span className="text-sm text-slate-500 italic animate-pulse">Đang tải danh sách món ăn từ bếp...</span>
         </div>
       ) : activeTab === "kanban" ? (
@@ -813,7 +813,7 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {batchGroups.length === 0 ? (
-            <div className="text-center py-24 text-slate-400 text-xs italic bg-slate-100/30 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
+            <div className="text-center py-24 text-slate-500 text-xs italic bg-slate-100/30 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
               <Inbox size={24} />
               Không có món ăn nào đang hoạt động để gộp mẻ
             </div>
@@ -845,7 +845,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Detail list per table */}
                       <div className="mt-4 flex flex-col gap-1.5 border-t border-slate-100 pt-3">
-                        <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Chi tiết bàn:</span>
+                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Chi tiết bàn:</span>
                         {group.items.map((item, idy) => {
                           const noteText = item.kitchenNote || (item as any).kitchen_note;
                           return (

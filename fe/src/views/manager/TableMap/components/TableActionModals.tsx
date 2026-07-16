@@ -54,49 +54,49 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
-            <Play size={16} className="text-[#FF5A5F]" />
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700 flex items-center gap-2">
+            <Play size={16} className="text-sky-600" />
             Mở bàn mới: {table.name}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Số lượng khách *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Số lượng khách *</label>
             <input
               type="number"
               min={1}
               required
               value={guestCount}
               onChange={(e) => setGuestCount(Number(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
             <p className="text-[10px] text-gray-400 mt-1">Sức chứa tối đa của bàn: {table.capacity} người</p>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Tên khách hàng (Tùy chọn)</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Tên khách hàng (Tùy chọn)</label>
             <input
               type="text"
               placeholder="Ví dụ: Anh Hào"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Số điện thoại (Tùy chọn)</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Số điện thoại (Tùy chọn)</label>
             <input
               type="tel"
               placeholder="Ví dụ: 0969775850"
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value.replace(/[^0-9+\s-]/g, ''))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 
@@ -105,14 +105,14 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#FF5A5F] hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer"
             >
               {loading ? "Đang xử lý..." : "Mở bàn"}
             </button>
@@ -160,11 +160,11 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700 flex items-center gap-2">
             Chuyển bàn: {table.name}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
@@ -177,12 +177,12 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Chọn bàn trống cần chuyển đến *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Chọn bàn trống cần chuyển đến *</label>
             <select
               required
               value={targetTableId}
               onChange={(e) => setTargetTableId(Number(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none bg-white"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none bg-white"
             >
               <option value="">-- Chọn bàn trống --</option>
               {emptyTables
@@ -200,14 +200,14 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={loading || !targetTableId}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#FF5A5F] hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
             >
               {loading ? "Đang xử lý..." : "Chuyển hóa đơn"}
             </button>
@@ -261,24 +261,24 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
-            <Link2 size={16} className="text-[#FF5A5F]" />
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700 flex items-center gap-2">
+            <Link2 size={16} className="text-sky-600" />
             Gộp bàn vào {table.name}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <p className="text-xs text-gray-500 leading-relaxed">
+          <p className="text-xs text-slate-400 leading-relaxed">
             Chọn các bàn trống cần gộp chung hóa đơn với bàn **{table.name}**. Khi gộp, các bàn con sẽ chia sẻ hóa đơn và trạng thái với bàn mẹ.
           </p>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Chọn các bàn gộp (Chọn nhiều)</label>
-            <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-100 p-2 space-y-1">
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Chọn các bàn gộp (Chọn nhiều)</label>
+            <div className="border border-sky-100 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-100 p-2 space-y-1">
               {emptyTables
                 .filter((t) => t.id !== table.id)
                 .map((t) => {
@@ -287,7 +287,7 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
                     <label
                       key={t.id}
                       className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${
-                        isChecked ? "bg-purple-50 text-purple-900" : "hover:bg-gray-50"
+                        isChecked ? "bg-purple-50 text-purple-900" : "hover:bg-sky-50/50"
                       }`}
                     >
                       <div className="flex items-center gap-2 text-xs font-medium">
@@ -295,7 +295,7 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleSelect(t.id)}
-                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          className="rounded border-sky-200 text-purple-600 focus:ring-purple-500"
                         />
                         <span>{t.name}</span>
                       </div>
@@ -319,14 +319,14 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={loading || selectedIds.length === 0}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#FF5A5F] hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
             >
               {loading ? "Đang xử lý..." : `Gộp ${selectedIds.length} bàn`}
             </button>
@@ -379,40 +379,40 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
-            <Copy size={16} className="text-[#FF5A5F]" />
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700 flex items-center gap-2">
+            <Copy size={16} className="text-sky-600" />
             Tách bàn: {table.name}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <p className="text-xs text-gray-500 leading-relaxed">
+          <p className="text-xs text-slate-400 leading-relaxed">
             Chọn một bàn trống để tách một phần đơn hàng từ bàn **{table.name}** sang.
           </p>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Tên nhãn tách hóa đơn *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Tên nhãn tách hóa đơn *</label>
             <input
               type="text"
               required
               placeholder="Ví dụ: Bàn A, Nhóm 2..."
               value={childLabel}
               onChange={(e) => setChildLabel(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Chọn bàn trống nhận chuyển sang *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Chọn bàn trống nhận chuyển sang *</label>
             <select
               required
               value={targetTableId}
               onChange={(e) => setTargetTableId(Number(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none bg-white"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none bg-white"
             >
               <option value="">-- Chọn bàn trống --</option>
               {emptyTables
@@ -430,14 +430,14 @@ export const SplitTableModal: React.FC<SplitTableModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={loading || !targetTableId || !childLabel.trim()}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#FF5A5F] hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
             >
               {loading ? "Đang xử lý..." : "Tách bàn"}
             </button>
@@ -566,11 +566,11 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700">
             {table ? `Sửa thông tin bàn: ${table.name}` : "Thêm bàn ăn mới"}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
@@ -583,12 +583,12 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
           )}
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Khu vực *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Khu vực *</label>
             <select
               required
               value={areaId}
               onChange={(e) => setAreaId(Number(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none bg-white"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none bg-white"
             >
               <option value="">-- Chọn khu vực --</option>
               {areas.map((a) => (
@@ -601,18 +601,18 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Tên bàn *</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Tên bàn *</label>
               <input
                 type="text"
                 required
                 placeholder="Ví dụ: B01, VIP-1"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+                className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Sức chứa (Khách) *</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Sức chứa (Khách) *</label>
               <input
                 type="number"
                 min={1}
@@ -620,14 +620,14 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
                 required
                 value={capacity}
                 onChange={(e) => setCapacity(Number(e.target.value))}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+                className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Hàng/Dãy (A-Z) *</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Hàng/Dãy (A-Z) *</label>
               <input
                 type="text"
                 maxLength={1}
@@ -635,11 +635,11 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
                 placeholder="A"
                 value={rowPos}
                 onChange={(e) => setRowPos(e.target.value.toUpperCase())}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none text-center font-bold"
+                className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none text-center font-bold"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Cột hiển thị (1-12) *</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Cột hiển thị (1-12) *</label>
               <input
                 type="number"
                 min={1}
@@ -647,7 +647,7 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
                 required
                 value={colPos}
                 onChange={(e) => setColPos(Number(e.target.value))}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none text-center font-bold"
+                className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none text-center font-bold"
               />
             </div>
           </div>
@@ -658,7 +658,7 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
             </div>
           )}
 
-          <div className="text-[10px] text-gray-400 bg-gray-50 rounded-lg p-2.5 leading-relaxed">
+          <div className="text-[10px] text-gray-400 bg-sky-50/50 rounded-lg p-2.5 leading-relaxed">
             * <strong>Hàng và Cột</strong> quyết định vị trí chính xác của bàn trên lưới sơ đồ vật lý. Đảm bảo bố trí hợp lý tránh trùng tọa độ.
           </div>
 
@@ -667,14 +667,14 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={loading || !!duplicateTable}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#FF5A5F] hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Đang lưu..." : "Lưu lại"}
             </button>
@@ -709,16 +709,16 @@ export const ConfirmDeleteTableModal: React.FC<ConfirmDeleteTableModalProps> = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800">Xác nhận xóa bàn ăn</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700">Xác nhận xóa bàn ăn</h3>
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
 
         <div className="p-6 space-y-4">
-          <div className="text-sm text-gray-600 leading-relaxed">
-            Bạn có chắc chắn muốn xóa bàn ăn <strong className="text-gray-900">{table.name}</strong> không? Hành động này sẽ thực hiện ẩn bàn ăn ra khỏi sơ đồ lưới nhưng lưu trữ thông tin lịch sử.
+          <div className="text-sm text-slate-500 leading-relaxed">
+            Bạn có chắc chắn muốn xóa bàn ăn <strong className="text-slate-800">{table.name}</strong> không? Hành động này sẽ thực hiện ẩn bàn ăn ra khỏi sơ đồ lưới nhưng lưu trữ thông tin lịch sử.
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
@@ -726,7 +726,7 @@ export const ConfirmDeleteTableModal: React.FC<ConfirmDeleteTableModalProps> = (
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
@@ -794,51 +794,51 @@ export const OpenTabModal: React.FC<OpenTabModalProps> = ({ isOpen, onClose, onC
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden animate-fade-in z-10">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-bold text-gray-800">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-sky-50">
+          <h3 className="text-base font-bold text-slate-700">
             📇 Mở Tab nhanh (Takeaway / Quầy Bar)
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 hover:bg-sky-100 rounded-full text-gray-400 hover:text-slate-500">
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Tên khách hàng / Nhãn Tab *</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Tên khách hàng / Nhãn Tab *</label>
             <input
               type="text"
               required
               placeholder="Ví dụ: Khách mang về A, Khách quầy Bar 2"
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Số điện thoại khách (Tùy chọn)</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Số điện thoại khách (Tùy chọn)</label>
             <input
               type="tel"
               placeholder="Nhập số điện thoại khách hàng"
               value={guestPhone}
               onChange={(e) => setGuestPhone(e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase">Ghi chú đơn hàng (Tùy chọn)</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase">Ghi chú đơn hàng (Tùy chọn)</label>
             <textarea
               placeholder="Ví dụ: Đồ uống mang về, ít đá..."
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none resize-none"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none resize-none"
             />
           </div>
 
-          <div className="text-[10px] text-gray-400 bg-gray-50 rounded-lg p-2.5 leading-relaxed">
+          <div className="text-[10px] text-gray-400 bg-sky-50/50 rounded-lg p-2.5 leading-relaxed">
             * Tab sau khi tạo sẽ nằm trong danh sách đơn hàng đang chạy của Thu ngân để tiện xuất hóa đơn và pha chế, không hiển thị trên sơ đồ bàn vật lý.
           </div>
 
@@ -847,14 +847,14 @@ export const OpenTabModal: React.FC<OpenTabModalProps> = ({ isOpen, onClose, onC
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg border border-gray-200 cursor-pointer"
+              className="px-4 py-2 text-xs font-bold text-slate-400 hover:bg-sky-50/50 rounded-lg border border-sky-100 cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
               disabled={loading || !guestName.trim()}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#FF5A5F] hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer disabled:opacity-50"
             >
               {loading ? "Đang tạo..." : "Mở Tab"}
             </button>

@@ -76,8 +76,8 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
         <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-xl">
           <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-gray-900">{item.name} × {item.quantity}</p>
-            <p className="text-sm text-gray-500 mt-1">Bàn {tableName}</p>
+            <p className="font-bold text-slate-800">{item.name} × {item.quantity}</p>
+            <p className="text-sm text-slate-400 mt-1">Bàn {tableName}</p>
           </div>
         </div>
 
@@ -108,11 +108,11 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
         )}
 
         <div className="space-y-2">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lý do hủy</label>
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lý do hủy</label>
           <select
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="w-full p-2.5 bg-sky-50/50 border border-sky-100 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             {VOID_REASONS.map((r) => (
               <option key={r} value={r}>{r}</option>
@@ -124,7 +124,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
               onChange={(e) => setCustomReason(e.target.value)}
               placeholder="Nhập lý do..."
               rows={2}
-              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="w-full p-2.5 bg-sky-50/50 border border-sky-100 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           )}
         </div>
@@ -132,7 +132,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
         <div className="flex gap-3 pt-2">
           <button
             onClick={handleClose}
-            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm hover:bg-gray-200 transition-colors"
+            className="flex-1 py-2.5 bg-sky-100 text-slate-600 rounded-lg font-bold text-sm hover:bg-gray-200 transition-colors"
           >
             Đóng
           </button>
