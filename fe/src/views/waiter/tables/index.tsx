@@ -403,7 +403,7 @@ export const WaiterTableMap: React.FC = () => {
 
   const handleRequestPaymentFromTable = async () => {
     if (!selectedTableId || !selectedTable || !activeOrder || activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length === 0) return;
-    const unfinished = activeOrder.items.filter((i) => (i.status === "pending" || i.status === "cooking") && i.status !== "voided");
+    const unfinished = activeOrder.items.filter((i) => i.status === "pending" || i.status === "cooking");
     if (unfinished.length > 0) {
       setUnfinishedPaymentModal(unfinished);
       return;
@@ -763,7 +763,7 @@ export const WaiterTableMap: React.FC = () => {
                         <button
                           onClick={async () => {
                             try {
-                              const userId = userInfo?.id || 1;
+                              const userId = getCurrentUserId();
                               const newOrder = await createOrder({
                                 table_id: Number(selectedTable.id),
                                 created_by: userId,
@@ -1197,7 +1197,7 @@ export const WaiterTableMap: React.FC = () => {
             </div>
 
             {(() => {
-              const servedOrDoneCount = activeOrder?.items.filter((i) => (i.status === "served" || i.status === "done") && i.status !== "voided" && i.status !== "cancelled").length || 0;
+              const servedOrDoneCount = activeOrder?.items.filter((i) => i.status === "done").length || 0;
               if (servedOrDoneCount === 0) {
                 return (
                   <div className="space-y-3">

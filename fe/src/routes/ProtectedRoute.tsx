@@ -1,4 +1,3 @@
-import { Navigate } from "react-router-dom";
 import { useAppSelector } from "../store/hooks";
 import type { UserRole } from "../interfaces/auth";
 
@@ -7,8 +6,8 @@ interface Props {
   allowedRoles?: UserRole[];
 }
 
-export default function ProtectedRoute({ children, allowedRoles }: Props) {
-  const { user, isLoading } = useAppSelector((state) => state.auth);
+export default function ProtectedRoute({ children, allowedRoles: _allowedRoles }: Props) {
+  const { user: _user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
     return (
@@ -19,12 +18,12 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   }
 
   // Chưa đăng nhập → về trang đăng nhập nhân viên
-  // if (!user) {
+  // if (!_user) {
   //   return <Navigate to="/auth/login" replace />;
   // }
 
   // Đã đăng nhập nhưng không đúng role → redirect về workspace của role hiện tại
-  // if (allowedRoles && !allowedRoles.includes(user.role)) {
+  // if (_allowedRoles && !_allowedRoles.includes(_user.role)) {
   //   const roleRoutes: Record<string, string> = {
   //     admin: "/admin",
   //     manager: "/manager",
@@ -33,7 +32,7 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   //     chef: "/chef",
   //     sales_event: "/sales",
   //   };
-  //   const fallbackPath = roleRoutes[user.role] || "/";
+  //   const fallbackPath = roleRoutes[_user.role] || "/";
   //   return <Navigate to={fallbackPath} replace />;
   // }
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, CheckCircle } from "lucide-react";
+import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2 } from "lucide-react";
 import { Modal } from "../../../components/Modal";
 import { VoidItemModal, type OrderItemStatus } from "./VoidItemModal";
 import { toast } from "react-hot-toast";
