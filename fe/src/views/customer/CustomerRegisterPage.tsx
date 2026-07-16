@@ -54,9 +54,9 @@ export default function CustomerRegisterPage() {
     }
     if (form.phone) {
       const cleaned = form.phone.trim().replace(/[\s-]/g, "");
-      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
+      const phoneRegex = /^(03|09)\d{8}$/;
       if (!phoneRegex.test(cleaned)) {
-        toast.error("Số điện thoại không hợp lệ (phải là số điện thoại Việt Nam từ 10-11 chữ số)!");
+        toast.error("Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)!");
         return;
       }
     }

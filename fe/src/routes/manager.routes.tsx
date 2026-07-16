@@ -9,10 +9,10 @@ import {
   AnalyticsView,
   TableMapIndex,
   PromotionManagement,
+  BookingListPage,
 } from "../views/manager";
 import UserManagement from "../views/manager/UserManagement";
 import RegisterPage from "../views/auth/RegisterPage";
-import { BookingListPage } from "../views/waiter";
 
 export const ManagerRoutes = () => (
   <>

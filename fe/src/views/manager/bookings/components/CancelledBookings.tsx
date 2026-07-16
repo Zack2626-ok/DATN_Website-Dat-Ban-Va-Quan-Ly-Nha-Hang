@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Search, CalendarX, AlertCircle } from "lucide-react";
-import { getBookings, Booking } from "../../../services/bookingService";
+import { getBookings, Booking } from "../../../../services/bookingService";
 import { toast } from "react-hot-toast";
 
 export const CancelledBookings: React.FC = () => {

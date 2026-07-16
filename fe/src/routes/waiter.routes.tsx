@@ -3,10 +3,10 @@ import ProtectedRoute from "./ProtectedRoute";
 import {
   WaiterLayout,
   WaiterTableMap,
-  BookingListPage,
   OrderPage,
   OrderTableListPage,
 } from "../views/waiter";
+import { BookingListPage } from "../views/manager";
 
 export const WaiterRoutes = () => (
   <Route
