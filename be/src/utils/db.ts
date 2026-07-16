@@ -272,6 +272,26 @@ const createDatabaseTables = async (): Promise<void> => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS restaurant_info (
+      id INT NOT NULL DEFAULT 1,
+      name VARCHAR(200) NOT NULL DEFAULT 'ResManager Bistro',
+      address VARCHAR(500) NOT NULL DEFAULT '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM',
+      hotline VARCHAR(50) NOT NULL DEFAULT '028 3829 4000',
+      hotline_hours VARCHAR(200) NOT NULL DEFAULT 'Hỗ trợ 10:00–22:00 hàng ngày',
+      email VARCHAR(150) DEFAULT 'contact@resmanager.vn',
+      opening_hours VARCHAR(200) DEFAULT 'Thứ 2 – Chủ nhật: 10:00 – 22:00',
+      happy_hour VARCHAR(200) DEFAULT 'Happy Hour: 17:00 – 19:00',
+      map_url TEXT DEFAULT NULL,
+      tax_rate DOUBLE NOT NULL DEFAULT 10.00,
+      service_fee_rate DOUBLE NOT NULL DEFAULT 5.00,
+      default_payment_method VARCHAR(50) NOT NULL DEFAULT 'cash',
+      timezone VARCHAR(50) NOT NULL DEFAULT 'GMT+07:00',
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
 };
 
 export const initDb = async (): Promise<boolean> => {
@@ -316,6 +336,20 @@ export const initDb = async (): Promise<boolean> => {
     }
   } catch (err: any) {
     console.warn("Seeding promotions skipped:", err.message);
+  }
+
+  // Seed restaurant_info nếu chưa có
+  try {
+    const infoCount = await query("SELECT COUNT(*) as count FROM restaurant_info");
+    if (infoCount[0].count === 0) {
+      await query(`
+        INSERT INTO restaurant_info (id, name, address, hotline, hotline_hours, email, opening_hours, happy_hour, tax_rate, service_fee_rate, default_payment_method, timezone)
+        VALUES (1, 'ResManager Bistro', '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM', '028 3829 4000', 'Hỗ trợ 10:00–22:00 hàng ngày', 'contact@resmanager.vn', 'Thứ 2 – Chủ nhật: 10:00 – 22:00', 'Happy Hour: 17:00 – 19:00', 10.00, 5.00, 'cash', 'GMT+07:00')
+      `);
+      console.log("✅ Seeded default restaurant_info.");
+    }
+  } catch (err: any) {
+    console.warn("Seeding restaurant_info skipped:", err.message);
   }
 
   dbAvailable = true;
@@ -2046,4 +2080,51 @@ export const updatePromotion = async (id: number | string, data: any): Promise<b
 export const deletePromotion = async (id: number | string): Promise<boolean> => {
   const result = await query("DELETE FROM promotions WHERE id = ?", [id]);
   return result.affectedRows > 0;
+};
+
+// ===== RESTAURANT INFO OPERATIONS =====
+export const getRestaurantInfo = async (): Promise<any> => {
+  const rows = await query<any[]>("SELECT * FROM restaurant_info WHERE id = 1");
+  if (rows[0]) return rows[0];
+  // Fallback nếu chưa seed
+  return {
+    id: 1,
+    name: "ResManager Bistro",
+    address: "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM",
+    hotline: "028 3829 4000",
+    hotline_hours: "Hỗ trợ 10:00–22:00 hàng ngày",
+    email: "contact@resmanager.vn",
+    opening_hours: "Thứ 2 – Chủ nhật: 10:00 – 22:00",
+    happy_hour: "Happy Hour: 17:00 – 19:00",
+    map_url: null,
+    tax_rate: 10.0,
+    service_fee_rate: 5.0,
+    default_payment_method: "cash",
+    timezone: "GMT+07:00",
+  };
+};
+
+export const updateRestaurantInfo = async (data: any): Promise<any> => {
+  const existing = await getRestaurantInfo();
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  const allowedKeys = [
+    "name", "address", "hotline", "hotline_hours", "email",
+    "opening_hours", "happy_hour", "map_url",
+    "tax_rate", "service_fee_rate", "default_payment_method", "timezone",
+  ];
+
+  for (const key of allowedKeys) {
+    if (data[key] !== undefined) {
+      fields.push(`\`${key}\` = ?`);
+      values.push(data[key]);
+    }
+  }
+
+  if (fields.length === 0) return existing;
+
+  values.push(1);
+  await query(`UPDATE restaurant_info SET ${fields.join(", ")} WHERE id = ?`, values);
+  return getRestaurantInfo();
 };

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Outlet, Link, NavLink } from "react-router-dom";
 import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed } from "lucide-react";
+import { HotlineButton } from "../../components/client/HotlineButton";
 
 const navLinks = [
   { to: "/", label: "Trang chủ", end: true },
@@ -216,9 +217,12 @@ export const ClientLayout: React.FC = () => {
           </div>
 
           <div className="mt-10 border-t border-gray-200 pt-6 text-center text-sm text-gray-400">
-            © 2026 ResManager. Mọi quyền được bảo lưu.
-          </div>
+          © 2026 ResManager. Mọi quyền được bảo lưu.
         </div>
+      </footer>
+
+      <HotlineButton />
+    </div>
       </footer>
     </div>
   );
