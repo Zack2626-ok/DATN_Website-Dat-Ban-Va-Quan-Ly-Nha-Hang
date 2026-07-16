@@ -1267,7 +1267,6 @@ export const hasActiveBookingsForTable = async (tableId: number): Promise<boolea
 //  RESMANAGER SCHEMA — Bookings
 // ============================================================================
 
-<<<<<<< HEAD
 export const getBookings = async (status?: string): Promise<any[]> => {
   if (status) {
     return query<any[]>(
@@ -1287,16 +1286,6 @@ export const getBookings = async (status?: string): Promise<any[]> => {
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      ORDER BY b.start_time DESC`,
   );
-=======
-export const getBookings = async (): Promise<any[]> => {
-  return query(`
-    SELECT b.*, t.name AS table_name, a.name AS area_name
-    FROM bookings b
-    LEFT JOIN tables t ON b.table_id = t.id
-    LEFT JOIN table_areas a ON t.area_id = a.id
-    ORDER BY b.start_time DESC
-  `);
->>>>>>> 67006d6d4832d3c0aac66f59fd0ca96dc65ce09a
 };
 
 export const getBookingById = async (id: number): Promise<any | null> => {
