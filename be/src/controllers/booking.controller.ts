@@ -3,9 +3,10 @@ import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { isValidPhoneNumber } from "../utils/validation";
 
-export const getAllBookings = async (_req: Request, res: Response): Promise<void> => {
+export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
-    const bookings = await db.getBookings();
+    const status = req.query.status as string | undefined;
+    const bookings = await db.getBookings(status);
     sendSuccess(res, bookings, "Lấy danh sách đặt bàn thành công");
   } catch (error) {
     console.error("Error fetching bookings:", error);

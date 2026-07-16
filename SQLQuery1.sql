@@ -200,6 +200,12 @@ CREATE TABLE tables (
     CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+<<<<<<< HEAD
+INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUES
+ -- Tầng 1 (12 bàn: B01 - B12)
+ (1,  1, 'B01', 4, 'A', 1, 'empty'),
+ (2,  1, 'B02', 4, 'A', 2, 'empty'),
+=======
 -- Nếu database đã tồn tại, chạy lệnh sau để thêm cột:
 -- ALTER TABLE tables ADD COLUMN maintenance_note TEXT DEFAULT NULL COMMENT 'Lý do bảo trì';
 
@@ -207,6 +213,7 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUE
  -- Tầng 1 (12 bàn: B01 - B12)
  (1,  1, 'B01', 4, 'A', 1, 'empty'),
  (2,  1, 'B02', 4, 'A', 2, 'cleaning'),
+>>>>>>> 67006d6d4832d3c0aac66f59fd0ca96dc65ce09a
  (3,  1, 'B03', 6, 'A', 3, 'reserved'),
  (4,  1, 'B04', 8, 'A', 4, 'pending_payment'),
  (5,  1, 'B05', 4, 'B', 1, 'empty'),
@@ -232,7 +239,11 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUE
  (23, 2, 'B23', 4, 'C', 3, 'empty'),
  (24, 2, 'B24', 4, 'C', 4, 'empty'),
 
+<<<<<<< HEAD
+ -- Sân vườn (16 bàn: B25 - B40)
+=======
  -- Sân vườn (9 bàn: B25 - B33)
+>>>>>>> 67006d6d4832d3c0aac66f59fd0ca96dc65ce09a
  (25, 3, 'B25', 4, 'A', 1, 'empty'),
  (26, 3, 'B26', 4, 'A', 2, 'empty'),
  (27, 3, 'B27', 4, 'A', 3, 'empty'),
@@ -241,7 +252,18 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUE
  (30, 3, 'B30', 4, 'B', 2, 'empty'),
  (31, 3, 'B31', 4, 'B', 3, 'empty'),
  (32, 3, 'B32', 4, 'B', 4, 'empty'),
+<<<<<<< HEAD
+ (33, 3, 'B33', 4, 'C', 1, 'empty'),
+ (34, 3, 'B34', 4, 'C', 2, 'empty'),
+ (35, 3, 'B35', 4, 'C', 3, 'empty'),
+ (36, 3, 'B36', 4, 'C', 4, 'empty'),
+ (37, 3, 'B37', 4, 'D', 1, 'empty'),
+ (38, 3, 'B38', 4, 'D', 2, 'empty'),
+ (39, 3, 'B39', 4, 'D', 3, 'empty'),
+ (40, 3, 'B40', 4, 'D', 4, 'empty');
+=======
  (33, 3, 'B33', 4, 'C', 1, 'empty');
+>>>>>>> 67006d6d4832d3c0aac66f59fd0ca96dc65ce09a
 
 CREATE TABLE bookings (
     id                INT          NOT NULL AUTO_INCREMENT,

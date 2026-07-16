@@ -19,8 +19,8 @@ export interface Booking {
   created_at: string;
 }
 
-export const getBookings = async (): Promise<Booking[]> => {
-  const response = await api.get("/v1/bookings");
+export const getBookings = async (status?: string): Promise<Booking[]> => {
+  const response = await api.get("/v1/bookings", { params: { status } });
   return response.data.data || [];
 };
 
