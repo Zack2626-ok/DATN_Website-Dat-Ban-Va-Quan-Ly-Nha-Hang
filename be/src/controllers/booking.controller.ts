@@ -52,7 +52,8 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
 
     const bookingStart = new Date(start_time);
     const now = new Date();
-    if (bookingStart < now) {
+    // Cho phép dung sai 30 phút phòng trường hợp đồng hồ lệch hoặc khách hàng điền form lâu
+    if (bookingStart.getTime() < now.getTime() - 30 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
       return;
     }
