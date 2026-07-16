@@ -74,7 +74,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
 
         {/* Search */}
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             value={searchQuery}
@@ -83,7 +83,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
             className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-blue-400"
           />
           {searchQuery && (
-            <button onClick={() => onSearchChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+            <button onClick={() => onSearchChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 cursor-pointer">
               <X size={14} />
             </button>
           )}
@@ -110,10 +110,10 @@ export const InvoiceListPanel: React.FC<Props> = ({
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-xs text-slate-400">Đang tải...</div>
+          <div className="flex items-center justify-center h-32 text-xs text-slate-500">Đang tải...</div>
         ) : invoices.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-xs text-slate-400 gap-2">
-            <Filter size={20} className="text-slate-300" />
+          <div className="flex flex-col items-center justify-center h-32 text-xs text-slate-500 gap-2">
+            <Filter size={20} className="text-slate-600" />
             Không có hóa đơn nào
           </div>
         ) : (
@@ -141,7 +141,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
                     <p className="text-xs font-black text-slate-900">
                       {(inv.totalAmount * 1000).toLocaleString("vi-VN")}
                     </p>
-                    <p className="text-[10px] text-slate-400">{timeAgo(inv.createdAt)}</p>
+                    <p className="text-[10px] text-slate-500">{timeAgo(inv.createdAt)}</p>
                   </div>
                 </div>
               </button>

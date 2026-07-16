@@ -19,7 +19,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
       switch (status) {
         case "pending":
           return {
-            bg: isLight ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-amber-500/10 border-amber-500/20 text-amber-400",
+            bg: isLight ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-sky-50 border-sky-100 text-sky-700",
             dot: isLight ? "bg-amber-500" : "bg-amber-400 animate-pulse",
             label: "Chờ xác nhận",
           };
@@ -43,7 +43,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
           };
         default:
           return {
-            bg: isLight ? "bg-slate-100 border-slate-200 text-slate-700" : "bg-gray-500/10 border-gray-500/20 text-gray-400",
+            bg: isLight ? "bg-slate-100 border-slate-200 text-slate-700" : "bg-sky-50/500/10 border-gray-500/20 text-gray-400",
             dot: isLight ? "bg-slate-500" : "bg-gray-400",
             label: status,
           };
@@ -58,7 +58,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
           };
         case TABLE_STATUS.RESERVED:
           return {
-            bg: isLight ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-amber-500/10 border-amber-500/20 text-amber-400",
+            bg: isLight ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-sky-50 border-sky-100 text-sky-700",
             dot: isLight ? "bg-amber-500" : "bg-amber-400",
             label: "Đã đặt",
           };
@@ -82,7 +82,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
           };
         default:
           return {
-            bg: isLight ? "bg-slate-100 border-slate-200 text-slate-700" : "bg-gray-500/10 border-gray-500/20 text-gray-400",
+            bg: isLight ? "bg-slate-100 border-slate-200 text-slate-700" : "bg-sky-50/500/10 border-gray-500/20 text-gray-400",
             dot: isLight ? "bg-slate-500" : "bg-gray-400",
             label: status,
           };
@@ -133,7 +133,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
           };
         default:
           return {
-            bg: isLight ? "bg-slate-100 border-slate-200 text-slate-700" : "bg-gray-500/10 border-gray-500/20 text-gray-400",
+            bg: isLight ? "bg-slate-100 border-slate-200 text-slate-700" : "bg-sky-50/500/10 border-gray-500/20 text-gray-400",
             dot: isLight ? "bg-slate-500" : "bg-gray-400",
             label: status,
           };

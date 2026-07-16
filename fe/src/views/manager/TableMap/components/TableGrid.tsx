@@ -44,7 +44,7 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction, showCrud
 
   if (tables.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-500 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+      <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-sky-50/50/50 rounded-2xl border border-dashed border-sky-100">
         <p className="font-semibold">Không có bàn ăn nào trong khu vực này.</p>
         <p className="text-xs text-gray-400 mt-1">Vui lòng thêm bàn mới hoặc cập nhật sơ đồ.</p>
       </div>
@@ -67,7 +67,7 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction, showCrud
         }}
       >
         {/* Góc trên bên trái: Trục Toạ Độ */}
-        <div className="flex items-center justify-center text-[10px] font-black text-gray-300 uppercase tracking-wider select-none border-r border-b border-dashed border-gray-100">
+        <div className="flex items-center justify-center text-[10px] font-black text-gray-300 uppercase tracking-wider select-none border-r border-b border-dashed border-sky-50">
           Dãy \ Cột
         </div>
 
@@ -76,7 +76,7 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction, showCrud
           <div
             key={`col-header-${col}`}
             style={{ gridRowStart: 1, gridColumnStart: col + 1 }}
-            className="flex items-center justify-center text-xs font-black text-gray-400 select-none border-b border-dashed border-gray-100 pb-1"
+            className="flex items-center justify-center text-xs font-black text-gray-400 select-none border-b border-dashed border-sky-50 pb-1"
           >
             Cột {col}
           </div>
@@ -87,7 +87,7 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction, showCrud
           <div
             key={`row-header-${rowChar}`}
             style={{ gridRowStart: idx + 2, gridColumnStart: 1 }}
-            className="flex items-center justify-center text-sm font-black text-gray-400 select-none border-r border-dashed border-gray-100 pr-2 font-display"
+            className="flex items-center justify-center text-sm font-black text-gray-400 select-none border-r border-dashed border-sky-50 pr-2 font-display"
           >
             Dãy {rowChar}
           </div>
@@ -127,7 +127,7 @@ export const TableGrid: React.FC<TableGridProps> = ({ tables, onAction, showCrud
               gridRowStart: row + 1,
               gridColumnStart: col + 1,
             }}
-            className="border border-dashed border-gray-100 bg-gray-50/20 rounded-xl flex items-center justify-center min-h-[96px] text-gray-300/40 select-none text-[10px] font-medium"
+            className="border border-dashed border-sky-50 bg-sky-50/50/20 rounded-xl flex items-center justify-center min-h-[96px] text-gray-300/40 select-none text-[10px] font-medium"
           >
             Vị trí trống ({String.fromCharCode(64 + row)}-{col})
           </div>

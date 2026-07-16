@@ -155,19 +155,19 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
       <div className="relative w-full max-w-md bg-white shadow-xl h-full flex flex-col z-10 animate-slide-in">
         
         {/* Sticky Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10">
+        <div className="sticky top-0 bg-white border-b border-sky-100 px-6 py-4 flex justify-between items-center z-10">
           <div>
-            <h2 className="text-lg font-bold text-gray-800">
+            <h2 className="text-lg font-bold text-slate-700">
               {editingUser ? "Cập nhật tài khoản" : "Thêm nhân viên mới"}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Quản lý hồ sơ nhân viên và vai trò hệ thống</p>
+            <p className="text-xs text-slate-400 mt-0.5">Quản lý hồ sơ nhân viên và vai trò hệ thống</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 hover:bg-sky-100 rounded-full transition-colors"
             disabled={loading}
           >
-            <X size={20} className="text-gray-600" />
+            <X size={20} className="text-slate-500" />
           </button>
         </div>
 
@@ -190,8 +190,8 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
 
           {/* Full Name */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Họ và tên <span className="text-[#FF5A5F]">*</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+              Họ và tên <span className="text-sky-600">*</span>
             </label>
             <input
               type="text"
@@ -205,7 +205,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                 fieldErrors.full_name
                   ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                  : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                  : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
               }`}
               placeholder="Nhập họ và tên nhân viên"
               disabled={loading}
@@ -217,8 +217,8 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Địa chỉ Email <span className="text-[#FF5A5F]">*</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+              Địa chỉ Email <span className="text-sky-600">*</span>
             </label>
             <input
               type="email"
@@ -232,7 +232,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                 fieldErrors.email
                   ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                  : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                  : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
               }`}
               placeholder="email@example.com"
               disabled={loading}
@@ -244,7 +244,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
 
           {/* Phone */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
               Số điện thoại
             </label>
             <input
@@ -259,7 +259,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                 fieldErrors.phone
                   ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                  : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                  : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
               }`}
               placeholder="Nhập số điện thoại (ví dụ: 0912345678)"
               disabled={loading}
@@ -271,9 +271,9 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
 
           {/* Password */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center justify-between">
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5 flex items-center justify-between">
               <span>
-                Mật khẩu {!editingUser && <span className="text-[#FF5A5F]">*</span>}
+                Mật khẩu {!editingUser && <span className="text-sky-600">*</span>}
               </span>
               {editingUser && (
                 <span className="text-[11px] font-normal text-gray-400">
@@ -293,7 +293,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                 fieldErrors.password
                   ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                  : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                  : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
               }`}
               placeholder={editingUser ? "Để trống nếu muốn giữ nguyên mật khẩu cũ" : "Nhập mật khẩu (tối thiểu 6 ký tự)"}
               disabled={loading}
@@ -308,13 +308,13 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
 
           {/* Role Select */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Vai trò nhân viên <span className="text-[#FF5A5F]">*</span>
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+              Vai trò nhân viên <span className="text-sky-600">*</span>
             </label>
             <select
               value={formData.role_id}
               onChange={(e) => setFormData({ ...formData, role_id: Number(e.target.value) })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] bg-white transition-shadow"
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white transition-shadow"
               disabled={loading}
             >
               {roles.map((role) => (
@@ -326,9 +326,9 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
           </div>
 
           {/* Status Toggle Switch */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+          <div className="flex items-center justify-between p-4 bg-sky-50/50 rounded-xl border border-sky-50">
             <div>
-              <span className="block text-sm font-semibold text-gray-700">Trạng thái hoạt động</span>
+              <span className="block text-sm font-semibold text-slate-600">Trạng thái hoạt động</span>
               <span className="block text-xs text-gray-400 mt-0.5">Cho phép nhân viên đăng nhập vào hệ thống</span>
             </div>
             <button
@@ -341,7 +341,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
               }
               disabled={loading}
               className={`w-11 h-6 rounded-full transition-colors focus:outline-none relative flex-shrink-0 ${
-                formData.status === "active" ? "bg-[#FF5A5F]" : "bg-gray-300"
+                formData.status === "active" ? "bg-sky-500" : "bg-gray-300"
               }`}
             >
               <div
@@ -357,12 +357,12 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
         </form>
 
         {/* Sticky Footer Actions */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex gap-3 z-10 shadow-lg">
+        <div className="sticky bottom-0 bg-white border-t border-sky-100 px-6 py-4 flex gap-3 z-10 shadow-lg">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2.5 border border-sky-200 text-slate-600 rounded-lg hover:bg-sky-50/50 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Hủy bỏ
           </button>
@@ -370,7 +370,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
             type="submit"
             form="user-drawer-form"
             disabled={loading}
-            className="flex-1 px-4 py-2.5 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

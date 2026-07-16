@@ -30,7 +30,7 @@ export const UserFilters: React.FC<UserFiltersProps> = ({
           placeholder="Tìm kiếm theo tên hoặc email..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/50 focus:border-[#FF5A5F]"
+          className="w-full pl-10 pr-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
         />
       </div>
 
@@ -38,7 +38,7 @@ export const UserFilters: React.FC<UserFiltersProps> = ({
       <select
         value={roleFilter ?? ""}
         onChange={(e) => onRoleFilterChange(e.target.value ? Number(e.target.value) : null)}
-        className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/50 focus:border-[#FF5A5F] bg-white"
+        className="w-full sm:w-auto px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500 bg-white"
       >
         <option value="">Tất cả vai trò</option>
         {roles.map((role) => (

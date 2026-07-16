@@ -33,19 +33,19 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             <Trash2 className="w-6 h-6 text-red-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Xóa người dùng</h3>
-            <p className="text-sm text-gray-500">
-              Bạn có chắc muốn xóa <span className="font-semibold text-gray-700">{userName}</span>?
+            <h3 className="text-lg font-semibold text-slate-700">Xóa người dùng</h3>
+            <p className="text-sm text-slate-400">
+              Bạn có chắc muốn xóa <span className="font-semibold text-slate-600">{userName}</span>?
               Hành động này không thể hoàn tác.
             </p>
           </div>
         </div>
 
-        <div className="flex gap-3 pt-4 border-t border-gray-200">
+        <div className="flex gap-3 pt-4 border-t border-sky-100">
           <button
             onClick={onClose}
             disabled={loading}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2 border border-sky-200 text-slate-600 rounded-lg hover:bg-sky-50/50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Hủy
           </button>

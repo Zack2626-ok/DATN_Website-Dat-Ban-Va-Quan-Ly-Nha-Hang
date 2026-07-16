@@ -136,7 +136,7 @@ export const SplitBillModal: React.FC<Props> = ({
                 className="flex justify-between items-center py-2.5 px-4 bg-slate-50 rounded-xl border border-slate-100"
               >
                 <span className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                  <Users size={12} className="text-slate-400" /> Khách {i + 1}
+                  <Users size={12} className="text-slate-500" /> Khách {i + 1}
                   {i === splitCount - 1 && splitCount > 1 && (
                     <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full font-bold">
                       +lẻ

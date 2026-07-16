@@ -37,21 +37,21 @@ export const PromotionsPage: React.FC = () => {
       {/* Promotions list */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-700 flex items-center gap-2">
-            <Sparkles size={24} className="text-amber-500" />
+          <h2 className="text-2xl font-bold text-slate-600 flex items-center gap-2">
+            <Sparkles size={24} className="text-sky-600" />
             Đang diễn ra
           </h2>
-          <p className="mt-1 text-sm text-gray-500">Áp dụng cho tất cả khách hàng</p>
+          <p className="mt-1 text-sm text-slate-400">Áp dụng cho tất cả khách hàng</p>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center items-center py-20">
-            <Loader2 size={36} className="animate-spin text-amber-500" />
+            <Loader2 size={36} className="animate-spin text-sky-600" />
           </div>
         ) : promotions.length === 0 ? (
-          <div className="py-16 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+          <div className="py-16 text-center bg-sky-50/50 rounded-2xl border border-dashed border-sky-100">
             <Gift size={48} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-bold text-gray-600">Hiện tại chưa có ưu đãi mới</h3>
+            <h3 className="text-lg font-bold text-slate-500">Hiện tại chưa có ưu đãi mới</h3>
             <p className="text-sm text-gray-400 mt-1">Vui lòng quay lại sau để cập nhật các ưu đãi mới nhất</p>
           </div>
         ) : (
@@ -59,7 +59,7 @@ export const PromotionsPage: React.FC = () => {
             {promotions.map((promo: any) => (
               <div
                 key={promo.id}
-                className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1"
+                className="group overflow-hidden rounded-xl border border-sky-100 bg-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1"
               >
                 <div className="relative h-48 overflow-hidden bg-gradient-to-br from-blue-100 to-blue-50">
                   {promo.image_url ? (
@@ -71,7 +71,7 @@ export const PromotionsPage: React.FC = () => {
                   ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
                       <Gift size={40} className="text-blue-600 mb-3" />
-                      <h3 className="text-lg font-bold text-gray-700">{promo.title}</h3>
+                      <h3 className="text-lg font-bold text-slate-600">{promo.title}</h3>
                     </div>
                   )}
                   <span className="absolute top-3 right-3 rounded-full bg-red-500 px-3 py-1 text-xs font-bold text-white">
@@ -79,8 +79,8 @@ export const PromotionsPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="p-5">
-                  <h3 className="font-bold text-gray-700 mb-1">{promo.title}</h3>
-                  <p className="text-sm text-gray-500 mb-4">{promo.description || "Ưu đãi hấp dẫn mùa này."}</p>
+                  <h3 className="font-bold text-slate-600 mb-1">{promo.title}</h3>
+                  <p className="text-sm text-slate-400 mb-4">{promo.description || "Ưu đãi hấp dẫn mùa này."}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
                       <Clock size={14} />
