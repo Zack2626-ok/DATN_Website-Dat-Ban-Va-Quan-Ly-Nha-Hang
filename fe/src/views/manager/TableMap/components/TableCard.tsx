@@ -270,7 +270,9 @@ export const TableCard: React.FC<TableCardProps> = ({
         </div>
         <p className="text-[10px] text-gray-400 font-semibold mt-0.5 flex items-center gap-1">
           <Users size={10} />
-          Sức chứa: {table.capacity} người
+          {table.status !== "empty"
+            ? `Khách: ${table.guest_count || "?"}/${table.capacity} người`
+            : `Sức chứa: ${table.capacity} người`}
         </p>
       </div>
 

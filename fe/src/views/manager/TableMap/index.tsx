@@ -19,6 +19,7 @@ import {
   type ResmanagerTable
 } from "../../../services/tableService";
 import type { TableArea } from "../../../interfaces/table.interface";
+import { createOrder } from "../../../services/waiterService";
 
 import { TableGrid } from "./components/TableGrid";
 import {
@@ -252,6 +253,22 @@ export const TableMapIndex: React.FC = () => {
     if (!activeTable) return;
     try {
       setActionLoading(true);
+      const userStr = localStorage.getItem("user");
+      let userId = 1;
+      if (userStr) {
+        try {
+          const u = JSON.parse(userStr);
+          if (u && u.id) userId = Number(u.id);
+        } catch (e) {}
+      }
+      await createOrder({
+        table_id: Number(activeTable.id),
+        created_by: userId,
+        order_type: "dine_in",
+        guest_count: data.guestCount,
+        guest_name: data.customerName || undefined,
+        guest_phone: data.customerPhone || undefined,
+      });
       await updateTableStatus(activeTable.id, "serving");
       toast.success(`Đã mở bàn ${activeTable.name} thành công cho ${data.guestCount} khách!`);
       setIsOpenTableOpen(false);

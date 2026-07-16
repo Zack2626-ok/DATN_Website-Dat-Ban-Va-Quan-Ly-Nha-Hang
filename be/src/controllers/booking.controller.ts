@@ -30,7 +30,7 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note } =
+    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, items } =
       req.body;
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
@@ -67,6 +67,7 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       end_time,
       guest_note,
       note,
+      items: Array.isArray(items) ? items : undefined,
     });
 
     sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);

@@ -600,7 +600,7 @@ export const WaiterTableMap: React.FC = () => {
                         <div>
                           <p className="text-base font-black text-gray-800 leading-none">{t.name}</p>
                           <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1">
-                            <Users size={12} /> {t.capacity} chỗ
+                            <Users size={12} /> {t.status !== "empty" ? `Khách: ${t.guest_count || "?"}/${t.capacity} người` : `${t.capacity} chỗ`}
                           </p>
                         </div>
                         <span
@@ -623,6 +623,13 @@ export const WaiterTableMap: React.FC = () => {
                           {t.start_time && (
                             <p className="text-gray-500 flex items-center gap-1">
                               <Clock size={11} /> Đến: {t.start_time}
+                            </p>
+                          )}
+                          {((t.pre_ordered_items && t.pre_ordered_items.length > 0) || (t.guest_note && t.guest_note.includes("Món đặt trước"))) && (
+                            <p className="text-amber-700 font-extrabold truncate flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mt-1">
+                              🍳 {t.pre_ordered_items && t.pre_ordered_items.length > 0
+                                ? `Món đặt trước: ${t.pre_ordered_items.map((i: any) => `${i.quantity}x ${i.name}`).join(", ")}`
+                                : `Có món đặt trước`}
                             </p>
                           )}
                         </div>
@@ -655,7 +662,7 @@ export const WaiterTableMap: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-black text-gray-900">Bàn {selectedTable.name}</h3>
                   <p className="text-xs text-gray-500">
-                    Khu vực: {selectedTable.area_name} • Sức chứa: {selectedTable.capacity} khách
+                    Khu vực: {selectedTable.area_name} • {selectedTable.status !== "empty" ? `Khách: ${selectedTable.guest_count || "?"}/${selectedTable.capacity} người` : `Sức chứa: ${selectedTable.capacity} khách`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -755,6 +762,42 @@ export const WaiterTableMap: React.FC = () => {
                           {selectedTable.start_time || "Vừa đến"}
                         </span>
                       </div>
+                      {selectedTable.status !== "empty" && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Số khách đặt/đang ngồi:</span>
+                          <span className="font-bold text-emerald-700">
+                            {selectedTable.guest_count || "?"} / {selectedTable.capacity} người
+                          </span>
+                        </div>
+                      )}
+                      {selectedTable.booking_code && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Mã đặt bàn:</span>
+                          <span className="font-mono font-bold text-amber-700">
+                            {selectedTable.booking_code}
+                          </span>
+                        </div>
+                      )}
+                      {((selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0) || (selectedTable.guest_note && selectedTable.guest_note.includes("Món đặt trước"))) && (
+                        <div className="mt-2.5 pt-2 border-t border-amber-200/80 bg-amber-50/80 p-2 rounded-lg">
+                          <span className="font-extrabold text-amber-900 block flex items-center gap-1 mb-1">
+                            🍳 Món ăn đã đặt trước:
+                          </span>
+                          {selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0 ? (
+                            <ul className="list-disc list-inside text-amber-800 font-semibold space-y-0.5 ml-1">
+                              {selectedTable.pre_ordered_items.map((item: any, idx: number) => (
+                                <li key={idx}>
+                                  {item.name} <span className="text-amber-950 font-black">x{item.quantity}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-amber-800 font-medium whitespace-pre-line">
+                              {selectedTable.guest_note}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* NÚT KHÁCH ĐÃ ĐẾN & HỦY BOOKING — chỉ hiện khi bàn là reserved */}

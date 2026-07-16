@@ -572,6 +572,11 @@ export const ChefKitchenQueue: React.FC = () => {
                             <Clock size={10} /> {timeStr}
                           </span>
                         </div>
+                        {(item.orderType === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+                            🍳 Món đặt trước (Nấu sẵn)
+                          </div>
+                        )}
 
                         {/* Dish Details */}
                         <div className="mt-3">
@@ -587,7 +592,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             {item.orderType && (
                               <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : item.orderType === "pre_order" ? "Đặt trước" : "Takeaway"})
                               </span>
                             )}
                           </div>
@@ -666,6 +671,11 @@ export const ChefKitchenQueue: React.FC = () => {
                             <Clock size={10} className="animate-[spin_4s_linear_infinite]" /> {timeStr}
                           </span>
                         </div>
+                        {(item.orderType === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+                            🍳 Món đặt trước (Nấu sẵn)
+                          </div>
+                        )}
 
                         {/* Dish Details */}
                         <div className="mt-3">
@@ -681,7 +691,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             {item.orderType && (
                               <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : item.orderType === "pre_order" ? "Đặt trước" : "Takeaway"})
                               </span>
                             )}
                           </div>
@@ -752,6 +762,11 @@ export const ChefKitchenQueue: React.FC = () => {
                             <Clock size={10} /> {timeStr}
                           </span>
                         </div>
+                        {(item.orderType === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+                            🍳 Món đặt trước (Nấu sẵn)
+                          </div>
+                        )}
 
                         {/* Dish Details */}
                         <div className="mt-3">
@@ -767,7 +782,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             {item.orderType && (
                               <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : item.orderType === "pre_order" ? "Đặt trước" : "Takeaway"})
                               </span>
                             )}
                           </div>
