@@ -5,7 +5,7 @@ import {
   updateRestaurantInfo,
   type RestaurantInfo,
 } from "../../../services/restaurantInfoService";
-
+export const AdminSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"general" | "tax">("general");
   const [savedMessage, setSavedMessage] = useState(false);
   const [loading, setLoading] = useState(true);
