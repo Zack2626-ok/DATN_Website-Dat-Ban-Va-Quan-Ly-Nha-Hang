@@ -9,10 +9,12 @@ import {
   mergeBills,
   payPartial,
   getInvoicePayments,
+  getPaymentHistory,
 } from "../controllers/invoice.controller";
 
 const router = Router();
 
+router.get("/payment-history", getPaymentHistory);
 router.get("/", getAllInvoices);
 router.get("/:id", getInvoiceById);
 router.get("/:id/payments", getInvoicePayments);
