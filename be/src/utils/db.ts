@@ -445,6 +445,8 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: created booking_menu_items table");
     }
+    // Migration: đảm bảo order_type trong bảng orders là VARCHAR(50) để hỗ trợ 'pre_order', 'dine_in', 'takeaway', 'delivery'
+    await query("ALTER TABLE orders MODIFY COLUMN order_type VARCHAR(50) NOT NULL DEFAULT 'dine_in'").catch(() => {});
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -1489,12 +1491,8 @@ export const createBooking = async (data: any): Promise<any> => {
     }
   }
 
-  // Chỉ khóa bàn (chuyển sang reserved) nếu lịch đặt diễn ra trong vòng 2 giờ tới
-  const bookingTime = new Date(data.start_time).getTime();
-  const now = Date.now();
-  if (bookingTime - now <= 2 * 60 * 60 * 1000) {
-    await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
-  }
+  // Cập nhật trạng thái bàn sang reserved ngay khi có booking mới
+  await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
 
   const bookingDetails = await getBookingById(insertId);
   return bookingDetails;
@@ -1647,8 +1645,10 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
       }
     }
 
+    const effectiveStatus = (r.status === 'empty' || r.status === 'available') && (r.booking_id || r.booking_code) ? 'reserved' : r.status;
     results.push({
       ...r,
+      status: effectiveStatus,
       pre_ordered_items: preOrderedItems,
       is_merged_child: mergedTo.length > 0,
       merged_into: mergedTo.length > 0 ? mergedTo[0].primary_table_id : null,
@@ -1906,6 +1906,12 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
         data.guest_count || null,
         preOrderId
       ]);
+      // Tự động chuyển trạng thái các món đặt trước sang 'cooking' và bỏ hold để tự động gửi xuống bếp
+      await query(`
+        UPDATE order_items 
+        SET status = 'cooking', is_held = 0 
+        WHERE order_id = ? AND status = 'pending'
+      `, [preOrderId]);
       await completeActiveBookingForTable(data.table_id);
       return { id: preOrderId, ...data, status: 'open', customer_id: validCustomerId };
     }

@@ -88,6 +88,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      WHERE oi.status IN ('pending', 'cooking', 'done')
+       AND o.order_type != 'pre_order'
        AND oi.created_at >= NOW() - INTERVAL 6 HOUR
      ORDER BY oi.created_at ASC`
   );
