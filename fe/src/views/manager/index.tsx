@@ -6,4 +6,4 @@ export { default as BanquetConfig } from "./EventConfig/index";
 export { default as AnalyticsView } from "./Analytics/index";
 export { default as TableMapIndex } from "./TableMap/index";
 export { default as PromotionManagement } from "./PromotionManagement";
-
+export { BookingListPage } from "./bookings/BookingListPage";
