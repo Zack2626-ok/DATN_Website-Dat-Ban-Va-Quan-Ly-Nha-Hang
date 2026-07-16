@@ -17,17 +17,17 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { Modal } from "../../../components/Modal";
-import { Badge } from "../../../components/Badge";
+import { Modal } from "../../components/Modal";
+import { Badge } from "../../components/Badge";
 import {
   getBookings,
   updateBookingStatus,
   createBooking,
   deleteBooking,
   Booking,
-} from "../../../services/bookingService";
-import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
-import { useAppSelector } from "../../../store/hooks";
+} from "../../services/bookingService";
+import { getEmptyTables, ResmanagerTable } from "../../services/tableService";
+import { useAppSelector } from "../../store/hooks";
 import { CancelledBookings } from "./components/CancelledBookings";
 
 /**
@@ -35,7 +35,7 @@ import { CancelledBookings } from "./components/CancelledBookings";
  * Redesigned: light modal, 2-column form, chỉ lấy bàn trống
  */
 export const BookingListPage: React.FC = () => {
-  const { user } = useAppSelector((state) => state.auth);
+  const { user } = useAppSelector((state: any) => state.auth);
   const [activeMainTab, setActiveMainTab] = useState<"active" | "cancelled">("active");
 
   const [bookings, setBookings] = useState<Booking[]>([]);

@@ -138,6 +138,7 @@ export const getAvailableTables = async (startTime: string): Promise<any[]> => {
 export const createBooking = async (data: {
   table_id: number;
   customer_id?: number | null;
+  promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
   party_size: number;
