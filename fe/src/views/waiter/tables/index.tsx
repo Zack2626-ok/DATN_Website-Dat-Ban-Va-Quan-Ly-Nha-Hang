@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { io } from "socket.io-client";
 import {
   RefreshCw,
   LayoutGrid,
@@ -19,6 +20,7 @@ import {
   XCircle,
   FileText,
   Loader2,
+  Copy,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -142,7 +144,11 @@ const ITEM_STATUS_LABELS: Record<string, { label: string; badge: string }> = {
   cancelled: { label: "✗ Đã hủy", badge: "bg-red-100 text-red-600 line-through" },
 };
 
-export const WaiterTableMap: React.FC = () => {
+interface WaiterTableMapProps {
+  isManager?: boolean;
+}
+
+export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = false }) => {
   const [tables, setTables] = useState<ResmanagerTable[]>([]);
   const [areas, setAreas] = useState<TableArea[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
@@ -215,6 +221,50 @@ export const WaiterTableMap: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Real-time socket synchronization
+  useEffect(() => {
+    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on("connect", () => {
+      console.log("⚡ Connected to Socket.io Server for Waiter Table Map");
+    });
+
+    socket.on("table:status_changed", (data: { tableId: number; status: any; guest_name?: string }) => {
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === Number(data.tableId)
+            ? { ...t, status: data.status, guest_name: data.guest_name || null }
+            : t
+        )
+      );
+      if (selectedTableId?.toString() === data.tableId.toString()) {
+        fetchData();
+      }
+    });
+
+    socket.on("table:transferred", () => {
+      fetchData();
+    });
+
+    socket.on("table:merged", () => {
+      fetchData();
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("table:status_changed");
+      socket.off("table:transferred");
+      socket.off("table:merged");
+      socket.disconnect();
+      console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
+    };
+  }, [fetchData, selectedTableId]);
 
   // Load integrated Order khi chọn bàn phục vụ / đặt trước / chờ thanh toán
   const loadActiveOrder = useCallback(async (tableId: number | string) => {
@@ -503,10 +553,12 @@ export const WaiterTableMap: React.FC = () => {
         <div>
           <h1 className="text-2xl font-black text-slate-700 font-display flex items-center gap-2.5">
             <LayoutGrid className="text-sky-600" />
-            Sơ đồ bàn & Phục vụ nhanh
+            {isManager ? "Sơ đồ bàn & Tiền sảnh" : "Sơ đồ bàn & Phục vụ nhanh"}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Giao diện Phục vụ: Chọn bàn trên lưới để thao tác mở bàn, gọi món trực tiếp và in phiếu tạm tính.
+            {isManager 
+              ? "Giao diện Quản lý: Theo dõi, phân phối chỗ ngồi và điều khiển dòng phục vụ của bàn ăn theo thời gian thực (Real-time)." 
+              : "Giao diện Phục vụ: Chọn bàn trên lưới để thao tác mở bàn, gọi món trực tiếp và in phiếu tạm tính."}
           </p>
         </div>
 
@@ -762,14 +814,12 @@ export const WaiterTableMap: React.FC = () => {
                           {selectedTable.start_time || "Vừa đến"}
                         </span>
                       </div>
-                      {selectedTable.status !== "empty" && (
                         <div className="flex justify-between">
                           <span className="text-gray-500">Số khách đặt/đang ngồi:</span>
                           <span className="font-bold text-emerald-700">
                             {selectedTable.guest_count || "?"} / {selectedTable.capacity} người
                           </span>
                         </div>
-                      )}
                       {selectedTable.booking_code && (
                         <div className="flex justify-between">
                           <span className="text-gray-500">Mã đặt bàn:</span>
@@ -901,12 +951,14 @@ export const WaiterTableMap: React.FC = () => {
                               Món ăn đã gọi
                             </h4>
                           </div>
-                          <button
-                            onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
-                            className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
-                          >
-                            <Plus size={13} /> Thêm món
-                          </button>
+                          {selectedTable.status === "serving" && (
+                            <button
+                              onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
+                              className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
+                            >
+                              <Plus size={13} /> Thêm món
+                            </button>
+                          )}
                         </div>
 
                         {loadingOrder ? (
@@ -971,21 +1023,31 @@ export const WaiterTableMap: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Nút thao tác chuyển/gộp & Yêu cầu thanh toán */}
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <button
-                            onClick={() => setActiveAction("transfer")}
-                            className="rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <ArrowRightLeft size={13} /> Chuyển bàn
-                          </button>
-                          <button
-                            onClick={() => setActiveAction("merge")}
-                            className="rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <GitMerge size={13} /> Gộp bàn
-                          </button>
-                        </div>
+                        {/* Nút thao tác chuyển/gộp/tách — CHỈ HIỂN THỊ khi bàn đang ở trạng thái phục vụ (serving) */}
+                        {selectedTable.status === "serving" && (
+                          <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
+                            <button
+                              onClick={() => setActiveAction("transfer")}
+                              className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <ArrowRightLeft size={13} /> Chuyển bàn
+                            </button>
+                            <button
+                              onClick={() => setActiveAction("merge")}
+                              className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <GitMerge size={13} /> Gộp bàn
+                            </button>
+                            {((selectedTable.guest_count || 0) > 1) && (
+                              <button
+                                onClick={() => setActiveAction("split")}
+                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                <Copy size={13} className="text-pink-600" /> Tách bàn
+                              </button>
+                            )}
+                          </div>
+                        )}
 
                         {selectedTable.status === "serving" && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
                           <button

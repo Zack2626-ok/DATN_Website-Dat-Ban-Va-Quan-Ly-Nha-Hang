@@ -7,7 +7,7 @@ import {
 } from "../../../services/restaurantInfoService";
 
 export const AdminSettings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"general" | "tax">("general");
+  const [activeTab, _setActiveTab] = useState<"general" | "tax">("general");
   const [savedMessage, setSavedMessage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

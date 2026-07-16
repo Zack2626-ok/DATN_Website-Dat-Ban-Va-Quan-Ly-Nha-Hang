@@ -1,5 +1,5 @@
 import React from "react";
-import { CreditCard, FileText, History } from "lucide-react";
+import { CreditCard, History } from "lucide-react";
 import { ActorShellLayout, NavLinkItem } from "../../components/layout/ActorShellLayout";
 import { HotlineButton } from "../../components/client/HotlineButton";
 

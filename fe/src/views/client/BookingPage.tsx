@@ -28,7 +28,7 @@ export const BookingPage: React.FC = () => {
   const [promotionsList, setPromotionsList] = useState<any[]>([]);
   const [menuItemsList, setMenuItemsList] = useState<any[]>([]);
   const [selectedPromoId, setSelectedPromoId] = useState<string>("");
-  const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: number]: { name: string; price: number; quantity: number } }>({});
+  const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: number]: { id: number; name: string; price: number; quantity: number } }>({});
   const [showMenuModal, setShowMenuModal] = useState(false);
 
   // Fetch promotions and menu items
@@ -689,7 +689,7 @@ export const BookingPage: React.FC = () => {
                             onClick={() => {
                               setPreOrderedDishes((prev) => ({
                                 ...prev,
-                                [item.id]: { name: item.name, price: item.price, quantity: 1 },
+                                [item.id]: { id: item.id, name: item.name, price: item.price, quantity: 1 },
                               }));
                             }}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-50 px-3 py-1.5 text-xs font-bold transition-all"

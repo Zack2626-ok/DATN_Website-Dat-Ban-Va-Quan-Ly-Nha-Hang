@@ -1,6 +1,6 @@
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
-import { CashierLayout, CashierPOS, CashierPaymentPage, PaymentHistoryPage } from "../views/cashier";
+import { CashierLayout, CashierPaymentPage, PaymentHistoryPage } from "../views/cashier";
 
 export const CashierRoutes = () => (
   <Route
