@@ -203,17 +203,45 @@ CREATE TABLE tables (
 -- Nếu database đã tồn tại, chạy lệnh sau để thêm cột:
 -- ALTER TABLE tables ADD COLUMN maintenance_note TEXT DEFAULT NULL COMMENT 'Lý do bảo trì';
 
-INSERT INTO tables (area_id, name, capacity, row_pos, col_pos, status) VALUES
- (1,'B01',4,'A',1,'empty'),
- (1,'B02',4,'A',2,'empty'),
- (1,'B03',6,'A',3,'reserved'),
- (1,'B04',8,'B',1,'pending_payment'),
- (1,'B05',4,'B',2,'empty'),
- (2,'B06',4,'A',1,'reserved'),
- (2,'B07',6,'A',2,'empty'),
- (2,'B08',8,'A',3,'serving'),
- (2,'B09',10,'B',1,'reserved'),
- (3,'B10',6,'A',1,'empty');
+INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUES
+ -- Tầng 1 (12 bàn: B01 - B12)
+ (1,  1, 'B01', 4, 'A', 1, 'empty'),
+ (2,  1, 'B02', 4, 'A', 2, 'cleaning'),
+ (3,  1, 'B03', 6, 'A', 3, 'reserved'),
+ (4,  1, 'B04', 8, 'A', 4, 'pending_payment'),
+ (5,  1, 'B05', 4, 'B', 1, 'empty'),
+ (6,  1, 'B06', 4, 'B', 2, 'reserved'),
+ (7,  1, 'B07', 6, 'B', 3, 'empty'),
+ (8,  1, 'B08', 8, 'B', 4, 'serving'),
+ (9,  1, 'B09', 10, 'C', 1, 'reserved'),
+ (10, 1, 'B10', 4, 'C', 2, 'empty'),
+ (11, 1, 'B11', 4, 'C', 3, 'empty'),
+ (12, 1, 'B12', 4, 'C', 4, 'empty'),
+
+ -- Tầng 2 (12 bàn: B13 - B24)
+ (13, 2, 'B13', 4, 'A', 1, 'empty'),
+ (14, 2, 'B14', 4, 'A', 2, 'empty'),
+ (15, 2, 'B15', 4, 'A', 3, 'empty'),
+ (16, 2, 'B16', 4, 'A', 4, 'empty'),
+ (17, 2, 'B17', 4, 'B', 1, 'empty'),
+ (18, 2, 'B18', 4, 'B', 2, 'empty'),
+ (19, 2, 'B19', 4, 'B', 3, 'empty'),
+ (20, 2, 'B20', 4, 'B', 4, 'empty'),
+ (21, 2, 'B21', 4, 'C', 1, 'empty'),
+ (22, 2, 'B22', 4, 'C', 2, 'empty'),
+ (23, 2, 'B23', 4, 'C', 3, 'empty'),
+ (24, 2, 'B24', 4, 'C', 4, 'empty'),
+
+ -- Sân vườn (9 bàn: B25 - B33)
+ (25, 3, 'B25', 4, 'A', 1, 'empty'),
+ (26, 3, 'B26', 4, 'A', 2, 'empty'),
+ (27, 3, 'B27', 4, 'A', 3, 'empty'),
+ (28, 3, 'B28', 4, 'A', 4, 'empty'),
+ (29, 3, 'B29', 4, 'B', 1, 'empty'),
+ (30, 3, 'B30', 4, 'B', 2, 'empty'),
+ (31, 3, 'B31', 4, 'B', 3, 'empty'),
+ (32, 3, 'B32', 4, 'B', 4, 'empty'),
+ (33, 3, 'B33', 4, 'C', 1, 'empty');
 
 CREATE TABLE bookings (
     id                INT          NOT NULL AUTO_INCREMENT,
@@ -450,7 +478,9 @@ INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, 
  (8, NULL, 5, 'dine_in', NULL, 'serving',        NULL,                     N'Nguyễn Văn Bình', '0912345678',   '2026-06-23 18:15:00', NULL),
  (4, 3, 4, 'dine_in',  NULL, 'pending_payment', NULL,                     NULL,               NULL,           '2026-06-23 19:00:00', NULL),
  (4, NULL, 4, 'dine_in', NULL, 'pending_payment', NULL,                   N'Lê Thị C',        '0933333333',   '2026-06-23 19:00:00', NULL),
- (NULL, NULL, 4, 'takeaway', NULL, 'completed',   N'Mang về',               NULL,               NULL,           '2026-06-23 11:00:00', '2026-06-23 11:20:00');
+ (NULL, NULL, 4, 'takeaway', NULL, 'completed',   N'Mang về',               NULL,               NULL,           '2026-06-23 11:00:00', '2026-06-23 11:20:00'),
+ -- Order 6 (bàn B02 vừa thanh toán thành công, đang chờ dọn bàn)
+ (2, 2, 4, 'dine_in',  NULL, 'completed',      N'Khách vừa thanh toán chuyển khoản thành công', N'Trần Văn Dũng', '0988888888', '2026-06-24 19:30:00', '2026-06-24 20:45:00');
 
 
 CREATE TABLE order_items (
@@ -493,7 +523,11 @@ INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_numb
  (4,12, 2,  40000.00, NULL,2, NULL,              'done'),
  -- Order 5 (takeaway completed)
  (5, 2, 2,  80000.00, NULL, 1, NULL,             'done'),
- (5,11, 1,  45000.00, NULL, 1, NULL,             'done');
+ (5,11, 1,  45000.00, NULL, 1, NULL,             'done'),
+ -- Order 6 (bàn B02 completed)
+ (6, 3, 2, 180000.00, NULL, 1, N'Bò lúc lắc vừa chín', 'done'),
+ (6,10, 2,  35000.00, NULL, 2, N'Trà đào ít đá',       'done'),
+ (6,12, 1,  40000.00, NULL, 3, N'Chè thái',            'done');
 
 CREATE TABLE order_item_status_log (
     id            INT         NOT NULL AUTO_INCREMENT,
@@ -730,7 +764,9 @@ INSERT INTO invoices (order_id, parent_invoice_id, subtotal, discount, tax, serv
 -- Invoice 4: Order 4 tách bill (nhóm 4:2)
  (4, NULL, 630000.00, 0.00,     63000.00, 31500.00, 50000.00, 774500.00, NULL, 'draft', NULL, 3),
 -- Invoice 5: Order 5 (takeaway)
- (5, NULL, 205000.00, 0.00,     20500.00, 0.00,     0.00,   225500.00, NULL, 'paid',  '2026-06-23 11:20:00', 3);
+ (5, NULL, 205000.00, 0.00,     20500.00, 0.00,     0.00,   225500.00, NULL, 'paid',  '2026-06-23 11:20:00', 3),
+-- Invoice 6: Order 6 (bàn B02 vừa thanh toán thành công, đang dọn bàn)
+ (6, NULL, 470000.00, 0.00,     47000.00, 0.00,     0.00,   517000.00, NULL, 'paid',  '2026-06-24 20:45:00', 3);
 
 CREATE TABLE invoice_items (
     id            INT           NOT NULL AUTO_INCREMENT,
@@ -758,7 +794,11 @@ INSERT INTO invoice_items (invoice_id, order_item_id, amount) VALUES
  (3,13,   80000.00),
  -- Invoice 4 ← order_items 14–15 (order 5)
  (4,14,  160000.00),
- (4,15,   45000.00);
+ (4,15,   45000.00),
+ -- Invoice 6 ← order_items 16–18 (order 6 bàn B02)
+ (6,16,  360000.00),
+ (6,17,   70000.00),
+ (6,18,   40000.00);
 
 CREATE TABLE payments (
     id          INT           NOT NULL AUTO_INCREMENT,
@@ -773,7 +813,8 @@ CREATE TABLE payments (
 
 INSERT INTO payments (invoice_id, method, amount, note, paid_at) VALUES
  (1, 'cash',          745200.00, N'Thanh toán tiền mặt',       '2026-06-23 13:30:00'),
- (4, 'momo',          225500.00, N'Thanh toán MoMo mang về',   '2026-06-23 11:20:00');
+ (4, 'momo',          225500.00, N'Thanh toán MoMo mang về',   '2026-06-23 11:20:00'),
+ (6, 'bank_transfer', 517000.00, N'Thanh toán chuyển khoản Vietcombank thành công', '2026-06-24 20:45:00');
 
 
 -- ============================================================================

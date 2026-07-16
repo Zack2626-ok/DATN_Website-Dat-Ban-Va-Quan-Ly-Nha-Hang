@@ -343,7 +343,7 @@ export const OrderPage: React.FC = () => {
 
   const handleRequestPayment = async () => {
     if (!tableId || activeItems.length === 0) return;
-    const unfinishedItems = orderItems.filter((i) => (i.status === "pending" || i.status === "cooking") && i.status !== "voided");
+    const unfinishedItems = orderItems.filter((i) => i.status === "pending" || i.status === "cooking");
     if (unfinishedItems.length > 0) {
       setUnfinishedPaymentModal(unfinishedItems);
       return;
@@ -775,7 +775,7 @@ export const OrderPage: React.FC = () => {
             </div>
 
             {(() => {
-              const servedOrDoneCount = orderItems.filter((i) => (i.status === "served" || i.status === "done") && i.status !== "voided").length;
+              const servedOrDoneCount = orderItems.filter((i) => i.status === "served" || i.status === "done").length;
               if (servedOrDoneCount === 0) {
                 return (
                   <div className="space-y-3">
