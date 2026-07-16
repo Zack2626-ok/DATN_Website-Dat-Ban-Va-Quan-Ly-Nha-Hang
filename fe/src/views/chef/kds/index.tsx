@@ -239,6 +239,13 @@ export const ChefKitchenQueue: React.FC = () => {
       });
   };
 
+  const getTableNumber = (tableName?: string): number => {
+    if (!tableName) return 999999;
+    if (tableName === "Mang về") return 99999;
+    const match = tableName.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 9999;
+  };
+
   // Group kitchen items into 3 columns: Chờ nấu (pending), Đang nấu (cooking), Sẵn sàng (done)
   const columns = useMemo(() => {
     return {
@@ -247,6 +254,28 @@ export const ChefKitchenQueue: React.FC = () => {
       done: filteredItems.filter((item) => item.status === "done"),
     };
   }, [filteredItems]);
+
+  const groupItemsByTable = (itemsList: KdsItem[]) => {
+    const groups: { [key: string]: { tableName: string; areaName?: string; items: KdsItem[] } } = {};
+    itemsList.forEach((item) => {
+      const key = item.tableName || "Mang về";
+      if (!groups[key]) {
+        groups[key] = {
+          tableName: item.tableName || "Mang về",
+          areaName: item.areaName,
+          items: [],
+        };
+      }
+      groups[key].items.push(item);
+    });
+
+    // Sắp xếp bàn từ nhỏ đến lớn
+    return Object.values(groups).sort((a, b) => getTableNumber(a.tableName) - getTableNumber(b.tableName));
+  };
+
+  const groupedPending = useMemo(() => groupItemsByTable(columns.pending), [columns.pending]);
+  const groupedCooking = useMemo(() => groupItemsByTable(columns.cooking), [columns.cooking]);
+  const groupedDone = useMemo(() => groupItemsByTable(columns.done), [columns.done]);
 
   // Group pending items for Batch Cooking
   const batchGroups = useMemo(() => {
@@ -275,7 +304,15 @@ export const ChefKitchenQueue: React.FC = () => {
       groups[key].items.push(item);
     });
 
-    return Object.values(groups).sort((a, b) => b.totalQty - a.totalQty);
+    const list = Object.values(groups).map((group) => {
+      const sortedItems = [...group.items].sort((a, b) => getTableNumber(a.tableName) - getTableNumber(b.tableName));
+      return {
+        ...group,
+        items: sortedItems
+      };
+    });
+
+    return list.sort((a, b) => b.totalQty - a.totalQty);
   }, [filteredItems]);
 
   const handleBatchStartCooking = (groupItems: KdsItem[]) => {
@@ -523,7 +560,6 @@ export const ChefKitchenQueue: React.FC = () => {
           <span className="text-sm text-slate-500 italic animate-pulse">Đang tải danh sách món ăn từ bếp...</span>
         </div>
       ) : activeTab === "kanban" ? (
-        
         /* 4. Kanban View */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Cột 1: Chờ nấu */}
@@ -542,71 +578,100 @@ export const ChefKitchenQueue: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
-              {columns.pending.length === 0 ? (
+              {groupedPending.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
                   Chưa có món ăn nào chờ nấu
                 </div>
               ) : (
-                columns.pending.map((item) => {
-                  const { timeStr, isDelayed } = getTimerInfo(item.createdAt);
+                groupedPending.map((group) => {
+                  const earliestCreatedAt = group.items.reduce((earliest, current) => {
+                    const currentMs = new Date(current.createdAt).getTime();
+                    return currentMs < earliest ? currentMs : earliest;
+                  }, Date.now());
+                  const { timeStr, isDelayed } = getTimerInfo(new Date(earliestCreatedAt).toISOString());
+
                   return (
                     <div
-                      key={item.id}
-                      className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
+                      key={group.tableName}
+                      className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
                         isDelayed
                           ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
                           : "border-slate-200/80 border-l-blue-500 hover:border-blue-300"
                       }`}
                     >
-                      <div>
-                        <div className="flex justify-between items-center gap-2">
-                          <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
-                            Bàn: {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}
-                          </span>
-                          <span
-                            className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
-                              isDelayed ? "text-rose-600 bg-rose-50" : "text-slate-500 bg-slate-50 border border-slate-100"
-                            }`}
-                          >
-                            <Clock size={10} /> {timeStr}
-                          </span>
-                        </div>
-
-                        {/* Dish Details */}
-                        <div className="mt-3">
-                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-800">
-                            <span className="truncate max-w-[80%] leading-snug">{item.name}</span>
-                            <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-1 rounded-lg border border-blue-200/60 shadow-sm">
-                              x{item.quantity}
-                            </span>
-                          </div>
-                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
-                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
-                              {getStationLabel(item.kitchenStation)}
-                            </span>
-                            {item.orderType && (
-                              <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Notes */}
-                          {(item.kitchenNote || (item as any).kitchen_note) && (
-                            <div className="mt-2.5 text-[11px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm animate-pulse">
-                              📝 {item.kitchenNote || (item as any).kitchen_note}
-                            </div>
-                          )}
-                        </div>
+                      {/* Tiêu đề bàn */}
+                      <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
+                        <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
+                          Bàn: {group.tableName}{group.areaName ? ` - ${group.areaName}` : ""}
+                        </span>
+                        <span
+                          className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
+                            isDelayed ? "text-rose-600 bg-rose-50" : "text-slate-500 bg-slate-50 border border-slate-100"
+                          }`}
+                        >
+                          <Clock size={10} /> {timeStr}
+                        </span>
                       </div>
 
-                      <button
-                        onClick={() => handleUpdateStatus(item.id, "cooking")}
-                        className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/20 active:scale-95"
-                      >
-                        <Play size={11} className="fill-white" /> Bắt đầu nấu
-                      </button>
+                      {/* Danh sách món */}
+                      <div className="flex flex-col gap-3">
+                        {group.items.map((item) => (
+                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
+                                {item.name}
+                              </div>
+                              <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-0.5 rounded-lg border border-blue-200/60 shadow-sm whitespace-nowrap">
+                                x{item.quantity}
+                              </span>
+                            </div>
+
+                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
+                                {getStationLabel(item.kitchenStation)}
+                              </span>
+                              {item.orderType && (
+                                <span className="text-slate-400 font-semibold">
+                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Ghi chú */}
+                            {(item.kitchenNote || (item as any).kitchen_note) && (
+                              <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
+                                📝 {item.kitchenNote || (item as any).kitchen_note}
+                              </div>
+                            )}
+
+                            {/* Nút nấu món lẻ */}
+                            <button
+                              onClick={() => handleUpdateStatus(item.id, "cooking")}
+                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                            >
+                              <Play size={9} className="fill-white" /> Bắt đầu nấu
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Hành động cả bàn (nếu có > 1 món) */}
+                      {group.items.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const ids = group.items.map((i) => i.id);
+                            dispatch(updateKdsBatchStatus({ itemIds: ids, status: "cooking" }))
+                              .unwrap()
+                              .catch(() => {
+                                ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "cooking" })));
+                              });
+                          }}
+                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
+                        >
+                          <Play size={10} className="fill-white" /> Bắt đầu cả bàn ({group.items.length})
+                        </button>
+                      )}
                     </div>
                   );
                 })
@@ -627,80 +692,100 @@ export const ChefKitchenQueue: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
-              {columns.cooking.length === 0 ? (
+              {groupedCooking.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
                   Không có món nào đang nấu
                 </div>
               ) : (
-                columns.cooking.map((item) => {
-                  const { timeStr, isDelayed } = getTimerInfo(item.updatedAt || item.createdAt);
+                groupedCooking.map((group) => {
+                  const earliestUpdatedAt = group.items.reduce((earliest, current) => {
+                    const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
+                    return currentMs < earliest ? currentMs : earliest;
+                  }, Date.now());
+                  const { timeStr, isDelayed } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
+
                   return (
                     <div
-                      key={item.id}
-                      className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
+                      key={group.tableName}
+                      className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
                         isDelayed
                           ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
                           : "border-slate-200/80 border-l-amber-500 hover:border-amber-300"
                       }`}
                     >
-                      <div>
-                        <div className="flex justify-between items-center gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
-                              Bàn: {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}
-                            </span>
-                            <button
-                              onClick={() => handleRecallStatus(item.id)}
-                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 border border-slate-100 hover:border-slate-200/80 transition-all cursor-pointer shadow-sm hover:shadow"
-                              title="Hoàn tác về Chờ nấu"
-                            >
-                              <Undo2 size={11} />
-                            </button>
-                          </div>
-                          <span
-                            className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
-                              isDelayed ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50/55 border border-amber-100/50"
-                            }`}
-                          >
-                            <Clock size={10} className="animate-[spin_4s_linear_infinite]" /> {timeStr}
-                          </span>
-                        </div>
-
-                        {/* Dish Details */}
-                        <div className="mt-3">
-                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-800">
-                            <span className="truncate max-w-[80%] leading-snug">{item.name}</span>
-                            <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 shadow-sm">
-                              x{item.quantity}
-                            </span>
-                          </div>
-                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
-                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
-                              {getStationLabel(item.kitchenStation)}
-                            </span>
-                            {item.orderType && (
-                              <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Notes */}
-                          {(item.kitchenNote || (item as any).kitchen_note) && (
-                            <div className="mt-2.5 text-[11px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm animate-pulse">
-                              📝 {item.kitchenNote || (item as any).kitchen_note}
-                            </div>
-                          )}
-                        </div>
+                      {/* Tiêu đề bàn */}
+                      <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
+                        <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
+                          Bàn: {group.tableName}{group.areaName ? ` - ${group.areaName}` : ""}
+                        </span>
+                        <span
+                          className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
+                            isDelayed ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50/55 border border-amber-100/50"
+                          }`}
+                        >
+                          <Clock size={10} className="animate-[spin_4s_linear_infinite]" /> {timeStr}
+                        </span>
                       </div>
 
-                      <button
-                        onClick={() => handleUpdateStatus(item.id, "done")}
-                        className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95"
-                      >
-                        <Check size={11} /> Hoàn thành
-                      </button>
+                      {/* Danh sách món */}
+                      <div className="flex flex-col gap-3">
+                        {group.items.map((item) => (
+                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
+                                {item.name}
+                              </div>
+                              <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-0.5 rounded-lg border border-amber-200/60 shadow-sm whitespace-nowrap">
+                                x{item.quantity}
+                              </span>
+                            </div>
+
+                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
+                                {getStationLabel(item.kitchenStation)}
+                              </span>
+                              {item.orderType && (
+                                <span className="text-slate-400 font-semibold">
+                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Ghi chú */}
+                            {(item.kitchenNote || (item as any).kitchen_note) && (
+                              <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
+                                📝 {item.kitchenNote || (item as any).kitchen_note}
+                              </div>
+                            )}
+
+                            {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
+                            <button
+                              onClick={() => handleUpdateStatus(item.id, "done")}
+                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                            >
+                              <Check size={9} /> Hoàn thành
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Hành động cả bàn (nếu có > 1 món) */}
+                      {group.items.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const ids = group.items.map((i) => i.id);
+                            dispatch(updateKdsBatchStatus({ itemIds: ids, status: "done" }))
+                              .unwrap()
+                              .catch(() => {
+                                ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "done" })));
+                              });
+                          }}
+                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
+                        >
+                          <Check size={10} className="animate-pulse" /> Hoàn thành cả bàn ({group.items.length})
+                        </button>
+                      )}
                     </div>
                   );
                 })
@@ -721,65 +806,85 @@ export const ChefKitchenQueue: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
-              {columns.done.length === 0 ? (
+              {groupedDone.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
                   Chưa có món nào đã sẵn sàng
                 </div>
               ) : (
-                columns.done.map((item) => {
-                  const { timeStr } = getTimerInfo(item.updatedAt || item.createdAt);
+                groupedDone.map((group) => {
+                  const earliestUpdatedAt = group.items.reduce((earliest, current) => {
+                    const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
+                    return currentMs < earliest ? currentMs : earliest;
+                  }, Date.now());
+                  const { timeStr } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
+
                   return (
                     <div
-                      key={item.id}
-                      className="bg-white border-l-[5px] border-l-emerald-500 border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250"
+                      key={group.tableName}
+                      className="bg-white border-l-[5px] border-l-emerald-500 border-slate-200/80 rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250"
                     >
-                      <div>
-                        <div className="flex justify-between items-center gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
-                              Bàn: {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}
-                            </span>
-                            <button
-                              onClick={() => handleRecallStatus(item.id)}
-                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 border border-slate-100 hover:border-slate-200/80 transition-all cursor-pointer shadow-sm hover:shadow"
-                              title="Hoàn tác về Đang nấu"
-                            >
-                              <Undo2 size={11} />
-                            </button>
-                          </div>
-                          <span className="text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md text-emerald-600 bg-emerald-55/40 bg-emerald-50 border border-emerald-100">
-                            <Clock size={10} /> {timeStr}
-                          </span>
-                        </div>
-
-                        {/* Dish Details */}
-                        <div className="mt-3">
-                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-650">
-                            <span className="line-through text-slate-400 truncate max-w-[80%] leading-snug">{item.name}</span>
-                            <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-1 rounded-lg border border-emerald-200/60 shadow-sm">
-                              x{item.quantity}
-                            </span>
-                          </div>
-                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
-                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
-                              {getStationLabel(item.kitchenStation)}
-                            </span>
-                            {item.orderType && (
-                              <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                      {/* Tiêu đề bàn */}
+                      <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
+                        <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
+                          Bàn: {group.tableName}{group.areaName ? ` - ${group.areaName}` : ""}
+                        </span>
+                        <span className="text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md text-emerald-600 bg-emerald-55/40 bg-emerald-50 border border-emerald-100">
+                          <Clock size={10} /> {timeStr}
+                        </span>
                       </div>
 
-                      <button
-                        onClick={() => handleDeliver(item.id)}
-                        className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-95"
-                      >
-                        <CheckCheck size={11} /> Đã phục vụ
-                      </button>
+                      {/* Danh sách món */}
+                      <div className="flex flex-col gap-3">
+                        {group.items.map((item) => (
+                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="text-[13px] font-extrabold text-slate-400 line-through leading-snug">
+                                {item.name}
+                              </div>
+                              <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-0.5 rounded-lg border border-emerald-200/60 shadow-sm whitespace-nowrap">
+                                x{item.quantity}
+                              </span>
+                            </div>
+
+                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
+                                {getStationLabel(item.kitchenStation)}
+                              </span>
+                              {item.orderType && (
+                                <span className="text-slate-400 font-semibold">
+                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Nút phục vụ món lẻ (không có nút hoàn tác) */}
+                            <button
+                              onClick={() => handleDeliver(item.id)}
+                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                            >
+                              <CheckCheck size={9} /> Đã phục vụ
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Hành động cả bàn (nếu có > 1 món) */}
+                      {group.items.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const ids = group.items.map((i) => i.id);
+                            dispatch(updateKdsBatchStatus({ itemIds: ids, status: "delivered" }))
+                              .unwrap()
+                              .catch(() => {
+                                ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "delivered" })));
+                              });
+                          }}
+                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
+                        >
+                          <CheckCheck size={10} className="animate-pulse" /> Phục vụ cả bàn ({group.items.length})
+                        </button>
+                      )}
                     </div>
                   );
                 })
