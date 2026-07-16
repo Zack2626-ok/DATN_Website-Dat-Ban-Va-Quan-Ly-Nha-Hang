@@ -3,6 +3,7 @@ import ProtectedRoute from "./ProtectedRoute";
 import {
   WaiterLayout,
   WaiterTableMap,
+  BookingListPage,
   OrderPage,
   OrderTableListPage,
 } from "../views/waiter";
@@ -18,6 +19,7 @@ export const WaiterRoutes = () => (
   >
     <Route index element={<Navigate to="/waiter/tables" replace />} />
     <Route path="tables" element={<WaiterTableMap />} />
+    <Route path="bookings" element={<BookingListPage />} />
     <Route path="orders" element={<OrderTableListPage />} />
     <Route path="orders/:tableId" element={<OrderPage />} />
   </Route>
