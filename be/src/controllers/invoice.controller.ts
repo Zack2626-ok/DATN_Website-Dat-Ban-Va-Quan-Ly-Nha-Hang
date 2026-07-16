@@ -226,6 +226,27 @@ export const splitBillEqual = async (req: Request, res: Response): Promise<void>
         guest_phone: order.guest_phone,
         guest_count: 1,
       });
+
+      // Copy các món ăn sang đơn tách mới với giá trị chia đều
+      if (order.items && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          const splitQty = Math.max(1, Math.round(item.quantity / parts));
+          const splitPrice = Math.round(Number(item.unit_price) / parts);
+          const addedItem = await db.addResmanagerOrderItem({
+            order_id: splitOrder.id,
+            menu_item_id: item.menu_item_id,
+            quantity: splitQty,
+            unit_price: splitPrice,
+            seat_number: item.seat_number || null,
+            course_number: item.course_number || 1,
+            kitchen_note: item.kitchen_note || undefined,
+          });
+          if (item.status && addedItem?.id) {
+            await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
+          }
+        }
+      }
+
       splitBills.push({ ...splitOrder, totalAmount: amount, splitLabel: `Phần ${i + 1}/${parts}` });
     }
 
@@ -275,6 +296,23 @@ export const splitBillByItems = async (req: Request, res: Response): Promise<voi
         guest_phone: order.guest_phone,
         guest_count: 1,
       });
+
+      // Copy đúng các món được gán vào nhóm này sang order mới
+      for (const item of groupItems) {
+        const addedItem = await db.addResmanagerOrderItem({
+          order_id: splitOrder.id,
+          menu_item_id: item.menu_item_id,
+          quantity: item.quantity,
+          unit_price: Number(item.unit_price),
+          seat_number: item.seat_number || null,
+          course_number: item.course_number || 1,
+          kitchen_note: item.kitchen_note || undefined,
+        });
+        if (item.status && addedItem?.id) {
+          await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
+        }
+      }
+
       splitBills.push({ ...splitOrder, totalAmount: groupTotal, splitLabel: group.label || `Nhóm ${i + 1}` });
     }
 
@@ -315,7 +353,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
     const mergedItems: any[] = [];
     for (const order of ordersToMerge) {
       for (const item of order.items) {
-        const existing = mergedItems.find((m) => m.menu_item_id === item.menu_item_id);
+        const existing = mergedItems.find((m) => m.menu_item_id === item.menu_item_id && (m.kitchen_note || '').trim() === (item.kitchen_note || '').trim());
         if (existing) {
           existing.quantity += item.quantity;
         } else {
@@ -338,6 +376,22 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
       guest_count: firstOrder.guest_count,
     });
 
+    // Copy toàn bộ danh sách món đã gộp sang đơn hàng mới
+    for (const item of mergedItems) {
+      const addedItem = await db.addResmanagerOrderItem({
+        order_id: mergedOrder.id,
+        menu_item_id: item.menu_item_id,
+        quantity: item.quantity,
+        unit_price: Number(item.unit_price),
+        seat_number: item.seat_number || null,
+        course_number: item.course_number || 1,
+        kitchen_note: item.kitchen_note || undefined,
+      });
+      if (item.status && addedItem?.id) {
+        await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
+      }
+    }
+
     for (const invId of invoiceIds) {
       await db.updateOrderStatus(invId, "cancelled");
     }
@@ -348,6 +402,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
 
 export const payPartial = async (req: Request, res: Response): Promise<void> => {
   try {

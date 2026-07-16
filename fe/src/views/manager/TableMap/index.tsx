@@ -256,6 +256,7 @@ export const TableMapIndex: React.FC = () => {
       toast.success(`Đã mở bàn ${activeTable.name} thành công cho ${data.guestCount} khách!`);
       setIsOpenTableOpen(false);
       fetchTables();
+      navigate(`/waiter/orders/${activeTable.id}`);
     } catch (err) {
       toast.error("Không thể mở bàn mới");
     } finally {

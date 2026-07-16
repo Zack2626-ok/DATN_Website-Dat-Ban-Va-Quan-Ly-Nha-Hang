@@ -70,9 +70,11 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
 
     sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const msg = (error as Error).message;
+    sendError(res, msg, msg.includes("trùng") ? 400 : 500);
   }
 };
+
 
 export const updateBookingStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {

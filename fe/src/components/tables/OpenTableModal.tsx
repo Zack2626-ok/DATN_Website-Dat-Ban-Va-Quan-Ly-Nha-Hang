@@ -38,7 +38,7 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
     onClose();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim()) {
       import('react-hot-toast').then(m => m.toast.error('Vui lòng nhập tên khách hàng'));
@@ -46,24 +46,18 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
     }
     if (customerPhone.trim()) {
       const cleanedPhone = customerPhone.trim().replace(/[\s-]/g, '');
-      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
-      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
-        import('react-hot-toast').then(m => m.toast.error('Số điện thoại không hợp lệ (phải từ 10-11 chữ số)'));
+      const phoneRegex = /^(03|09)\d{8}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        import('react-hot-toast').then(m => m.toast.error('Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)'));
         return;
       }
     }
     setIsSubmitting(true);
-
-    setTimeout(() => {
+    try {
+      await onConfirm({ guestCount, customerName: customerName.trim(), customerPhone: customerPhone.trim() });
+    } finally {
       setIsSubmitting(false);
-      setShowSuccess(true);
-
-      onConfirm({ guestCount, customerName, customerPhone });
-
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
-    }, 800);
+    }
   };
 
   if (!table) return null;
