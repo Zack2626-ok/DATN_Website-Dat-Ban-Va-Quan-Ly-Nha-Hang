@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
-import { isValidPhoneNumber } from "../utils/validation";
+import { isValidPhoneNumber, getPhoneNumberValidationError } from "../utils/validation";
 
 export const getAllBookings = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -29,7 +29,7 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note } =
+    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, pre_ordered_items } =
       req.body;
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
@@ -37,8 +37,9 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
 
-    if (!isValidPhoneNumber(guest_phone)) {
-      sendError(res, "Số điện thoại không hợp lệ (phải từ 10-11 chữ số)", 400);
+    const phoneError = getPhoneNumberValidationError(guest_phone);
+    if (phoneError) {
+      sendError(res, phoneError, 400);
       return;
     }
 
@@ -66,6 +67,7 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       end_time,
       guest_note,
       note,
+      pre_ordered_items,
     });
 
     sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
@@ -107,6 +109,20 @@ export const deleteBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
     sendSuccess(res, { id: Number(id) }, "Đã xóa booking");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const payBookingDepositHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const success = await db.payBookingDeposit(Number(id));
+    if (!success) {
+      sendError(res, "Không tìm thấy đặt bàn hoặc đơn không thể đặt cọc", 404);
+      return;
+    }
+    sendSuccess(res, { id: Number(id), deposit_status: "paid" }, "Thanh toán tiền cọc thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

@@ -87,12 +87,28 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // Kiểm tra cọc tiền đặt bàn
+    let depositAmount = 0;
+    let linkedBookingId: number | null = null;
+    if (order.tableId) {
+      const activeBookings = await db.query(
+        `SELECT id, deposit_amount FROM bookings WHERE table_id = ? AND deposit_status = 'paid' ORDER BY created_at DESC LIMIT 1`,
+        [Number(order.tableId)]
+      );
+      if (activeBookings.length > 0) {
+        depositAmount = Number(activeBookings[0].deposit_amount);
+        linkedBookingId = activeBookings[0].id;
+      }
+    }
+
     const subtotal = order.totalAmount;
     const vat = vatRate !== undefined ? subtotal * (vatRate / 100) : subtotal * 0.1;
     const serviceFee = serviceFeeRate !== undefined ? subtotal * (serviceFeeRate / 100) : 0;
     const voucher = voucherAmount || 0;
     const tip = tipAmount || 0;
-    const finalAmount = subtotal + vat + serviceFee - voucher + tip;
+    
+    // Khấu trừ tiền cọc từ tổng số tiền cần thanh toán
+    const finalAmount = subtotal + vat + serviceFee - voucher - depositAmount + tip;
 
     const payment = await db.createPayment({
       orderId: id,
@@ -108,6 +124,7 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         voucher,
         voucherCode,
         tip,
+        depositAmount,
         finalAmount,
         vatRate: vatRate ?? 10,
         serviceFeeRate: serviceFeeRate ?? 0,
@@ -117,6 +134,15 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     });
 
     await db.updateOrderStatus(id, "paid");
+
+    // Cập nhật trạng thái cọc tiền đặt bàn đã hoàn thành
+    if (linkedBookingId) {
+      await db.query(
+        `UPDATE bookings SET deposit_status = 'completed' WHERE id = ?`,
+        [linkedBookingId]
+      );
+      console.log(`✅ Marked booking ${linkedBookingId} deposit status as completed`);
+    }
 
     sendSuccess(res, { payment, order: { ...order, status: "paid" } }, "Thanh toán thành công");
   } catch (error) {

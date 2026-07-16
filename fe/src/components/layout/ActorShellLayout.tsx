@@ -35,7 +35,7 @@ const formatTime = (timeStr: string) => {
   }
 };
 import { logoutAction } from "../../store/authSlice";
-import { getWaiterNotifications, type WaiterNotification } from "../../services/waiterService";
+import { getWaiterNotifications } from "../../services/waiterService";
 
 export interface NavLinkItem {
   to: string;

@@ -138,12 +138,14 @@ export const getAvailableTables = async (startTime: string): Promise<any[]> => {
 export const createBooking = async (data: {
   table_id: number;
   customer_id?: number | null;
+  promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
   party_size: number;
   start_time: string;
   end_time: string;
   guest_note?: string;
+  pre_ordered_items?: any[];
 }): Promise<any> => {
   const response = await customerApi.post("/v1/bookings", data);
   return response.data.data;
@@ -151,6 +153,11 @@ export const createBooking = async (data: {
 
 export const cancelBooking = async (id: number): Promise<void> => {
   await customerApi.patch(`/v1/customer/bookings/${id}/cancel`);
+};
+
+export const payBookingDeposit = async (id: number): Promise<any> => {
+  const response = await customerApi.patch(`/v1/bookings/${id}/pay-deposit`);
+  return response.data.data;
 };
 
 export const createEventContract = async (data: {
