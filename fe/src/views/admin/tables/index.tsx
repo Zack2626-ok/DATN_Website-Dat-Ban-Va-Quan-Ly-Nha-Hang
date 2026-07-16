@@ -145,7 +145,9 @@ export const WaiterTableMap: React.FC = () => {
                   ? "bg-[#fffde7] border-[#fff59d] text-[#f57f17]"
                   : table.status === TABLE_STATUS.OCCUPIED
                     ? "bg-[#ffebee] border-[#ef9a9a] text-[#c62828]"
-                    : "bg-[#e3f2fd] border-[#90caf9] text-[#1565c0]";
+                    : table.status === TABLE_STATUS.PENDING_PAYMENT
+                      ? "bg-[#fbe9e7] border-[#ffab91] text-[#d84315]"
+                      : "bg-[#e3f2fd] border-[#90caf9] text-[#1565c0]";
 
             const order = orders.find((o) => o.id === table.currentOrderId);
             const priceLabel = order
@@ -153,9 +155,12 @@ export const WaiterTableMap: React.FC = () => {
               : null;
             const VietnameseLabels: { [key: string]: string } = {
               available: "Trống",
+              empty: "Trống",
               reserved: "Đã đặt",
               occupied: "Đang phục vụ",
-              cleaning: "Chờ thanh toán",
+              serving: "Đang phục vụ",
+              pending_payment: "Chờ thanh toán",
+              cleaning: "🧹 Đang dọn dẹp",
             };
 
             return (

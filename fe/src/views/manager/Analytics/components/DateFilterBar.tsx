@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Calendar, Download, RefreshCw } from "lucide-react";
 import type { DateFilter } from "../services/analyticsService";
+import { toast } from "react-hot-toast";
 
 interface DateFilterBarProps {
   filter: DateFilter;
@@ -86,14 +87,14 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
 
   const handleExport = () => {
     if (error) {
-      alert("Vui lòng sửa khoảng ngày bị lỗi trước khi xuất báo cáo!");
+      toast.error("Vui lòng sửa khoảng ngày bị lỗi trước khi xuất báo cáo!");
       return;
     }
     setIsExporting(true);
     setTimeout(() => {
+      window.print();
       setIsExporting(false);
-      alert("Đã xuất báo cáo phân tích định dạng PDF thành công!");
-    }, 1500);
+    }, 500);
   };
 
   return (

@@ -83,9 +83,9 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
 
     // 3. Phone check (Optional, but if input, must be valid numeric length)
     if (formData.phone.trim()) {
-      const phoneRegex = /^[0-9]{10}$/;
+      const phoneRegex = /^(03|09)\d{8}$/;
       if (!phoneRegex.test(formData.phone.trim())) {
-        errors.phone = "Số điện thoại phải gồm đúng 10 số.";
+        errors.phone = "Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 03 hoặc 09.";
         if (!firstError) firstError = errors.phone;
       }
     }

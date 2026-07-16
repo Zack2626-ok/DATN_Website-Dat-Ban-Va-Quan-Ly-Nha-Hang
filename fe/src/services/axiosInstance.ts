@@ -18,7 +18,10 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401 && !err.config?.url?.includes("/auth/login")) {
-      localStorage.clear();
+      // Chỉ xóa token nhân viên, không xóa customer_token
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("resmanagerState");
       window.location.href = "/auth/login";
     }
     return Promise.reject(err);

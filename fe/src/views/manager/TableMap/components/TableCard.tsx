@@ -66,6 +66,13 @@ export const TableCard: React.FC<TableCardProps> = ({
           badge: "bg-rose-100 text-rose-700 border-rose-300",
           label: "Chờ thanh toán",
         };
+      case "cleaning":
+        return {
+          bg: "bg-blue-50 border-blue-200 hover:bg-blue-100/80",
+          text: "text-blue-700",
+          badge: "bg-blue-100 text-blue-700 border-blue-300",
+          label: "🧹 Đang dọn dẹp",
+        };
       default:
         return {
           bg: "bg-sky-50/50 border-sky-100 hover:bg-sky-100",
@@ -118,10 +125,10 @@ export const TableCard: React.FC<TableCardProps> = ({
                 <>
                   <button
                     onClick={(e) => handleMenuClick(e, "open")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors font-semibold"
                   >
                     <CheckCircle size={12} className="text-green-600" />
-                    Mở bàn mới
+                    Mở bàn
                   </button>
                   <button
                     onClick={(e) => handleMenuClick(e, "reserve")}
@@ -130,6 +137,30 @@ export const TableCard: React.FC<TableCardProps> = ({
                     <Users size={12} className="text-amber-600" />
                     Đặt trước
                   </button>
+
+                  {/* Sửa/Xóa bàn chỉ hiển thị khi bàn trống */}
+                  {showCrud && (
+                    <div className="border-t border-gray-100 mt-1 pt-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleMenuClick(e, "edit_table")}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        <Edit size={12} className="text-gray-500" />
+                        Sửa thông tin
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleMenuClick(e, "delete_table")}
+                        disabled={!canDelete}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors font-medium"
+                        title={!canDelete ? "Chỉ được xóa khi bàn trống và không có lịch đặt trước" : ""}
+                      >
+                        <Trash2 size={12} className="text-red-500" />
+                        Xóa bàn
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -177,13 +208,16 @@ export const TableCard: React.FC<TableCardProps> = ({
                     <Link2 size={12} className="text-purple-600" />
                     Gộp bàn
                   </button>
-                  <button
-                    onClick={(e) => handleMenuClick(e, "split")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
-                  >
-                    <Copy size={12} className="text-pink-600" />
-                    Tách bàn
-                  </button>
+                  {/* Tách bàn chỉ hiển thị khi có nhiều hơn 1 khách */}
+                  {((table.guest_count || 0) > 1) && (
+                    <button
+                      onClick={(e) => handleMenuClick(e, "split")}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
+                    >
+                      <Copy size={12} className="text-pink-600" />
+                      Tách bàn
+                    </button>
+                  )}
                   {(table.is_merged_primary || table.is_merged_child) && (
                     <button
                       onClick={(e) => handleMenuClick(e, "unmerge")}
@@ -211,33 +245,9 @@ export const TableCard: React.FC<TableCardProps> = ({
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors font-semibold"
                   >
                     <FileText size={12} className="text-purple-600" />
-                    Thanh toán hóa đơn
+                    Xem Hóa đơn
                   </button>
                 </>
-              )}
-
-              {/* Quản lý danh sách bàn (CRUD) */}
-              {showCrud && (
-                <div className="border-t border-sky-50 mt-1 pt-1">
-                  <button
-                    type="button"
-                    onClick={(e) => handleMenuClick(e, "edit_table")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-500 hover:bg-sky-50/50 transition-colors"
-                  >
-                    <Edit size={12} className="text-slate-400" />
-                    Sửa thông tin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleMenuClick(e, "delete_table")}
-                    disabled={!canDelete}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors font-medium"
-                    title={!canDelete ? "Chỉ được xóa khi bàn trống và không có lịch đặt trước" : ""}
-                  >
-                    <Trash2 size={12} className="text-red-500" />
-                    Xóa bàn ăn
-                  </button>
-                </div>
               )}
             </div>
         )}
@@ -263,7 +273,9 @@ export const TableCard: React.FC<TableCardProps> = ({
         </div>
         <p className="text-[10px] text-gray-400 font-semibold mt-0.5 flex items-center gap-1">
           <Users size={10} />
-          Sức chứa: {table.capacity} người
+          {table.status !== "empty"
+            ? `Khách: ${table.guest_count || "?"}/${table.capacity} người`
+            : `Sức chứa: ${table.capacity} người`}
         </p>
       </div>
 

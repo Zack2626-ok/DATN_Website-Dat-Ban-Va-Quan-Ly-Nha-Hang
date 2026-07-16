@@ -96,11 +96,32 @@ export const AnalyticsView: React.FC = () => {
     toast.success("Đã làm mới dữ liệu báo cáo thành công!");
   };
 
+  const getFriendlyDateRange = () => {
+    if (filter.type === "today") return "Hôm nay";
+    if (filter.type === "week") return "7 ngày gần nhất";
+    if (filter.type === "month") return "30 ngày gần nhất";
+    if (filter.type === "custom") {
+      const start = filter.startDate ? new Date(filter.startDate).toLocaleDateString("vi-VN") : "Đầu ca";
+      const end = filter.endDate ? new Date(filter.endDate).toLocaleDateString("vi-VN") : "Cuối ca";
+      return `${start} đến ${end}`;
+    }
+    return "";
+  };
+
   return (
     <div className="flex flex-col gap-6 animate-fade-in pb-10">
       
-      {/* Tiêu đề trang */}
-      <div className="flex flex-col gap-1 border-b border-sky-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Tiêu đề in báo cáo (Chỉ hiển thị khi xuất bản PDF/In) */}
+      <div className="hidden print:block border-b-2 border-gray-800 pb-4 mb-2">
+        <h1 className="text-xl font-bold text-gray-900 font-display">BÁO CÁO PHÂN TÍCH DOANH THU & HOẠT ĐỘNG KINH DOANH</h1>
+        <div className="mt-2 text-xs text-gray-500 flex justify-between">
+          <span>Thời gian thống kê: {getFriendlyDateRange()}</span>
+          <span>Ngày xuất báo cáo: {new Date().toLocaleDateString("vi-VN")} lúc {new Date().toLocaleTimeString("vi-VN")}</span>
+        </div>
+      </div>
+
+      {/* Tiêu đề trang (Ẩn khi in) */}
+      <div className="flex flex-col gap-1 border-b border-sky-100 pb-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div>
           <h1 className="text-2xl font-black text-slate-700 flex items-center gap-2 font-display">
             <TrendingUp size={24} className="text-sky-600" />
@@ -112,13 +133,15 @@ export const AnalyticsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Thanh lọc ngày toàn cục */}
-      <DateFilterBar
-        filter={filter}
-        onChange={setFilter}
-        onRefresh={handleRefresh}
-        isLoading={isLoading}
-      />
+      {/* Thanh lọc ngày toàn cục (Ẩn khi in) */}
+      <div className="print:hidden">
+        <DateFilterBar
+          filter={filter}
+          onChange={setFilter}
+          onRefresh={handleRefresh}
+          isLoading={isLoading}
+        />
+      </div>
 
       {/* Danh sách thẻ chỉ số KPI tóm tắt */}
       <KpiCards kpis={kpis} isLoading={isLoading} />

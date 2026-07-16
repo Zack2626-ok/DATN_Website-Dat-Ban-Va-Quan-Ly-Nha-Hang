@@ -37,9 +37,9 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
     e.preventDefault();
     if (customerPhone.trim()) {
       const cleanedPhone = customerPhone.trim().replace(/[\s-]/g, '');
-      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
-      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
-        toast.error("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+      const phoneRegex = /^(03|09)\d{8}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        toast.error("Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)");
         return;
       }
     }
@@ -776,9 +776,9 @@ export const OpenTabModal: React.FC<OpenTabModalProps> = ({ isOpen, onClose, onC
 
     if (guestPhone.trim()) {
       const cleanedPhone = guestPhone.trim().replace(/[\s-]/g, '');
-      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
-      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
-        toast.error("Số điện thoại không hợp lệ (phải từ 10-11 chữ số)");
+      const phoneRegex = /^(03|09)\d{8}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        toast.error("Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)");
         return;
       }
     }
@@ -822,13 +822,8 @@ export const OpenTabModal: React.FC<OpenTabModalProps> = ({ isOpen, onClose, onC
               type="tel"
               placeholder="Nhập số điện thoại khách hàng"
               value={guestPhone}
-<<<<<<< HEAD
-              onChange={(e) => setGuestPhone(e.target.value)}
-              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
-=======
               onChange={(e) => setGuestPhone(e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-[#FF5A5F] focus:outline-none"
->>>>>>> 8eef87d4e00dca68e332d7149d1576227da90a6c
+              className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
             />
           </div>
 

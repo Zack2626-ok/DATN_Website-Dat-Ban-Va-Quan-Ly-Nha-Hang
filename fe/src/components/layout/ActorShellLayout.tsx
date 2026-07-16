@@ -1,11 +1,10 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Database, LogOut, Search, User, X } from "lucide-react";
+import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
 import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
-import { logoutAction } from "../../store/authSlice";
 import {
   getNotificationsApi,
   markNotificationAsReadApi,
@@ -13,6 +12,7 @@ import {
 } from "../../services/api";
 import { toast } from "react-hot-toast";
 import { Modal } from "../Modal";
+import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
 
 const formatTime = (timeStr: string) => {
   try {
@@ -35,6 +35,8 @@ const formatTime = (timeStr: string) => {
     return "";
   }
 };
+import { logoutAction } from "../../store/authSlice";
+import { getWaiterNotifications } from "../../services/waiterService";
 
 export interface NavLinkItem {
   to: string;
@@ -50,8 +52,7 @@ interface ActorShellLayoutProps {
   mainClassName?: string;
 }
 
-/* 
-/** Bell thông báo món xong — chỉ dùng cho waiter * /
+/** Bell thông báo món xong — chỉ dùng cho waiter */
 const WaiterNotificationBell: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
@@ -60,8 +61,8 @@ const WaiterNotificationBell: React.FC = () => {
 
   const fetchNotifications = async () => {
     try {
-      // const data = await getWaiterNotifications();
-      // setNotifications(data);
+      const data = await getWaiterNotifications();
+      setNotifications(data);
     } catch {
       // silent fail
     }
@@ -95,69 +96,71 @@ const WaiterNotificationBell: React.FC = () => {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100 transition-colors"
+        className={`relative rounded-lg p-2 transition-colors cursor-pointer ${
+          open ? "bg-sky-100 text-sky-600" : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
+        }`}
         title="Thông báo"
       >
         <Bell size={18} />
         {count > 0 && (
-          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white animate-pulse">
+          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-650 text-[9px] font-bold text-white px-1 shadow bg-red-600 animate-pulse">
             {count > 9 ? "9+" : count}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-80 rounded-xl border border-gray-100 bg-white shadow-xl">
-          {/* Header * /}
-          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+        <div className="absolute right-0 top-12 z-50 w-80 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
             <div className="flex items-center gap-2">
               <UtensilsCrossed size={15} className="text-orange-500" />
-              <span className="text-sm font-bold text-gray-800">Món đã xong — cần mang ra</span>
+              <span className="text-sm font-playfair font-bold text-sky-700 uppercase tracking-wider">Món đã xong — cần mang ra</span>
             </div>
             {count > 0 && (
               <button
                 onClick={dismissAll}
-                className="text-[11px] text-blue-600 hover:underline font-medium"
+                className="text-[11px] font-bold text-sky-600 hover:text-sky-700 transition-colors cursor-pointer"
               >
                 Đánh dấu tất cả
               </button>
             )}
           </div>
 
-          {/* List * /}
-          <div className="max-h-72 overflow-y-auto">
+          {/* List */}
+          <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
             {visible.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-8 text-gray-400">
-                <CheckCircle size={28} className="text-green-400" />
-                <p className="text-sm">Không có món nào cần mang ra</p>
+              <div className="flex flex-col items-center gap-2 py-8 text-center text-slate-500">
+                <CheckCircle size={28} className="text-green-500 animate-bounce" />
+                <p className="text-xs italic">Không có món nào cần mang ra</p>
               </div>
             ) : (
               visible.map((n) => (
                 <div
                   key={n.item_id}
-                  className="flex items-start gap-3 border-b border-gray-50 px-4 py-3 hover:bg-orange-50 transition-colors"
+                  className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-orange-50/40 hover:text-slate-900 transition-colors"
                 >
-                  {/* Click vào phần text → điều hướng đến trang Order của bàn * /}
+                  {/* Click vào phần text → điều hướng đến trang Order của bàn */}
                   <Link
-                    to={n.table_id ? \`/waiter/orders/\${n.table_id}\` : "/waiter/tables"}
+                    to={n.table_id ? `/waiter/orders/${n.table_id}` : "/waiter/tables"}
                     onClick={() => setOpen(false)}
                     className="flex flex-1 items-start gap-3 min-w-0"
                   >
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-100">
-                      <UtensilsCrossed size={13} className="text-orange-600" />
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-50 text-orange-600 border border-orange-100">
+                      <UtensilsCrossed size={13} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">{n.item_name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {n.table_name ? \`Bàn \${n.table_name}\` : "Mang về / Tại quầy"}
+                      <p className="text-sm font-semibold text-slate-700 truncate">{n.item_name}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {n.table_name ? `Bàn ${n.table_name}` : "Mang về / Tại quầy"}
                         {" · "}Order #{n.order_id}
                       </p>
-                      <p className="text-[10px] text-orange-500 font-medium mt-0.5">Nhấn để xem bàn →</p>
+                      <p className="text-[10px] text-orange-600 font-medium mt-0.5">Nhấn để xem bàn →</p>
                     </div>
                   </Link>
                   <button
                     onClick={() => dismissOne(n.item_id)}
-                    className="shrink-0 rounded p-1 text-gray-300 hover:text-gray-500 hover:bg-gray-100"
+                    className="shrink-0 rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-50 cursor-pointer"
                     title="Bỏ qua"
                   >
                     <X size={13} />
@@ -167,10 +170,10 @@ const WaiterNotificationBell: React.FC = () => {
             )}
           </div>
 
-          {/* Footer * /}
+          {/* Footer */}
           {visible.length > 0 && (
-            <div className="border-t border-gray-100 px-4 py-2.5 text-center">
-              <p className="text-xs text-gray-400">Cập nhật tự động mỗi 20 giây</p>
+            <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-2.5 text-center">
+              <p className="text-[10px] text-slate-400 font-medium">Cập nhật tự động mỗi 20 giây</p>
             </div>
           )}
         </div>
@@ -178,7 +181,6 @@ const WaiterNotificationBell: React.FC = () => {
     </div>
   );
 };
-*/
 
 export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   actorRole,
@@ -192,6 +194,23 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || actorRole;
+  const defaultNames: Record<string, string> = {
+    admin: "System Admin",
+    manager: "Restaurant Manager",
+    waiter: "Waiter 1",
+    cashier: "Cashier 1",
+    chef: "Chef 1",
+    sales_event: "Sales Event 1",
+  };
+  const defaultName = defaultNames[displayRole] || "Demo User";
+
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+
+  useEffect(() => {
+    getRestaurantInfo()
+      .then(setRestaurantInfo)
+      .catch(() => {});
+  }, []);
 
   // Clear search query on route changes to prevent query leakage
   React.useEffect(() => {
@@ -371,10 +390,21 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           })}
         </nav>
 
-        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:items-center md:gap-2">
-          <Database size={12} className="text-green-300" />
-          Hệ thống online
-          <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
+        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:flex-col md:gap-2">
+          {restaurantInfo && (
+            <a
+              href={`tel:${restaurantInfo.hotline.replace(/\s/g, "")}`}
+              className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-white hover:bg-white/20 transition-colors mb-1"
+            >
+              <Phone size={13} className="text-green-300" />
+              <span className="font-bold text-[11px]">{restaurantInfo.hotline}</span>
+            </a>
+          )}
+          <div className="flex items-center gap-2">
+            <Database size={12} className="text-green-300" />
+            Hệ thống online
+            <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
+          </div>
         </div>
       </aside>
 
@@ -400,83 +430,89 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             )}
           </div>
           <div className="ml-auto flex items-center gap-4">
-            {/* Notification Bell with Dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className={`relative rounded-lg p-2 transition-colors cursor-pointer ${dropdownOpen ? "bg-sky-100 text-sky-600" : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
+            {actorRole === "waiter" ? (
+              <WaiterNotificationBell />
+            ) : (
+              /* Notification Bell with Dropdown */
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className={`relative rounded-lg p-2 transition-colors cursor-pointer ${
+                    dropdownOpen ? "bg-sky-100 text-sky-600" : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
                   }`}
-              >
-                <Bell size={18} />
-                {notifications.filter((n) => !n.is_read).length > 0 && (
-                  <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-sky-500 text-white text-[8px] font-bold px-1 shadow-sm">
-                    {notifications.filter((n) => !n.is_read).length}
-                  </span>
-                )}
-              </button>
+                >
+                  <Bell size={18} />
+                  {notifications.filter((n) => !n.is_read).length > 0 && (
+                    <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-sky-500 text-white text-[8px] font-bold px-1 shadow-sm">
+                      {notifications.filter((n) => !n.is_read).length}
+                    </span>
+                  )}
+                </button>
 
-              {dropdownOpen && (
-                <>
-                  {/* Overlay background to dismiss */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setDropdownOpen(false)}
-                  />
+                {dropdownOpen && (
+                  <>
+                    {/* Overlay background to dismiss */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setDropdownOpen(false)}
+                    />
 
-                  {/* Dropdown Container */}
-                  <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                    {/* Header */}
-                    <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
-                      <span className="text-xs font-playfair font-bold text-sky-700 uppercase tracking-widest">Thông báo</span>
-                      {notifications.filter((n) => !n.is_read).length > 0 && (
-                        <button
-                          onClick={handleMarkAllAsRead}
-                          className="text-[11px] font-bold text-sky-600 hover:text-sky-700 transition-colors cursor-pointer"
-                        >
-                          Đọc tất cả
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Notification list */}
-                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
-                      {notifications.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-center text-slate-500">
-                          <Bell size={24} className="mb-2 text-slate-400" />
-                          <p className="text-xs italic">Không có thông báo nào</p>
-                        </div>
-                      ) : (
-                        notifications.map((item) => (
-                          <div
-                            key={item.id}
-                            onClick={() => handleNotificationClick(item)}
-                            className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${item.is_read ? "bg-transparent hover:bg-slate-50" : "bg-sky-50/50 hover:bg-sky-50"
-                              }`}
+                    {/* Dropdown Container */}
+                    <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                      {/* Header */}
+                      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+                        <span className="text-xs font-playfair font-bold text-sky-700 uppercase tracking-widest">Thông báo</span>
+                        {notifications.filter((n) => !n.is_read).length > 0 && (
+                          <button
+                            onClick={handleMarkAllAsRead}
+                            className="text-[11px] font-bold text-sky-600 hover:text-sky-700 transition-colors cursor-pointer"
                           >
-                            <div className="flex items-start justify-between gap-1.5">
-                              <span className={`text-[12px] leading-tight ${item.is_read ? "text-slate-600 font-medium" : "text-sky-900 font-bold"}`}>
-                                {item.message}
-                              </span>
-                              {!item.is_read && (
-                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.6)]" />
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-medium">
-                              {formatTime(item.created_at)}
-                            </span>
+                            Đọc tất cả
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Notification list */}
+                      <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                        {notifications.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-8 text-center text-slate-500">
+                            <Bell size={24} className="mb-2 text-slate-400" />
+                            <p className="text-xs italic">Không có thông báo nào</p>
                           </div>
-                        ))
-                      )}
+                        ) : (
+                          notifications.map((item) => (
+                            <div
+                              key={item.id}
+                              onClick={() => handleNotificationClick(item)}
+                              className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${
+                                item.is_read ? "bg-transparent hover:bg-slate-50" : "bg-sky-50/50 hover:bg-sky-50"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-1.5">
+                                <span className={`text-[12px] leading-tight ${item.is_read ? "text-slate-600 font-medium" : "text-sky-900 font-bold"}`}>
+                                  {item.message}
+                                </span>
+                                {!item.is_read && (
+                                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.6)]" />
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {formatTime(item.created_at)}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
+                  </>
+                )}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
                 <p className="text-sm font-semibold text-slate-700 flex items-center justify-end gap-1.5">
-                  <span>{user?.full_name || "Demo User"}</span>
+                  <span>{user?.full_name || defaultName}</span>
                   {user && (
                     <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-200">
                       {user.employee_code || `NV${String(user.id).padStart(3, "0")}`}

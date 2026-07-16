@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Outlet, Link, NavLink } from "react-router-dom";
 import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed } from "lucide-react";
+import { HotlineButton } from "../../components/client/HotlineButton";
 
 const navLinks = [
+  { to: "/", label: "Trang chủ", end: true },
   { to: "/menu", label: "Thực đơn" },
   { to: "/promotions", label: "Ưu đãi" },
   { to: "/booking", label: "Đặt bàn" },
@@ -42,7 +44,7 @@ export const ClientLayout: React.FC = () => {
 
           <nav className="hidden items-center gap-8 md:flex">
             {navLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} className={navClass}>
+              <NavLink key={link.to} to={link.to} end={link.end} className={navClass}>
                 {link.label}
               </NavLink>
             ))}
@@ -69,7 +71,7 @@ export const ClientLayout: React.FC = () => {
               </Link>
             ) : (
               <Link
-                to="/auth/login"
+                to="/customer/login"
                 className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
               >
                 Đăng nhập
@@ -100,6 +102,7 @@ export const ClientLayout: React.FC = () => {
                 <NavLink
                   key={link.to}
                   to={link.to}
+                  end={link.end}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
                     `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-sky-50/50"
@@ -123,7 +126,7 @@ export const ClientLayout: React.FC = () => {
               )}
               {!customerToken && (
                 <Link
-                  to="/auth/login"
+                  to="/customer/login"
                   onClick={() => setMobileOpen(false)}
                   className="rounded-lg px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-sky-50/50"
                 >
@@ -218,6 +221,8 @@ export const ClientLayout: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      <HotlineButton />
     </div>
   );
 };

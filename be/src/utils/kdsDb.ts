@@ -13,6 +13,7 @@ export interface KdsItem {
   kitchenNote?: string | null;
   status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
   createdAt: string;
+  updatedAt?: string;
   tableName?: string;
   areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
@@ -77,6 +78,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.kitchen_note AS kitchenNote,
        oi.status,
        oi.created_at  AS createdAt,
+       oi.updated_at  AS updatedAt,
        t.name         AS tableName,
        ta.name        AS areaName,
        o.order_type   AS orderType
@@ -86,6 +88,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      WHERE oi.status IN ('pending', 'cooking', 'done')
+       AND oi.created_at >= NOW() - INTERVAL 6 HOUR
      ORDER BY oi.created_at ASC`
   );
 
@@ -104,6 +107,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
       kitchenNote: row.kitchenNote,
       status: row.status,
       createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       tableName: row.tableName || "Mang về",
       areaName: row.areaName || undefined,
       orderType: row.orderType || "dine_in"

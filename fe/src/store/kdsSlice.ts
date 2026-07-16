@@ -20,6 +20,7 @@ export interface KdsItem {
   kitchenNote?: string | null;
   status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
   createdAt: string;
+  updatedAt?: string;
   tableName?: string;
   areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
@@ -161,6 +162,7 @@ const kdsSlice = createSlice({
       const item = state.items.find((i) => i.id === action.payload.id);
       if (item) {
         item.status = action.payload.status;
+        item.updatedAt = new Date().toISOString();
       }
     },
     recallItemStatusLocal: (state, action: PayloadAction<string | number>) => {
@@ -168,6 +170,7 @@ const kdsSlice = createSlice({
       if (item) {
         if (item.status === "done") item.status = "cooking";
         else if (item.status === "cooking") item.status = "pending";
+        item.updatedAt = new Date().toISOString();
       }
     }
   },
@@ -253,14 +256,33 @@ const kdsSlice = createSlice({
       })
 
       // Update KDS Item Status
+      .addCase(updateKdsItemStatus.pending, (state, action) => {
+        const { id, status } = action.meta.arg;
+        const item = state.items.find((i) => i.id === id);
+        if (item) {
+          item.status = status as any;
+          item.updatedAt = new Date().toISOString();
+        }
+      })
       .addCase(updateKdsItemStatus.fulfilled, (state, action) => {
         const { id, status } = action.payload;
         const item = state.items.find((i) => i.id === id);
         if (item) {
           item.status = status;
+          item.updatedAt = new Date().toISOString();
         }
       })
       // Update KDS Batch Status
+      .addCase(updateKdsBatchStatus.pending, (state, action) => {
+        const { status, itemIds } = action.meta.arg;
+        itemIds.forEach((id) => {
+          const item = state.items.find((i) => i.id === id);
+          if (item) {
+            item.status = status as any;
+            item.updatedAt = new Date().toISOString();
+          }
+        });
+      })
       .addCase(updateKdsBatchStatus.fulfilled, (state, action) => {
         const { status } = action.payload;
         const { itemIds } = action.meta.arg;
@@ -268,16 +290,27 @@ const kdsSlice = createSlice({
           const item = state.items.find((i) => i.id === id);
           if (item) {
             item.status = status;
+            item.updatedAt = new Date().toISOString();
           }
         });
       })
       // Recall KDS Item Status
+      .addCase(recallKdsItemStatus.pending, (state, action) => {
+        const id = action.meta.arg;
+        const item = state.items.find((i) => i.id === id);
+        if (item) {
+          if (item.status === "done") item.status = "cooking";
+          else if (item.status === "cooking") item.status = "pending";
+          item.updatedAt = new Date().toISOString();
+        }
+      })
       .addCase(recallKdsItemStatus.fulfilled, (state, action) => {
         const { id } = action.payload;
         const item = state.items.find((i) => i.id === id);
         if (item) {
           if (item.status === "done") item.status = "cooking";
           else if (item.status === "cooking") item.status = "pending";
+          item.updatedAt = new Date().toISOString();
         }
       });
   },
