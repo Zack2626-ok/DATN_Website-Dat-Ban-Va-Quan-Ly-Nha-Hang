@@ -12,7 +12,7 @@ export const CashierRoutes = () => (
     }
   >
     <Route index element={<Navigate to="/cashier/payment" replace />} />
-    <Route path="pos" element={<CashierPOS />} />
+    <Route path="pos" element={<Navigate to="/cashier/payment" replace />} />
     <Route path="payment" element={<CashierPaymentPage />} />
     <Route path="history" element={<PaymentHistoryPage />} />
   </Route>

@@ -25,7 +25,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (amount: number) => (amount * 1000).toLocaleString("vi-VN");
+const formatVnd = (amount: number) => Number(amount).toLocaleString("vi-VN");
 
 const formatTime = (dateStr: string) => {
   const d = new Date(dateStr);

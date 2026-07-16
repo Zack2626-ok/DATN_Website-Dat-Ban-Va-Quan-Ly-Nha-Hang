@@ -1693,11 +1693,27 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
 
 export const getResmanagerPayments = async (): Promise<any[]> => {
   return query(`
-    SELECT p.*, o.table_id, t.name AS table_name, o.guest_name, o.guest_phone, o.order_type
+    SELECT p.id,
+           COALESCE(i.order_id, p.invoice_id) AS orderId,
+           p.amount,
+           CASE 
+             WHEN p.method = 'bank_transfer' THEN 'transfer'
+             WHEN p.method IN ('momo', 'vnpay') THEN 'wallet'
+             ELSE p.method 
+           END AS paymentMethod,
+           'completed' AS status,
+           p.note AS notes,
+           p.paid_at AS createdAt,
+           p.paid_at AS completedAt,
+           t.name AS table_name,
+           o.guest_name,
+           o.guest_phone,
+           o.order_type
     FROM payments p
-    LEFT JOIN orders o ON p.orderId = o.id
+    LEFT JOIN invoices i ON p.invoice_id = i.id
+    LEFT JOIN orders o ON i.order_id = o.id
     LEFT JOIN tables t ON o.table_id = t.id
-    ORDER BY p.createdAt DESC
+    ORDER BY p.paid_at DESC
   `);
 };
 

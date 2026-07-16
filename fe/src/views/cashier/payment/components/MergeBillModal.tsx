@@ -11,7 +11,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (n: number) => (n * 1000).toLocaleString("vi-VN");
+const formatVnd = (n: number) => Number(n).toLocaleString("vi-VN");
 
 export const MergeBillModal: React.FC<Props> = ({ isOpen, onClose, invoices, onMerge, loading }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

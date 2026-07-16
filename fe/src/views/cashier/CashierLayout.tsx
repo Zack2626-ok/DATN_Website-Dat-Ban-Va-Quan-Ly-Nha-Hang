@@ -4,8 +4,7 @@ import { ActorShellLayout, NavLinkItem } from "../../components/layout/ActorShel
 import { HotlineButton } from "../../components/client/HotlineButton";
 
 const navLinks: NavLinkItem[] = [
-  { to: "/cashier/pos", label: "POS", icon: <CreditCard size={16} /> },
-  { to: "/cashier/payment", label: "Thanh toán", icon: <FileText size={16} /> },
+  { to: "/cashier/payment", label: "Thanh toán & Hóa đơn", icon: <CreditCard size={16} /> },
   { to: "/cashier/history", label: "Lịch sử TT", icon: <History size={16} /> },
 ];
 

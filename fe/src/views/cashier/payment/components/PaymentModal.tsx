@@ -21,7 +21,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (n: number) => (n * 1000).toLocaleString("vi-VN");
+const formatVnd = (n: number) => Number(n).toLocaleString("vi-VN");
 
 const PAYMENT_METHODS = [
   { value: "cash" as const, label: "Tiền mặt", icon: Banknote, color: "bg-emerald-50 border-emerald-200 text-emerald-700" },
