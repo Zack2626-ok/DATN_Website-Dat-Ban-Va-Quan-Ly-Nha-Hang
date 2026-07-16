@@ -12,7 +12,6 @@ import {
   CalendarDays,
   Clock,
   LineChart,
-  Calendar,
   Percent,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";

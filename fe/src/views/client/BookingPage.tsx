@@ -699,7 +699,25 @@ export const BookingPage: React.FC = () => {
                                   onClick={() => handleSelectTable(table)}
                                   className={`cursor-pointer p-4 rounded-xl border-2 transition-all text-center flex flex-col justify-center items-center gap-1 w-[120px] ${
                                     isSelected
-                           {/* Cột bên phải: Thông tin liên hệ & Đặt bàn (40%) */}
+                                      ? "bg-blue-50 border-blue-700 text-blue-800 shadow-sm"
+                                      : "bg-emerald-50 border-emerald-200 hover:border-emerald-300 text-emerald-800"
+                                  }`}
+                                >
+                                  <span className="text-base font-bold font-display">{table.name}</span>
+                                  <span className="text-xs opacity-75">{table.capacity} chỗ</span>
+                                  <span className="text-[10px] font-extrabold uppercase mt-1">Đang hoạt động</span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Cột bên phải: Thông tin liên hệ & Đặt bàn (40%) */}
             <div className="lg:col-span-4 space-y-6">
               {/* Form nhập thông tin */}
               <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
@@ -840,6 +858,7 @@ export const BookingPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
 
               {/* Tóm tắt đặt bàn */}
               <div className="bg-blue-50/50 border border-blue-100 rounded-3xl p-6 flex flex-col gap-3 text-sm text-blue-900 font-semibold shadow-2xs mt-6">
