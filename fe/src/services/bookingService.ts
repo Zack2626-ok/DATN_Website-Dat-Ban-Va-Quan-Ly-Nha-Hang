@@ -31,6 +31,8 @@ export const getBookingById = async (id: number): Promise<Booking | null> => {
 
 export const createBooking = async (data: {
   table_id: number;
+  customer_id?: number | null;
+  promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
   party_size: number;

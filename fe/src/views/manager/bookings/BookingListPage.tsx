@@ -35,7 +35,7 @@ import { CancelledBookings } from "./components/CancelledBookings";
  * Redesigned: light modal, 2-column form, chỉ lấy bàn trống
  */
 export const BookingListPage: React.FC = () => {
-  const { user } = useAppSelector((state) => state.auth);
+  const { user } = useAppSelector((state: any) => state.auth);
   const [activeMainTab, setActiveMainTab] = useState<"active" | "cancelled">("active");
 
   const [bookings, setBookings] = useState<Booking[]>([]);

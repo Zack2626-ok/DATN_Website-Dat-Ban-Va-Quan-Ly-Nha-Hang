@@ -10,9 +10,6 @@ import {
   Wallet,
   Clock,
   CheckCircle2,
-  Phone,
-  Users,
-  Receipt,
 } from "lucide-react";
 import { getPaymentHistoryApi } from "../../../services/invoiceService";
 

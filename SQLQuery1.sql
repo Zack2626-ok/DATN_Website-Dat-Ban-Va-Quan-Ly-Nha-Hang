@@ -241,7 +241,14 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUE
  (30, 3, 'B30', 4, 'B', 2, 'empty'),
  (31, 3, 'B31', 4, 'B', 3, 'empty'),
  (32, 3, 'B32', 4, 'B', 4, 'empty'),
- (33, 3, 'B33', 4, 'C', 1, 'empty');
+ (33, 3, 'B33', 4, 'C', 1, 'empty'),
+ (34, 3, 'B34', 4, 'C', 2, 'empty'),
+ (35, 3, 'B35', 4, 'C', 3, 'empty'),
+ (36, 3, 'B36', 4, 'C', 4, 'empty'),
+ (37, 3, 'B37', 4, 'D', 1, 'empty'),
+ (38, 3, 'B38', 4, 'D', 2, 'empty'),
+ (39, 3, 'B39', 4, 'D', 3, 'empty'),
+ (40, 3, 'B40', 4, 'D', 4, 'empty');
 
 CREATE TABLE bookings (
     id                INT          NOT NULL AUTO_INCREMENT,

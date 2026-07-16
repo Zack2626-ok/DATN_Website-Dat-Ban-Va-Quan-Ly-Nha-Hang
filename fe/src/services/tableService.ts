@@ -9,7 +9,7 @@ export interface ResmanagerTable {
   capacity: number;
   row_pos: string;
   col_pos: number;
-  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance";
+  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance" | "cleaning";
   is_deleted: number;
   // Enhanced fields
   guest_name?: string | null;
