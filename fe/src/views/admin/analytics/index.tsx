@@ -31,14 +31,14 @@ export const AdminAnalytics: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-2xl font-bold text-gray-700">Analytics tổng thể</h1>
-        <p className="mt-1 text-sm text-gray-500">Tổng quan doanh thu, chi phí và hoạt động toàn hệ thống</p>
+      <div className="border-b border-amber-500/20 pb-4">
+        <h1 className="text-2xl font-bold text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Analytics tổng thể</h1>
+        <p className="mt-1 text-sm text-slate-400">Tổng quan doanh thu, chi phí và hoạt động toàn hệ thống</p>
       </div>
       {/* KPIs Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* KPI 1 */}
-        <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
+        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
             <span className="text-slate-400 text-xs font-semibold">
               Tổng doanh thu
@@ -58,7 +58,7 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* KPI 2 */}
-        <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
+        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
             <span className="text-slate-400 text-xs font-semibold">
               Bàn đang phục vụ
@@ -79,7 +79,7 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* KPI 3 */}
-        <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
+        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
             <span className="text-slate-400 text-xs font-semibold">
               Đơn hàng hoàn thành
@@ -97,7 +97,7 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* KPI 4 */}
-        <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
+        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-5 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-4 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex justify-between items-start">
             <span className="text-slate-400 text-xs font-semibold">
               Cảnh báo tồn kho
@@ -117,7 +117,7 @@ export const AdminAnalytics: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Doanh thu 7 ngày qua SVG Line Chart */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-admin-border flex flex-col gap-6 shadow-2xs">
+        <div className="lg:col-span-2 bg-[#1C2541]/40 backdrop-blur-xl p-6 rounded-2xl border border-amber-500/20 flex flex-col gap-6 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div className="flex flex-col">
             <h3 className="text-base font-extrabold font-display">
               Doanh thu 7 ngày qua
@@ -266,7 +266,7 @@ export const AdminAnalytics: React.FC = () => {
         </div>
 
         {/* Doughnut Chart card */}
-        <div className="bg-white p-6 rounded-2xl border border-admin-border flex flex-col justify-between gap-6 shadow-2xs">
+        <div className="bg-[#1C2541]/40 backdrop-blur-xl p-6 rounded-2xl border border-amber-500/20 flex flex-col justify-between gap-6 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
           <div>
             <h3 className="text-base font-extrabold font-display">
               Top 5 món bán chạy nhất

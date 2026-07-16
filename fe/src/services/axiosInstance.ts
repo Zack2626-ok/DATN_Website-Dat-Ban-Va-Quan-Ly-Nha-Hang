@@ -5,7 +5,7 @@ import axios from "axios";
  * Tự động gắn Authorization header và xử lý 401.
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
 });
 
 api.interceptors.request.use((config) => {
@@ -17,9 +17,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
-      localStorage.clear();
-      window.location.href = "/login";
+    if (err.response?.status === 401 && !err.config?.url?.includes("/auth/login")) {
+      // Chỉ xóa token nhân viên, không xóa customer_token
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("resmanagerState");
+      window.location.href = "/auth/login";
     }
     return Promise.reject(err);
   },

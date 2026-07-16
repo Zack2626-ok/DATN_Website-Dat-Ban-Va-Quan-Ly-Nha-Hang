@@ -16,9 +16,9 @@ const SUPPLIER_DEBT = [
 
 export const LossDebtReport: React.FC = () => (
   <div className="flex flex-col gap-6">
-    <div className="border-b border-gray-200 pb-4">
-      <h1 className="text-2xl font-bold text-gray-700">Báo cáo hao hụt & công nợ NCC</h1>
-      <p className="mt-1 text-sm text-gray-500">
+    <div className="border-b border-amber-500/20 pb-4">
+      <h1 className="text-2xl font-bold text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Báo cáo hao hụt & công nợ NCC</h1>
+      <p className="mt-1 text-sm text-slate-400">
         Chênh lệch kiểm kê kho và công nợ nhà cung cấp — Admin & Bếp trưởng
       </p>
     </div>
@@ -30,12 +30,12 @@ export const LossDebtReport: React.FC = () => (
       </div>
     </div>
 
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-200 px-5 py-4">
-        <h2 className="font-semibold text-gray-700">Báo cáo chênh lệch hao hụt (Variance)</h2>
+    <div className="overflow-hidden rounded-xl border border-amber-500/20 bg-[#1C2541]/40 backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+      <div className="border-b border-amber-500/20 px-5 py-4">
+        <h2 className="font-semibold text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Báo cáo chênh lệch hao hụt (Variance)</h2>
       </div>
       <table className="w-full text-left text-sm">
-        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+        <thead className="bg-[#1C2541]/80 backdrop-blur-md text-xs uppercase text-slate-400">
           <tr>
             <th className="px-5 py-3">Nguyên liệu</th>
             <th className="px-5 py-3 text-right">Định mức</th>
@@ -46,11 +46,11 @@ export const LossDebtReport: React.FC = () => (
         <tbody>
           {VARIANCE.map((row) => (
             <tr key={row.ingredient} className="border-t border-gray-100">
-              <td className="px-5 py-3 font-medium text-gray-700">{row.ingredient}</td>
-              <td className="px-5 py-3 text-right text-gray-600">
+              <td className="px-5 py-3 font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">{row.ingredient}</td>
+              <td className="px-5 py-3 text-right text-slate-300">
                 {row.expected} {row.unit}
               </td>
-              <td className="px-5 py-3 text-right text-gray-600">
+              <td className="px-5 py-3 text-right text-slate-300">
                 {row.actual} {row.unit}
               </td>
               <td className="px-5 py-3 text-right">
@@ -66,12 +66,12 @@ export const LossDebtReport: React.FC = () => (
       </table>
     </div>
 
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-200 px-5 py-4">
-        <h2 className="font-semibold text-gray-700">Công nợ nhà cung cấp</h2>
+    <div className="overflow-hidden rounded-xl border border-amber-500/20 bg-[#1C2541]/40 backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+      <div className="border-b border-amber-500/20 px-5 py-4">
+        <h2 className="font-semibold text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Công nợ nhà cung cấp</h2>
       </div>
       <table className="w-full text-left text-sm">
-        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+        <thead className="bg-[#1C2541]/80 backdrop-blur-md text-xs uppercase text-slate-400">
           <tr>
             <th className="px-5 py-3">Nhà cung cấp</th>
             <th className="px-5 py-3">Hạn thanh toán</th>
@@ -82,9 +82,9 @@ export const LossDebtReport: React.FC = () => (
         <tbody>
           {SUPPLIER_DEBT.map((row) => (
             <tr key={row.supplier} className="border-t border-gray-100">
-              <td className="px-5 py-3 font-medium text-gray-700">{row.supplier}</td>
-              <td className="px-5 py-3 text-gray-600">{row.due}</td>
-              <td className="px-5 py-3 text-right font-semibold text-gray-700">
+              <td className="px-5 py-3 font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">{row.supplier}</td>
+              <td className="px-5 py-3 text-slate-300">{row.due}</td>
+              <td className="px-5 py-3 text-right font-semibold text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
                 {formatCurrency(row.amount)}
               </td>
               <td className="px-5 py-3">

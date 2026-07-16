@@ -1,14 +1,7 @@
-import axios from "axios";
+import axiosInstance from "./axiosInstance";
 import type { Order } from "../interfaces";
 
-const API_BASE_URL = "http://localhost:5000/api";
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+const api = axiosInstance;
 
 /**
  * Send a new order to the backend database
@@ -71,6 +64,30 @@ export const recallKdsItemStatusApi = async (id: string | number): Promise<any> 
  */
 export const getKdsVoidAlertsApi = async (): Promise<any[]> => {
   const response = await api.get("/kds/void-alerts");
+  return response.data.data;
+};
+
+/**
+ * Fetch notifications, optionally filtered by user role
+ */
+export const getNotificationsApi = async (role?: string): Promise<any[]> => {
+  const response = await api.get("/notifications", { params: { role } });
+  return response.data.data;
+};
+
+/**
+ * Mark a notification as read
+ */
+export const markNotificationAsReadApi = async (id: number): Promise<any> => {
+  const response = await api.patch(`/notifications/${id}/read`);
+  return response.data.data;
+};
+
+/**
+ * Clear all notifications (mark as read)
+ */
+export const clearNotificationsApi = async (role?: string): Promise<any> => {
+  const response = await api.post("/notifications/clear", { role });
   return response.data.data;
 };
 

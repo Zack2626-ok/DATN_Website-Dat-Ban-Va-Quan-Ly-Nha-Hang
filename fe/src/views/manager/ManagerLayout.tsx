@@ -16,6 +16,7 @@ export const ManagerLayout: React.FC = () => {
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || "manager";
+  const defaultName = displayRole === "manager" ? "Restaurant Manager" : "Demo User";
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 text-gray-700 md:flex-row">
@@ -53,7 +54,7 @@ export const ManagerLayout: React.FC = () => {
             </button>
             <div className="flex items-center gap-2">
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-gray-700">{user?.full_name || "Demo User"}</p>
+                <p className="text-sm font-semibold text-gray-700">{user?.full_name || defaultName}</p>
                 <p className="text-xs text-gray-400">{ROLE_LABELS[displayRole]}</p>
               </div>
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500">

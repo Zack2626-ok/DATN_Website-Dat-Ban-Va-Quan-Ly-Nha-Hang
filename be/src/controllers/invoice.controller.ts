@@ -5,35 +5,62 @@ import { sendSuccess, sendError } from "../utils/response";
 export const getAllInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status, search, dateFrom, dateTo } = req.query;
-    const orders = await db.getOrders();
 
-    let invoices = orders
-      .filter((o) => o.orderType === "dine_in")
-      .map((o) => ({
-        ...o,
-        invoiceStatus: o.status === "paid" ? "paid" : o.status === "cancelled" ? "cancelled" : "unpaid",
-      }));
+    const orders = await db.getAllResmanagerOrders(status as string);
+
+    let invoices = orders.map((o: any) => ({
+      id: String(o.id),
+      tableId: o.table_id ? String(o.table_id) : undefined,
+      tableName: o.table_name || undefined,
+      customerName: o.guest_name || o.customer_name || undefined,
+      customerPhone: o.guest_phone || o.customer_phone || undefined,
+      customerEmail: o.customer_email || undefined,
+      guestCount: o.guest_count || o.items?.length || 0,
+      items: (o.items || []).map((item: any) => ({
+        menuItemId: String(item.menu_item_id),
+        name: item.item_name || `Món #${item.menu_item_id}`,
+        price: Number(item.unit_price),
+        quantity: item.quantity,
+      })),
+      totalAmount: o.totalAmount || 0,
+      status: o.status,
+      invoiceStatus:
+        o.status === "completed" || o.status === "paid"
+          ? "paid"
+          : o.status === "cancelled"
+            ? "cancelled"
+            : "unpaid",
+      createdAt: o.created_at,
+      orderType: o.order_type,
+    }));
 
     if (status && status !== "all") {
-      invoices = invoices.filter((inv) => inv.invoiceStatus === status);
+      const statusMap: Record<string, string[]> = {
+        unpaid: ["open", "serving", "pending_payment"],
+        paid: ["completed", "paid"],
+        cancelled: ["cancelled"],
+      };
+      const validStatuses = statusMap[status as string] || [status as string];
+      invoices = invoices.filter((inv: any) => validStatuses.includes(inv.status));
     }
+
     if (search) {
       const q = (search as string).toLowerCase();
       invoices = invoices.filter(
-        (inv) =>
+        (inv: any) =>
           inv.id.toLowerCase().includes(q) ||
           (inv.tableName || "").toLowerCase().includes(q) ||
           (inv.customerName || "").toLowerCase().includes(q),
       );
     }
     if (dateFrom) {
-      invoices = invoices.filter((inv) => inv.createdAt >= (dateFrom as string));
+      invoices = invoices.filter((inv: any) => inv.createdAt >= (dateFrom as string));
     }
     if (dateTo) {
-      invoices = invoices.filter((inv) => inv.createdAt <= (dateTo as string));
+      invoices = invoices.filter((inv: any) => inv.createdAt <= (dateTo as string));
     }
 
-    invoices.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    invoices.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     sendSuccess(res, invoices, "Lấy danh sách hóa đơn thành công");
   } catch (error) {
@@ -45,7 +72,8 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
 export const getInvoiceById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const order = await db.getOrderById(id);
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === id);
     if (!order) {
       sendError(res, "Không tìm thấy hóa đơn", 404);
       return;
@@ -73,12 +101,13 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const order = await db.getOrderById(id);
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === id);
     if (!order) {
       sendError(res, "Không tìm thấy hóa đơn", 404);
       return;
     }
-    if (order.status === "paid") {
+    if (order.status === "completed" || order.status === "paid") {
       sendError(res, "Hóa đơn đã được thanh toán", 400);
       return;
     }
@@ -116,9 +145,14 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       completedAt: new Date().toISOString(),
     });
 
-    await db.updateOrderStatus(id, "paid");
+    await db.updateOrderStatus(id, "completed");
 
-    sendSuccess(res, { payment, order: { ...order, status: "paid" } }, "Thanh toán thành công");
+    if (order.table_id) {
+      await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
+    }
+
+    const updatedOrder = { ...order, status: "completed" };
+    sendSuccess(res, { payment, order: updatedOrder }, "Thanh toán thành công");
   } catch (error) {
     console.error("Error processing payment:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -130,24 +164,21 @@ export const cancelInvoice = async (req: Request, res: Response): Promise<void> 
     const { id } = req.params;
     const { reason } = req.body;
 
-    const order = await db.getOrderById(id);
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === id);
     if (!order) {
       sendError(res, "Không tìm thấy hóa đơn", 404);
       return;
     }
-    if (order.status === "paid") {
+    if (order.status === "completed" || order.status === "paid") {
       sendError(res, "Không thể hủy hóa đơn đã thanh toán", 400);
       return;
     }
 
     await db.updateOrderStatus(id, "cancelled");
 
-    if (order.tableId) {
-      try {
-        await db.updateTable(order.tableId, { status: "available" });
-      } catch {
-        // non-critical
-      }
+    if (order.table_id) {
+      await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
     }
 
     sendSuccess(res, { id, status: "cancelled", reason }, "Hủy hóa đơn thành công");
@@ -167,12 +198,13 @@ export const splitBillEqual = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const order = await db.getOrderById(id);
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === id);
     if (!order) {
       sendError(res, "Không tìm thấy hóa đơn", 404);
       return;
     }
-    if (order.status === "paid" || order.status === "cancelled") {
+    if (order.status === "completed" || order.status === "paid" || order.status === "cancelled") {
       sendError(res, "Không thể tách hóa đơn đã thanh toán hoặc đã hủy", 400);
       return;
     }
@@ -184,21 +216,17 @@ export const splitBillEqual = async (req: Request, res: Response): Promise<void>
     const splitBills = [];
     for (let i = 0; i < parts; i++) {
       const amount = i === parts - 1 ? perPart + remainder : perPart;
-      const splitOrder = await db.saveOrder({
-        id: `split_${id}_${i + 1}_${Date.now()}`,
-        tableId: order.tableId,
-        tableName: order.tableName,
-        items: order.items,
-        status: "confirmed",
-        totalAmount: amount,
-        createdAt: new Date().toISOString(),
-        customerName: order.customerName,
-        customerPhone: order.customerPhone,
-        customerEmail: order.customerEmail,
-        guestCount: 1,
-        orderType: "dine_in",
+      const splitOrder = await db.createResmanagerOrder({
+        table_id: order.table_id,
+        customer_id: order.customer_id,
+        created_by: order.created_by,
+        order_type: order.order_type,
+        note: `Tách từ đơn #${id} - Phần ${i + 1}/${parts}`,
+        guest_name: order.guest_name,
+        guest_phone: order.guest_phone,
+        guest_count: 1,
       });
-      splitBills.push({ ...splitOrder, splitLabel: `Phần ${i + 1}/${parts}` });
+      splitBills.push({ ...splitOrder, totalAmount: amount, splitLabel: `Phần ${i + 1}/${parts}` });
     }
 
     await db.updateOrderStatus(id, "cancelled");
@@ -220,12 +248,13 @@ export const splitBillByItems = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const order = await db.getOrderById(id);
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === id);
     if (!order) {
       sendError(res, "Không tìm thấy hóa đơn", 404);
       return;
     }
-    if (order.status === "paid" || order.status === "cancelled") {
+    if (order.status === "completed" || order.status === "paid" || order.status === "cancelled") {
       sendError(res, "Không thể tách hóa đơn đã thanh toán hoặc đã hủy", 400);
       return;
     }
@@ -234,23 +263,19 @@ export const splitBillByItems = async (req: Request, res: Response): Promise<voi
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
       const groupItems = group.itemIndices.map((idx: number) => order.items[idx]).filter(Boolean);
-      const groupTotal = groupItems.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
+      const groupTotal = groupItems.reduce((sum: number, item: any) => sum + Number(item.unit_price) * item.quantity, 0);
 
-      const splitOrder = await db.saveOrder({
-        id: `split_item_${id}_${i + 1}_${Date.now()}`,
-        tableId: order.tableId,
-        tableName: order.tableName,
-        items: groupItems,
-        status: "confirmed",
-        totalAmount: groupTotal,
-        createdAt: new Date().toISOString(),
-        customerName: group.label || `${order.customerName} - Nhóm ${i + 1}`,
-        customerPhone: order.customerPhone,
-        customerEmail: order.customerEmail,
-        guestCount: 1,
-        orderType: "dine_in",
+      const splitOrder = await db.createResmanagerOrder({
+        table_id: order.table_id,
+        customer_id: order.customer_id,
+        created_by: order.created_by,
+        order_type: order.order_type,
+        note: `Tách theo món từ đơn #${id} - ${group.label || `Nhóm ${i + 1}`}`,
+        guest_name: group.label || order.guest_name,
+        guest_phone: order.guest_phone,
+        guest_count: 1,
       });
-      splitBills.push({ ...splitOrder, splitLabel: group.label || `Nhóm ${i + 1}` });
+      splitBills.push({ ...splitOrder, totalAmount: groupTotal, splitLabel: group.label || `Nhóm ${i + 1}` });
     }
 
     await db.updateOrderStatus(id, "cancelled");
@@ -271,24 +296,26 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const ordersToMerge = [];
-    for (const invId of invoiceIds) {
-      const order = await db.getOrderById(invId);
-      if (!order) {
-        sendError(res, `Không tìm thấy hóa đơn: ${invId}`, 404);
+    const orders = await db.getAllResmanagerOrders();
+    const ordersToMerge = invoiceIds.map((invId: string) =>
+      orders.find((o: any) => String(o.id) === invId)
+    );
+
+    for (let i = 0; i < ordersToMerge.length; i++) {
+      if (!ordersToMerge[i]) {
+        sendError(res, `Không tìm thấy hóa đơn: ${invoiceIds[i]}`, 404);
         return;
       }
-      if (order.status === "paid" || order.status === "cancelled") {
-        sendError(res, `Hóa đơn ${invId} đã thanh toán hoặc đã hủy, không thể gộp`, 400);
+      if (["completed", "paid", "cancelled"].includes(ordersToMerge[i].status)) {
+        sendError(res, `Hóa đơn ${invoiceIds[i]} đã thanh toán hoặc đã hủy, không thể gộp`, 400);
         return;
       }
-      ordersToMerge.push(order);
     }
 
     const mergedItems: any[] = [];
     for (const order of ordersToMerge) {
       for (const item of order.items) {
-        const existing = mergedItems.find((m) => m.menuItemId === item.menuItemId);
+        const existing = mergedItems.find((m) => m.menu_item_id === item.menu_item_id);
         if (existing) {
           existing.quantity += item.quantity;
         } else {
@@ -297,29 +324,25 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
       }
     }
 
-    const mergedTotal = mergedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const mergedTotal = mergedItems.reduce((sum, item) => sum + Number(item.unit_price) * item.quantity, 0);
     const firstOrder = ordersToMerge[0];
 
-    const mergedOrder = await db.saveOrder({
-      id: `merged_${Date.now()}`,
-      tableId: firstOrder.tableId,
-      tableName: firstOrder.tableName,
-      items: mergedItems,
-      status: "confirmed",
-      totalAmount: mergedTotal,
-      createdAt: new Date().toISOString(),
-      customerName: firstOrder.customerName,
-      customerPhone: firstOrder.customerPhone,
-      customerEmail: firstOrder.customerEmail,
-      guestCount: firstOrder.guestCount,
-      orderType: "dine_in",
+    const mergedOrder = await db.createResmanagerOrder({
+      table_id: firstOrder.table_id,
+      customer_id: firstOrder.customer_id,
+      created_by: firstOrder.created_by,
+      order_type: firstOrder.order_type,
+      note: `Gộp từ ${invoiceIds.length} đơn: ${invoiceIds.join(", ")}`,
+      guest_name: firstOrder.guest_name,
+      guest_phone: firstOrder.guest_phone,
+      guest_count: firstOrder.guest_count,
     });
 
     for (const invId of invoiceIds) {
       await db.updateOrderStatus(invId, "cancelled");
     }
 
-    sendSuccess(res, { mergedOrder, mergedFrom: invoiceIds }, "Gộp hóa đơn thành công");
+    sendSuccess(res, { mergedOrder: { ...mergedOrder, totalAmount: mergedTotal }, mergedFrom: invoiceIds }, "Gộp hóa đơn thành công");
   } catch (error) {
     console.error("Error merging bills:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -336,12 +359,13 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const order = await db.getOrderById(id);
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === id);
     if (!order) {
       sendError(res, "Không tìm thấy hóa đơn", 404);
       return;
     }
-    if (order.status === "paid" || order.status === "cancelled") {
+    if (order.status === "completed" || order.status === "paid" || order.status === "cancelled") {
       sendError(res, "Hóa đơn đã thanh toán hoặc đã hủy", 400);
       return;
     }
@@ -365,7 +389,10 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
     const totalPaid = existingPayments.filter((p) => p.status === "completed").reduce((sum, p) => sum + p.amount, 0);
 
     if (totalPaid >= order.totalAmount) {
-      await db.updateOrderStatus(id, "paid");
+      await db.updateOrderStatus(id, "completed");
+      if (order.table_id) {
+        await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
+      }
     }
 
     sendSuccess(res, { payment, totalPaid, remaining: Math.max(0, order.totalAmount - totalPaid) }, "Thanh toán một phần thành công");
@@ -382,6 +409,37 @@ export const getInvoicePayments = async (req: Request, res: Response): Promise<v
     sendSuccess(res, payments, "Lấy lịch sử thanh toán thành công");
   } catch (error) {
     console.error("Error fetching invoice payments:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const getPaymentHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { search, dateFrom, dateTo, paymentMethod } = req.query;
+    let payments = await db.getResmanagerPayments();
+
+    if (search) {
+      const q = (search as string).toLowerCase();
+      payments = payments.filter(
+        (p: any) =>
+          String(p.orderId).toLowerCase().includes(q) ||
+          (p.table_name || "").toLowerCase().includes(q) ||
+          (p.guest_name || "").toLowerCase().includes(q),
+      );
+    }
+    if (dateFrom) {
+      payments = payments.filter((p: any) => p.createdAt >= (dateFrom as string));
+    }
+    if (dateTo) {
+      payments = payments.filter((p: any) => p.createdAt <= (dateTo as string));
+    }
+    if (paymentMethod && paymentMethod !== "all") {
+      payments = payments.filter((p: any) => p.paymentMethod === paymentMethod);
+    }
+
+    sendSuccess(res, payments, "Lấy lịch sử thanh toán thành công");
+  } catch (error) {
+    console.error("Error fetching payment history:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };

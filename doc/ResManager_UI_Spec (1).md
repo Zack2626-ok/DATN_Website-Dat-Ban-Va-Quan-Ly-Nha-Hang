@@ -376,7 +376,7 @@ PATCH /api/v1/bookings/:id/checkin
 
 ### Màn hình 1.3 — Danh sách chờ (Waitlist)
 ```
-URL: /waitlist
+URL: /waiter/waitlist
 Actor: Nhân viên phục vụ
 
 Layout đơn giản:

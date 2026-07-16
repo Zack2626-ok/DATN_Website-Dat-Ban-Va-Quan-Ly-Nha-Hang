@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { ORDER_STATUS } from "../../../constants/orderStatus";
 import { TABLE_STATUS } from "../../../constants/tableStatus";
 import { updateOrderStatus as updateOrderStatusLocal, updateOrderStatusOnServer } from "../../../store/orderSlice";
 import { releaseTableToCleaning } from "../../../store/tableSlice";
 import { createPaymentApi } from "../../../services/paymentService";
+import { getRestaurantInfo } from "../../../services/restaurantInfoService";
 import {
   CreditCard,
   DollarSign,
@@ -44,10 +45,19 @@ export const CashierPOS: React.FC = () => {
   const [splitCount, setSplitCount] = useState<number>(2);
   const [tipAmount, setTipAmount] = useState<string>("0");
   const [vatEnabled, setVatEnabled] = useState<boolean>(true);
+  const [vatRate, setVatRate] = useState<number>(10);
   const [roundEnabled, setRoundEnabled] = useState<boolean>(false);
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
   const [lastPaidTable, setLastPaidTable] = useState<string>("");
+
+  useEffect(() => {
+    getRestaurantInfo()
+      .then((info) => {
+        setVatRate(info.tax_rate ?? 10);
+      })
+      .catch(() => {});
+  }, []);
 
   // Update selected table if it was null but now we have tables
   React.useEffect(() => {
@@ -67,7 +77,7 @@ export const CashierPOS: React.FC = () => {
 
   // Calculations
   const subtotal = activeOrder ? activeOrder.totalAmount : 0;
-  const tax = vatEnabled ? subtotal * 0.1 : 0;
+  const tax = vatEnabled ? subtotal * (vatRate / 100) : 0;
   const tipVal = parseFloat(tipAmount) || 0;
   let totalAmount = subtotal + tax + tipVal;
   if (roundEnabled) {
@@ -234,7 +244,7 @@ export const CashierPOS: React.FC = () => {
               </div>
 
               <div className="flex justify-between text-xs font-semibold text-slate-500">
-                <span>Thuế (10%)</span>
+                <span>Thuế ({vatRate}%)</span>
                 <span className="font-bold text-slate-900">
                   {(tax * 1000).toLocaleString("vi-VN")} vnđ
                 </span>
@@ -265,7 +275,7 @@ export const CashierPOS: React.FC = () => {
                     onChange={(e) => setVatEnabled(e.target.checked)}
                     className="w-4 h-4"
                   />
-                  <label htmlFor="vat">Áp thuế VAT 10%</label>
+                  <label htmlFor="vat">Áp thuế VAT {vatRate}%</label>
                 </span>
                 <span className="text-xs text-slate-400">{vatEnabled ? "Bật" : "Tắt"}</span>
               </div>

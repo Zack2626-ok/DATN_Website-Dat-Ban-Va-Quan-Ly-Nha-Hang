@@ -16,7 +16,8 @@ import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
 import { PaymentModal } from "./components/PaymentModal";
 import { SplitBillModal } from "./components/SplitBillModal";
 import { MergeBillModal } from "./components/MergeBillModal";
-import { CheckCircle2, X, AlertTriangle } from "lucide-react";
+import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
+import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 
 export const CashierPaymentPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -30,6 +31,7 @@ export const CashierPaymentPage: React.FC = () => {
   const [splitOpen, setSplitOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
 
   useEffect(() => {
     dispatch(fetchInvoices());
@@ -38,6 +40,12 @@ export const CashierPaymentPage: React.FC = () => {
     }, 15000);
     return () => clearInterval(interval);
   }, [dispatch]);
+
+  useEffect(() => {
+    getRestaurantInfo()
+      .then(setRestaurantInfo)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (error) {
@@ -188,7 +196,15 @@ export const CashierPaymentPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-black text-slate-900 font-display">Quản lý thanh toán</h2>
-          <p className="text-xs text-slate-500">Quản lý hóa đơn, thanh toán, tách & gộp bill</p>
+          <p className="text-xs text-slate-500">
+            {restaurantInfo?.name || "ResManager"}
+            {restaurantInfo?.hotline && (
+              <span className="ml-2 inline-flex items-center gap-1 text-blue-600 font-semibold">
+                <Phone size={10} />
+                {restaurantInfo.hotline}
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex gap-2">
           <button
