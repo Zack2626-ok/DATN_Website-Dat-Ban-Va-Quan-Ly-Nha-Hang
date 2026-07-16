@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   CreditCard,
   Banknote,
@@ -10,6 +10,7 @@ import {
   BadgePercent,
 } from "lucide-react";
 import { Modal } from "../../../../components/Modal";
+import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
 
 interface Props {
@@ -36,6 +37,15 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount, setTipAmount] = useState(0);
+
+  useEffect(() => {
+    getRestaurantInfo()
+      .then((info) => {
+        setVatRate(info.tax_rate ?? 10);
+        setServiceFeeRate(info.service_fee_rate ?? 0);
+      })
+      .catch(() => {});
+  }, []);
 
   const breakdown = useMemo(() => {
     const subtotal = invoice.totalAmount;
