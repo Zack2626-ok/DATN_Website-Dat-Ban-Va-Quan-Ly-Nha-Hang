@@ -217,13 +217,12 @@ export const ClientLayout: React.FC = () => {
           </div>
 
           <div className="mt-10 border-t border-gray-200 pt-6 text-center text-sm text-gray-400">
-          © 2026 ResManager. Mọi quyền được bảo lưu.
+            © 2026 ResManager. Mọi quyền được bảo lưu.
+          </div>
         </div>
       </footer>
 
       <HotlineButton />
-    </div>
-      </footer>
     </div>
   );
 };
