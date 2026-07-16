@@ -197,17 +197,52 @@ CREATE TABLE tables (
     CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO tables (area_id, name, capacity, row_pos, col_pos, status) VALUES
- (1,'B01',4,'A',1,'empty'),
- (1,'B02',4,'A',2,'empty'),
- (1,'B03',6,'A',3,'reserved'),
- (1,'B04',8,'B',1,'pending_payment'),
- (1,'B05',4,'B',2,'empty'),
- (2,'B06',4,'A',1,'reserved'),
- (2,'B07',6,'A',2,'empty'),
- (2,'B08',8,'A',3,'serving'),
- (2,'B09',10,'B',1,'reserved'),
- (3,'B10',6,'A',1,'empty');
+INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status) VALUES
+ -- Tầng 1 (12 bàn: B01 - B12)
+ (1,  1, 'B01', 4, 'A', 1, 'empty'),
+ (2,  1, 'B02', 4, 'A', 2, 'empty'),
+ (3,  1, 'B03', 6, 'A', 3, 'reserved'),
+ (4,  1, 'B04', 8, 'A', 4, 'pending_payment'),
+ (5,  1, 'B05', 4, 'B', 1, 'empty'),
+ (6,  1, 'B06', 4, 'B', 2, 'reserved'),
+ (7,  1, 'B07', 6, 'B', 3, 'empty'),
+ (8,  1, 'B08', 8, 'B', 4, 'serving'),
+ (9,  1, 'B09', 10, 'C', 1, 'reserved'),
+ (10, 1, 'B10', 4, 'C', 2, 'empty'),
+ (11, 1, 'B11', 4, 'C', 3, 'empty'),
+ (12, 1, 'B12', 4, 'C', 4, 'empty'),
+
+ -- Tầng 2 (12 bàn: B13 - B24)
+ (13, 2, 'B13', 4, 'A', 1, 'empty'),
+ (14, 2, 'B14', 4, 'A', 2, 'empty'),
+ (15, 2, 'B15', 4, 'A', 3, 'empty'),
+ (16, 2, 'B16', 4, 'A', 4, 'empty'),
+ (17, 2, 'B17', 4, 'B', 1, 'empty'),
+ (18, 2, 'B18', 4, 'B', 2, 'empty'),
+ (19, 2, 'B19', 4, 'B', 3, 'empty'),
+ (20, 2, 'B20', 4, 'B', 4, 'empty'),
+ (21, 2, 'B21', 4, 'C', 1, 'empty'),
+ (22, 2, 'B22', 4, 'C', 2, 'empty'),
+ (23, 2, 'B23', 4, 'C', 3, 'empty'),
+ (24, 2, 'B24', 4, 'C', 4, 'empty'),
+
+ -- Sân vườn (16 bàn: B25 - B40)
+ (25, 3, 'B25', 4, 'A', 1, 'empty'),
+ (26, 3, 'B26', 4, 'A', 2, 'empty'),
+ (27, 3, 'B27', 4, 'A', 3, 'empty'),
+ (28, 3, 'B28', 4, 'A', 4, 'empty'),
+ (29, 3, 'B29', 4, 'B', 1, 'empty'),
+ (30, 3, 'B30', 4, 'B', 2, 'empty'),
+ (31, 3, 'B31', 4, 'B', 3, 'empty'),
+ (32, 3, 'B32', 4, 'B', 4, 'empty'),
+ (33, 3, 'B33', 4, 'C', 1, 'empty'),
+ (34, 3, 'B34', 4, 'C', 2, 'empty'),
+ (35, 3, 'B35', 4, 'C', 3, 'empty'),
+ (36, 3, 'B36', 4, 'C', 4, 'empty'),
+ (37, 3, 'B37', 4, 'D', 1, 'empty'),
+ (38, 3, 'B38', 4, 'D', 2, 'empty'),
+ (39, 3, 'B39', 4, 'D', 3, 'empty'),
+ (40, 3, 'B40', 4, 'D', 4, 'empty');
 
 CREATE TABLE bookings (
     id                INT          NOT NULL AUTO_INCREMENT,

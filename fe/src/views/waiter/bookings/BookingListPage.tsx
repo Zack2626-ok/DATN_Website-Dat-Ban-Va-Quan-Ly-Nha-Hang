@@ -27,12 +27,17 @@ import {
   Booking,
 } from "../../../services/bookingService";
 import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
+import { useAppSelector } from "../../../store/hooks";
+import { CancelledBookings } from "./components/CancelledBookings";
 
 /**
  * BookingListPage — Quản lý đặt bàn
  * Redesigned: light modal, 2-column form, chỉ lấy bàn trống
  */
 export const BookingListPage: React.FC = () => {
+  const { user } = useAppSelector((state) => state.auth);
+  const [activeMainTab, setActiveMainTab] = useState<"active" | "cancelled">("active");
+
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [emptyTables, setEmptyTables] = useState<ResmanagerTable[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -186,8 +191,40 @@ export const BookingListPage: React.FC = () => {
         </button>
       </div>
 
-      {/* ── Toolbar ── */}
-      <div className="bg-admin-card rounded-2xl border border-admin-border p-4 flex flex-wrap gap-3 items-center">
+      {/* ── Role-based Main Tabs (Manager/Admin Only) ── */}
+      {(user?.role === "manager" || user?.role === "admin") && (
+        <div className="flex border-b border-admin-border gap-6 mb-2">
+          <button
+            onClick={() => setActiveMainTab("active")}
+            className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
+              activeMainTab === "active" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
+            }`}
+          >
+            Lịch đặt hiện tại
+            {activeMainTab === "active" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveMainTab("cancelled")}
+            className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
+              activeMainTab === "cancelled" ? "text-[#FF5A5F]" : "text-admin-text-sub hover:text-[#FF5A5F]"
+            }`}
+          >
+            Lịch sử khách hủy bàn
+            {activeMainTab === "cancelled" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF5A5F] rounded-full" />
+            )}
+          </button>
+        </div>
+      )}
+
+      {activeMainTab === "cancelled" ? (
+        <CancelledBookings />
+      ) : (
+        <>
+          {/* ── Toolbar ── */}
+          <div className="bg-admin-card rounded-2xl border border-admin-border p-4 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-text-sub" size={15} />
           <input
@@ -321,6 +358,8 @@ export const BookingListPage: React.FC = () => {
           </tbody>
         </table>
       </div>
+    </>
+  )}
 
       {/* ── Modal Chi tiết ── */}
       <Modal
@@ -497,7 +536,7 @@ export const BookingListPage: React.FC = () => {
                     value={formData.table_id}
                     onChange={(e) => setFormData({ ...formData, table_id: e.target.value })}
                     className="w-full pl-9 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800 appearance-none"
-                  >git status
+                  >
                     <option value="">-- Chọn bàn --</option>
                     {emptyTables.length === 0 ? (
                       <option disabled>Không có bàn trống</option>
