@@ -117,6 +117,13 @@ const STATUS_CONFIG: Record<
     border: "border-rose-300",
     dot: "bg-rose-500",
   },
+  cleaning: {
+    label: "🧹 Đang dọn dẹp",
+    bg: "bg-blue-50",
+    text: "text-blue-700",
+    border: "border-blue-300",
+    dot: "bg-blue-500",
+  },
   maintenance: {
     label: "Bảo trì",
     bg: "bg-purple-50",
@@ -604,7 +611,7 @@ export const WaiterTableMap: React.FC = () => {
                       </div>
 
                       {/* Customer Info inside Card */}
-                      {(t.status === "serving" || t.status === "reserved" || t.status === "pending_payment") && (
+                      {(t.status === "serving" || t.status === "reserved" || t.status === "pending_payment" || t.status === "cleaning") && (
                         <div className="mt-3 border-t border-gray-200/60 pt-2 text-[11px] text-gray-700 space-y-0.5">
                           {t.guest_name && (
                             <p className="font-bold text-gray-900 truncate">Khách: {t.guest_name}</p>
@@ -697,6 +704,30 @@ export const WaiterTableMap: React.FC = () => {
                   >
                     Đưa về bàn Trống (Đã bảo trì xong)
                   </button>
+                )}
+
+                {selectedTable.status === "cleaning" && (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 space-y-3.5 text-center shadow-xs">
+                    <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center mx-auto text-blue-600 shadow-2xs">
+                      <CheckCircle size={24} />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-blue-900 text-sm">
+                        Đã thanh toán — Chờ dọn dẹp bàn
+                      </h5>
+                      <p className="text-xs text-blue-700 mt-1 leading-relaxed">
+                        Hóa đơn đã được thu ngân thu tiền hoàn tất. Vui lòng thu dọn bát đĩa và lau sạch bàn ăn.
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        await handleStatusChange("empty");
+                      }}
+                      className="w-full rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white hover:bg-blue-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      ✨ Đã dọn xong — Trả bàn trống
+                    </button>
+                  </div>
                 )}
 
                 {/* Khách hàng & Cảnh báo vượt sức chứa */}

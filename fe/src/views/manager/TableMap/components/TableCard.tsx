@@ -66,6 +66,13 @@ export const TableCard: React.FC<TableCardProps> = ({
           badge: "bg-rose-100 text-rose-700 border-rose-300",
           label: "Chờ thanh toán",
         };
+      case "cleaning":
+        return {
+          bg: "bg-blue-50 border-blue-200 hover:bg-blue-100/80",
+          text: "text-blue-700",
+          badge: "bg-blue-100 text-blue-700 border-blue-300",
+          label: "🧹 Đang dọn dẹp",
+        };
       default:
         return {
           bg: "bg-gray-50 border-gray-200 hover:bg-gray-100",

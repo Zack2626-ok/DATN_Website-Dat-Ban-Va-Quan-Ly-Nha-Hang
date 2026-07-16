@@ -148,7 +148,7 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     await db.updateOrderStatus(id, "completed");
 
     if (order.table_id) {
-      await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
+      await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
     }
 
     const updatedOrder = { ...order, status: "completed" };
@@ -446,7 +446,7 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
     if (totalPaid >= order.totalAmount) {
       await db.updateOrderStatus(id, "completed");
       if (order.table_id) {
-        await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
+        await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
       }
     }
 
