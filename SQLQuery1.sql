@@ -285,12 +285,6 @@ CREATE TABLE bookings (
 --        NOT NULL DEFAULT 'pending';
 -- ============================================================================
 
-INSERT INTO bookings (table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note) VALUES
- (6, 1, 1, N'Nguyen Van A', '0911111111', 4, '2026-06-24 18:00:00', '2026-06-24 21:00:00', 'BK20260624001', 'confirmed', N'Có trẻ em', NULL),
- (3, 2, NULL, N'Tran Thi B', '0922222222', 6, '2026-06-25 19:00:00', '2026-06-25 22:00:00', 'BK20260625001', 'pending', NULL, N'Đặt tiệc sinh nhật'),
- (9, 4, 2, N'Pham Thi D',   '0944444444', 8, '2026-06-26 12:00:00', '2026-06-26 14:00:00', 'BK20260626001', 'confirmed', N'VIP, cần bàn riêng', NULL),
- (7, NULL, NULL, N'Khach Le Tuan', '0966666666', 3, '2026-06-24 20:00:00', '2026-06-24 22:00:00', 'BK20260624002', 'cancelled', NULL, N'Khách huỷ');
-
 CREATE TABLE waitlist (
     id           INT          NOT NULL AUTO_INCREMENT,
     guest_name   VARCHAR(100) NOT NULL,
