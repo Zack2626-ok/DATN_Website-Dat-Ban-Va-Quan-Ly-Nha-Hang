@@ -24,14 +24,15 @@ export const getRevenueOverview = async (req: Request, res: Response): Promise<v
     const dbAvailable = db.isDbAvailable();
 
     if (dbAvailable) {
+      const { dateCol, orderIdCol } = await db.resolvePaymentColumns();
       const conditions: string[] = ["p.status = 'completed'"];
       const params: any[] = [];
       if (startStr) {
-        conditions.push("p.createdAt >= ?");
+        conditions.push(`p.${dateCol} >= ?`);
         params.push(startStr);
       }
       if (endStr) {
-        conditions.push("p.createdAt <= ?");
+        conditions.push(`p.${dateCol} <= ?`);
         params.push(endStr);
       }
       const whereClause = conditions.join(" AND ");
@@ -39,7 +40,7 @@ export const getRevenueOverview = async (req: Request, res: Response): Promise<v
       const typeBreakdown = await db.query<any[]>(
         `SELECT o.order_type, SUM(p.amount) AS total
          FROM payments p
-         JOIN orders o ON p.orderId = o.id
+         JOIN orders o ON p.${orderIdCol} = o.id
          WHERE ${whereClause}
          GROUP BY o.order_type`,
         params
@@ -184,3 +185,5 @@ export const getPeakHours = async (req: Request, res: Response): Promise<void> =
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+

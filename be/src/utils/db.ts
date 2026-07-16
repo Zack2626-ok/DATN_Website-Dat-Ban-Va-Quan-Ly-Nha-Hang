@@ -2201,6 +2201,65 @@ export interface DbTopItem {
   revenue: number;
 }
 
+let resolvedPaymentMethodColumn: string | null = null;
+let resolvedCreatedAtColumn: string | null = null;
+let resolvedOrderIdColumn: string | null = null;
+
+export const resolvePaymentColumns = async () => {
+  if (resolvedPaymentMethodColumn && resolvedCreatedAtColumn && resolvedOrderIdColumn) {
+    return {
+      methodCol: resolvedPaymentMethodColumn,
+      dateCol: resolvedCreatedAtColumn,
+      orderIdCol: resolvedOrderIdColumn
+    };
+  }
+
+  try {
+    const columns = await query<any[]>("SHOW COLUMNS FROM payments");
+    const colNames = columns.map(c => c.Field.toLowerCase());
+
+    if (colNames.includes("paymentmethod")) {
+      resolvedPaymentMethodColumn = "paymentMethod";
+    } else if (colNames.includes("payment_method")) {
+      resolvedPaymentMethodColumn = "payment_method";
+    } else if (colNames.includes("method")) {
+      resolvedPaymentMethodColumn = "method";
+    } else {
+      resolvedPaymentMethodColumn = "paymentMethod";
+    }
+
+    if (colNames.includes("createdat")) {
+      resolvedCreatedAtColumn = "createdAt";
+    } else if (colNames.includes("created_at")) {
+      resolvedCreatedAtColumn = "created_at";
+    } else if (colNames.includes("paid_at")) {
+      resolvedCreatedAtColumn = "paid_at";
+    } else {
+      resolvedCreatedAtColumn = "createdAt";
+    }
+
+    if (colNames.includes("orderid")) {
+      resolvedOrderIdColumn = "orderId";
+    } else if (colNames.includes("order_id")) {
+      resolvedOrderIdColumn = "order_id";
+    } else if (colNames.includes("invoice_id")) {
+      resolvedOrderIdColumn = "invoice_id";
+    } else {
+      resolvedOrderIdColumn = "orderId";
+    }
+  } catch (e) {
+    resolvedPaymentMethodColumn = "paymentMethod";
+    resolvedCreatedAtColumn = "createdAt";
+    resolvedOrderIdColumn = "orderId";
+  }
+
+  return {
+    methodCol: resolvedPaymentMethodColumn,
+    dateCol: resolvedCreatedAtColumn,
+    orderIdCol: resolvedOrderIdColumn
+  };
+};
+
 export const getDbRevenueOverview = async (startDate?: string, endDate?: string): Promise<DbRevenueOverview[]> => {
   if (!dbAvailable) {
     return [
@@ -2213,23 +2272,24 @@ export const getDbRevenueOverview = async (startDate?: string, endDate?: string)
       { date: "2026-07-16", revenue: 8500000, orderCount: 18 }
     ];
   }
+  const { dateCol } = await resolvePaymentColumns();
   const conditions: string[] = ["status = 'completed'"];
   const params: any[] = [];
   if (startDate) {
-    conditions.push("createdAt >= ?");
+    conditions.push(`${dateCol} >= ?`);
     params.push(startDate);
   }
   if (endDate) {
-    conditions.push("createdAt <= ?");
+    conditions.push(`${dateCol} <= ?`);
     params.push(endDate);
   }
   const whereClause = conditions.join(" AND ");
   const sql = `
-    SELECT DATE(createdAt) AS date, SUM(amount) AS revenue, COUNT(*) AS orderCount
+    SELECT DATE(${dateCol}) AS date, SUM(amount) AS revenue, COUNT(*) AS orderCount
     FROM payments
     WHERE ${whereClause}
-    GROUP BY DATE(createdAt)
-    ORDER BY DATE(createdAt) ASC
+    GROUP BY DATE(${dateCol})
+    ORDER BY DATE(${dateCol}) ASC
   `;
   const rows = await query<any[]>(sql, params);
   return rows.map((r) => ({
@@ -2248,22 +2308,23 @@ export const getDbPaymentMethods = async (startDate?: string, endDate?: string):
       { method: "wallet", total: 5000000, count: 10 }
     ];
   }
+  const { methodCol, dateCol } = await resolvePaymentColumns();
   const conditions: string[] = ["status = 'completed'"];
   const params: any[] = [];
   if (startDate) {
-    conditions.push("createdAt >= ?");
+    conditions.push(`${dateCol} >= ?`);
     params.push(startDate);
   }
   if (endDate) {
-    conditions.push("createdAt <= ?");
+    conditions.push(`${dateCol} <= ?`);
     params.push(endDate);
   }
   const whereClause = conditions.join(" AND ");
   const sql = `
-    SELECT paymentMethod AS method, SUM(amount) AS total, COUNT(*) AS count
+    SELECT ${methodCol} AS method, SUM(amount) AS total, COUNT(*) AS count
     FROM payments
     WHERE ${whereClause}
-    GROUP BY paymentMethod
+    GROUP BY ${methodCol}
   `;
   const rows = await query<any[]>(sql, params);
   return rows.map((r) => ({
@@ -2325,14 +2386,15 @@ export const getDbCashFlow = async (startDate?: string, endDate?: string): Promi
       ]
     };
   }
+  const { dateCol } = await resolvePaymentColumns();
   const conditions: string[] = ["status = 'completed'"];
   const params: any[] = [];
   if (startDate) {
-    conditions.push("createdAt >= ?");
+    conditions.push(`${dateCol} >= ?`);
     params.push(startDate);
   }
   if (endDate) {
-    conditions.push("createdAt <= ?");
+    conditions.push(`${dateCol} <= ?`);
     params.push(endDate);
   }
   const whereClause = conditions.join(" AND ");
