@@ -10,6 +10,8 @@ import {
   mergeBills as mergeBillsAction,
   clearInvoiceError,
 } from "../../../store/invoiceSlice";
+import { fetchTables } from "../../../store/tableSlice";
+import { fetchOrders } from "../../../store/orderSlice";
 import type { InvoiceStatus, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
 import { InvoiceListPanel } from "./components/InvoiceListPanel";
 import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
@@ -35,8 +37,12 @@ export const CashierPaymentPage: React.FC = () => {
 
   useEffect(() => {
     dispatch(fetchInvoices());
+    dispatch(fetchTables());
+    dispatch(fetchOrders());
     const interval = setInterval(() => {
       dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
     }, 15000);
     return () => clearInterval(interval);
   }, [dispatch]);
@@ -58,6 +64,10 @@ export const CashierPaymentPage: React.FC = () => {
     let result = [...invoices];
     if (statusFilter !== "all") {
       result = result.filter((inv) => inv.invoiceStatus === statusFilter);
+    }
+    if (statusFilter === "unpaid") {
+      // Loại bỏ các bàn 0 món (chưa gọi gì) hoặc tổng tiền = 0 khỏi danh sách chờ thanh toán
+      result = result.filter((inv) => inv.items && inv.items.length > 0 && inv.totalAmount > 0);
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -103,6 +113,8 @@ export const CashierPaymentPage: React.FC = () => {
         setPaymentOpen(false);
         showSuccess("Thanh toán thành công!");
         dispatch(fetchInvoices());
+        dispatch(fetchTables());
+        dispatch(fetchOrders());
       } catch {
         // error shown via Redux state
       }
@@ -179,9 +191,9 @@ export const CashierPaymentPage: React.FC = () => {
       <p>Bàn: ${selectedInvoice.tableName || "Mang về"}</p>
       <p>Khách: ${selectedInvoice.customerName || "Khách lẻ"}</p>
       <hr/>
-      ${selectedInvoice.items.map((item) => `<p>${item.quantity}x ${item.name} - ${(item.price * item.quantity * 1000).toLocaleString("vi-VN")} vnđ</p>`).join("")}
+      ${selectedInvoice.items.map((item) => `<p>${item.quantity}x ${item.name} - ${Number(item.price * item.quantity).toLocaleString("vi-VN")} vnđ</p>`).join("")}
       <hr/>
-      <p><strong>Tổng: ${(selectedInvoice.totalAmount * 1000).toLocaleString("vi-VN")} vnđ</strong></p>
+      <p><strong>Tổng: ${Number(selectedInvoice.totalAmount).toLocaleString("vi-VN")} vnđ</strong></p>
     `;
     const win = window.open("", "_blank");
     if (win) {
@@ -208,11 +220,60 @@ export const CashierPaymentPage: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => dispatch(fetchInvoices())}
+            onClick={() => {
+              dispatch(fetchInvoices());
+              dispatch(fetchTables());
+              dispatch(fetchOrders());
+            }}
             className="px-3 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white hover:bg-slate-50 cursor-pointer transition-all"
           >
             Làm mới
           </button>
+        </div>
+      </div>
+
+      {/* Horizontal Table & Active Order Picker */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex-shrink-0">
+          <h3 className="text-sm font-black font-display text-slate-900">
+            Bàn Đang Phục Vụ / Chờ TT
+          </h3>
+          <p className="text-[11px] text-slate-500">Chọn nhanh bàn bên dưới để xem hoặc thanh toán bill</p>
+        </div>
+        <div className="flex flex-wrap gap-2 overflow-x-auto py-1">
+          {invoices.filter(inv => inv.invoiceStatus === "unpaid" && inv.items && inv.items.length > 0 && inv.totalAmount > 0).length === 0 ? (
+            <span className="text-xs text-slate-400 font-medium px-2 py-1">Không có hóa đơn đang mở</span>
+          ) : (
+            invoices
+              .filter(inv => inv.invoiceStatus === "unpaid" && inv.items && inv.items.length > 0 && inv.totalAmount > 0)
+              .map((inv) => {
+                const isSelected = selectedInvoiceId === inv.id;
+                const isPendingPayment = inv.status === "pending_payment";
+                return (
+                  <button
+                    key={inv.id}
+                    onClick={() => handleSelectInvoice(inv.id)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold font-display border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                        : isPendingPayment
+                          ? "bg-red-50 border-red-400 text-red-900 animate-pulse hover:bg-red-100"
+                          : "bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100"
+                    }`}
+                  >
+                    <span className="font-black">{inv.tableName || "Khách lẻ"}</span>
+                    {isPendingPayment && (
+                      <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wide">Chờ TT</span>
+                    )}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                      isSelected ? "bg-white/20 text-white" : isPendingPayment ? "bg-red-200 text-red-900" : "bg-amber-200/80 text-amber-800"
+                    }`}>
+                      {Number(inv.totalAmount).toLocaleString("vi-VN")}đ
+                    </span>
+                  </button>
+                );
+              })
+          )}
         </div>
       </div>
 
