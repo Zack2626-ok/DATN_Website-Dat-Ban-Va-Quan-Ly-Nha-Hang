@@ -195,6 +195,12 @@ export const BookingPage: React.FC = () => {
         start_time: startTimeStr,
         end_time: endTimeStr,
         guest_note: finalGuestNote,
+        items: orderedItems.map((d) => ({
+          menu_item_id: d.id,
+          quantity: d.quantity,
+          unit_price: d.price,
+          name: d.name,
+        })),
       });
 
       setConfirmationCode(bookingResult.confirmation_code);

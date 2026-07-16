@@ -16,6 +16,17 @@ export interface ResmanagerTable {
   guest_phone?: string | null;
   guest_count?: number | null;
   start_time?: string | null;
+  guest_note?: string | null;
+  booking_code?: string | null;
+  pre_ordered_items?: {
+    id?: number;
+    menu_item_id?: number;
+    name?: string;
+    quantity?: number;
+    unit_price?: number;
+    kitchen_note?: string;
+    status?: string;
+  }[];
   maintenance_note?: string | null;
   is_merged_primary?: boolean;
   merged_tables?: { id: number; name: string }[];

@@ -1355,6 +1355,37 @@ export const createBooking = async (data: any): Promise<any> => {
   ]);
   const insertId = result.insertId;
 
+  // Nếu có món đặt trước (data.items), tạo ngay 1 đơn hàng pre_order và chi tiết order_items để chuyển xuống bếp
+  if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+    const orderResult = await query(`
+      INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
+      VALUES (?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
+    `, [
+      data.table_id,
+      validCustomerId || null,
+      1,
+      data.guest_note ? `[Booking ${code}] ${data.guest_note}` : `[Booking ${code}] Đơn đặt món trước`,
+      data.guest_name,
+      data.guest_phone,
+      data.party_size
+    ]);
+    const preOrderId = orderResult.insertId;
+
+    for (const item of data.items) {
+      if (!item.menu_item_id || !item.quantity) continue;
+      await query(`
+        INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, kitchen_note, status)
+        VALUES (?, ?, ?, ?, ?, 'pending')
+      `, [
+        preOrderId,
+        item.menu_item_id,
+        item.quantity,
+        item.unit_price || 0,
+        item.note || `Món đặt trước - Booking ${code}`
+      ]);
+    }
+  }
+
   // Chỉ khóa bàn (chuyển sang reserved) nếu lịch đặt diễn ra trong vòng 2 giờ tới
   const bookingTime = new Date(data.start_time).getTime();
   const now = Date.now();
@@ -1415,7 +1446,12 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
            COALESCE(o.guest_name, b.guest_name) AS guest_name,
            COALESCE(o.guest_phone, b.guest_phone) AS guest_phone,
            COALESCE(o.guest_count, b.party_size) AS guest_count,
-           DATE_FORMAT(COALESCE(o.created_at, b.start_time), '%H:%i %d/%m/%Y') AS start_time
+           DATE_FORMAT(COALESCE(o.created_at, b.start_time), '%H:%i %d/%m/%Y') AS start_time,
+           COALESCE(o.note, b.guest_note) AS guest_note,
+           b.confirmation_code AS booking_code,
+           b.id AS booking_id,
+           o.id AS active_order_id,
+           o.order_type AS active_order_type
     FROM tables t
     LEFT JOIN table_areas a ON t.area_id = a.id
     LEFT JOIN orders o ON o.id = (
@@ -1449,8 +1485,31 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     const mergedChildren = await query("SELECT merged_table_id FROM table_merges WHERE primary_table_id = ?", [r.id]);
     const splits = await query("SELECT child_label FROM table_splits WHERE parent_table_id = ?", [r.id]);
 
+    let preOrderedItems: any[] = [];
+    if (r.active_order_id && r.active_order_type === 'pre_order') {
+      preOrderedItems = await query(`
+        SELECT oi.id, oi.menu_item_id, m.name, oi.quantity, oi.unit_price, oi.kitchen_note, oi.status
+        FROM order_items oi
+        JOIN menu_items m ON oi.menu_item_id = m.id
+        WHERE oi.order_id = ? AND oi.status != 'voided'
+      `, [r.active_order_id]);
+    } else if (r.booking_id && (!r.active_order_id || r.active_order_type !== 'pre_order')) {
+      const preOrders = await query(`
+        SELECT id FROM orders WHERE table_id = ? AND order_type = 'pre_order' AND status IN ('open', 'serving') LIMIT 1
+      `, [r.id]);
+      if (preOrders.length > 0) {
+        preOrderedItems = await query(`
+          SELECT oi.id, oi.menu_item_id, m.name, oi.quantity, oi.unit_price, oi.kitchen_note, oi.status
+          FROM order_items oi
+          JOIN menu_items m ON oi.menu_item_id = m.id
+          WHERE oi.order_id = ? AND oi.status != 'voided'
+        `, [preOrders[0].id]);
+      }
+    }
+
     results.push({
       ...r,
+      pre_ordered_items: preOrderedItems,
       is_merged_child: mergedTo.length > 0,
       merged_into: mergedTo.length > 0 ? mergedTo[0].primary_table_id : null,
       is_merged_primary: mergedChildren.length > 0,
@@ -1667,6 +1726,32 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     const custByPhone = await query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.guest_phone]);
     if (custByPhone.length > 0) {
       validCustomerId = Number(custByPhone[0].id);
+    }
+  }
+
+  if (data.table_id) {
+    const existingPreOrders = await query<any[]>(`
+      SELECT id FROM orders 
+      WHERE table_id = ? AND status IN ('open', 'serving') AND order_type = 'pre_order'
+      ORDER BY created_at DESC LIMIT 1
+    `, [data.table_id]);
+
+    if (existingPreOrders.length > 0) {
+      const preOrderId = existingPreOrders[0].id;
+      await query(`
+        UPDATE orders 
+        SET order_type = ?, status = 'open', created_by = COALESCE(?, created_by), guest_name = COALESCE(?, guest_name), guest_phone = COALESCE(?, guest_phone), guest_count = COALESCE(?, guest_count)
+        WHERE id = ?
+      `, [
+        data.order_type || 'dine_in',
+        data.created_by || 1,
+        data.guest_name || null,
+        data.guest_phone || null,
+        data.guest_count || null,
+        preOrderId
+      ]);
+      await completeActiveBookingForTable(data.table_id);
+      return { id: preOrderId, ...data, status: 'open', customer_id: validCustomerId };
     }
   }
 
