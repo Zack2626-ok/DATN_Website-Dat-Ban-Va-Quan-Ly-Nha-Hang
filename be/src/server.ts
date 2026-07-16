@@ -29,7 +29,6 @@ import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
 import notificationRoutes from "./routes/notification.routes";
 import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
-import reportRoutes from "./routes/report.routes";
  
  
 dotenv.config();
@@ -111,7 +110,6 @@ app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 app.use("/api/v1/tables", resmanagerTableRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/waiter", waiterRoutes);
-app.use("/api/v1/reports", reportRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
