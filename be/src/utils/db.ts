@@ -1504,6 +1504,44 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
   return query("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment')", [tableId]);
 };
 
+export const getAllResmanagerOrders = async (status?: string): Promise<any[]> => {
+  let sql = `
+    SELECT o.*, t.name AS table_name, t.area_id,
+           u.full_name AS staff_name,
+           c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email
+    FROM orders o
+    LEFT JOIN tables t ON o.table_id = t.id
+    LEFT JOIN users u ON o.created_by = u.id
+    LEFT JOIN customers c ON o.customer_id = c.id
+  `;
+  const params: any[] = [];
+  if (status && status !== "all") {
+    sql += " WHERE o.status = ?";
+    params.push(status);
+  }
+  sql += " ORDER BY o.created_at DESC";
+  const orders = await query<any[]>(sql, params);
+
+  for (const order of orders) {
+    order.items = await getResmanagerOrderItems(order.id);
+    order.totalAmount = order.items.reduce(
+      (sum: number, item: any) => sum + Number(item.unit_price) * item.quantity,
+      0
+    );
+  }
+  return orders;
+};
+
+export const getResmanagerPayments = async (): Promise<any[]> => {
+  return query(`
+    SELECT p.*, o.table_id, t.name AS table_name, o.guest_name, o.guest_phone, o.order_type
+    FROM payments p
+    LEFT JOIN orders o ON p.orderId = o.id
+    LEFT JOIN tables t ON o.table_id = t.id
+    ORDER BY p.createdAt DESC
+  `);
+};
+
 export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> => {
   return query(`
     SELECT oi.*,
