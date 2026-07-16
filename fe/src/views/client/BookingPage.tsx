@@ -166,8 +166,13 @@ export const BookingPage: React.FC = () => {
 
       let customerId: number | null = null;
       const infoStr = localStorage.getItem("customer_info");
-      if (infoStr) {
-        customerId = JSON.parse(infoStr).id || null;
+      const tokenStr = localStorage.getItem("customer_token");
+      if (infoStr && tokenStr) {
+        try {
+          customerId = JSON.parse(infoStr).id || null;
+        } catch (e) {
+          console.error("Error parsing customer_info", e);
+        }
       }
 
       // Tổng hợp món ăn đặt trước chèn vào ghi chú
