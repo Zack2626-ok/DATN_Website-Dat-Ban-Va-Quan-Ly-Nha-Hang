@@ -1489,12 +1489,8 @@ export const createBooking = async (data: any): Promise<any> => {
     }
   }
 
-  // Chỉ khóa bàn (chuyển sang reserved) nếu lịch đặt diễn ra trong vòng 2 giờ tới
-  const bookingTime = new Date(data.start_time).getTime();
-  const now = Date.now();
-  if (bookingTime - now <= 2 * 60 * 60 * 1000) {
-    await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
-  }
+  // Khóa bàn (chuyển sang 'reserved') ngay lập tức khi tạo booking thành công để phản ánh trực tiếp trên sơ đồ quản lý
+  await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
 
   const bookingDetails = await getBookingById(insertId);
   return bookingDetails;
