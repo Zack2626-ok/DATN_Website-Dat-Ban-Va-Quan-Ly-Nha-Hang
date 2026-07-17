@@ -1428,24 +1428,49 @@ export const hasActiveBookingsForTable = async (tableId: number): Promise<boolea
 // ============================================================================
 
 export const getBookings = async (status?: string): Promise<any[]> => {
-  if (status) {
-    return query<any[]>(
-      `SELECT b.*, t.name AS table_name, a.name AS area_name
-       FROM bookings b
-       LEFT JOIN tables t ON b.table_id = t.id
-       LEFT JOIN table_areas a ON t.area_id = a.id
-       WHERE b.status = ?
-       ORDER BY b.start_time DESC`,
-      [status],
-    );
-  }
-  return query<any[]>(
-    `SELECT b.*, t.name AS table_name, a.name AS area_name
-     FROM bookings b
-     LEFT JOIN tables t ON b.table_id = t.id
-     LEFT JOIN table_areas a ON t.area_id = a.id
-     ORDER BY b.start_time DESC`,
+  const rows = status
+    ? await query<any[]>(
+        `SELECT b.*, t.name AS table_name, a.name AS area_name
+         FROM bookings b
+         LEFT JOIN tables t ON b.table_id = t.id
+         LEFT JOIN table_areas a ON t.area_id = a.id
+         WHERE b.status = ?
+         ORDER BY b.start_time DESC`,
+        [status],
+      )
+    : await query<any[]>(
+        `SELECT b.*, t.name AS table_name, a.name AS area_name
+         FROM bookings b
+         LEFT JOIN tables t ON b.table_id = t.id
+         LEFT JOIN table_areas a ON t.area_id = a.id
+         ORDER BY b.start_time DESC`,
+      );
+
+  if (rows.length === 0) return [];
+
+  const bookingIds = rows.map((b) => b.id);
+  const placeholders = bookingIds.map(() => "?").join(",");
+  const items = await query<any[]>(
+    `SELECT bmi.*, mi.name AS menu_item_name
+     FROM booking_menu_items bmi
+     JOIN menu_items mi ON bmi.menu_item_id = mi.id
+     WHERE bmi.booking_id IN (${placeholders})`,
+    bookingIds,
   );
+
+  const itemMap = new Map<number, any[]>();
+  for (const item of items) {
+    if (!itemMap.has(item.booking_id)) {
+      itemMap.set(item.booking_id, []);
+    }
+    itemMap.get(item.booking_id)!.push(item);
+  }
+
+  for (const row of rows) {
+    row.pre_ordered_items = itemMap.get(row.id) || [];
+  }
+
+  return rows;
 };
 
 export const getBookingById = async (id: number): Promise<any | null> => {
@@ -1638,7 +1663,7 @@ export const transferBookingItemsToOrder = async (tableId: number, orderId: stri
   if (items.length > 0) {
     for (const item of items) {
       await query(
-        `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status) VALUES (?, ?, ?, ?, 'pending')`,
+        `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status) VALUES (?, ?, ?, ?, 'waiting_kitchen')`,
         [orderId, item.menu_item_id, item.quantity, item.unit_price]
       );
     }
@@ -1712,6 +1737,7 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
            COALESCE(o.note, b.guest_note) AS guest_note,
            b.confirmation_code AS booking_code,
            b.id AS booking_id,
+           COALESCE(b.deposit_amount, 0) AS deposit_amount,
            o.id AS active_order_id,
            o.order_type AS active_order_type
     FROM tables t
@@ -1773,6 +1799,7 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     results.push({
       ...r,
       status: effectiveStatus,
+      deposit_amount: Number(r.deposit_amount || 0),
       pre_ordered_items: preOrderedItems,
       is_merged_child: mergedTo.length > 0,
       merged_into: mergedTo.length > 0 ? mergedTo[0].primary_table_id : null,
@@ -1821,16 +1848,34 @@ export const transferResmanagerOrder = async (sourceTableId: number, targetTable
 };
 
 export const mergeResmanagerTables = async (primaryTableId: number, mergedTableIds: number[]): Promise<boolean> => {
-  // Tìm order đang phục vụ của bàn chính
-  let primaryOrders = await query<any[]>("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving') LIMIT 1", [primaryTableId]);
+  // Tìm order đang phục vụ hoặc mở của bàn chính
+  let primaryOrders = await query<any[]>("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment') ORDER BY id DESC LIMIT 1", [primaryTableId]);
   let primaryOrderId = primaryOrders.length > 0 ? primaryOrders[0].id : null;
 
   for (const mergedId of mergedTableIds) {
     await query("INSERT INTO table_merges (primary_table_id, merged_table_id) VALUES (?, ?)", [primaryTableId, mergedId]);
     await query("UPDATE tables SET status = 'serving' WHERE id = ?", [mergedId]);
 
+    // Lấy thông tin khách tốt nhất từ bàn phụ (từ order đang mở hoặc từ booking gần nhất)
+    const mOrdersInfo = await query<any[]>(
+      "SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment') ORDER BY id DESC LIMIT 1",
+      [mergedId]
+    );
+    const mBookingsInfo = await query<any[]>(
+      "SELECT guest_name, guest_phone, party_size AS guest_count, customer_id, guest_note AS note FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed', 'completed') ORDER BY id DESC LIMIT 1",
+      [mergedId]
+    );
+    const mOrderInfo = mOrdersInfo.length > 0 ? mOrdersInfo[0] : null;
+    const mBookingInfo = mBookingsInfo.length > 0 ? mBookingsInfo[0] : null;
+
+    const sourceGuestName = mOrderInfo?.guest_name || mBookingInfo?.guest_name || null;
+    const sourceGuestPhone = mOrderInfo?.guest_phone || mBookingInfo?.guest_phone || null;
+    const sourceGuestCount = Number(mOrderInfo?.guest_count || mBookingInfo?.guest_count || 0);
+    const sourceCustomerId = mOrderInfo?.customer_id || mBookingInfo?.customer_id || null;
+    const sourceNote = mOrderInfo?.note || mBookingInfo?.note || null;
+
     // Xử lý gộp đơn hàng / món ăn từ bàn phụ sang bàn chính
-    const mergedOrders = await query<any[]>("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving')", [mergedId]);
+    const mergedOrders = await query<any[]>("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment')", [mergedId]);
     for (const mOrder of mergedOrders) {
       if (!primaryOrderId) {
         // Nếu bàn chính chưa có order, chuyển order của bàn phụ thành order của bàn chính
@@ -1840,6 +1885,34 @@ export const mergeResmanagerTables = async (primaryTableId: number, mergedTableI
         // Nếu bàn chính đã có order, gộp tất cả món từ order bàn phụ sang order bàn chính
         await query("UPDATE order_items SET order_id = ? WHERE order_id = ?", [primaryOrderId, mOrder.id]);
         await query("UPDATE orders SET status = 'cancelled', note = CONCAT(COALESCE(note, ''), ' [Gộp vào bàn chính #${primaryTableId}]') WHERE id = ?", [mOrder.id]);
+      }
+    }
+
+    // Nếu bàn phụ không có order nào nhưng có thông tin khách (ví dụ booking), mà bàn chính cũng chưa có order -> tạo order mới cho bàn chính mang thông tin khách
+    if (!primaryOrderId && (sourceGuestName || sourceGuestPhone || sourceGuestCount > 0)) {
+      const insertRes = await query<any>(
+        `INSERT INTO orders (table_id, status, order_type, guest_name, guest_phone, guest_count, customer_id, note)
+         VALUES (?, 'serving', 'dine_in', ?, ?, ?, ?, ?)`,
+        [primaryTableId, sourceGuestName || null, sourceGuestPhone || null, sourceGuestCount || 0, sourceCustomerId || null, sourceNote || null]
+      );
+      primaryOrderId = insertRes.insertId;
+    }
+
+    // Nếu bàn chính đã có order (hoặc vừa được tạo/chuyển), cập nhật/bổ sung thông tin khách từ bàn phụ vào bàn chính
+    if (primaryOrderId && (sourceGuestName || sourceGuestPhone || sourceGuestCount > 0 || sourceNote)) {
+      const [currentPrimary] = await query<any[]>("SELECT * FROM orders WHERE id = ?", [primaryOrderId]);
+      if (currentPrimary) {
+        const isDefaultName = !currentPrimary.guest_name || currentPrimary.guest_name === 'Khách tại bàn' || currentPrimary.guest_name === 'Khách lẻ';
+        const updatedGuestName = isDefaultName ? sourceGuestName : currentPrimary.guest_name;
+        const updatedGuestPhone = currentPrimary.guest_phone || sourceGuestPhone;
+        const updatedCustomerId = currentPrimary.customer_id || sourceCustomerId;
+        const updatedGuestCount = (Number(currentPrimary.guest_count || 0) + sourceGuestCount) || sourceGuestCount || Number(currentPrimary.guest_count || 0);
+        const updatedNote = [currentPrimary.note, sourceNote].filter(Boolean).join(" | ");
+
+        await query(
+          "UPDATE orders SET guest_name = ?, guest_phone = ?, customer_id = ?, guest_count = ?, note = ? WHERE id = ?",
+          [updatedGuestName || null, updatedGuestPhone || null, updatedCustomerId || null, updatedGuestCount || 0, updatedNote || null, primaryOrderId]
+        );
       }
     }
   }
@@ -1924,7 +1997,28 @@ export const getResmanagerCategories = async (): Promise<any[]> => {
 };
 
 export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]> => {
-  return query("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment')", [tableId]);
+  const orders = await query<any[]>("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment') ORDER BY id DESC", [tableId]);
+  for (const order of orders) {
+    const allItems = await getResmanagerOrderItems(order.id);
+    order.items = allItems.filter((i: any) => i.status !== "voided" && i.status !== "cancelled");
+    const subtotal = order.items.reduce((sum: number, item: any) => sum + Number(item.unit_price) * item.quantity, 0);
+    order.subtotal = subtotal;
+
+    let depositAmount = 0;
+    const bRows = await query<any[]>(
+      "SELECT deposit_amount FROM bookings WHERE table_id = ? AND deposit_status IN ('paid', 'completed') ORDER BY created_at DESC LIMIT 1",
+      [order.table_id]
+    ).catch(() => []);
+    if (bRows && bRows.length > 0) {
+      depositAmount = Number(bRows[0].deposit_amount || 0);
+    }
+    order.depositAmount = depositAmount;
+    order.vatRate = 10;
+    order.tax = Math.round(subtotal * 0.10);
+    order.discount = 0;
+    order.totalAmount = Math.max(0, subtotal + order.tax - depositAmount);
+  }
+  return orders;
 };
 
 export const getAllResmanagerOrders = async (status?: string): Promise<any[]> => {
@@ -1958,34 +2052,58 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
     order.subtotal = subtotal;
     order.totalAmount = subtotal;
 
-    // Check payment or invoice for tax / discount / final amount
-    const payRows = await query<any[]>(
-      "SELECT p.amount, p.note, i.tax, i.discount, i.total FROM payments p LEFT JOIN invoices i ON p.invoice_id = i.id WHERE i.order_id = ? OR p.invoice_id = ? ORDER BY p.paid_at DESC LIMIT 1",
-      [order.id, order.id]
-    ).catch(() => []);
-    if (payRows && payRows.length > 0) {
-      const pRow = payRows[0];
-      let notesData: any = {};
-      try {
-        if (pRow.note && typeof pRow.note === "string" && pRow.note.startsWith("{")) {
-          notesData = JSON.parse(pRow.note);
-        }
-      } catch {}
-      order.tax = Number(notesData.vat !== undefined ? notesData.vat : pRow.tax || 0);
-      order.discount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
-      order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : 0));
-      order.totalAmount = Number(notesData.finalAmount !== undefined ? notesData.finalAmount : pRow.total || pRow.amount || subtotal);
-    } else {
-      const invRows = await query<any[]>(
-        "SELECT tax, discount, total FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
-        [order.id]
+    // Check deposit from bookings table (where deposit_status is paid or completed)
+    let depositAmount = 0;
+    if (order.table_id) {
+      const bRows = await query<any[]>(
+        "SELECT deposit_amount, deposit_status FROM bookings WHERE table_id = ? AND deposit_status IN ('paid', 'completed') ORDER BY created_at DESC LIMIT 1",
+        [order.table_id]
       ).catch(() => []);
-      if (invRows && invRows.length > 0) {
-        const iRow = invRows[0];
-        order.tax = Number(iRow.tax || 0);
-        order.discount = Number(iRow.discount || 0);
-        if (Number(iRow.total) > 0) order.totalAmount = Number(iRow.total);
+      if (bRows && bRows.length > 0) {
+        depositAmount = Number(bRows[0].deposit_amount || 0);
       }
+    }
+    order.depositAmount = depositAmount;
+
+    const isPaidOrder = order.status === "completed" || order.status === "paid";
+    if (isPaidOrder) {
+      const payRows = await query<any[]>(
+        "SELECT p.amount, p.note, i.tax, i.discount, i.total FROM payments p LEFT JOIN invoices i ON p.invoice_id = i.id WHERE i.order_id = ? OR p.invoice_id = ? ORDER BY p.paid_at DESC LIMIT 1",
+        [order.id, order.id]
+      ).catch(() => []);
+      if (payRows && payRows.length > 0) {
+        const pRow = payRows[0];
+        let notesData: any = {};
+        try {
+          if (pRow.note && typeof pRow.note === "string" && pRow.note.startsWith("{")) {
+            notesData = JSON.parse(pRow.note);
+          }
+        } catch {}
+        order.tax = Number(notesData.vat !== undefined ? notesData.vat : pRow.tax || 0);
+        order.discount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
+        order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : 10));
+        if (notesData.depositAmount !== undefined) {
+          order.depositAmount = Number(notesData.depositAmount || 0);
+        }
+        order.totalAmount = Number(notesData.finalAmount !== undefined ? notesData.finalAmount : pRow.total || pRow.amount || subtotal);
+      } else {
+        const invRows = await query<any[]>(
+          "SELECT tax, discount, total FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+          [order.id]
+        ).catch(() => []);
+        if (invRows && invRows.length > 0) {
+          const iRow = invRows[0];
+          order.tax = Number(iRow.tax || 0);
+          order.discount = Number(iRow.discount || 0);
+          if (Number(iRow.total) > 0) order.totalAmount = Number(iRow.total);
+        }
+      }
+    } else {
+      // Đơn chưa thanh toán (open, serving, pending_payment): tính toán chuẩn từ subtotal và khấu trừ cọc
+      order.vatRate = 10;
+      order.tax = Math.round(subtotal * 0.10);
+      order.discount = 0;
+      order.totalAmount = Math.max(0, subtotal + order.tax - order.depositAmount - order.discount);
     }
   }
   return orders;
@@ -2107,6 +2225,28 @@ export const completeActiveBookingForTable = async (tableId: number): Promise<bo
 };
 
 export const addResmanagerOrderItem = async (data: any): Promise<any> => {
+  if (!data.bypass_status_check && data.order_id) {
+    const orderCheck = await query<any[]>(`
+      SELECT o.status as order_status, t.status as table_status
+      FROM orders o
+      LEFT JOIN tables t ON o.table_id = t.id
+      WHERE o.id = ?
+      LIMIT 1
+    `, [data.order_id]).catch(() => []);
+    if (orderCheck && orderCheck.length > 0) {
+      const { order_status, table_status } = orderCheck[0];
+      if (order_status === "completed" || order_status === "paid") {
+        throw new Error("Đơn hàng đã được thanh toán, không thể gọi thêm món!");
+      }
+      if (order_status === "cancelled") {
+        throw new Error("Đơn hàng đã bị hủy, không thể gọi thêm món!");
+      }
+      if (order_status === "pending_payment" || table_status === "pending_payment") {
+        throw new Error("Bàn đang yêu cầu thanh toán (Chờ thanh toán). Hệ thống đã khóa gọi thêm món để tránh sai lệch hóa đơn!");
+      }
+    }
+  }
+
   // Kiểm tra món đã có trong order với trạng thái pending và chưa hold hay chưa
   const existingRows = await query<any>(`
     SELECT id, quantity, kitchen_note 
@@ -2172,7 +2312,7 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
   const result = await query<any>(
-    `UPDATE order_items SET status = 'pending', is_held = 0
+    `UPDATE order_items SET status = 'waiting_kitchen', is_held = 0
      WHERE id IN (${placeholders})`,
     orderItemIds,
   );

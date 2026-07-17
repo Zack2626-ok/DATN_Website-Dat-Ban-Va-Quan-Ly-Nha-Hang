@@ -110,7 +110,9 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
 
     sendSuccess(res, item, "Thêm món thành công", 201);
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const msg = (error as Error).message || "Lỗi khi thêm món";
+    const statusCode = msg.includes("không thể") || msg.includes("khóa") || msg.includes("Vui lòng") ? 400 : 500;
+    sendError(res, msg, statusCode);
   }
 };
 

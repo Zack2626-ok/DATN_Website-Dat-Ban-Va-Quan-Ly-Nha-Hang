@@ -114,13 +114,13 @@ export const CashierPOS: React.FC = () => {
   }, [orders, selectedTable]);
 
   // Calculations
-  const subtotal = activeOrder ? activeOrder.totalAmount : 0;
-  const tax = vatEnabled ? subtotal * (vatRate / 100) : 0;
+  const subtotal = activeOrder ? (activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount) : 0;
+  const depositAmount = activeOrder?.depositAmount || 0;
+  const tax = vatEnabled ? Math.round(subtotal * (vatRate / 100)) : 0;
   const tipVal = parseFloat(tipAmount) || 0;
-  let totalAmount = subtotal + tax + tipVal;
+  let totalAmount = Math.max(0, subtotal + tax + tipVal - depositAmount);
   if (roundEnabled) {
-    // Round to nearest 1000 (since UI multiplies by 1000 later)
-    totalAmount = Math.round(totalAmount / 1) ;
+    totalAmount = Math.round(totalAmount / 1);
   }
 
   const perPersonAmount = useMemo(() => {
@@ -143,6 +143,7 @@ export const CashierPOS: React.FC = () => {
           subtotal,
           vat: tax,
           vatRate: vatEnabled ? vatRate : 0,
+          depositAmount,
           finalAmount: amountVnd,
           vatEnabled,
           roundEnabled,
@@ -161,6 +162,7 @@ export const CashierPOS: React.FC = () => {
         tax: tax,
         vatRate: vatEnabled ? vatRate : 0,
         discount: 0,
+        depositAmount: depositAmount,
         totalAmount: amountVnd
       });
 

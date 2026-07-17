@@ -46,10 +46,11 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
 
   const breakdown = useMemo(() => {
     const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
-    const vat = subtotal * (vatRate / 100);
-    const finalAmount = subtotal + vat - voucherAmount;
-    return { subtotal, vat, finalAmount };
-  }, [invoice.subtotal, invoice.totalAmount, vatRate, voucherAmount]);
+    const vat = Math.round(subtotal * (vatRate / 100));
+    const depositAmount = invoice.depositAmount || 0;
+    const finalAmount = Math.max(0, subtotal + vat - depositAmount - voucherAmount);
+    return { subtotal, vat, depositAmount, finalAmount };
+  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, voucherAmount]);
 
   const handleConfirm = () => {
     onConfirm({
@@ -123,6 +124,13 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
               <span className="text-[10px] text-slate-500 self-center">.000đ</span>
             </div>
           </div>
+
+          {Boolean(breakdown.depositAmount && breakdown.depositAmount > 0) && (
+            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100 text-rose-600 font-medium">
+              <span>Tiền cọc đặt bàn</span>
+              <span className="font-semibold">-{formatVnd(breakdown.depositAmount!)} vnđ</span>
+            </div>
+          )}
 
           {/* Final total */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex justify-between items-center">

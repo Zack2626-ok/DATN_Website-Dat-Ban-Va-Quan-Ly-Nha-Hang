@@ -16,6 +16,7 @@ export interface Invoice {
   tax?: number;
   discount?: number;
   vatRate?: number;
+  depositAmount?: number;
   status: string;
   invoiceStatus: InvoiceStatus;
   createdAt: string;
@@ -26,6 +27,7 @@ export interface PaymentBreakdown {
   subtotal: number;
   vat: number;
   vatRate: number;
+  depositAmount?: number;
   serviceFee: number;
   serviceFeeRate: number;
   voucher: number;

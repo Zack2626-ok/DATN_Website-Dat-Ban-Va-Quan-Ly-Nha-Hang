@@ -23,6 +23,7 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
         quantity: item.quantity,
         status: item.status,
       })),
+      depositAmount: o.depositAmount || 0,
       totalAmount: o.totalAmount || 0,
       subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
       tax: o.tax || 0,
@@ -125,27 +126,27 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     }
 
     // Kiểm tra cọc tiền đặt bàn
-    let depositAmount = 0;
+    let depositAmount = Number(order.depositAmount || 0);
     let linkedBookingId: number | null = null;
-    if (order.tableId) {
+    if (order.tableId || order.table_id) {
       const activeBookings = await db.query(
-        `SELECT id, deposit_amount FROM bookings WHERE table_id = ? AND deposit_status = 'paid' ORDER BY created_at DESC LIMIT 1`,
-        [Number(order.tableId)]
+        `SELECT id, deposit_amount FROM bookings WHERE table_id = ? AND deposit_status IN ('paid', 'completed') ORDER BY created_at DESC LIMIT 1`,
+        [Number(order.tableId || order.table_id)]
       );
       if (activeBookings.length > 0) {
-        depositAmount = Number(activeBookings[0].deposit_amount);
+        depositAmount = Number(activeBookings[0].deposit_amount || depositAmount);
         linkedBookingId = activeBookings[0].id;
       }
     }
 
-    const subtotal = order.totalAmount;
-    const vat = vatRate !== undefined ? subtotal * (vatRate / 100) : subtotal * 0.1;
-    const serviceFee = serviceFeeRate !== undefined ? subtotal * (serviceFeeRate / 100) : 0;
+    const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
+    const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
+    const serviceFee = serviceFeeRate !== undefined ? Math.round(subtotal * (serviceFeeRate / 100)) : 0;
     const voucher = voucherAmount || 0;
     const tip = tipAmount || 0;
     
     // Khấu trừ tiền cọc từ tổng số tiền cần thanh toán
-    const finalAmount = subtotal + vat + serviceFee - voucher - depositAmount + tip;
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher - depositAmount + tip);
 
     const payment = await db.createPayment({
       orderId: id,
@@ -274,6 +275,7 @@ export const splitBillEqual = async (req: Request, res: Response): Promise<void>
             seat_number: item.seat_number || null,
             course_number: item.course_number || 1,
             kitchen_note: item.kitchen_note || undefined,
+            bypass_status_check: true,
           });
           if (item.status && addedItem?.id) {
             await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
@@ -341,6 +343,7 @@ export const splitBillByItems = async (req: Request, res: Response): Promise<voi
           seat_number: item.seat_number || null,
           course_number: item.course_number || 1,
           kitchen_note: item.kitchen_note || undefined,
+          bypass_status_check: true,
         });
         if (item.status && addedItem?.id) {
           await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
@@ -420,6 +423,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
         seat_number: item.seat_number || null,
         course_number: item.course_number || 1,
         kitchen_note: item.kitchen_note || undefined,
+        bypass_status_check: true,
       });
       if (item.status && addedItem?.id) {
         await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);

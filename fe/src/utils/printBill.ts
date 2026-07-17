@@ -16,7 +16,8 @@ export const printCashierInvoice = (invoice: any, restaurantName: string = "NHÀ
   const tax = Number(invoice.tax || 0);
   const vatRate = Number(invoice.vatRate || (tax > 0 && subtotal > 0 ? Math.round((tax / subtotal) * 100) : 10));
   const discount = Number(invoice.discount || 0);
-  const finalAmount = Number(invoice.totalAmount || (subtotal + tax - discount));
+  const depositAmount = Number(invoice.depositAmount || 0);
+  const finalAmount = Number(invoice.totalAmount !== undefined ? invoice.totalAmount : Math.max(0, subtotal + tax - depositAmount - discount));
 
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -92,6 +93,12 @@ export const printCashierInvoice = (invoice: any, restaurantName: string = "NHÀ
       <div class="row">
         <span>Voucher/Giảm giá:</span>
         <span>-${discount.toLocaleString("vi-VN")} đ</span>
+      </div>
+      ` : ""}
+      ${depositAmount > 0 ? `
+      <div class="row">
+        <span>Tiền cọc đặt bàn:</span>
+        <span>-${depositAmount.toLocaleString("vi-VN")} đ</span>
       </div>
       ` : ""}
       <div class="divider"></div>

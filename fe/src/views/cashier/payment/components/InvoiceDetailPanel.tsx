@@ -159,11 +159,11 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
 
       {/* Footer: Total & Pay button */}
       <div className="border-t border-slate-100 p-5">
-        {invoice.subtotal !== undefined && invoice.subtotal !== invoice.totalAmount ? (
+        {invoice.subtotal !== undefined && (invoice.subtotal !== invoice.totalAmount || Boolean(invoice.tax && invoice.tax > 0) || Boolean(invoice.depositAmount && invoice.depositAmount > 0) || Boolean(invoice.discount && invoice.discount > 0)) ? (
           <div className="space-y-1.5 mb-4">
             <div className="flex justify-between items-center text-xs text-slate-500">
               <span>Tạm tính</span>
-              <span className="font-semibold">{formatVnd(invoice.subtotal)} vnđ</span>
+              <span className="font-semibold">{formatVnd(invoice.subtotal || invoice.totalAmount)} vnđ</span>
             </div>
             {Boolean(invoice.tax && invoice.tax > 0) && (
               <div className="flex justify-between items-center text-xs text-slate-500">
@@ -175,6 +175,12 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
               <div className="flex justify-between items-center text-xs text-slate-500">
                 <span>Giảm giá/Voucher</span>
                 <span className="font-semibold">-{formatVnd(invoice.discount!)} vnđ</span>
+              </div>
+            )}
+            {Boolean(invoice.depositAmount && invoice.depositAmount > 0) && (
+              <div className="flex justify-between items-center text-xs text-rose-600 font-medium">
+                <span>Tiền cọc đặt bàn</span>
+                <span className="font-semibold">-{formatVnd(invoice.depositAmount!)} vnđ</span>
               </div>
             )}
             <div className="flex justify-between items-center pt-2 border-t border-slate-100">
