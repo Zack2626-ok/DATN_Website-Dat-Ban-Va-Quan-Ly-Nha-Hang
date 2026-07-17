@@ -21,9 +21,14 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
         name: item.item_name || `Món #${item.menu_item_id}`,
         price: Number(item.unit_price),
         quantity: item.quantity,
+        status: item.status,
       })),
       totalAmount: o.totalAmount || 0,
-      status: o.status,
+      subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
+      tax: o.tax || 0,
+      discount: o.discount || 0,
+      vatRate: o.vatRate || 0,
+      status: o.table_status === "pending_payment" || o.status === "pending_payment" ? "pending_payment" : o.status,
       invoiceStatus:
         o.status === "completed" || o.status === "paid"
           ? "paid"
@@ -33,6 +38,9 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       createdAt: o.created_at,
       orderType: o.order_type,
     }));
+
+    // Nếu không có món nào (0 món) thì không đưa vào thu ngân
+    invoices = invoices.filter((inv: any) => inv.items && inv.items.length > 0);
 
     if (status && status !== "all") {
       const statusMap: Record<string, string[]> = {

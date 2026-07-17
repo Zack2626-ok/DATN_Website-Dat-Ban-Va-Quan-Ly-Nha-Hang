@@ -12,6 +12,10 @@ export interface Invoice {
   guestCount: number;
   items: OrderItem[];
   totalAmount: number;
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  vatRate?: number;
   status: string;
   invoiceStatus: InvoiceStatus;
   createdAt: string;

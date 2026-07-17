@@ -445,8 +445,9 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: created booking_menu_items table");
     }
-    // Migration: đảm bảo order_type trong bảng orders là VARCHAR(50) để hỗ trợ 'pre_order', 'dine_in', 'takeaway', 'delivery'
+    // Migration: đảm bảo order_type trong bảng orders và status trong bảng order_items là VARCHAR(50) để hỗ trợ 'pre_order'
     await query("ALTER TABLE orders MODIFY COLUMN order_type VARCHAR(50) NOT NULL DEFAULT 'dine_in'").catch(() => {});
+    await query("ALTER TABLE order_items MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'pending'").catch(() => {});
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -738,16 +739,23 @@ export const getTables = async (areaId?: number): Promise<any[]> => {
 
 export const getTableById = async (id: string): Promise<any | null> => {
   try {
+    let targetId: any = id;
+    const num = Number(id);
+    if (!isNaN(num) && num > 0) targetId = num;
+    else if (typeof id === "string" && id.startsWith("t")) {
+      const n = Number(id.slice(1));
+      if (!isNaN(n) && n > 0) targetId = n;
+    }
     const rows = await query<any[]>(
       `SELECT t.*, a.name AS area_name 
        FROM tables t 
        LEFT JOIN table_areas a ON t.area_id = a.id 
-       WHERE t.id = ?`,
-      [id]
+       WHERE t.id = ? OR t.name = ?`,
+      [targetId, id]
     );
     return rows[0] ? mapTable(rows[0]) : null;
   } catch (err) {
-    const rows = await query<any[]>("SELECT * FROM tables WHERE id = ?", [id]);
+    const rows = await query<any[]>("SELECT * FROM tables WHERE id = ? OR name = ?", [id, id]);
     return rows[0] ? mapTable(rows[0]) : null;
   }
 };
@@ -1009,19 +1017,68 @@ const MOCK_PAYMENTS: Payment[] = [];
 
 export const getPayments = async (): Promise<Payment[]> => {
   if (!dbAvailable) return MOCK_PAYMENTS;
-  const rows = await query<Payment[]>("SELECT * FROM payments ORDER BY createdAt DESC");
+  const rows = await query<any[]>(`
+    SELECT p.id,
+           COALESCE(i.order_id, p.invoice_id) AS orderId,
+           p.amount,
+           CASE 
+             WHEN p.method = 'bank_transfer' THEN 'transfer'
+             WHEN p.method IN ('momo', 'vnpay') THEN 'wallet'
+             ELSE p.method 
+           END AS paymentMethod,
+           'completed' AS status,
+           p.note AS notes,
+           p.paid_at AS createdAt,
+           p.paid_at AS completedAt
+    FROM payments p
+    LEFT JOIN invoices i ON p.invoice_id = i.id
+    ORDER BY p.paid_at DESC
+  `);
   return rows.map(normalizePayment);
 };
 
 export const getPaymentById = async (id: string): Promise<Payment | null> => {
-  if (!dbAvailable) return MOCK_PAYMENTS.find((p) => p.id === id) || null;
-  const rows = await query<Payment[]>("SELECT * FROM payments WHERE id = ?", [id]);
+  if (!dbAvailable) return MOCK_PAYMENTS.find((p) => String(p.id) === String(id)) || null;
+  const rows = await query<any[]>(`
+    SELECT p.id,
+           COALESCE(i.order_id, p.invoice_id) AS orderId,
+           p.amount,
+           CASE 
+             WHEN p.method = 'bank_transfer' THEN 'transfer'
+             WHEN p.method IN ('momo', 'vnpay') THEN 'wallet'
+             ELSE p.method 
+           END AS paymentMethod,
+           'completed' AS status,
+           p.note AS notes,
+           p.paid_at AS createdAt,
+           p.paid_at AS completedAt
+    FROM payments p
+    LEFT JOIN invoices i ON p.invoice_id = i.id
+    WHERE p.id = ?
+  `, [id]);
   return rows[0] ? normalizePayment(rows[0]) : null;
 };
 
 export const getPaymentsByOrderId = async (orderId: string): Promise<Payment[]> => {
-  if (!dbAvailable) return MOCK_PAYMENTS.filter((p) => p.orderId === orderId);
-  const rows = await query<Payment[]>("SELECT * FROM payments WHERE orderId = ? ORDER BY createdAt DESC", [orderId]);
+  if (!dbAvailable) return MOCK_PAYMENTS.filter((p) => String(p.orderId) === String(orderId));
+  const rows = await query<any[]>(`
+    SELECT p.id,
+           COALESCE(i.order_id, p.invoice_id) AS orderId,
+           p.amount,
+           CASE 
+             WHEN p.method = 'bank_transfer' THEN 'transfer'
+             WHEN p.method IN ('momo', 'vnpay') THEN 'wallet'
+             ELSE p.method 
+           END AS paymentMethod,
+           'completed' AS status,
+           p.note AS notes,
+           p.paid_at AS createdAt,
+           p.paid_at AS completedAt
+    FROM payments p
+    LEFT JOIN invoices i ON p.invoice_id = i.id
+    WHERE i.order_id = ? OR p.invoice_id = ?
+    ORDER BY p.paid_at DESC
+  `, [orderId, orderId]);
   return rows.map(normalizePayment);
 };
 
@@ -1033,11 +1090,58 @@ export const createPayment = async (payment: Omit<Payment, "id" | "createdAt">):
     MOCK_PAYMENTS.push(newPayment);
     return newPayment;
   }
-  await query(
-    "INSERT INTO payments (id, orderId, amount, paymentMethod, status, discountAmount, discountReason, notes, createdAt, completedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [id, payment.orderId, payment.amount, payment.paymentMethod, payment.status, payment.discountAmount || 0, payment.discountReason || null, payment.notes || null, createdAt, payment.completedAt || null],
+
+  let invoiceId = Number(payment.orderId);
+  try {
+    let notesData: any = {};
+    if (payment.notes && typeof payment.notes === "string" && payment.notes.startsWith("{")) {
+      try { notesData = JSON.parse(payment.notes); } catch {}
+    }
+    const subVal = Number(notesData.subtotal !== undefined ? notesData.subtotal : payment.amount || 0);
+    const taxVal = Number(notesData.vat !== undefined ? notesData.vat : 0);
+    const discVal = Number(notesData.voucher !== undefined ? notesData.voucher : payment.discountAmount || 0);
+    const totVal = Number(notesData.finalAmount !== undefined ? notesData.finalAmount : payment.amount || 0);
+
+    const invRows = await query<any[]>("SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1", [payment.orderId]);
+    if (invRows && invRows.length > 0) {
+      invoiceId = invRows[0].id;
+      await query(
+        "UPDATE invoices SET status = 'paid', paid_at = NOW(), subtotal = ?, tax = ?, discount = ?, total = ? WHERE id = ?",
+        [subVal, taxVal, discVal, totVal, invoiceId]
+      ).catch(() => {});
+    } else {
+      const resInv = await query<any>(
+        `INSERT INTO invoices (order_id, subtotal, discount, tax, service_fee, tips, total, status, paid_at, created_by)
+         VALUES (?, ?, ?, ?, 0, 0, ?, 'paid', NOW(), 1)`,
+        [
+          Number(payment.orderId) || null,
+          subVal,
+          discVal,
+          taxVal,
+          totVal
+        ]
+      );
+      if (resInv && resInv.insertId) {
+        invoiceId = resInv.insertId;
+      }
+    }
+  } catch (errInv) {
+    console.warn("[createPayment] fallback invoice logic error:", (errInv as Error).message);
+  }
+
+  let methodEnum = payment.paymentMethod as string || "cash";
+  if (methodEnum === "transfer") methodEnum = "bank_transfer";
+  if (methodEnum === "wallet") methodEnum = "momo";
+  if (!["cash", "bank_transfer", "card", "momo", "vnpay"].includes(methodEnum)) {
+    methodEnum = "cash";
+  }
+
+  const resPay = await query<any>(
+    "INSERT INTO payments (invoice_id, method, amount, note, paid_at) VALUES (?, ?, ?, ?, NOW())",
+    [invoiceId || Number(payment.orderId) || 1, methodEnum, Number(payment.amount) || 0, payment.notes || null]
   );
-  return newPayment;
+  const newId = resPay && resPay.insertId ? String(resPay.insertId) : id;
+  return { id: newId, createdAt, ...payment };
 };
 
 export const updatePaymentStatus = async (id: string, status: Payment["status"]): Promise<Payment | null> => {
@@ -1049,7 +1153,6 @@ export const updatePaymentStatus = async (id: string, status: Payment["status"])
     payment.completedAt = completedAt;
     return payment;
   }
-  await query("UPDATE payments SET status = ?, completedAt = ? WHERE id = ?", [status, completedAt || null, id]);
   return { ...payment, status, completedAt };
 };
 
@@ -1064,10 +1167,7 @@ export const applyDiscount = async (id: string, discountAmount: number, discount
     payment.discountReason = discountReason;
     return payment;
   }
-  await query(
-    "UPDATE payments SET amount = ?, discountAmount = ?, discountReason = ? WHERE id = ?",
-    [newAmount, discountAmount, discountReason || null, id],
-  );
+  await query("UPDATE payments SET amount = ? WHERE id = ?", [newAmount, id]);
   return { ...payment, amount: newAmount, discountAmount, discountReason };
 };
 
@@ -1088,11 +1188,11 @@ export const getPaymentStatistics = async (startDate?: string, endDate?: string)
   const conditions: string[] = [];
   const params: any[] = [];
   if (startDate) {
-    conditions.push("createdAt >= ?");
+    conditions.push("paid_at >= ?");
     params.push(startDate);
   }
   if (endDate) {
-    conditions.push("createdAt <= ?");
+    conditions.push("paid_at <= ?");
     params.push(endDate);
   }
 
@@ -1101,13 +1201,13 @@ export const getPaymentStatistics = async (startDate?: string, endDate?: string)
   const rows = await query<any[]>(
     `SELECT
       COUNT(*) AS totalPayments,
-      SUM(amount) AS totalAmount,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completedCount,
-      SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) AS completedAmount,
-      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pendingCount,
-      SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS pendingAmount,
-      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount,
-      SUM(CASE WHEN status = 'failed' THEN amount ELSE 0 END) AS failedAmount
+      COALESCE(SUM(amount), 0) AS totalAmount,
+      COUNT(*) AS completedCount,
+      COALESCE(SUM(amount), 0) AS completedAmount,
+      0 AS pendingCount,
+      0 AS pendingAmount,
+      0 AS failedCount,
+      0 AS failedAmount
     FROM payments ${whereClause}`,
     params,
   );
@@ -1138,71 +1238,95 @@ export const getResmanagerTables = async (areaId?: number): Promise<any[]> => {
   return areaId ? query<any[]>(sql, [areaId]) : query<any[]>(sql);
 };
 
-export const getResmanagerTableById = async (id: number): Promise<any | null> => {
+export const getResmanagerTableById = async (id: number | string): Promise<any | null> => {
+  let targetId: any = id;
+  const num = Number(id);
+  if (!isNaN(num) && num > 0) targetId = num;
+  else if (typeof id === "string") {
+    const n = Number(id.replace(/^t/i, ""));
+    if (!isNaN(n) && n > 0) targetId = n;
+  }
   const rows = await query<any[]>(
     `SELECT t.*, ta.name AS area_name
      FROM tables t
      JOIN table_areas ta ON t.area_id = ta.id
-     WHERE t.id = ? AND t.is_deleted = 0`,
-    [id],
+     WHERE (t.id = ? OR t.name = ?) AND t.is_deleted = 0`,
+    [targetId, String(id)],
   );
   return rows[0] || null;
 };
 
 export const updateResmanagerTableStatus = async (
-  id: number,
+  id: number | string,
   status: "empty" | "reserved" | "serving" | "pending_payment" | "cleaning" | "maintenance",
   maintenanceNote?: string,
 ): Promise<boolean> => {
-  let result;
+  let targetId: any = id;
+  const num = Number(id);
+  if (!isNaN(num) && num > 0) targetId = num;
+  else if (typeof id === "string") {
+    const n = Number(id.replace(/^t/i, ""));
+    if (!isNaN(n) && n > 0) targetId = n;
+  }
+
+  // Luôn kiểm tra bàn có tồn tại không trước khi update
+  const checkRows = await query<any[]>(
+    "SELECT id FROM tables WHERE (id = ? OR name = ?) AND is_deleted = 0",
+    [targetId, String(id)]
+  );
+  if (!checkRows || checkRows.length === 0) {
+    return false;
+  }
+  const actualId = checkRows[0].id;
 
   try {
     if (status === "maintenance" && maintenanceNote) {
-      // Cập nhật status + lý do bảo trì
-      result = await query<any>(
+      await query<any>(
         "UPDATE tables SET status = ?, maintenance_note = ? WHERE id = ? AND is_deleted = 0",
-        [status, maintenanceNote, id]
+        [status, maintenanceNote, actualId]
       );
     } else if (status === "empty") {
-      // Xóa note khi bàn được đưa về trống
-      result = await query<any>(
+      await query<any>(
         "UPDATE tables SET status = ?, maintenance_note = NULL WHERE id = ? AND is_deleted = 0",
-        [status, id]
+        [status, actualId]
       );
     } else {
-      result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
+      await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, actualId]);
     }
   } catch (err: any) {
-    // Fallback: nếu cột maintenance_note chưa tồn tại → chỉ update status
     const isUnknownColumn =
       err?.message?.includes("Unknown column") || err?.code === "ER_BAD_FIELD_ERROR";
     if (isUnknownColumn) {
-      console.warn("[db] maintenance_note column not found, falling back to status-only update. Run: ALTER TABLE tables ADD COLUMN maintenance_note TEXT DEFAULT NULL;");
-      result = await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, id]);
+      console.warn("[db] maintenance_note column not found, falling back to status-only update.");
+      await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, actualId]);
     } else {
       throw err;
     }
   }
 
-  if (result.affectedRows > 0) {
-    if (status === "empty") {
-      // Hủy bỏ các booking liên quan đến bàn này nếu chuyển về trống
-      await query<any>(
-        `UPDATE bookings SET status = 'cancelled'
-         WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
-        [id]
-      );
-    } else if (status === "serving") {
-      // Hoàn thành các booking liên quan đến bàn này nếu đã nhận bàn (serving)
-      await query<any>(
-        `UPDATE bookings SET status = 'completed'
-         WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
-        [id]
-      );
-    }
-    return true;
+  if (status === "pending_payment") {
+    await query<any>(
+      "UPDATE orders SET status = 'pending_payment' WHERE table_id = ? AND status IN ('open', 'serving')",
+      [actualId]
+    ).catch(() => {});
+  } else if (status === "serving") {
+    await query<any>(
+      "UPDATE orders SET status = 'serving' WHERE table_id = ? AND status = 'pending_payment'",
+      [actualId]
+    ).catch(() => {});
+    await query<any>(
+      `UPDATE bookings SET status = 'completed'
+       WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
+      [actualId]
+    ).catch(() => {});
+  } else if (status === "empty") {
+    await query<any>(
+      `UPDATE bookings SET status = 'cancelled'
+       WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
+      [actualId]
+    ).catch(() => {});
   }
-  return false;
+  return true;
 };
 
 export const createResmanagerTable = async (table: {
@@ -1480,7 +1604,7 @@ export const createBooking = async (data: any): Promise<any> => {
       const price = priceMap.get(String(item.menu_item_id)) || 0;
       await query(`
         INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, kitchen_note, status)
-        VALUES (?, ?, ?, ?, ?, 'pending')
+        VALUES (?, ?, ?, ?, ?, 'pre_order')
       `, [
         preOrderId,
         item.menu_item_id,
@@ -1805,7 +1929,7 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
 
 export const getAllResmanagerOrders = async (status?: string): Promise<any[]> => {
   let sql = `
-    SELECT o.*, t.name AS table_name, t.area_id,
+    SELECT o.*, t.name AS table_name, t.area_id, t.status AS table_status,
            u.full_name AS staff_name,
            c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email
     FROM orders o
@@ -1822,17 +1946,53 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
   const orders = await query<any[]>(sql, params);
 
   for (const order of orders) {
-    order.items = await getResmanagerOrderItems(order.id);
-    order.totalAmount = order.items.reduce(
+    const allItems = await getResmanagerOrderItems(order.id);
+    // Bên thu ngân tự động loại bỏ các món đã hủy (voided/cancelled) khỏi hóa đơn và tổng tiền
+    order.items = allItems.filter(
+      (item: any) => item.status !== "voided" && item.status !== "cancelled"
+    );
+    const subtotal = order.items.reduce(
       (sum: number, item: any) => sum + Number(item.unit_price) * item.quantity,
       0
     );
+    order.subtotal = subtotal;
+    order.totalAmount = subtotal;
+
+    // Check payment or invoice for tax / discount / final amount
+    const payRows = await query<any[]>(
+      "SELECT p.amount, p.note, i.tax, i.discount, i.total FROM payments p LEFT JOIN invoices i ON p.invoice_id = i.id WHERE i.order_id = ? OR p.invoice_id = ? ORDER BY p.paid_at DESC LIMIT 1",
+      [order.id, order.id]
+    ).catch(() => []);
+    if (payRows && payRows.length > 0) {
+      const pRow = payRows[0];
+      let notesData: any = {};
+      try {
+        if (pRow.note && typeof pRow.note === "string" && pRow.note.startsWith("{")) {
+          notesData = JSON.parse(pRow.note);
+        }
+      } catch {}
+      order.tax = Number(notesData.vat !== undefined ? notesData.vat : pRow.tax || 0);
+      order.discount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
+      order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : 0));
+      order.totalAmount = Number(notesData.finalAmount !== undefined ? notesData.finalAmount : pRow.total || pRow.amount || subtotal);
+    } else {
+      const invRows = await query<any[]>(
+        "SELECT tax, discount, total FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        [order.id]
+      ).catch(() => []);
+      if (invRows && invRows.length > 0) {
+        const iRow = invRows[0];
+        order.tax = Number(iRow.tax || 0);
+        order.discount = Number(iRow.discount || 0);
+        if (Number(iRow.total) > 0) order.totalAmount = Number(iRow.total);
+      }
+    }
   }
   return orders;
 };
 
 export const getResmanagerPayments = async (): Promise<any[]> => {
-  return query(`
+  const rows = await query<any[]>(`
     SELECT p.id,
            COALESCE(i.order_id, p.invoice_id) AS orderId,
            p.amount,
@@ -1855,6 +2015,10 @@ export const getResmanagerPayments = async (): Promise<any[]> => {
     LEFT JOIN tables t ON o.table_id = t.id
     ORDER BY p.paid_at DESC
   `);
+  return rows.map((row) => ({
+    ...row,
+    amount: Number(row.amount || 0),
+  }));
 };
 
 export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> => {
@@ -1906,11 +2070,11 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
         data.guest_count || null,
         preOrderId
       ]);
-      // Tự động chuyển trạng thái các món đặt trước sang 'cooking' và bỏ hold để tự động gửi xuống bếp
+      // Khi mở bàn, chuyển trạng thái các món đặt trước từ 'pre_order' sang 'pending' (chờ nấu) để gửi xuống bếp (KDS nhận được ngay mà không cần chỉnh sửa KDS)
       await query(`
         UPDATE order_items 
-        SET status = 'cooking', is_held = 0 
-        WHERE order_id = ? AND status = 'pending'
+        SET status = 'pending', is_held = 0 
+        WHERE order_id = ? AND status = 'pre_order'
       `, [preOrderId]);
       await completeActiveBookingForTable(data.table_id);
       return { id: preOrderId, ...data, status: 'open', customer_id: validCustomerId };
