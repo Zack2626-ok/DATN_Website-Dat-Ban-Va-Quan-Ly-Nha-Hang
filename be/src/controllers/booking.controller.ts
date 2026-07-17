@@ -50,9 +50,16 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
 
-    const bookingStart = new Date(start_time);
+    // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
+    // Chuỗi dạng "2026-07-16 21:00:00" nếu parse thẳng sẽ bị Node.js hiểu là UTC → sai 7 tiếng
+    const normalizedStart = start_time.trim().replace(' ', 'T');
+    const bookingStart = new Date(normalizedStart.includes('+') || normalizedStart.endsWith('Z')
+      ? normalizedStart
+      : normalizedStart + '+07:00'
+    );
     const now = new Date();
-    if (bookingStart < now) {
+    // Cho phép dung sai 60 phút phòng trường hợp chọn slot sắp qua và điền form lâu
+    if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
       return;
     }

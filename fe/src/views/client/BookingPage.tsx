@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, ShoppingBag, Plus, Minus, Trash2, Printer } from "lucide-react";
+import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, ShoppingBag, Plus, Minus, Trash2, Printer, Search, Tag, ChefHat, X } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, getPublicPromotions, getPublicMenu, payBookingDeposit } from "../../services/customerService";
 
@@ -31,8 +31,11 @@ export const BookingPage: React.FC = () => {
   const [promotionsList, setPromotionsList] = useState<any[]>([]);
   const [menuItemsList, setMenuItemsList] = useState<any[]>([]);
   const [selectedPromoId, setSelectedPromoId] = useState<string>("");
-  const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: string]: { name: string; price: number; quantity: number } }>({});
+  const [menuCategoriesList, setMenuCategoriesList] = useState<any[]>([]);
+  const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: string]: { name: string; price: number; quantity: number; image_url?: string; description?: string; category_name?: string } }>({});
   const [showMenuModal, setShowMenuModal] = useState(false);
+  const [menuSearch, setMenuSearch] = useState("");
+  const [menuCategory, setMenuCategory] = useState("Tất cả");
 
   // Fetch promotions and menu items
   useEffect(() => {
@@ -48,9 +51,29 @@ export const BookingPage: React.FC = () => {
     getPublicMenu()
       .then((data) => {
         setMenuItemsList(data.items || []);
+        setMenuCategoriesList(data.categories || []);
       })
       .catch((e) => console.error("Error loading menu in booking page:", e));
   }, [promoParam]);
+
+  // Filtered menu items based on category + search
+  const filteredMenuItems = useMemo(() => {
+    return menuItemsList.filter((item) => {
+      const matchCat = menuCategory === "Tất cả" || item.category_name === menuCategory;
+      const matchSearch = !menuSearch.trim() || item.name.toLowerCase().includes(menuSearch.toLowerCase());
+      return matchCat && matchSearch;
+    });
+  }, [menuItemsList, menuCategory, menuSearch]);
+
+  const totalPreOrderCost = useMemo(() =>
+    Object.values(preOrderedDishes).reduce((sum, d) => sum + d.price * d.quantity, 0),
+    [preOrderedDishes]
+  );
+
+  const totalPreOrderQty = useMemo(() =>
+    Object.values(preOrderedDishes).reduce((sum, d) => sum + d.quantity, 0),
+    [preOrderedDishes]
+  );
 
   // Reset filter when tables change
   useEffect(() => {
@@ -800,12 +823,38 @@ export const BookingPage: React.FC = () => {
 
                     {/* Hiển thị danh sách món đã chọn */}
                     {Object.keys(preOrderedDishes).length > 0 && (
-                      <div className="mt-4 space-y-2 max-h-48 overflow-y-auto bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                        {Object.entries(preOrderedDishes).map(([idStr, d]) => (
-                          <div key={idStr} className="flex justify-between items-center text-xs text-gray-700">
-                            <span className="font-semibold">{d.name}</span>
-                            <div className="flex items-center gap-3">
-                              <span className="text-gray-500">{Number(d.price).toLocaleString("vi-VN")}đ x {d.quantity}</span>
+                      <div className="mt-4 space-y-2.5 max-h-60 overflow-y-auto bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        {Object.entries(preOrderedDishes).map(([idStr, d]) => {
+                          const imageUrl = d.image_url
+                            ? (d.image_url.startsWith("http") ? d.image_url : `${import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000"}/uploads/${d.image_url}`)
+                            : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120";
+
+                          return (
+                            <div key={idStr} className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-gray-100 shadow-3xs transition-all hover:border-gray-200">
+                              {/* Dish Image */}
+                              <img
+                                src={imageUrl}
+                                alt={d.name}
+                                className="w-12 h-12 rounded-lg object-cover bg-gray-100 border border-gray-100/80 shrink-0"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120";
+                                }}
+                              />
+                              
+                              {/* Dish Info */}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-extrabold text-slate-800 text-xs truncate leading-snug">{d.name}</h4>
+                                {d.description && (
+                                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{d.description}</p>
+                                )}
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="text-blue-700 font-bold text-[10px]">{Number(d.price).toLocaleString("vi-VN")}đ</span>
+                                  <span className="text-gray-400 text-[10px]">x</span>
+                                  <span className="text-gray-700 font-bold text-[10px] bg-gray-100 px-1.5 py-0.5 rounded-md">SL: {d.quantity}</span>
+                                </div>
+                              </div>
+
+                              {/* Action Button */}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -815,13 +864,14 @@ export const BookingPage: React.FC = () => {
                                     return copy;
                                   });
                                 }}
-                                className="text-red-500 hover:text-red-750 transition-colors"
+                                className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors shrink-0"
+                                title="Xóa món ăn"
                               >
-                                <Trash2 size={14} />
+                                <Trash2 size={13} />
                               </button>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -924,112 +974,226 @@ export const BookingPage: React.FC = () => {
         )}
       </main>
 
-      {/* Modal chọn món ăn đặt trước */}
+      {/* ============================================================
+          Modal Đặt trước món ăn — Premium Grid UI với Category Filter
+      ============================================================ */}
       {showMenuModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="text-base font-bold text-gray-900 font-display flex items-center gap-2">
-                <UtensilsCrossed size={16} className="text-blue-600" /> Thực đơn nhà hàng
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowMenuModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-sm font-semibold"
-              >
-                Đóng
-              </button>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh]">
+
+            {/* ─── Header ─── */}
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-orange-50 rounded-xl">
+                    <ChefHat size={18} className="text-orange-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">Đặt trước món ăn</h3>
+                    <p className="text-[11px] text-gray-400">Chọn món để bếp chuẩn bị sẵn khi bạn đến</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowMenuModal(false); setMenuSearch(""); setMenuCategory("Tất cả"); }}
+                  className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Search bar */}
+              <div className="relative mb-3">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm món ăn..."
+                  value={menuSearch}
+                  onChange={(e) => setMenuSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-400 focus:border-transparent outline-none transition-all bg-gray-50"
+                />
+              </div>
+
+              {/* Category Tabs */}
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                {["Tất cả", ...menuCategoriesList.map((c) => c.name)].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setMenuCategory(cat)}
+                    className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      menuCategory === cat
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {menuItemsList.length === 0 ? (
-                <p className="text-gray-500 text-xs text-center py-6">Không có món ăn nào khả dụng.</p>
+
+            {/* ─── Menu Grid ─── */}
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              {filteredMenuItems.length === 0 ? (
+                <div className="text-center py-12">
+                  <UtensilsCrossed size={36} className="mx-auto text-gray-200 mb-3" />
+                  <p className="text-gray-400 text-sm font-medium">Không tìm thấy món ăn phù hợp</p>
+                </div>
               ) : (
-                menuItemsList.map((item) => {
-                  const qty = preOrderedDishes[item.id]?.quantity || 0;
-                  return (
-                    <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                      <div>
-                        <h4 className="text-sm font-semibold text-gray-800">{item.name}</h4>
-                        <p className="text-xs text-gray-500">{Number(item.price).toLocaleString("vi-VN")}đ</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {qty > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreOrderedDishes((prev) => {
-                                  const current = prev[item.id];
-                                  if (current.quantity <= 1) {
-                                    const copy = { ...prev };
-                                    delete copy[item.id];
-                                    return copy;
-                                  }
-                                  return {
-                                    ...prev,
-                                    [item.id]: { ...current, quantity: current.quantity - 1 },
-                                  };
-                                });
-                              }}
-                              className="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                            >
-                              <Minus size={12} />
-                            </button>
-                            <span className="text-sm font-bold w-6 text-center">{qty}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreOrderedDishes((prev) => {
-                                  const current = prev[item.id];
-                                  return {
-                                    ...prev,
-                                    [item.id]: { ...current, quantity: current.quantity + 1 },
-                                  };
-                                });
-                              }}
-                              className="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                            >
-                              <Plus size={12} />
-                            </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {filteredMenuItems.map((item) => {
+                    const qty = preOrderedDishes[item.id]?.quantity || 0;
+                    const imageUrl = item.image_url
+                      ? (item.image_url.startsWith("http") ? item.image_url : `${import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000"}/uploads/${item.image_url}`)
+                      : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400";
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`relative bg-white rounded-2xl border-2 transition-all overflow-hidden ${
+                          qty > 0 ? "border-orange-400 shadow-md" : "border-gray-100 hover:border-gray-200 hover:shadow-sm"
+                        }`}
+                      >
+                        {/* Badge số lượng */}
+                        {qty > 0 && (
+                          <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-orange-500 text-white text-[11px] font-black flex items-center justify-center shadow-sm">
+                            {qty}
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPreOrderedDishes((prev) => ({
-                                ...prev,
-                                [item.id]: { name: item.name, price: item.price, quantity: 1 },
-                              }));
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-50 px-3 py-1.5 text-xs font-bold transition-all"
-                          >
-                            <Plus size={12} /> Thêm
-                          </button>
                         )}
+
+                        {/* Hình ảnh món ăn */}
+                        <div className="relative h-32 bg-gray-50 overflow-hidden">
+                          <img
+                            src={imageUrl}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400";
+                            }}
+                          />
+                          {/* Overlay gradient */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                          {/* Category badge on image */}
+                          {item.category_name && (
+                            <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 text-[9px] font-extrabold text-white bg-black/40 backdrop-blur-sm rounded-md px-1.5 py-0.5">
+                              <Tag size={8} />
+                              {item.category_name}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Nội dung card */}
+                        <div className="p-3">
+                          <h4 className="text-sm font-bold text-gray-900 leading-snug line-clamp-1">{item.name}</h4>
+                          <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
+                            {item.description || "Món ăn đặc trưng của nhà hàng, được chế biến tươi ngon mỗi ngày."}
+                          </p>
+
+                          {/* Footer: giá + nút */}
+                          <div className="flex items-center justify-between mt-3">
+                            <div>
+                              <span className="text-sm font-black text-orange-600">
+                                {Number(item.price).toLocaleString("vi-VN")}đ
+                              </span>
+                            </div>
+
+                            {qty > 0 ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreOrderedDishes((prev) => {
+                                      const current = prev[item.id];
+                                      if (current.quantity <= 1) {
+                                        const copy = { ...prev };
+                                        delete copy[item.id];
+                                        return copy;
+                                      }
+                                      return { ...prev, [item.id]: { ...current, quantity: current.quantity - 1 } };
+                                    });
+                                  }}
+                                  className="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 flex items-center justify-center transition-colors font-bold"
+                                >
+                                  <Minus size={12} />
+                                </button>
+                                <span className="text-sm font-black text-gray-800 min-w-[20px] text-center">{qty}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreOrderedDishes((prev) => {
+                                      const current = prev[item.id];
+                                      return { ...prev, [item.id]: { ...current, quantity: current.quantity + 1 } };
+                                    });
+                                  }}
+                                  className="w-7 h-7 rounded-lg bg-orange-500 text-white hover:bg-orange-600 flex items-center justify-center transition-colors"
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreOrderedDishes((prev) => ({
+                                    ...prev,
+                                    [item.id]: {
+                                      name: item.name,
+                                      price: Number(item.price),
+                                      quantity: 1,
+                                      image_url: item.image_url,
+                                      description: item.description,
+                                      category_name: item.category_name,
+                                    },
+                                  }));
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-xs font-bold transition-all shadow-sm"
+                              >
+                                <Plus size={11} /> Thêm
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
 
-            <div className="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-b-3xl">
-              <div>
-                <span className="text-xs text-gray-500 block">Tổng cộng đặt trước</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {Object.values(preOrderedDishes)
-                    .reduce((sum, d) => sum + d.price * d.quantity, 0)
-                    .toLocaleString("vi-VN")}đ
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowMenuModal(false)}
-                className="px-5 py-2.5 bg-blue-700 text-white rounded-xl text-xs font-bold hover:bg-blue-800 transition-colors"
-              >
-                Xác nhận
-              </button>
+            {/* ─── Sticky Footer ─── */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/80 rounded-b-3xl">
+              {totalPreOrderQty > 0 ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-black">{totalPreOrderQty}</span>
+                      <span className="text-xs text-gray-500 font-semibold">món đã chọn</span>
+                    </div>
+                    <span className="text-sm font-black text-gray-900 mt-0.5 block">
+                      Tổng cộng: <span className="text-orange-600">{totalPreOrderCost.toLocaleString("vi-VN")}đ</span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMenuModal(false); setMenuSearch(""); setMenuCategory("Tất cả"); }}
+                    className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold transition-colors shadow-sm flex items-center gap-2"
+                  >
+                    <CheckCircle size={15} /> Xác nhận
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-400">Chưa chọn món nào — tùy chọn, có thể bỏ qua</p>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMenuModal(false); setMenuSearch(""); setMenuCategory("Tất cả"); }}
+                    className="px-5 py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl text-xs font-bold transition-colors"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
