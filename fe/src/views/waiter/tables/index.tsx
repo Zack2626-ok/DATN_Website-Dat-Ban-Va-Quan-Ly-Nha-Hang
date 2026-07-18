@@ -397,10 +397,32 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   // Thêm bàn nhanh
   const handleAddTableConfirm = async (data: { name: string; capacity: number; area_id: number }) => {
     try {
+      // Tự động tìm kiếm tọa độ trống kế tiếp trong khu vực để tránh trùng lặp vị trí
+      let selectedRow = "A";
+      let selectedCol = 1;
+      let found = false;
+
+      const areaTables = tables.filter((t) => t.area_id === data.area_id);
+      for (let rCode = 65; rCode <= 90; rCode++) { // Hàng từ A đến Z
+        const row = String.fromCharCode(rCode);
+        for (let col = 1; col <= 12; col++) { // Cột từ 1 đến 12
+          const isOccupied = areaTables.some(
+            (t) => t.row_pos.toUpperCase() === row && Number(t.col_pos) === col
+          );
+          if (!isOccupied) {
+            selectedRow = row;
+            selectedCol = col;
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+
       await createResmanagerTable({
         ...data,
-        row_pos: "A",
-        col_pos: 1,
+        row_pos: selectedRow,
+        col_pos: selectedCol,
       });
       toast.success(`✅ Đã thêm bàn mới: ${data.name}`);
       fetchData();
