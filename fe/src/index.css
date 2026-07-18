@@ -1,0 +1,219 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Playfair Display", serif;
+  --font-sans: "Outfit", system-ui, sans-serif;
+
+  --color-brand-primary: #0ea5e9;
+  /* Sky 500 */
+  --color-brand-primary-hover: #0284c7;
+  /* Sky 600 */
+  --color-brand-secondary: #7dd3fc;
+  /* Sky 300 */
+  --color-brand-dark: #0369a1;
+  /* Sky 700 */
+  --color-brand-dark-light: #f0f9ff;
+  /* Sky 50 */
+  --color-brand-dark-card: #ffffff;
+  --color-brand-accent: #38bdf8;
+  /* Sky 400 */
+
+  --color-status-available: #10b981;
+  --color-status-reserved: #f59e0b;
+  --color-status-occupied: #ef4444;
+  --color-status-cleaning: #3b82f6;
+
+  /* Admin Workstation Theme Colors */
+  --color-admin-primary: #0f62fe;
+  /* Professional Royal Blue */
+  --color-admin-primary-hover: #0043ce;
+  --color-admin-primary-light: #e8f1ff;
+  --color-admin-bg: #f8fafc;
+  --color-admin-card: #ffffff;
+  --color-admin-border: #e2e8f0;
+  --color-admin-text-main: #0f172a;
+  --color-admin-text-sub: #475569;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #f0f9ff;
+  background-image: radial-gradient(circle at top right, rgba(14, 165, 233, 0.1), transparent 400px),
+    radial-gradient(circle at bottom left, rgba(56, 189, 248, 0.1), transparent 400px);
+  background-attachment: fixed;
+  color: #0f172a;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-playfair {
+  font-family: var(--font-display);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a3a;
+  border-radius: 3px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(168, 255, 120, 0.15);
+  }
+
+  50% {
+    box-shadow: 0 0 20px 4px rgba(168, 255, 120, 0.1);
+  }
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease forwards;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #1a1a2a 25%, #252535 50%, #1a1a2a 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.5s infinite;
+  border-radius: 8px;
+}
+
+.toast-enter {
+  animation: toast-in 0.35s ease forwards;
+}
+
+.toast-exit {
+  animation: toast-out 0.35s ease forwards;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Accent glow */
+.accent-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+/* Print styles for cleaner PDF exports */
+@media print {
+
+  aside,
+  header,
+  .print-hide {
+    display: none !important;
+  }
+
+  body,
+  main,
+  #root,
+  .flex-1 {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  .flex-1.overflow-hidden {
+    overflow: visible !important;
+  }
+}
