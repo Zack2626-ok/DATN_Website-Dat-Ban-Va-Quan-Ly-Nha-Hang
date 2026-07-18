@@ -7,6 +7,7 @@ import { releaseTableToCleaning, fetchTables } from "../../../store/tableSlice";
 import { fetchInvoices } from "../../../store/invoiceSlice";
 import { createPaymentApi } from "../../../services/paymentService";
 import { getRestaurantInfo } from "../../../services/restaurantInfoService";
+import { printCashierInvoice } from "../../../utils/printBill";
 import {
   CreditCard,
   DollarSign,
@@ -29,9 +30,11 @@ export const CashierPOS: React.FC = () => {
     return tables
       .filter(
         (t) =>
-          t.status === TABLE_STATUS.OCCUPIED ||
-          t.status === TABLE_STATUS.PENDING_PAYMENT ||
-          t.status === TABLE_STATUS.CLEANING,
+          (t.status === TABLE_STATUS.OCCUPIED ||
+            t.status === TABLE_STATUS.PENDING_PAYMENT ||
+            t.status === TABLE_STATUS.CLEANING) &&
+          t.name !== "Mang về" &&
+          t.name !== "Mang Về"
       )
       .sort((a, b) => {
         const orderMap: Record<string, number> = {
@@ -94,24 +97,30 @@ export const CashierPOS: React.FC = () => {
 
   const activeOrder = useMemo(() => {
     if (!selectedTable) return null;
+    let found = null;
     if (selectedTable.currentOrderId) {
-      const foundById = orders.find((o) => String(o.id) === String(selectedTable.currentOrderId));
-      if (foundById) return foundById;
+      found = orders.find((o) => String(o.id) === String(selectedTable.currentOrderId)) || null;
     }
-    return orders.find((o) => 
-      (String(o.tableId) === String(selectedTable.id) || o.tableName === selectedTable.name) &&
-      ((o.status as string) === "open" || (o.status as string) === "serving" || o.status === ORDER_STATUS.CONFIRMED || o.status === ORDER_STATUS.IN_KITCHEN || o.status === ORDER_STATUS.PENDING_PAYMENT || o.status === ORDER_STATUS.SERVED)
-    ) || null;
+    if (!found) {
+      found = orders.find((o) => 
+        (String(o.tableId) === String(selectedTable.id) || o.tableName === selectedTable.name) &&
+        ((o.status as string) === "open" || (o.status as string) === "serving" || o.status === ORDER_STATUS.CONFIRMED || o.status === ORDER_STATUS.IN_KITCHEN || o.status === ORDER_STATUS.PENDING_PAYMENT || o.status === ORDER_STATUS.SERVED)
+      ) || null;
+    }
+    if (!found) return null;
+    const activeItems = (found.items || []).filter((item: any) => item.status !== "voided" && item.status !== "cancelled");
+    const activeTotal = activeItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * item.quantity, 0);
+    return { ...found, items: activeItems, totalAmount: activeTotal };
   }, [orders, selectedTable]);
 
   // Calculations
-  const subtotal = activeOrder ? activeOrder.totalAmount : 0;
-  const tax = vatEnabled ? subtotal * (vatRate / 100) : 0;
+  const subtotal = activeOrder ? (activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount) : 0;
+  const depositAmount = activeOrder?.depositAmount || 0;
+  const tax = vatEnabled ? Math.round(subtotal * (vatRate / 100)) : 0;
   const tipVal = parseFloat(tipAmount) || 0;
-  let totalAmount = subtotal + tax + tipVal;
+  let totalAmount = Math.max(0, subtotal + tax + tipVal - depositAmount);
   if (roundEnabled) {
-    // Round to nearest 1000 (since UI multiplies by 1000 later)
-    totalAmount = Math.round(totalAmount / 1) ;
+    totalAmount = Math.round(totalAmount / 1);
   }
 
   const perPersonAmount = useMemo(() => {
@@ -130,8 +139,31 @@ export const CashierPOS: React.FC = () => {
         paymentMethod: method,
         status: "completed",
         completedAt: new Date().toISOString(),
-        notes: JSON.stringify({ vatEnabled, roundEnabled }),
+        notes: JSON.stringify({
+          subtotal,
+          vat: tax,
+          vatRate: vatEnabled ? vatRate : 0,
+          depositAmount,
+          finalAmount: amountVnd,
+          vatEnabled,
+          roundEnabled,
+        }),
         discountAmount: 0,
+      });
+
+      // Automatically print cashier invoice upon payment
+      printCashierInvoice({
+        id: activeOrder.id,
+        tableName: selectedTable?.name || "Khách lẻ",
+        customerName: activeOrder.customer_name || activeOrder.guest_name,
+        customerPhone: activeOrder.customer_phone || activeOrder.guest_phone,
+        items: activeOrder.items,
+        subtotal: subtotal,
+        tax: tax,
+        vatRate: vatEnabled ? vatRate : 0,
+        discount: 0,
+        depositAmount: depositAmount,
+        totalAmount: amountVnd
       });
 
       // Optimistically update UI and sync with server

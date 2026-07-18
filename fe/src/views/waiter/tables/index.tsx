@@ -58,6 +58,9 @@ type TableAction = "transfer" | "merge" | "split" | null;
 interface ActiveOrderInfo {
   id: number;
   items: WaiterOrderItem[];
+  subtotal?: number;
+  depositAmount?: number;
+  tax?: number;
   totalAmount: number;
   status: string;
 }
@@ -283,11 +286,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       const latestOrder = orders[0];
       const items = await getOrderItems(latestOrder.id);
       const validItems = items.filter((i) => i.status !== "voided" && i.status !== "cancelled");
-      const total = validItems.reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0);
+      const subtotal = validItems.reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0);
+      const depositAmount = Number((latestOrder as any).depositAmount || (latestOrder as any).deposit_amount || (t as any).deposit_amount || 0);
+      const tax = Number((latestOrder as any).tax !== undefined ? (latestOrder as any).tax : Math.round(subtotal * 0.10));
+      const totalAmount = Number((latestOrder as any).totalAmount !== undefined ? (latestOrder as any).totalAmount : Math.max(0, subtotal + tax - depositAmount));
       setActiveOrder({
         id: latestOrder.id,
         items,
-        totalAmount: total,
+        subtotal,
+        depositAmount,
+        tax,
+        totalAmount,
         status: t.status,
       });
     } catch (err) {
@@ -1008,19 +1017,35 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
                         {/* TỔNG TIỀN VÀ IN PHIẾU TẠM TÍNH — chỉ hiển thị khi có món */}
                         {activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
-                          <div className="rounded-xl bg-gray-900 p-3.5 text-white flex items-center justify-between mt-3">
-                            <div>
-                              <p className="text-[10px] text-gray-400 uppercase font-bold">Tạm tính order:</p>
-                              <p className="text-base font-black text-sky-600">
-                                {(activeOrder?.totalAmount || 0).toLocaleString("vi-VN")} đ
-                              </p>
+                          <div className="rounded-xl bg-gray-900 p-3.5 text-white space-y-2 mt-3">
+                            <div className="flex justify-between items-center text-xs text-gray-300">
+                              <span>Tạm tính (món):</span>
+                              <span className="font-bold">{(activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount || 0).toLocaleString("vi-VN")} đ</span>
                             </div>
-                            <button
-                              onClick={() => setIsPrintBillOpen(true)}
-                              className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-sky-100 transition-colors cursor-pointer shadow-md"
-                            >
-                              <Printer size={14} /> In phiếu tạm tính
-                            </button>
+                            <div className="flex justify-between items-center text-xs text-gray-300">
+                              <span>VAT (10%):</span>
+                              <span className="font-bold">+{(activeOrder.tax !== undefined ? activeOrder.tax : Math.round((activeOrder.subtotal || activeOrder.totalAmount || 0) * 0.10)).toLocaleString("vi-VN")} đ</span>
+                            </div>
+                            {(activeOrder.depositAmount || 0) > 0 && (
+                              <div className="flex justify-between items-center text-xs text-amber-400">
+                                <span>Tiền cọc đặt bàn:</span>
+                                <span className="font-bold">-{(activeOrder.depositAmount || 0).toLocaleString("vi-VN")} đ</span>
+                              </div>
+                            )}
+                            <div className="border-t border-gray-700 pt-2 flex items-center justify-between">
+                              <div>
+                                <p className="text-[10px] text-gray-400 uppercase font-bold">Tổng thanh toán dự kiến:</p>
+                                <p className="text-base font-black text-sky-400">
+                                  {(activeOrder.totalAmount || 0).toLocaleString("vi-VN")} đ
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => setIsPrintBillOpen(true)}
+                                className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-sky-100 transition-colors cursor-pointer shadow-md"
+                              >
+                                <Printer size={14} /> In phiếu tạm tính
+                              </button>
+                            </div>
                           </div>
                         )}
 

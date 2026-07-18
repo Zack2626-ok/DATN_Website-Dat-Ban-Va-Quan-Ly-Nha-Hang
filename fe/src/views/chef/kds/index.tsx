@@ -134,7 +134,7 @@ export const ChefKitchenQueue: React.FC = () => {
     let hasNewDelay = false;
     
     items.forEach((item) => {
-      if (item.status !== "pending" && item.status !== "cooking") return;
+      if (item.status !== "pending" && item.status !== "waiting_kitchen" && item.status !== "cooking") return;
       
       const elapsedMs = now - new Date(item.createdAt).getTime();
       const elapsedMins = Math.floor(elapsedMs / 60000);
@@ -242,7 +242,7 @@ export const ChefKitchenQueue: React.FC = () => {
   // Group kitchen items into 3 columns: Chờ nấu (pending), Đang nấu (cooking), Sẵn sàng (done)
   const columns = useMemo(() => {
     return {
-      pending: filteredItems.filter((item) => item.status === "pending"),
+      pending: filteredItems.filter((item) => item.status === "pending" || item.status === "waiting_kitchen"),
       cooking: filteredItems.filter((item) => item.status === "cooking"),
       done: filteredItems.filter((item) => item.status === "done"),
     };
@@ -261,7 +261,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
     // Group only "pending" and "cooking" items for batch
     filteredItems.forEach((item) => {
-      if (item.status !== "pending" && item.status !== "cooking") return;
+      if (item.status !== "pending" && item.status !== "waiting_kitchen" && item.status !== "cooking") return;
       const key = `${item.name.trim()}_${item.kitchenStation}`;
       if (!groups[key]) {
         groups[key] = {
@@ -854,7 +854,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 <span className="flex items-center gap-1.5 font-semibold">
                                   <span
                                     className={`w-1.5 h-1.5 rounded-full ${
-                                      item.status === "pending" ? "bg-slate-350" : "bg-amber-500"
+                                      item.status === "pending" || item.status === "waiting_kitchen" ? "bg-slate-350" : "bg-amber-500"
                                     }`}
                                   />
                                   Bàn {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}:
@@ -863,12 +863,12 @@ export const ChefKitchenQueue: React.FC = () => {
                                   <span>x{item.quantity}</span>
                                   <span
                                     className={`text-[10px] px-1 rounded font-bold ${
-                                      item.status === "pending"
+                                      item.status === "pending" || item.status === "waiting_kitchen"
                                         ? "bg-slate-100 text-slate-500 border border-slate-200"
                                         : "bg-amber-50 text-amber-600 border border-amber-200"
                                     }`}
                                   >
-                                    {item.status === "pending" ? "Chờ" : "Nấu"}
+                                    {item.status === "pending" || item.status === "waiting_kitchen" ? "Chờ" : "Nấu"}
                                   </span>
                                 </span>
                               </div>

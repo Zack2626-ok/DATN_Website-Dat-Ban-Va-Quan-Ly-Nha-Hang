@@ -20,6 +20,7 @@ import { SplitBillModal } from "./components/SplitBillModal";
 import { MergeBillModal } from "./components/MergeBillModal";
 import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
+import { printCashierInvoice } from "../../../utils/printBill";
 
 export const CashierPaymentPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -60,15 +61,29 @@ export const CashierPaymentPage: React.FC = () => {
     }
   }, [error, dispatch]);
 
+  const activeUnpaidInvoices = useMemo(() => {
+    return invoices
+      .filter((inv) => inv.invoiceStatus === "unpaid" && inv.items && inv.items.length > 0 && inv.totalAmount > 0 && inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName))
+      .sort((a, b) => {
+        const pA = a.status === "pending_payment" ? 1 : 2;
+        const pB = b.status === "pending_payment" ? 1 : 2;
+        if (pA !== pB) return pA - pB;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  }, [invoices]);
+
   const filteredInvoices = useMemo(() => {
     let result = [...invoices];
+    // Nếu không có món nào thì không hiển thị trong thu ngân theo yêu cầu người dùng
+    result = result.filter((inv) => inv.items && inv.items.length > 0);
     if (statusFilter !== "all") {
       result = result.filter((inv) => inv.invoiceStatus === statusFilter);
     }
     if (statusFilter === "unpaid") {
-      // Loại bỏ các bàn 0 món (chưa gọi gì) hoặc tổng tiền = 0 khỏi danh sách chờ thanh toán
-      result = result.filter((inv) => inv.items && inv.items.length > 0 && inv.totalAmount > 0);
+      result = result.filter((inv) => inv.totalAmount > 0);
     }
+    // Loại bỏ "Mang về" theo yêu cầu người dùng
+    result = result.filter((inv) => inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -78,8 +93,35 @@ export const CashierPaymentPage: React.FC = () => {
           (inv.customerName || "").toLowerCase().includes(q),
       );
     }
+
+    // Ưu tiên hiển thị theo yêu cầu người dùng:
+    // 1. Chờ thanh toán (pending_payment) - ưu tiên cao nhất
+    // 2. Đang phục vụ / Chưa thanh toán (unpaid - open/serving)
+    // 3. Đã thanh toán (paid)
+    // 4. Đã hủy (cancelled)
+    result.sort((a, b) => {
+      const getPriority = (inv: typeof a) => {
+        if (inv.status === "pending_payment") return 1;
+        if (inv.invoiceStatus === "unpaid") return 2;
+        if (inv.invoiceStatus === "paid") return 3;
+        return 4;
+      };
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
     return result;
   }, [invoices, statusFilter, searchQuery]);
+
+  useEffect(() => {
+    if (filteredInvoices.length > 0) {
+      if (!selectedInvoiceId || !filteredInvoices.some((i) => i.id === selectedInvoiceId)) {
+        dispatch(selectInvoice(filteredInvoices[0].id));
+      }
+    }
+  }, [filteredInvoices, selectedInvoiceId, dispatch]);
 
   const selectedInvoice = useMemo(
     () => invoices.find((inv) => inv.id === selectedInvoiceId) || null,
@@ -112,6 +154,7 @@ export const CashierPaymentPage: React.FC = () => {
         ).unwrap();
         setPaymentOpen(false);
         showSuccess("Thanh toán thành công!");
+        printCashierInvoice(selectedInvoice, restaurantInfo?.name);
         dispatch(fetchInvoices());
         dispatch(fetchTables());
         dispatch(fetchOrders());
@@ -119,7 +162,7 @@ export const CashierPaymentPage: React.FC = () => {
         // error shown via Redux state
       }
     },
-    [dispatch, selectedInvoice, showSuccess],
+    [dispatch, selectedInvoice, showSuccess, restaurantInfo],
   );
 
   const handleCancel = useCallback(async () => {
@@ -186,21 +229,8 @@ export const CashierPaymentPage: React.FC = () => {
 
   const handlePrint = useCallback(() => {
     if (!selectedInvoice) return;
-    const printContent = `
-      <h2>Hóa đơn #${selectedInvoice.id.slice(-8).toUpperCase()}</h2>
-      <p>Bàn: ${selectedInvoice.tableName || "Mang về"}</p>
-      <p>Khách: ${selectedInvoice.customerName || "Khách lẻ"}</p>
-      <hr/>
-      ${selectedInvoice.items.map((item) => `<p>${item.quantity}x ${item.name} - ${Number(item.price * item.quantity).toLocaleString("vi-VN")} vnđ</p>`).join("")}
-      <hr/>
-      <p><strong>Tổng: ${Number(selectedInvoice.totalAmount).toLocaleString("vi-VN")} vnđ</strong></p>
-    `;
-    const win = window.open("", "_blank");
-    if (win) {
-      win.document.write(printContent);
-      win.print();
-    }
-  }, [selectedInvoice]);
+    printCashierInvoice(selectedInvoice, restaurantInfo?.name);
+  }, [selectedInvoice, restaurantInfo]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] gap-4">
@@ -241,14 +271,12 @@ export const CashierPaymentPage: React.FC = () => {
           <p className="text-[11px] text-slate-500">Chọn nhanh bàn bên dưới để xem hoặc thanh toán bill</p>
         </div>
         <div className="flex flex-wrap gap-2 overflow-x-auto py-1">
-          {invoices.filter(inv => inv.invoiceStatus === "unpaid" && inv.items && inv.items.length > 0 && inv.totalAmount > 0).length === 0 ? (
+          {activeUnpaidInvoices.length === 0 ? (
             <span className="text-xs text-slate-400 font-medium px-2 py-1">Không có hóa đơn đang mở</span>
           ) : (
-            invoices
-              .filter(inv => inv.invoiceStatus === "unpaid" && inv.items && inv.items.length > 0 && inv.totalAmount > 0)
-              .map((inv) => {
-                const isSelected = selectedInvoiceId === inv.id;
-                const isPendingPayment = inv.status === "pending_payment";
+            activeUnpaidInvoices.map((inv) => {
+              const isSelected = selectedInvoiceId === inv.id;
+              const isPendingPayment = inv.status === "pending_payment";
                 return (
                   <button
                     key={inv.id}

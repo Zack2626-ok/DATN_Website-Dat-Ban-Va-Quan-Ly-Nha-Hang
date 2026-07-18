@@ -33,36 +33,33 @@ const PAYMENT_METHODS = [
 export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConfirm, loading }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "wallet">("cash");
   const [vatRate, setVatRate] = useState(10);
-  const [serviceFeeRate, setServiceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
-  const [tipAmount, setTipAmount] = useState(0);
 
   useEffect(() => {
     getRestaurantInfo()
       .then((info) => {
         setVatRate(info.tax_rate ?? 10);
-        setServiceFeeRate(info.service_fee_rate ?? 0);
       })
       .catch(() => {});
   }, []);
 
   const breakdown = useMemo(() => {
-    const subtotal = invoice.totalAmount;
-    const vat = subtotal * (vatRate / 100);
-    const serviceFee = subtotal * (serviceFeeRate / 100);
-    const finalAmount = subtotal + vat + serviceFee - voucherAmount + tipAmount;
-    return { subtotal, vat, serviceFee, finalAmount };
-  }, [invoice.totalAmount, vatRate, serviceFeeRate, voucherAmount, tipAmount]);
+    const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
+    const vat = Math.round(subtotal * (vatRate / 100));
+    const depositAmount = invoice.depositAmount || 0;
+    const finalAmount = Math.max(0, subtotal + vat - depositAmount - voucherAmount);
+    return { subtotal, vat, depositAmount, finalAmount };
+  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, voucherAmount]);
 
   const handleConfirm = () => {
     onConfirm({
       paymentMethod,
       vatRate,
-      serviceFeeRate,
+      serviceFeeRate: 0,
       voucherCode: voucherCode || undefined,
       voucherAmount: voucherAmount || undefined,
-      tipAmount: tipAmount || undefined,
+      tipAmount: 0,
     });
   };
 
@@ -102,26 +99,6 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
             </div>
           </div>
 
-          {/* Service Fee */}
-          <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100">
-            <span className="text-slate-500 flex items-center gap-1.5">
-              <BadgePercent size={12} className="text-teal-500" />
-              Phí dịch vụ
-            </span>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={serviceFeeRate}
-                onChange={(e) => setServiceFeeRate(Number(e.target.value) || 0)}
-                className="w-14 text-right text-xs border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
-              />
-              <span className="text-[10px] text-slate-500">%</span>
-              <span className="font-bold text-slate-900 min-w-[80px] text-right">{formatVnd(breakdown.serviceFee)} vnđ</span>
-            </div>
-          </div>
-
           {/* Voucher */}
           <div className="space-y-2 py-2 border-b border-slate-100">
             <span className="text-xs text-slate-500 flex items-center gap-1.5">
@@ -148,24 +125,12 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
             </div>
           </div>
 
-          {/* Tip */}
-          <div className="flex justify-between items-center text-xs py-2">
-            <span className="text-slate-500 flex items-center gap-1.5">
-              <Gift size={12} className="text-yellow-500" />
-              Tip
-            </span>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                value={tipAmount || ""}
-                onChange={(e) => setTipAmount(Number(e.target.value) || 0)}
-                placeholder="0"
-                className="w-20 text-right text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:outline-none focus:border-blue-400"
-              />
-              <span className="text-[10px] text-slate-500">.000đ</span>
+          {Boolean(breakdown.depositAmount && breakdown.depositAmount > 0) && (
+            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100 text-rose-600 font-medium">
+              <span>Tiền cọc đặt bàn</span>
+              <span className="font-semibold">-{formatVnd(breakdown.depositAmount!)} vnđ</span>
             </div>
-          </div>
+          )}
 
           {/* Final total */}
           <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex justify-between items-center">
