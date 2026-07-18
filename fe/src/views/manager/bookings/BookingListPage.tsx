@@ -36,6 +36,7 @@ import { CancelledBookings } from "./components/CancelledBookings";
  */
 export const BookingListPage: React.FC = () => {
   const { user } = useAppSelector((state: any) => state.auth);
+  console.log("LOGGED IN USER PROFILE:", user);
   const [activeMainTab, setActiveMainTab] = useState<"active" | "cancelled">("active");
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -192,32 +193,31 @@ export const BookingListPage: React.FC = () => {
       </div>
 
       {/* ── Role-based Main Tabs (Manager/Admin Only) ── */}
-      {(user?.role === "manager" || user?.role === "admin") && (
-        <div className="flex border-b border-admin-border gap-6 mb-2">
-          <button
-            onClick={() => setActiveMainTab("active")}
-            className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-              activeMainTab === "active" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
-            }`}
-          >
-            Lịch đặt hiện tại
-            {activeMainTab === "active" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveMainTab("cancelled")}
-            className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-              activeMainTab === "cancelled" ? "text-[#FF5A5F]" : "text-admin-text-sub hover:text-[#FF5A5F]"
-            }`}
-          >
-            Lịch sử khách hủy bàn
-            {activeMainTab === "cancelled" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF5A5F] rounded-full" />
-            )}
-          </button>
-        </div>
-      )}
+      {/* ── Main Tabs (Hiện tại vs Đã hủy) ── */}
+      <div className="flex border-b border-admin-border gap-6 mb-2">
+        <button
+          onClick={() => setActiveMainTab("active")}
+          className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
+            activeMainTab === "active" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
+          }`}
+        >
+          Lịch đặt hiện tại
+          {activeMainTab === "active" && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveMainTab("cancelled")}
+          className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
+            activeMainTab === "cancelled" ? "text-[#FF5A5F]" : "text-admin-text-sub hover:text-[#FF5A5F]"
+          }`}
+        >
+          Lịch sử khách hủy bàn
+          {activeMainTab === "cancelled" && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF5A5F] rounded-full" />
+          )}
+        </button>
+      </div>
 
       {activeMainTab === "cancelled" ? (
         <CancelledBookings />
