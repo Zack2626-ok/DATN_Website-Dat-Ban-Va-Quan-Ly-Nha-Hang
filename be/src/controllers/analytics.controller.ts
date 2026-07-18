@@ -73,11 +73,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     );
     const deliveryRevenue = Number(deliveryRevRow[0].val);
 
-    const eventRevRow = await db.query(
-      `SELECT COALESCE(SUM(total_amount), 0) AS val FROM event_contracts WHERE status IN ('confirmed', 'completed') AND event_date BETWEEN DATE(?) AND DATE(?)`,
-      [startStr, endStr]
-    );
-    const eventRevenue = Number(eventRevRow[0].val);
+    const eventRevenue = 0;
 
     const totalOrdersRow = await db.query(
       `SELECT COUNT(*) AS val FROM orders WHERE status = 'completed' AND created_at BETWEEN ? AND ?`,
@@ -242,15 +238,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       }
     });
 
-    // Add event contract revenues into bank_transfer stats
-    const eventCountRow = await db.query(
-      `SELECT COUNT(*) AS count, SUM(total_amount) AS total 
-       FROM event_contracts 
-       WHERE status IN ('confirmed', 'completed') AND event_date BETWEEN DATE(?) AND DATE(?)`,
-      [startStr, endStr]
-    );
-    payStatsMap.bank_transfer.count += Number(eventCountRow[0].count);
-    payStatsMap.bank_transfer.total += Number(eventCountRow[0].total);
+    // Event contracts removed
 
     const paymentGrandTotal = Object.values(payStatsMap).reduce((sum, s) => sum + s.total, 0) || 1;
     
@@ -275,11 +263,18 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
 
     // 6) Cash Flow Summary
     const expenseRows = await db.query(
-      `SELECT COALESCE(i.category, 'Chưa phân loại') as category, SUM(si.quantity * si.price) AS amount
+      `SELECT 
+         CASE 
+           WHEN i.name LIKE '%bò%' OR i.name LIKE '%gà%' OR i.name LIKE '%thịt%' THEN 'Thịt'
+           WHEN i.name LIKE '%tôm%' OR i.name LIKE '%cá%' OR i.name LIKE '%hải sản%' THEN 'Hải sản'
+           WHEN i.name LIKE '%rau%' OR i.name LIKE '%nấm%' OR i.name LIKE '%trái cây%' THEN 'Rau củ & Trái cây'
+           ELSE 'Nguyên liệu khác'
+         END AS category,
+         SUM(si.quantity * si.unit_cost) AS amount
        FROM stock_in si
        JOIN ingredients i ON si.ingredient_id = i.id
        WHERE si.created_at BETWEEN ? AND ?
-       GROUP BY i.category
+       GROUP BY category
        ORDER BY amount DESC`,
       [startStr, endStr]
     );
