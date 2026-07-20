@@ -229,6 +229,79 @@ export const CashierPaymentPage: React.FC = () => {
 
   const handlePrint = useCallback(() => {
     if (!selectedInvoice) return;
+    const rName = restaurantInfo?.name || "ResManager Bistro";
+    const rAddr = restaurantInfo?.address || "";
+    const rHotline = restaurantInfo?.hotline || "";
+    const bankCode = restaurantInfo?.bank_code || "";
+    const bankAcc = restaurantInfo?.bank_account || "";
+    const bankAccName = restaurantInfo?.bank_account_name || "";
+    const bankName = restaurantInfo?.bank_name || "";
+    const amountVnd = Math.round(selectedInvoice.totalAmount * 1000);
+    const desc = `Thanh toan HD${selectedInvoice.id.slice(-6)}`;
+    const vietqrUrl = bankCode && bankAcc
+      ? `https://img.vietqr.io/image/${bankCode}-${bankAcc}-qr_only.png?amount=${amountVnd}&addInfo=${encodeURIComponent(desc)}`
+      : "";
+
+    const printContent = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Hóa đơn</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; margin: 0 auto; padding: 5mm; color: #000; }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .header { border-bottom: 1px dashed #000; padding-bottom: 3mm; margin-bottom: 3mm; }
+  .header h1 { font-size: 16px; margin-bottom: 2px; }
+  .header p { font-size: 10px; color: #555; }
+  .row { display: flex; justify-content: space-between; margin: 1mm 0; }
+  .row .label { color: #555; }
+  .divider { border-top: 1px dashed #000; margin: 2mm 0; }
+  .item-row { display: flex; justify-content: space-between; margin: 1mm 0; }
+  .item-name { flex: 1; }
+  .item-qty { width: 20px; text-align: center; }
+  .item-price { width: 80px; text-align: right; }
+  .total-row { display: flex; justify-content: space-between; margin: 1mm 0; font-size: 14px; }
+  .qr-section { text-align: center; margin-top: 3mm; }
+  .qr-section img { width: 120px; height: 120px; }
+  .qr-section p { font-size: 9px; margin-top: 1mm; }
+  .footer { text-align: center; margin-top: 4mm; border-top: 1px dashed #000; padding-top: 3mm; }
+  .footer p { font-size: 10px; color: #555; }
+  @media print { body { width: 80mm; } }
+</style></head><body>
+  <div class="header center">
+    <h1>${rName}</h1>
+    <p>${rAddr}</p>
+    <p>Hotline: ${rHotline}</p>
+  </div>
+  <div class="center bold" style="font-size:14px;margin-bottom:2mm">HÓA ĐƠN THANH TOÁN</div>
+  <div class="row"><span class="label">Số HĐ:</span><span>#${selectedInvoice.id.slice(-8).toUpperCase()}</span></div>
+  <div class="row"><span class="label">Bàn:</span><span>${selectedInvoice.tableName || "Mang về"}</span></div>
+  <div class="row"><span class="label">Khách:</span><span>${selectedInvoice.customerName || "Khách lẻ"}</span></div>
+  <div class="row"><span class="label">Thời gian:</span><span>${new Date(selectedInvoice.createdAt).toLocaleString("vi-VN")}</span></div>
+  <div class="divider"></div>
+  <div class="item-row bold"><span class="item-qty">SL</span><span class="item-name">Món</span><span class="item-price">Thành tiền</span></div>
+  ${selectedInvoice.items.map((item) => `<div class="item-row"><span class="item-qty">${item.quantity}</span><span class="item-name">${item.name}</span><span class="item-price">${(item.price * item.quantity * 1000).toLocaleString("vi-VN")}</span></div>`).join("")}
+  <div class="divider"></div>
+  <div class="row"><span>Tạm tính:</span><span>${amountVnd.toLocaleString("vi-VN")} vnđ</span></div>
+  <div class="divider"></div>
+  <div class="total-row bold"><span>TỔNG CỘNG:</span><span>${amountVnd.toLocaleString("vi-VN")} vnđ</span></div>
+  ${vietqrUrl ? `<div class="qr-section">
+    <p class="bold">Quét mã VietQR để thanh toán</p>
+    <img src="${vietqrUrl}" alt="VietQR" />
+    <p>${bankName}</p>
+    <p>STK: ${bankAcc} - ${bankAccName}</p>
+    <p>Nội dung: ${desc}</p>
+  </div>` : ""}
+  <div class="footer">
+    <p>Cảm ơn quý khách!</p>
+    <p>Hẹn gặp lại tại ${rName}</p>
+  </div>
+</body></html>`;
+    const win = window.open("", "_blank", "width=400,height=600");
+    if (win) {
+      win.document.write(printContent);
+      win.document.close();
+      setTimeout(() => win.print(), 500);
+    }
     printCashierInvoice(selectedInvoice, restaurantInfo?.name);
   }, [selectedInvoice, restaurantInfo]);
 
