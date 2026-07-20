@@ -173,3 +173,15 @@ export const getMyEventContracts = async (): Promise<any[]> => {
   return response.data.data || [];
 };
 
+export const createQROrder = async (data: {
+  table_id: number;
+  items: { menu_item_id: number; quantity: number; unit_price: number }[];
+  guest_name?: string;
+  guest_phone?: string;
+  guest_count?: number;
+  note?: string;
+}): Promise<any> => {
+  const response = await customerApi.post("/v1/waiter/qr-order", data);
+  return response.data.data;
+};
+

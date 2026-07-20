@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   FileText,
   User,
@@ -12,7 +12,9 @@ import {
   Printer,
   Banknote,
   ArrowRightLeft,
+  QrCode,
 } from "lucide-react";
+import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
 
 interface Props {
@@ -41,6 +43,11 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
   onPrint,
   loading,
 }) => {
+  const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
+
+  useEffect(() => {
+    getRestaurantInfo().then(setResInfo).catch(() => {});
+  }, []);
   if (!invoice) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-slate-200 text-slate-400 gap-3">
@@ -128,6 +135,22 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
             <span className="flex items-center gap-1.5">
               <Users size={12} className="text-slate-400" /> {invoice.guestCount} khách
             </span>
+          </div>
+        )}
+
+        {/* VietQR Code */}
+        {resInfo?.bank_code && resInfo?.bank_account && (
+          <div className="mt-3 flex flex-col items-center gap-1.5 bg-blue-50/50 border border-blue-200 rounded-xl p-3">
+            <div className="flex items-center gap-1 text-[10px] font-bold text-blue-700">
+              <QrCode size={12} />
+              VietQR - Chuyển khoản ngân hàng
+            </div>
+            <img
+              src={`https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${Math.round(invoice.totalAmount * 1000)}&addInfo=${encodeURIComponent(`Thanh toan HD${invoice.id.slice(-6)}`)}`}
+              alt="VietQR"
+              className="w-[120px] h-[120px] rounded-lg border border-blue-200 bg-white"
+            />
+            <span className="text-[9px] text-slate-500">{resInfo.bank_account} - {resInfo.bank_account_name}</span>
           </div>
         )}
       </div>

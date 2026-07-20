@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, ShoppingBag, Plus, Minus, Trash2 } from "lucide-react";
+import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getAvailableTables, createBooking, Customer, getPublicPromotions, getPublicMenu } from "../../services/customerService";
+import { getAvailableTables, createBooking, Customer, getPublicPromotions } from "../../services/customerService";
 
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -26,10 +26,7 @@ export const BookingPage: React.FC = () => {
   const promoParam = searchParams.get("promo");
 
   const [promotionsList, setPromotionsList] = useState<any[]>([]);
-  const [menuItemsList, setMenuItemsList] = useState<any[]>([]);
   const [selectedPromoId, setSelectedPromoId] = useState<string>("");
-  const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: number]: { name: string; price: number; quantity: number } }>({});
-  const [showMenuModal, setShowMenuModal] = useState(false);
 
   // Fetch promotions and menu items
   useEffect(() => {
@@ -41,12 +38,6 @@ export const BookingPage: React.FC = () => {
         }
       })
       .catch((e) => console.error("Error loading promotions in booking page:", e));
-
-    getPublicMenu()
-      .then((data) => {
-        setMenuItemsList(data.items || []);
-      })
-      .catch((e) => console.error("Error loading menu in booking page:", e));
   }, [promoParam]);
 
   // Reset filter when tables change
@@ -170,16 +161,6 @@ export const BookingPage: React.FC = () => {
         customerId = JSON.parse(infoStr).id || null;
       }
 
-      // Tổng hợp món ăn đặt trước chèn vào ghi chú
-      const orderedItems = Object.values(preOrderedDishes).filter((d) => d.quantity > 0);
-      let finalGuestNote = form.note.trim();
-      if (orderedItems.length > 0) {
-        const foodSummary = orderedItems.map((d) => `${d.quantity}x ${d.name}`).join(", ");
-        finalGuestNote = finalGuestNote 
-          ? `${finalGuestNote}\n[Món đặt trước: ${foodSummary}]`
-          : `[Món đặt trước: ${foodSummary}]`;
-      }
-
       const bookingResult = await createBooking({
         table_id: Number(form.tableId),
         customer_id: customerId,
@@ -189,7 +170,7 @@ export const BookingPage: React.FC = () => {
         party_size: Number(form.guests),
         start_time: startTimeStr,
         end_time: endTimeStr,
-        guest_note: finalGuestNote,
+        guest_note: form.note.trim(),
       });
 
       setConfirmationCode(bookingResult.confirmation_code);
@@ -490,47 +471,6 @@ export const BookingPage: React.FC = () => {
                   </select>
                 </div>
 
-                {/* Đặt trước món ăn */}
-                <div className="sm:col-span-2 border-t border-gray-100 pt-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <ShoppingBag size={14} className="text-blue-600" /> Đặt trước món ăn (Tùy chọn)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowMenuModal(true)}
-                    className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-700 px-4 py-2.5 text-xs font-bold transition-all"
-                  >
-                    <Plus size={14} /> Thêm món ăn vào đơn đặt bàn
-                  </button>
-
-                  {/* Hiển thị danh sách món đã chọn */}
-                  {Object.keys(preOrderedDishes).length > 0 && (
-                    <div className="mt-4 space-y-2 max-h-48 overflow-y-auto bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                      {Object.entries(preOrderedDishes).map(([idStr, d]) => (
-                        <div key={idStr} className="flex justify-between items-center text-xs text-gray-700">
-                          <span className="font-semibold">{d.name}</span>
-                          <div className="flex items-center gap-3">
-                            <span className="text-gray-500">{Number(d.price).toLocaleString("vi-VN")}đ x {d.quantity}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreOrderedDishes((prev) => {
-                                  const copy = { ...prev };
-                                  delete copy[Number(idStr)];
-                                  return copy;
-                                });
-                              }}
-                              className="text-red-500 hover:text-red-750 transition-colors"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 {/* Ghi chú */}
                 <div className="sm:col-span-2 border-t border-gray-100 pt-6">
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ghi chú (Tùy chọn)</label>
@@ -603,117 +543,6 @@ export const BookingPage: React.FC = () => {
           </form>
         )}
       </main>
-
-      {/* Modal chọn món ăn đặt trước */}
-      {showMenuModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="text-base font-bold text-gray-900 font-display flex items-center gap-2">
-                <UtensilsCrossed size={16} className="text-blue-600" /> Thực đơn nhà hàng
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowMenuModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-sm font-semibold"
-              >
-                Đóng
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {menuItemsList.length === 0 ? (
-                <p className="text-gray-500 text-xs text-center py-6">Không có món ăn nào khả dụng.</p>
-              ) : (
-                menuItemsList.map((item) => {
-                  const qty = preOrderedDishes[item.id]?.quantity || 0;
-                  return (
-                    <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                      <div>
-                        <h4 className="text-sm font-semibold text-gray-800">{item.name}</h4>
-                        <p className="text-xs text-gray-500">{Number(item.price).toLocaleString("vi-VN")}đ</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {qty > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreOrderedDishes((prev) => {
-                                  const current = prev[item.id];
-                                  if (current.quantity <= 1) {
-                                    const copy = { ...prev };
-                                    delete copy[item.id];
-                                    return copy;
-                                  }
-                                  return {
-                                    ...prev,
-                                    [item.id]: { ...current, quantity: current.quantity - 1 },
-                                  };
-                                });
-                              }}
-                              className="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                            >
-                              <Minus size={12} />
-                            </button>
-                            <span className="text-sm font-bold w-6 text-center">{qty}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreOrderedDishes((prev) => {
-                                  const current = prev[item.id];
-                                  return {
-                                    ...prev,
-                                    [item.id]: { ...current, quantity: current.quantity + 1 },
-                                  };
-                                });
-                              }}
-                              className="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                            >
-                              <Plus size={12} />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPreOrderedDishes((prev) => ({
-                                ...prev,
-                                [item.id]: { name: item.name, price: item.price, quantity: 1 },
-                              }));
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-50 px-3 py-1.5 text-xs font-bold transition-all"
-                          >
-                            <Plus size={12} /> Thêm
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div className="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50/50 rounded-b-3xl">
-              <div>
-                <span className="text-xs text-gray-500 block">Tổng cộng đặt trước</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {Object.values(preOrderedDishes)
-                    .reduce((sum, d) => sum + d.price * d.quantity, 0)
-                    .toLocaleString("vi-VN")}đ
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowMenuModal(false)}
-                className="px-5 py-2.5 bg-blue-700 text-white rounded-xl text-xs font-bold hover:bg-blue-800 transition-colors"
-              >
-                Xác nhận
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -207,3 +207,50 @@ export const markItemServedHandler = async (req: Request, res: Response): Promis
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+// QR Order - khách tự đặt món qua QR (không cần auth)
+export const createQROrderHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { table_id, items, guest_name, guest_phone, guest_count, note } = req.body;
+
+    if (!table_id || !items || !Array.isArray(items) || items.length === 0) {
+      sendError(res, "table_id và items là bắt buộc", 400);
+      return;
+    }
+
+    const order = await db.createResmanagerOrder({
+      table_id: Number(table_id),
+      customer_id: null,
+      created_by: 1,
+      order_type: "dine_in",
+      note: note || "QR Order",
+      guest_name: guest_name || null,
+      guest_phone: guest_phone || null,
+      guest_count: guest_count ? Number(guest_count) : null,
+    });
+
+    if (table_id) {
+      await db.updateResmanagerTableStatus(Number(table_id), "serving");
+    }
+
+    for (const item of items) {
+      const orderItem = await db.addResmanagerOrderItem({
+        order_id: order.id,
+        menu_item_id: Number(item.menu_item_id),
+        quantity: Number(item.quantity),
+        unit_price: Number(item.unit_price),
+        seat_number: null,
+        course_number: 1,
+        kitchen_note: undefined,
+      });
+
+      await db.createNewDishNotification(order.id, item.menu_item_id, Number(item.quantity));
+
+      req.app.get("io")?.emit("order:new_item", orderItem);
+    }
+
+    sendSuccess(res, order, "Tạo order QR thành công", 201);
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
