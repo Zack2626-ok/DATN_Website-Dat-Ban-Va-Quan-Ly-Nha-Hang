@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { isValidPhoneNumber, getPhoneNumberValidationError } from "../utils/validation";
+import { sendBookingNotification } from "../services/telegram.service";
+import { sendBookingConfirmationEmail } from "../services/email.service";
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -77,6 +79,9 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       note,
       pre_ordered_items: pre_ordered_items || items,
     });
+
+    sendBookingNotification(booking);
+    sendBookingConfirmationEmail(booking).catch(() => {});
 
     sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
   } catch (error) {
