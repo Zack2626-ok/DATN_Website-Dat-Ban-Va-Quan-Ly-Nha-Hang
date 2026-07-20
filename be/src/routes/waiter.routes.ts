@@ -11,6 +11,7 @@ import {
   holdOrderItemsHandler,
   getWaiterNotificationsHandler,
   markItemServedHandler,
+  createQROrderHandler,
 } from "../controllers/waiter.controller";
 
 const router = Router();
@@ -31,5 +32,8 @@ router.patch("/orders/:orderId/items/:itemId/void", voidOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/served", markItemServedHandler);
 router.post("/orders/:orderId/send-to-kitchen", sendItemsToKitchenHandler);
 router.post("/orders/:orderId/hold-items", holdOrderItemsHandler);
+
+// QR Order - khách tự đặt qua QR
+router.post("/qr-order", createQROrderHandler);
 
 export default router;

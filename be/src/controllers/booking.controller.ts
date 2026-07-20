@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
+import { sendBookingNotification } from "../services/telegram.service";
+import { sendBookingConfirmationEmail } from "../services/email.service";
 import { isValidPhoneNumber, getPhoneNumberValidationError } from "../utils/validation";
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
@@ -50,9 +52,16 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
 
-    const bookingStart = new Date(start_time);
+    // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
+    // Chuỗi dạng "2026-07-16 21:00:00" nếu parse thẳng sẽ bị Node.js hiểu là UTC → sai 7 tiếng
+    const normalizedStart = start_time.trim().replace(' ', 'T');
+    const bookingStart = new Date(normalizedStart.includes('+') || normalizedStart.endsWith('Z')
+      ? normalizedStart
+      : normalizedStart + '+07:00'
+    );
     const now = new Date();
-    if (bookingStart < now) {
+    // Cho phép dung sai 60 phút phòng trường hợp chọn slot sắp qua và điền form lâu
+    if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
       return;
     }
@@ -70,6 +79,9 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       note,
       pre_ordered_items: pre_ordered_items || items,
     });
+
+    sendBookingNotification(booking);
+    sendBookingConfirmationEmail(booking).catch(() => {});
 
     sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
   } catch (error) {

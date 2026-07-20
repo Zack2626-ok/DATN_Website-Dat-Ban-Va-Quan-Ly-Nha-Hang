@@ -7,7 +7,13 @@ import {
   deleteUserHandler,
 } from "../controllers/user.controller";
 
+import { authStaff, checkRole } from "../middlewares/authMiddleware";
+
 const router = Router();
+
+// Secure all user management operations to admin and manager roles
+router.use(authStaff);
+router.use(checkRole(["admin", "manager"]));
 
 router.get("/roles", getRolesHandler);
 router.get("/", getUsersHandler);
