@@ -36,6 +36,7 @@ const PAYMENT_METHODS = [
 export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConfirm, loading }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "wallet">("cash");
   const [vatRate, setVatRate] = useState(10);
+  const [serviceFeeRate, setServiceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount, setTipAmount] = useState(0);
@@ -55,10 +56,11 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   const breakdown = useMemo(() => {
     const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
     const vat = Math.round(subtotal * (vatRate / 100));
+    const serviceFee = Math.round(subtotal * (serviceFeeRate / 100));
     const depositAmount = invoice.depositAmount || 0;
-    const finalAmount = Math.max(0, subtotal + vat - depositAmount - voucherAmount);
-    return { subtotal, vat, depositAmount, finalAmount };
-  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, voucherAmount]);
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee + tipAmount - depositAmount - voucherAmount);
+    return { subtotal, vat, serviceFee, depositAmount, finalAmount };
+  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, serviceFeeRate, tipAmount, voucherAmount]);
 
   const vietqrUrl = useMemo(() => {
     if (!resInfo?.bank_code || !resInfo?.bank_account) return "";
@@ -183,9 +185,8 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 placeholder="0"
                 className="w-16 text-right text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
               />
-              <span className="text-[10px] text-slate-400">.000đ</span>
             </div>
-          )}
+          </div>
 
           {/* Final total */}
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">
