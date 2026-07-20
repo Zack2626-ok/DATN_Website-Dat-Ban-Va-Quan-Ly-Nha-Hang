@@ -43,6 +43,7 @@ export const createBooking = async (data: {
   promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
+  guest_email?: string;
   party_size: number;
   start_time: string;
   end_time: string;

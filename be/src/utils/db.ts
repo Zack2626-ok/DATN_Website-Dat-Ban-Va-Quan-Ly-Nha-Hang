@@ -412,7 +412,7 @@ const runSchemaMigrations = async (): Promise<void> => {
         )
     `);
 
-    // Migration: Thêm các cột cọc tiền vào bookings nếu chưa có
+    // Migration: Thêm các cột cọc tiền và guest_email vào bookings nếu chưa có
     const bookingCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
@@ -425,6 +425,18 @@ const runSchemaMigrations = async (): Promise<void> => {
         ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'
       `);
       console.log("✅ Migration: added bookings deposit columns");
+    }
+
+    const bookingEmailCol = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'guest_email'`,
+    );
+    if (bookingEmailCol.length === 0) {
+      await query(`
+        ALTER TABLE bookings 
+        ADD COLUMN guest_email VARCHAR(150) DEFAULT NULL AFTER guest_phone
+      `);
+      console.log("✅ Migration: added guest_email column to bookings table");
     }
 
     // Migration: Tạo bảng booking_menu_items để lưu món đặt trước nếu chưa có
@@ -1562,17 +1574,18 @@ export const createBooking = async (data: any): Promise<any> => {
 
   const result = await query(`
     INSERT INTO bookings (
-      table_id, customer_id, promotion_id, guest_name, guest_phone, 
+      table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email,
       party_size, start_time, end_time, confirmation_code, status, 
       guest_note, note, pre_order_total, deposit_amount, deposit_status
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
   `, [
     data.table_id,
     validCustomerId,
     validPromotionId,
     data.guest_name,
     data.guest_phone,
+    data.guest_email || data.email || null,
     data.party_size,
     data.start_time,
     data.end_time,

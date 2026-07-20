@@ -28,9 +28,11 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
   }
 };
 
+import { sendBookingConfirmationEmail } from "../utils/email";
+
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
+    const { table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email, email, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
       req.body;
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
@@ -51,18 +53,18 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     }
 
     // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
-    // Chuỗi dạng "2026-07-16 21:00:00" nếu parse thẳng sẽ bị Node.js hiểu là UTC → sai 7 tiếng
     const normalizedStart = start_time.trim().replace(' ', 'T');
     const bookingStart = new Date(normalizedStart.includes('+') || normalizedStart.endsWith('Z')
       ? normalizedStart
       : normalizedStart + '+07:00'
     );
     const now = new Date();
-    // Cho phép dung sai 60 phút phòng trường hợp chọn slot sắp qua và điền form lâu
     if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
       return;
     }
+
+    const targetEmail = (guest_email || email || "").trim();
 
     const booking = await db.createBooking({
       table_id: Number(table_id),
@@ -70,6 +72,7 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       promotion_id: promotion_id ? Number(promotion_id) : null,
       guest_name,
       guest_phone,
+      guest_email: targetEmail || null,
       party_size: Number(party_size),
       start_time,
       end_time,
@@ -78,7 +81,20 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       pre_ordered_items: pre_ordered_items || items,
     });
 
-    sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
+    let emailPreviewUrl = null;
+    try {
+      const fullBooking = await db.getBookingById(booking.id);
+      if (fullBooking) {
+        emailPreviewUrl = await sendBookingConfirmationEmail({
+          ...fullBooking,
+          guest_email: targetEmail || fullBooking.guest_email || undefined,
+        });
+      }
+    } catch (emailErr) {
+      console.error("Lỗi khi gửi email xác nhận đặt bàn:", emailErr);
+    }
+
+    sendSuccess(res, { ...booking, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
   } catch (error) {
     const msg = (error as Error).message;
     sendError(res, msg, msg.includes("trùng") ? 400 : 500);

@@ -265,6 +265,7 @@ export const BookingPage: React.FC = () => {
         promotion_id: selectedPromoId ? Number(selectedPromoId) : null,
         guest_name: form.name,
         guest_phone: form.phone,
+        guest_email: form.email.trim(),
         party_size: Number(form.guests),
         start_time: startTimeStr,
         end_time: endTimeStr,
