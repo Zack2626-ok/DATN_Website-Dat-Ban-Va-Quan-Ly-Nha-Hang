@@ -124,10 +124,10 @@ export const AdminRbac: React.FC = () => {
 
       {/* Dynamic Tab Content rendering */}
       {activeTab === "rbac" ? (
-        <div className="bg-[#1C2541]/40 backdrop-blur-xl rounded-2xl border border-slate-200 overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.4)] p-6 flex flex-col gap-5">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200 overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.4)] p-6 flex flex-col gap-5">
           <div>
             <h4 className="text-base font-black text-slate-900 font-display">Ma trận Phân quyền (RBAC)</h4>
-            <p className="text-xs text-slate-400 mt-1">Quản lý quyền truy cập cho từng vai trò nhân viên</p>
+            <p className="text-xs text-slate-500 mt-1">Quản lý quyền truy cập cho từng vai trò nhân viên</p>
           </div>
 
           <div className="overflow-x-auto border border-slate-150 rounded-xl">
@@ -148,7 +148,7 @@ export const AdminRbac: React.FC = () => {
                     <td className="p-4">
                       <div className="flex flex-col gap-0.5">
                         <span className="font-extrabold text-slate-850">{row.name}</span>
-                        <span className="text-[10px] text-slate-400 font-medium">{row.desc}</span>
+                        <span className="text-[10px] text-slate-500 font-medium">{row.desc}</span>
                       </div>
                     </td>
                     <td className="p-4 text-center">
@@ -171,12 +171,12 @@ export const AdminRbac: React.FC = () => {
                         <td key={rKey} className="p-4 text-center">
                           <button
                             onClick={() => handleToggle(row.key, rKey)}
-                            className="inline-flex items-center justify-center p-1 rounded-lg text-slate-400 hover:text-slate-800 transition-all cursor-pointer"
+                            className="inline-flex items-center justify-center p-1 rounded-lg text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
                           >
                             {hasPerm ? (
                               <ToggleRight size={32} className="text-slate-900 transition-all" />
                             ) : (
-                              <ToggleLeft size={32} className="text-slate-300 transition-all" />
+                              <ToggleLeft size={32} className="text-slate-600 transition-all" />
                             )}
                           </button>
                         </td>

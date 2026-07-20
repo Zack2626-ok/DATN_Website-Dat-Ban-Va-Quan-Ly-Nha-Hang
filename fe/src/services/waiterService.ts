@@ -36,6 +36,7 @@ export interface WaiterOrderItem {
   voided_at?: string | null;
   void_reason?: string | null;
   created_at: string;
+  merged?: boolean;
 }
 
 export interface WaiterOrder {

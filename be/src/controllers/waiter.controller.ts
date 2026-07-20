@@ -69,6 +69,8 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
     if (table_id) {
       await db.updateResmanagerTableStatus(Number(table_id), "serving");
+      // Tự động chuyển món đặt trước (nếu có) sang order_items
+      await db.transferBookingItemsToOrder(Number(table_id), order.id);
       await db.completeActiveBookingForTable(Number(table_id));
     }
 
@@ -108,7 +110,9 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
 
     sendSuccess(res, item, "Thêm món thành công", 201);
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const msg = (error as Error).message || "Lỗi khi thêm món";
+    const statusCode = msg.includes("không thể") || msg.includes("khóa") || msg.includes("Vui lòng") ? 400 : 500;
+    sendError(res, msg, statusCode);
   }
 };
 

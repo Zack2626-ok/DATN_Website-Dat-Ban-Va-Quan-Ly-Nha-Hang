@@ -2,10 +2,12 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { ORDER_STATUS } from "../../../constants/orderStatus";
 import { TABLE_STATUS } from "../../../constants/tableStatus";
-import { updateOrderStatus as updateOrderStatusLocal, updateOrderStatusOnServer } from "../../../store/orderSlice";
-import { releaseTableToCleaning } from "../../../store/tableSlice";
+import { updateOrderStatus as updateOrderStatusLocal, updateOrderStatusOnServer, fetchOrders } from "../../../store/orderSlice";
+import { releaseTableToCleaning, fetchTables } from "../../../store/tableSlice";
+import { fetchInvoices } from "../../../store/invoiceSlice";
 import { createPaymentApi } from "../../../services/paymentService";
 import { getRestaurantInfo } from "../../../services/restaurantInfoService";
+import { printCashierInvoice } from "../../../utils/printBill";
 import {
   CreditCard,
   DollarSign,
@@ -25,11 +27,23 @@ export const CashierPOS: React.FC = () => {
 
   // Default to Bàn 4 (t4) if it is occupied, otherwise the first occupied table, otherwise null
   const occupiedTables = useMemo(() => {
-    return tables.filter(
-      (t) =>
-        t.status === TABLE_STATUS.OCCUPIED ||
-        t.status === TABLE_STATUS.CLEANING,
-    );
+    return tables
+      .filter(
+        (t) =>
+          (t.status === TABLE_STATUS.OCCUPIED ||
+            t.status === TABLE_STATUS.PENDING_PAYMENT ||
+            t.status === TABLE_STATUS.CLEANING) &&
+          t.name !== "Mang về" &&
+          t.name !== "Mang Về"
+      )
+      .sort((a, b) => {
+        const orderMap: Record<string, number> = {
+          [TABLE_STATUS.PENDING_PAYMENT]: 1,
+          [TABLE_STATUS.OCCUPIED]: 2,
+          [TABLE_STATUS.CLEANING]: 3,
+        };
+        return (orderMap[a.status] || 99) - (orderMap[b.status] || 99);
+      });
   }, [tables]);
 
   const initialSelectedTableId = useMemo(() => {
@@ -52,6 +66,17 @@ export const CashierPOS: React.FC = () => {
   const [lastPaidTable, setLastPaidTable] = useState<string>("");
 
   useEffect(() => {
+    dispatch(fetchTables());
+    dispatch(fetchOrders());
+    dispatch(fetchInvoices());
+    const interval = setInterval(() => {
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [dispatch]);
+
+  useEffect(() => {
     getRestaurantInfo()
       .then((info) => {
         setVatRate(info.tax_rate ?? 10);
@@ -71,18 +96,31 @@ export const CashierPOS: React.FC = () => {
   }, [tables, selectedTableId]);
 
   const activeOrder = useMemo(() => {
-    if (!selectedTable || !selectedTable.currentOrderId) return null;
-    return orders.find((o) => o.id === selectedTable.currentOrderId) || null;
+    if (!selectedTable) return null;
+    let found = null;
+    if (selectedTable.currentOrderId) {
+      found = orders.find((o) => String(o.id) === String(selectedTable.currentOrderId)) || null;
+    }
+    if (!found) {
+      found = orders.find((o) => 
+        (String(o.tableId) === String(selectedTable.id) || o.tableName === selectedTable.name) &&
+        ((o.status as string) === "open" || (o.status as string) === "serving" || o.status === ORDER_STATUS.CONFIRMED || o.status === ORDER_STATUS.IN_KITCHEN || o.status === ORDER_STATUS.PENDING_PAYMENT || o.status === ORDER_STATUS.SERVED)
+      ) || null;
+    }
+    if (!found) return null;
+    const activeItems = (found.items || []).filter((item: any) => item.status !== "voided" && item.status !== "cancelled");
+    const activeTotal = activeItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * item.quantity, 0);
+    return { ...found, items: activeItems, totalAmount: activeTotal };
   }, [orders, selectedTable]);
 
   // Calculations
-  const subtotal = activeOrder ? activeOrder.totalAmount : 0;
-  const tax = vatEnabled ? subtotal * (vatRate / 100) : 0;
+  const subtotal = activeOrder ? (activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount) : 0;
+  const depositAmount = activeOrder?.depositAmount || 0;
+  const tax = vatEnabled ? Math.round(subtotal * (vatRate / 100)) : 0;
   const tipVal = parseFloat(tipAmount) || 0;
-  let totalAmount = subtotal + tax + tipVal;
+  let totalAmount = Math.max(0, subtotal + tax + tipVal - depositAmount);
   if (roundEnabled) {
-    // Round to nearest 1000 (since UI multiplies by 1000 later)
-    totalAmount = Math.round(totalAmount / 1) ;
+    totalAmount = Math.round(totalAmount / 1);
   }
 
   const perPersonAmount = useMemo(() => {
@@ -94,21 +132,47 @@ export const CashierPOS: React.FC = () => {
     if (!activeOrder || !selectedTableId) return;
 
     try {
-      const amountVnd = Math.round(totalAmount * 1000); // convert UI units to VND
+      const amountVnd = Math.round(totalAmount); // convert UI units to VND
       await createPaymentApi({
         orderId: activeOrder.id,
         amount: amountVnd,
         paymentMethod: method,
         status: "completed",
         completedAt: new Date().toISOString(),
-        notes: JSON.stringify({ vatEnabled, roundEnabled }),
+        notes: JSON.stringify({
+          subtotal,
+          vat: tax,
+          vatRate: vatEnabled ? vatRate : 0,
+          depositAmount,
+          finalAmount: amountVnd,
+          vatEnabled,
+          roundEnabled,
+        }),
         discountAmount: 0,
+      });
+
+      // Automatically print cashier invoice upon payment
+      printCashierInvoice({
+        id: activeOrder.id,
+        tableName: selectedTable?.name || "Khách lẻ",
+        customerName: activeOrder.customer_name || activeOrder.guest_name,
+        customerPhone: activeOrder.customer_phone || activeOrder.guest_phone,
+        items: activeOrder.items,
+        subtotal: subtotal,
+        tax: tax,
+        vatRate: vatEnabled ? vatRate : 0,
+        discount: 0,
+        depositAmount: depositAmount,
+        totalAmount: amountVnd
       });
 
       // Optimistically update UI and sync with server
       dispatch(updateOrderStatusLocal({ id: activeOrder.id, status: ORDER_STATUS.PAID }));
       dispatch(updateOrderStatusOnServer({ id: activeOrder.id, status: ORDER_STATUS.PAID }));
       dispatch(releaseTableToCleaning({ id: selectedTableId }));
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+      dispatch(fetchInvoices());
 
       setLastPaidTable(selectedTable?.name || "Bàn");
       setPaymentSuccess(true);
@@ -117,7 +181,6 @@ export const CashierPOS: React.FC = () => {
       setSplitCount(2);
     } catch (err: any) {
       console.error("Payment failed:", err);
-      // Optionally show error to user
       alert("Thanh toán thất bại. Vui lòng thử lại.");
     }
   };
@@ -150,7 +213,7 @@ export const CashierPOS: React.FC = () => {
         {/* Horizontal table picker */}
         <div className="flex flex-wrap gap-2">
           {occupiedTables.length === 0 ? (
-            <span className="text-xs text-slate-400 font-semibold bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+            <span className="text-xs text-slate-500 font-semibold bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
               Không có bàn nào cần thanh toán lúc này.
             </span>
           ) : (
@@ -163,17 +226,28 @@ export const CashierPOS: React.FC = () => {
                     setSelectedTableId(table.id);
                     setPaymentSuccess(false);
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold font-display tracking-wide border transition-all cursor-pointer ${
+                  className={`px-4 py-2 rounded-xl text-xs font-bold font-display tracking-wide border transition-all cursor-pointer flex items-center gap-1.5 ${
                     isSelected
                       ? "bg-[#e8f1ff] border-[#0f62fe] text-[#0f62fe] shadow-xs"
+                      : table.status === TABLE_STATUS.PENDING_PAYMENT
+                      ? "bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100 shadow-2xs"
                       : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {table.name} (
-                  {table.status === TABLE_STATUS.CLEANING
-                    ? "Chờ dọn"
-                    : "Đang ăn"}
-                  )
+                  <span>{table.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-extrabold ${
+                    table.status === TABLE_STATUS.PENDING_PAYMENT
+                      ? "bg-amber-200/80 text-amber-900 animate-pulse"
+                      : table.status === TABLE_STATUS.CLEANING
+                      ? "bg-blue-100 text-blue-800"
+                      : "bg-slate-100 text-slate-700"
+                  }`}>
+                    {table.status === TABLE_STATUS.PENDING_PAYMENT
+                      ? "🔔 Chờ TT"
+                      : table.status === TABLE_STATUS.CLEANING
+                      ? "🧹 Chờ dọn"
+                      : "Đang ăn"}
+                  </span>
                 </button>
               );
             })
@@ -204,7 +278,7 @@ export const CashierPOS: React.FC = () => {
               <h4 className="text-base font-black text-slate-900 font-display">
                 Hóa đơn chi tiết
               </h4>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 {selectedTable.name} - Xử lý thanh toán và tách bill
               </p>
             </div>
@@ -225,7 +299,7 @@ export const CashierPOS: React.FC = () => {
                     </span>
                   </div>
                   <span className="text-xs font-black text-slate-900">
-                    {(item.price * item.quantity * 1000).toLocaleString(
+                    {Number(item.price * item.quantity).toLocaleString(
                       "vi-VN",
                     )}{" "}
                     vnđ
@@ -239,14 +313,14 @@ export const CashierPOS: React.FC = () => {
               <div className="flex justify-between text-xs font-semibold text-slate-500">
                 <span>Tạm tính</span>
                 <span className="font-bold text-slate-900">
-                  {(subtotal * 1000).toLocaleString("vi-VN")} vnđ
+                  {Number(subtotal).toLocaleString("vi-VN")} vnđ
                 </span>
               </div>
 
               <div className="flex justify-between text-xs font-semibold text-slate-500">
                 <span>Thuế ({vatRate}%)</span>
                 <span className="font-bold text-slate-900">
-                  {(tax * 1000).toLocaleString("vi-VN")} vnđ
+                  {Number(tax).toLocaleString("vi-VN")} vnđ
                 </span>
               </div>
 
@@ -260,7 +334,7 @@ export const CashierPOS: React.FC = () => {
                     className="w-16 bg-transparent text-right font-bold focus:outline-none text-slate-900 text-xs"
                     placeholder="0"
                   />
-                  <span className="text-[11px] text-slate-400 ml-1">
+                  <span className="text-[11px] text-slate-500 ml-1">
                     .000 vnđ
                   </span>
                 </div>
@@ -277,7 +351,7 @@ export const CashierPOS: React.FC = () => {
                   />
                   <label htmlFor="vat">Áp thuế VAT {vatRate}%</label>
                 </span>
-                <span className="text-xs text-slate-400">{vatEnabled ? "Bật" : "Tắt"}</span>
+                <span className="text-xs text-slate-500">{vatEnabled ? "Bật" : "Tắt"}</span>
               </div>
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
@@ -291,7 +365,7 @@ export const CashierPOS: React.FC = () => {
                   />
                   <label htmlFor="round">Làm tròn</label>
                 </span>
-                <span className="text-xs text-slate-400">{roundEnabled ? "Bật" : "Tắt"}</span>
+                <span className="text-xs text-slate-500">{roundEnabled ? "Bật" : "Tắt"}</span>
               </div>
 
               <div className="flex justify-between items-center border-t border-slate-100 pt-4 mt-1">
@@ -299,7 +373,7 @@ export const CashierPOS: React.FC = () => {
                   Tổng cộng
                 </span>
                 <span className="text-xl font-black text-[#0f62fe] font-display">
-                  {(totalAmount * 1000).toLocaleString("vi-VN")} vnđ
+                  {Number(totalAmount).toLocaleString("vi-VN")} vnđ
                 </span>
               </div>
             </div>
@@ -311,7 +385,7 @@ export const CashierPOS: React.FC = () => {
               <h4 className="text-base font-black text-slate-900 font-display">
                 Tách hóa đơn
               </h4>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Hỗ trợ chia đều hoặc chia theo món ăn
               </p>
             </div>
@@ -348,7 +422,7 @@ export const CashierPOS: React.FC = () => {
                     Số người chia
                   </label>
                   <div className="relative rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 flex items-center">
-                    <Users size={16} className="text-slate-400 mr-2.5" />
+                    <Users size={16} className="text-slate-500 mr-2.5" />
                     <input
                       type="number"
                       min={1}
@@ -370,7 +444,7 @@ export const CashierPOS: React.FC = () => {
                     Mỗi người trả
                   </span>
                   <span className="text-2xl font-black text-[#0f62fe] font-display">
-                    {(perPersonAmount * 1000).toLocaleString("vi-VN")} vnđ
+                    {Number(perPersonAmount).toLocaleString("vi-VN")} vnđ
                   </span>
                 </div>
 
@@ -382,11 +456,11 @@ export const CashierPOS: React.FC = () => {
                       className="flex justify-between items-center text-xs font-bold py-2.5 px-3.5 bg-slate-50/50 rounded-xl border border-slate-100"
                     >
                       <span className="text-slate-500 flex items-center gap-2">
-                        <Users size={12} className="text-slate-400" /> Khách{" "}
+                        <Users size={12} className="text-slate-500" /> Khách{" "}
                         {i + 1}
                       </span>
                       <span className="text-slate-900 font-extrabold">
-                        {(perPersonAmount * 1000).toLocaleString("vi-VN")} vnđ
+                        {Number(perPersonAmount).toLocaleString("vi-VN")} vnđ
                       </span>
                     </div>
                   ))}
@@ -417,8 +491,8 @@ export const CashierPOS: React.FC = () => {
                         <span className="font-bold text-slate-800">
                           {item.name}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          Đơn giá: {(item.price * 1000).toLocaleString("vi-VN")}{" "}
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          Đơn giá: {Number(item.price).toLocaleString("vi-VN")}{" "}
                           vnđ
                         </span>
                       </div>
@@ -427,7 +501,7 @@ export const CashierPOS: React.FC = () => {
                           Khách 1
                         </span>
                         <span className="font-bold text-slate-900">
-                          {(item.price * item.quantity * 1000).toLocaleString(
+                          {Number(item.price * item.quantity).toLocaleString(
                             "vi-VN",
                           )}{" "}
                           vnđ
@@ -470,8 +544,8 @@ export const CashierPOS: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center text-slate-400">
-          <Info size={40} className="mx-auto text-slate-300 mb-3" />
+        <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center text-slate-500">
+          <Info size={40} className="mx-auto text-slate-600 mb-3" />
           <h4 className="font-bold text-sm text-slate-700">
             Chưa chọn bàn nào để thanh toán
           </h4>
@@ -487,39 +561,46 @@ export const CashierPOS: React.FC = () => {
           isOpen={confirmOpen}
           onClose={() => setConfirmOpen(false)}
           title="Xác nhận Thanh toán"
+          size="sm"
+          theme="light"
           footer={
-            <>
+            <div className="flex justify-end gap-2.5 w-full">
               <button
                 onClick={() => setConfirmOpen(false)}
-                className="py-2 px-4 rounded-lg bg-white border mr-2"
+                className="py-2 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
               >
-                Hủy
+                Hủy bỏ
               </button>
               <button
                 onClick={() => confirmAndPay()}
-                className="py-2 px-4 rounded-lg bg-blue-600 text-white"
+                className="py-2 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-1.5"
               >
-                Xác nhận & Thanh toán
+                <CheckCircle2 size={15} /> Xác nhận & Thanh toán
               </button>
-            </>
+            </div>
           }
         >
-          <div className="space-y-3 text-sm">
-            <p>
-              Hóa đơn: <strong>{selectedTable?.name}</strong>
-            </p>
-            <p>
-              Tạm tính: <strong>{(subtotal * 1000).toLocaleString("vi-VN")} vnđ</strong>
-            </p>
-            <p>
-              Thuế: <strong>{(tax * 1000).toLocaleString("vi-VN")} vnđ</strong>
-            </p>
-            <p>
-              Tip: <strong>{(tipVal * 1000).toLocaleString("vi-VN")} vnđ</strong>
-            </p>
-            <p>
-              Tổng: <strong>{(totalAmount * 1000).toLocaleString("vi-VN")} vnđ</strong>
-            </p>
+          <div className="space-y-3.5 text-xs text-slate-700 py-1">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <span className="text-slate-500">Bàn / Hóa đơn:</span>
+              <strong className="text-sm font-black text-slate-900">{selectedTable?.name || "Khách lẻ"}</strong>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Tạm tính:</span>
+              <span className="font-bold text-slate-800">{Number(subtotal).toLocaleString("vi-VN")} vnđ</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Thuế ({vatEnabled ? `${vatRate}%` : "0%"}):</span>
+              <span className="font-bold text-slate-800">{Number(tax).toLocaleString("vi-VN")} vnđ</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500">Tiền Tip:</span>
+              <span className="font-bold text-slate-800">{Number(tipVal).toLocaleString("vi-VN")} vnđ</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+              <span className="font-extrabold text-sm text-slate-900">Tổng thanh toán:</span>
+              <span className="text-base font-black text-blue-600 font-display">{Number(totalAmount).toLocaleString("vi-VN")} vnđ</span>
+            </div>
           </div>
         </Modal>
       )}

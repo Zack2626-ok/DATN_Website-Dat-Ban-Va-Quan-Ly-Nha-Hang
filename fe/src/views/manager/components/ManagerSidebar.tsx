@@ -7,12 +7,12 @@ import {
   ChevronRight,
   Users,
   Utensils,
-  Calendar,
   Database,
   Grid,
   CalendarDays,
   Clock,
   LineChart,
+  Percent,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { ROLE_LABELS } from "../../../constants/roles";
@@ -31,7 +31,7 @@ export const ManagerSidebar: React.FC = () => {
   };
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-gray-200 bg-gray-900 md:w-64 md:border-b-0 md:border-r">
+    <aside className="flex w-full shrink-0 flex-col border-b border-sky-100 bg-gray-900 md:w-64 md:border-b-0 md:border-r">
       {/* Header */}
       <div className="border-b border-gray-800 p-5">
         <Link to="/manager/dashboard" className="text-lg font-bold text-white hover:text-gray-200">
@@ -49,7 +49,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/dashboard"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/dashboard")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -64,7 +64,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/tables"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/tables")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -79,7 +79,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/bookings"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/bookings")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -94,7 +94,7 @@ export const ManagerSidebar: React.FC = () => {
           to="/manager/shifts"
           className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
             isRouteActive("/manager/shifts")
-              ? "bg-[#FF5A5F] text-white"
+              ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
           }`}
         >
@@ -133,7 +133,7 @@ export const ManagerSidebar: React.FC = () => {
                 to="/manager/staff"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isRouteActive("/manager/staff")
-                    ? "bg-[#FF5A5F] text-white"
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >
@@ -148,7 +148,7 @@ export const ManagerSidebar: React.FC = () => {
                 to="/manager/menu"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isRouteActive("/manager/menu")
-                    ? "bg-[#FF5A5F] text-white"
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >
@@ -158,27 +158,41 @@ export const ManagerSidebar: React.FC = () => {
                 </span>
               </Link>
 
-              {/* Cấu hình Sự kiện & Tiệc */}
+              {/* Quản lý Ưu đãi */}
               <Link
-                to="/manager/events"
+                to="/manager/promotions"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/events")
-                    ? "bg-[#FF5A5F] text-white"
+                  isRouteActive("/manager/promotions")
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >
                 <span className="flex items-center gap-2.5">
-                  <Calendar size={14} />
-                  Cấu hình Sự kiện & Tiệc
+                  <Percent size={14} />
+                  Quản lý Ưu đãi
                 </span>
               </Link>
 
+              {/* CRM & Loyalty */}
+              <Link
+                to="/manager/crm"
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isRouteActive("/manager/crm")
+                    ? "bg-sky-500 text-white"
+                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Users size={14} />
+                  Khách hàng & Loyalty
+                </span>
+              </Link>
               {/* Báo cáo & Phân tích */}
               <Link
                 to="/manager/analytics"
                 className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isRouteActive("/manager/analytics")
-                    ? "bg-[#FF5A5F] text-white"
+                    ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >

@@ -134,7 +134,7 @@ export const ChefKitchenQueue: React.FC = () => {
     let hasNewDelay = false;
     
     items.forEach((item) => {
-      if (item.status !== "pending" && item.status !== "cooking") return;
+      if (item.status !== "pending" && item.status !== "waiting_kitchen" && item.status !== "cooking") return;
       
       const elapsedMs = now - new Date(item.createdAt).getTime();
       const elapsedMins = Math.floor(elapsedMs / 60000);
@@ -242,7 +242,7 @@ export const ChefKitchenQueue: React.FC = () => {
   // Group kitchen items into 3 columns: Chờ nấu (pending), Đang nấu (cooking), Sẵn sàng (done)
   const columns = useMemo(() => {
     return {
-      pending: filteredItems.filter((item) => item.status === "pending"),
+      pending: filteredItems.filter((item) => item.status === "pending" || item.status === "waiting_kitchen"),
       cooking: filteredItems.filter((item) => item.status === "cooking"),
       done: filteredItems.filter((item) => item.status === "done"),
     };
@@ -261,7 +261,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
     // Group only "pending" and "cooking" items for batch
     filteredItems.forEach((item) => {
-      if (item.status !== "pending" && item.status !== "cooking") return;
+      if (item.status !== "pending" && item.status !== "waiting_kitchen" && item.status !== "cooking") return;
       const key = `${item.name.trim()}_${item.kitchenStation}`;
       if (!groups[key]) {
         groups[key] = {
@@ -519,7 +519,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
       {loading && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <ChefHat size={48} className="text-slate-400 animate-bounce" />
+          <ChefHat size={48} className="text-slate-500 animate-bounce" />
           <span className="text-sm text-slate-500 italic animate-pulse">Đang tải danh sách món ăn từ bếp...</span>
         </div>
       ) : activeTab === "kanban" ? (
@@ -572,6 +572,11 @@ export const ChefKitchenQueue: React.FC = () => {
                             <Clock size={10} /> {timeStr}
                           </span>
                         </div>
+                        {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+                            🍳 Món đặt trước (Nấu sẵn)
+                          </div>
+                        )}
 
                         {/* Dish Details */}
                         <div className="mt-3">
@@ -587,7 +592,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             {item.orderType && (
                               <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
                               </span>
                             )}
                           </div>
@@ -666,6 +671,11 @@ export const ChefKitchenQueue: React.FC = () => {
                             <Clock size={10} className="animate-[spin_4s_linear_infinite]" /> {timeStr}
                           </span>
                         </div>
+                        {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+                            🍳 Món đặt trước (Nấu sẵn)
+                          </div>
+                        )}
 
                         {/* Dish Details */}
                         <div className="mt-3">
@@ -681,7 +691,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             {item.orderType && (
                               <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
                               </span>
                             )}
                           </div>
@@ -752,6 +762,11 @@ export const ChefKitchenQueue: React.FC = () => {
                             <Clock size={10} /> {timeStr}
                           </span>
                         </div>
+                        {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+                            🍳 Món đặt trước (Nấu sẵn)
+                          </div>
+                        )}
 
                         {/* Dish Details */}
                         <div className="mt-3">
@@ -767,7 +782,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             </span>
                             {item.orderType && (
                               <span className="text-slate-400 font-semibold">
-                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : "Takeaway"})
+                                ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
                               </span>
                             )}
                           </div>
@@ -798,7 +813,7 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {batchGroups.length === 0 ? (
-            <div className="text-center py-24 text-slate-400 text-xs italic bg-slate-100/30 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
+            <div className="text-center py-24 text-slate-500 text-xs italic bg-slate-100/30 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
               <Inbox size={24} />
               Không có món ăn nào đang hoạt động để gộp mẻ
             </div>
@@ -830,7 +845,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Detail list per table */}
                       <div className="mt-4 flex flex-col gap-1.5 border-t border-slate-100 pt-3">
-                        <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">Chi tiết bàn:</span>
+                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Chi tiết bàn:</span>
                         {group.items.map((item, idy) => {
                           const noteText = item.kitchenNote || (item as any).kitchen_note;
                           return (
@@ -839,7 +854,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 <span className="flex items-center gap-1.5 font-semibold">
                                   <span
                                     className={`w-1.5 h-1.5 rounded-full ${
-                                      item.status === "pending" ? "bg-slate-350" : "bg-amber-500"
+                                      item.status === "pending" || item.status === "waiting_kitchen" ? "bg-slate-350" : "bg-amber-500"
                                     }`}
                                   />
                                   Bàn {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}:
@@ -848,12 +863,12 @@ export const ChefKitchenQueue: React.FC = () => {
                                   <span>x{item.quantity}</span>
                                   <span
                                     className={`text-[10px] px-1 rounded font-bold ${
-                                      item.status === "pending"
+                                      item.status === "pending" || item.status === "waiting_kitchen"
                                         ? "bg-slate-100 text-slate-500 border border-slate-200"
                                         : "bg-amber-50 text-amber-600 border border-amber-200"
                                     }`}
                                   >
-                                    {item.status === "pending" ? "Chờ" : "Nấu"}
+                                    {item.status === "pending" || item.status === "waiting_kitchen" ? "Chờ" : "Nấu"}
                                   </span>
                                 </span>
                               </div>

@@ -21,7 +21,7 @@ import {
   X,
   Check,
   RefreshCw,
-  Info
+  Info  
 } from "lucide-react";
 
 // Types for local interactive states

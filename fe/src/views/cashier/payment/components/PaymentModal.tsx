@@ -24,7 +24,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (n: number) => (n * 1000).toLocaleString("vi-VN");
+const formatVnd = (n: number) => Number(n).toLocaleString("vi-VN");
 
 const PAYMENT_METHODS = [
   { value: "cash" as const, label: "Tiền mặt", icon: Banknote, color: "bg-emerald-50 border-emerald-200 text-emerald-700" },
@@ -36,7 +36,6 @@ const PAYMENT_METHODS = [
 export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConfirm, loading }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "wallet">("cash");
   const [vatRate, setVatRate] = useState(10);
-  const [serviceFeeRate, setServiceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount, setTipAmount] = useState(0);
@@ -54,12 +53,12 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   }, []);
 
   const breakdown = useMemo(() => {
-    const subtotal = invoice.totalAmount;
-    const vat = subtotal * (vatRate / 100);
-    const serviceFee = subtotal * (serviceFeeRate / 100);
-    const finalAmount = subtotal + vat + serviceFee - voucherAmount + tipAmount;
-    return { subtotal, vat, serviceFee, finalAmount };
-  }, [invoice.totalAmount, vatRate, serviceFeeRate, voucherAmount, tipAmount]);
+    const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
+    const vat = Math.round(subtotal * (vatRate / 100));
+    const depositAmount = invoice.depositAmount || 0;
+    const finalAmount = Math.max(0, subtotal + vat - depositAmount - voucherAmount);
+    return { subtotal, vat, depositAmount, finalAmount };
+  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, voucherAmount]);
 
   const vietqrUrl = useMemo(() => {
     if (!resInfo?.bank_code || !resInfo?.bank_account) return "";
@@ -80,10 +79,10 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
     onConfirm({
       paymentMethod,
       vatRate,
-      serviceFeeRate,
+      serviceFeeRate: 0,
       voucherCode: voucherCode || undefined,
       voucherAmount: voucherAmount || undefined,
-      tipAmount: tipAmount || undefined,
+      tipAmount: 0,
     });
   };
 
@@ -165,7 +164,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 placeholder="Số tiền"
                 className="w-20 text-right text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
               />
-              <span className="text-[10px] text-slate-400 self-center">.000đ</span>
+              <span className="text-[10px] text-slate-500 self-center">.000đ</span>
             </div>
           </div>
 
@@ -186,7 +185,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
               />
               <span className="text-[10px] text-slate-400">.000đ</span>
             </div>
-          </div>
+          )}
 
           {/* Final total */}
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">

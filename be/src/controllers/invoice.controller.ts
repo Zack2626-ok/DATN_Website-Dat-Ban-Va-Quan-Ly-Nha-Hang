@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
+import { addLoyaltyPoints } from "./crm.controller";
 
 export const getAllInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -21,9 +22,15 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
         name: item.item_name || `Món #${item.menu_item_id}`,
         price: Number(item.unit_price),
         quantity: item.quantity,
+        status: item.status,
       })),
+      depositAmount: o.depositAmount || 0,
       totalAmount: o.totalAmount || 0,
-      status: o.status,
+      subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
+      tax: o.tax || 0,
+      discount: o.discount || 0,
+      vatRate: o.vatRate || 0,
+      status: o.table_status === "pending_payment" || o.status === "pending_payment" ? "pending_payment" : o.status,
       invoiceStatus:
         o.status === "completed" || o.status === "paid"
           ? "paid"
@@ -33,6 +40,9 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       createdAt: o.created_at,
       orderType: o.order_type,
     }));
+
+    // Nếu không có món nào (0 món) thì không đưa vào thu ngân
+    invoices = invoices.filter((inv: any) => inv.items && inv.items.length > 0);
 
     if (status && status !== "all") {
       const statusMap: Record<string, string[]> = {
@@ -116,12 +126,28 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const subtotal = order.totalAmount;
-    const vat = vatRate !== undefined ? subtotal * (vatRate / 100) : subtotal * 0.1;
-    const serviceFee = serviceFeeRate !== undefined ? subtotal * (serviceFeeRate / 100) : 0;
+    // Kiểm tra cọc tiền đặt bàn
+    let depositAmount = Number(order.depositAmount || 0);
+    let linkedBookingId: number | null = null;
+    if (order.tableId || order.table_id) {
+      const activeBookings = await db.query(
+        `SELECT id, deposit_amount FROM bookings WHERE table_id = ? AND deposit_status IN ('paid', 'completed') ORDER BY created_at DESC LIMIT 1`,
+        [Number(order.tableId || order.table_id)]
+      );
+      if (activeBookings.length > 0) {
+        depositAmount = Number(activeBookings[0].deposit_amount || depositAmount);
+        linkedBookingId = activeBookings[0].id;
+      }
+    }
+
+    const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
+    const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
+    const serviceFee = serviceFeeRate !== undefined ? Math.round(subtotal * (serviceFeeRate / 100)) : 0;
     const voucher = voucherAmount || 0;
     const tip = tipAmount || 0;
-    const finalAmount = subtotal + vat + serviceFee - voucher + tip;
+    
+    // Khấu trừ tiền cọc từ tổng số tiền cần thanh toán
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher - depositAmount + tip);
 
     const payment = await db.createPayment({
       orderId: id,
@@ -137,6 +163,7 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         voucher,
         voucherCode,
         tip,
+        depositAmount,
         finalAmount,
         vatRate: vatRate ?? 10,
         serviceFeeRate: serviceFeeRate ?? 0,
@@ -147,8 +174,33 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     await db.updateOrderStatus(id, "completed");
 
+    // Cập nhật trạng thái cọc tiền đặt bàn đã hoàn thành
+    if (linkedBookingId) {
+      await db.query(
+        `UPDATE bookings SET deposit_status = 'completed' WHERE id = ?`,
+        [linkedBookingId]
+      );
+      console.log(`✅ Marked booking ${linkedBookingId} deposit status as completed`);
+    }
+
     if (order.table_id) {
-      await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
+      await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+    }
+
+    // Tích điểm loyalty nếu có khách hàng thành viên liên kết
+    if (order.customer_id) {
+      try {
+        const invRows = await db.query(
+          "SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+          [id]
+        );
+        const invoiceId = invRows && invRows.length > 0 ? invRows[0].id : null;
+        if (invoiceId) {
+          await addLoyaltyPoints(Number(order.customer_id), finalAmount, invoiceId);
+        }
+      } catch (errLoyalty: any) {
+        console.warn("[processPayment] Loyalty points accumulation failed:", errLoyalty.message);
+      }
     }
 
     const updatedOrder = { ...order, status: "completed" };
@@ -226,6 +278,28 @@ export const splitBillEqual = async (req: Request, res: Response): Promise<void>
         guest_phone: order.guest_phone,
         guest_count: 1,
       });
+
+      // Copy các món ăn sang đơn tách mới với giá trị chia đều
+      if (order.items && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          const splitQty = Math.max(1, Math.round(item.quantity / parts));
+          const splitPrice = Math.round(Number(item.unit_price) / parts);
+          const addedItem = await db.addResmanagerOrderItem({
+            order_id: splitOrder.id,
+            menu_item_id: item.menu_item_id,
+            quantity: splitQty,
+            unit_price: splitPrice,
+            seat_number: item.seat_number || null,
+            course_number: item.course_number || 1,
+            kitchen_note: item.kitchen_note || undefined,
+            bypass_status_check: true,
+          });
+          if (item.status && addedItem?.id) {
+            await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
+          }
+        }
+      }
+
       splitBills.push({ ...splitOrder, totalAmount: amount, splitLabel: `Phần ${i + 1}/${parts}` });
     }
 
@@ -275,6 +349,24 @@ export const splitBillByItems = async (req: Request, res: Response): Promise<voi
         guest_phone: order.guest_phone,
         guest_count: 1,
       });
+
+      // Copy đúng các món được gán vào nhóm này sang order mới
+      for (const item of groupItems) {
+        const addedItem = await db.addResmanagerOrderItem({
+          order_id: splitOrder.id,
+          menu_item_id: item.menu_item_id,
+          quantity: item.quantity,
+          unit_price: Number(item.unit_price),
+          seat_number: item.seat_number || null,
+          course_number: item.course_number || 1,
+          kitchen_note: item.kitchen_note || undefined,
+          bypass_status_check: true,
+        });
+        if (item.status && addedItem?.id) {
+          await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
+        }
+      }
+
       splitBills.push({ ...splitOrder, totalAmount: groupTotal, splitLabel: group.label || `Nhóm ${i + 1}` });
     }
 
@@ -315,7 +407,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
     const mergedItems: any[] = [];
     for (const order of ordersToMerge) {
       for (const item of order.items) {
-        const existing = mergedItems.find((m) => m.menu_item_id === item.menu_item_id);
+        const existing = mergedItems.find((m) => m.menu_item_id === item.menu_item_id && (m.kitchen_note || '').trim() === (item.kitchen_note || '').trim());
         if (existing) {
           existing.quantity += item.quantity;
         } else {
@@ -338,6 +430,23 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
       guest_count: firstOrder.guest_count,
     });
 
+    // Copy toàn bộ danh sách món đã gộp sang đơn hàng mới
+    for (const item of mergedItems) {
+      const addedItem = await db.addResmanagerOrderItem({
+        order_id: mergedOrder.id,
+        menu_item_id: item.menu_item_id,
+        quantity: item.quantity,
+        unit_price: Number(item.unit_price),
+        seat_number: item.seat_number || null,
+        course_number: item.course_number || 1,
+        kitchen_note: item.kitchen_note || undefined,
+        bypass_status_check: true,
+      });
+      if (item.status && addedItem?.id) {
+        await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
+      }
+    }
+
     for (const invId of invoiceIds) {
       await db.updateOrderStatus(invId, "cancelled");
     }
@@ -348,6 +457,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
 
 export const payPartial = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -391,7 +501,7 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
     if (totalPaid >= order.totalAmount) {
       await db.updateOrderStatus(id, "completed");
       if (order.table_id) {
-        await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
+        await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
       }
     }
 

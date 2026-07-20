@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Calendar, Download, RefreshCw } from "lucide-react";
 import type { DateFilter } from "../services/analyticsService";
+import { toast } from "react-hot-toast";
 
 interface DateFilterBarProps {
   filter: DateFilter;
@@ -86,28 +87,28 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
 
   const handleExport = () => {
     if (error) {
-      alert("Vui lòng sửa khoảng ngày bị lỗi trước khi xuất báo cáo!");
+      toast.error("Vui lòng sửa khoảng ngày bị lỗi trước khi xuất báo cáo!");
       return;
     }
     setIsExporting(true);
     setTimeout(() => {
+      window.print();
       setIsExporting(false);
-      alert("Đã xuất báo cáo phân tích định dạng PDF thành công!");
-    }, 1500);
+    }, 500);
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-4 rounded-2xl border border-sky-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
       {/* Cụm bộ lọc thời gian */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg bg-gray-100 p-0.5">
+        <div className="flex rounded-lg bg-sky-100 p-0.5">
           <button
             type="button"
             onClick={() => handleTypeChange("today")}
             className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
               filter.type === "today"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-800"
+                ? "bg-white text-slate-700 shadow-sm"
+                : "text-slate-400 hover:text-slate-700"
             }`}
           >
             Hôm nay
@@ -117,8 +118,8 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
             onClick={() => handleTypeChange("week")}
             className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
               filter.type === "week"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-800"
+                ? "bg-white text-slate-700 shadow-sm"
+                : "text-slate-400 hover:text-slate-700"
             }`}
           >
             7 ngày qua
@@ -128,8 +129,8 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
             onClick={() => handleTypeChange("month")}
             className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
               filter.type === "month"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-800"
+                ? "bg-white text-slate-700 shadow-sm"
+                : "text-slate-400 hover:text-slate-700"
             }`}
           >
             30 ngày qua
@@ -139,8 +140,8 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
             onClick={() => handleTypeChange("custom")}
             className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
               filter.type === "custom"
-                ? "bg-white text-gray-800 shadow-sm"
-                : "text-gray-500 hover:text-gray-800"
+                ? "bg-white text-slate-700 shadow-sm"
+                : "text-slate-400 hover:text-slate-700"
             }`}
           >
             Tùy chỉnh
@@ -156,10 +157,10 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
                 type="date"
                 value={localStartDate}
                 onChange={(e) => handleCustomDateChange("startDate", e.target.value)}
-                className={`rounded-lg border bg-gray-50 px-2 py-1 text-xs font-medium focus:outline-none transition-all ${
+                className={`rounded-lg border bg-sky-50/50 px-2 py-1 text-xs font-medium focus:outline-none transition-all ${
                   error
                     ? "border-rose-500 text-rose-600 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-50/30"
-                    : "border-gray-200 text-gray-700 focus:border-[#FF5A5F]"
+                    : "border-sky-100 text-slate-600 focus:border-sky-500"
                 }`}
               />
               <span className="text-xs text-gray-400">đến</span>
@@ -167,10 +168,10 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
                 type="date"
                 value={localEndDate}
                 onChange={(e) => handleCustomDateChange("endDate", e.target.value)}
-                className={`rounded-lg border bg-gray-50 px-2 py-1 text-xs font-medium focus:outline-none transition-all ${
+                className={`rounded-lg border bg-sky-50/50 px-2 py-1 text-xs font-medium focus:outline-none transition-all ${
                   error
                     ? "border-rose-500 text-rose-600 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 bg-rose-50/30"
-                    : "border-gray-200 text-gray-700 focus:border-[#FF5A5F]"
+                    : "border-sky-100 text-slate-600 focus:border-sky-500"
                 }`}
               />
             </div>
@@ -189,7 +190,7 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
           type="button"
           disabled={isLoading}
           onClick={onRefresh}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-50 cursor-pointer"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-sky-100 bg-white text-slate-400 hover:bg-sky-50/50 hover:text-slate-700 disabled:opacity-50 cursor-pointer"
           title="Làm mới dữ liệu"
         >
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
@@ -199,7 +200,7 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
           type="button"
           onClick={handleExport}
           disabled={isExporting}
-          className="flex items-center gap-2 rounded-lg bg-[#FF5A5F] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#e04f53] transition-colors disabled:opacity-75 cursor-pointer"
+          className="flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#e04f53] transition-colors disabled:opacity-75 cursor-pointer"
         >
           {isExporting ? (
             <>

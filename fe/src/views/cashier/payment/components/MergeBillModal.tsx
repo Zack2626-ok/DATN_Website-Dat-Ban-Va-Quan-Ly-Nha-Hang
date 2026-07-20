@@ -11,7 +11,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (n: number) => (n * 1000).toLocaleString("vi-VN");
+const formatVnd = (n: number) => Number(n).toLocaleString("vi-VN");
 
 export const MergeBillModal: React.FC<Props> = ({ isOpen, onClose, invoices, onMerge, loading }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -63,7 +63,7 @@ export const MergeBillModal: React.FC<Props> = ({ isOpen, onClose, invoices, onM
         {/* Invoice list */}
         <div className="space-y-2 max-h-[300px] overflow-y-auto">
           {unpaidInvoices.length === 0 ? (
-            <div className="text-center text-xs text-slate-400 py-8">
+            <div className="text-center text-xs text-slate-500 py-8">
               Không có hóa đơn nào chưa thanh toán để gộp
             </div>
           ) : (

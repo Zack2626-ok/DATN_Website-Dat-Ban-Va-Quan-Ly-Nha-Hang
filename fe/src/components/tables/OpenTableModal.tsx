@@ -38,7 +38,7 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
     onClose();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerName.trim()) {
       import('react-hot-toast').then(m => m.toast.error('Vui lòng nhập tên khách hàng'));
@@ -46,24 +46,18 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
     }
     if (customerPhone.trim()) {
       const cleanedPhone = customerPhone.trim().replace(/[\s-]/g, '');
-      const phoneRegex = /^(0|\+?84)(3|5|7|8|9|2)[0-9]{8,9}$/;
-      if (!phoneRegex.test(cleanedPhone) && !/^[0-9]{10,11}$/.test(cleanedPhone)) {
-        import('react-hot-toast').then(m => m.toast.error('Số điện thoại không hợp lệ (phải từ 10-11 chữ số)'));
+      const phoneRegex = /^(03|09)\d{8}$/;
+      if (!phoneRegex.test(cleanedPhone)) {
+        import('react-hot-toast').then(m => m.toast.error('Số điện thoại không hợp lệ (bắt buộc 10 chữ số, bắt đầu bằng 03 hoặc 09)'));
         return;
       }
     }
     setIsSubmitting(true);
-
-    setTimeout(() => {
+    try {
+      await onConfirm({ guestCount, customerName: customerName.trim(), customerPhone: customerPhone.trim() });
+    } finally {
       setIsSubmitting(false);
-      setShowSuccess(true);
-
-      onConfirm({ guestCount, customerName, customerPhone });
-
-      setTimeout(() => {
-        handleClose();
-      }, 2000);
-    }, 800);
+    }
   };
 
   if (!table) return null;
@@ -90,7 +84,7 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={`Mở bàn ${table.name}`} size="md">
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+        <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-slate-200">
           <div className="w-14 h-14 rounded-xl bg-admin-primary/10 border border-admin-primary/20 flex items-center justify-center flex-shrink-0">
             <Utensils size={24} className="text-admin-primary" />
           </div>
@@ -110,18 +104,18 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
         />
         
         {guestCount > table.capacity && (
-          <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-300 space-y-1">
+          <div className="rounded-xl bg-sky-50 border border-sky-200 p-3 text-xs text-amber-300 space-y-1">
             <p className="font-bold flex items-center gap-1.5">
-              <AlertCircle size={14} className="text-amber-400" />
+              <AlertCircle size={14} className="text-sky-700" />
               Bàn phát sinh vượt sức chứa ({guestCount}/{table.capacity} khách)
             </p>
-            <p className="text-[11px] text-amber-400/80">
+            <p className="text-[11px] text-sky-700/80">
               Hệ thống sẽ tự động gửi cảnh báo lên Quản lý và mặc định thêm {guestCount} Khăn ướt vào đơn hàng. Bạn có thể chuyển/gộp bàn sau khi mở.
             </p>
           </div>
         )}
 
-        <div className="border-t border-white/5" />
+        <div className="border-t border-slate-100" />
 
         <CustomerForm 
           name={customerName} 
@@ -134,7 +128,7 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
           <button
             type="button"
             onClick={handleClose}
-            className="flex-1 py-3 rounded-xl border border-white/10 bg-white/5 text-zinc-400 font-bold hover:bg-white/10 hover:text-zinc-200 transition-all cursor-pointer"
+            className="flex-1 py-3 rounded-xl border border-slate-200 bg-white/5 text-zinc-400 font-bold hover:bg-sky-100 hover:text-zinc-200 transition-all cursor-pointer"
           >
             Hủy bỏ
           </button>

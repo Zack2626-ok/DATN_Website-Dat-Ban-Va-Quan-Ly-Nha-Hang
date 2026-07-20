@@ -1,9 +1,11 @@
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { TABLE_STATUS, TableStatus } from "../constants/tableStatus";
 import type { Table } from "../interfaces";
+import { getTablesV1 } from "../services/tableService";
 
 interface TableState {
   tables: Table[];
+  loading?: boolean;
 }
 
 const INITIAL_TABLES: Table[] = [
@@ -19,12 +21,35 @@ const INITIAL_TABLES: Table[] = [
   { id: "t10", name: "B10", status: TABLE_STATUS.AVAILABLE, seats: 4, zone: "Sân vườn", currentOrderId: null },
 ];
 
+export const fetchTables = createAsyncThunk(
+  "tables/fetchTables",
+  async (_, { rejectWithValue }) => {
+    try {
+      const data = await getTablesV1();
+      return data.map((t: any) => ({
+        id: String(t.id || `t_${t.tableNumber}`),
+        name: t.name || `Bàn ${t.tableNumber}`,
+        status: (t.status || "empty") as TableStatus,
+        seats: t.capacity || 4,
+        zone: t.location || "Tầng 1",
+        currentOrderId: t.currentOrderId || null,
+      }));
+    } catch (err: any) {
+      return rejectWithValue(err.message || "Failed to fetch tables");
+    }
+  }
+);
+
 const tableSlice = createSlice({
   name: "tables",
   initialState: {
     tables: INITIAL_TABLES,
+    loading: false,
   } as TableState,
   reducers: {
+    setTables: (state, action: PayloadAction<Table[]>) => {
+      state.tables = action.payload;
+    },
     setTableStatus: (state, action: PayloadAction<{ id: string; status: TableStatus; currentOrderId?: string | null }>) => {
       const table = state.tables.find((t) => t.id === action.payload.id);
       if (table) {
@@ -56,7 +81,22 @@ const tableSlice = createSlice({
       }
     },
   },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchTables.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchTables.fulfilled, (state, action) => {
+        state.loading = false;
+        if (action.payload && action.payload.length > 0) {
+          state.tables = action.payload;
+        }
+      })
+      .addCase(fetchTables.rejected, (state) => {
+        state.loading = false;
+      });
+  },
 });
 
-export const { setTableStatus, occupyTable, releaseTableToCleaning, makeTableAvailable } = tableSlice.actions;
+export const { setTables, setTableStatus, occupyTable, releaseTableToCleaning, makeTableAvailable } = tableSlice.actions;
 export default tableSlice.reducer;

@@ -12,7 +12,7 @@ export interface Table {
   capacity: number;
   row_pos: string;
   col_pos: number;
-  status: 'empty' | 'reserved' | 'serving' | 'pending_payment' | 'maintenance';
+  status: 'empty' | 'reserved' | 'serving' | 'pending_payment' | 'maintenance' | 'cleaning';
   currentOrder?: any;
 }
 

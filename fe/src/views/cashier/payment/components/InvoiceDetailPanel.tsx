@@ -27,7 +27,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (amount: number) => (amount * 1000).toLocaleString("vi-VN");
+const formatVnd = (amount: number) => Number(amount).toLocaleString("vi-VN");
 
 const formatTime = (dateStr: string) => {
   const d = new Date(dateStr);
@@ -50,8 +50,8 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
   }, []);
   if (!invoice) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-slate-200 text-slate-400 gap-3">
-        <FileText size={48} className="text-slate-200" />
+      <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-slate-200 text-slate-500 gap-3">
+        <FileText size={48} className="text-slate-700" />
         <p className="text-sm font-semibold">Chọn hóa đơn để xem chi tiết</p>
         <p className="text-xs">Danh sách hóa đơn ở bên trái</p>
       </div>
@@ -85,38 +85,40 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
           </div>
 
           {/* Action buttons */}
-          {canAct && (
-            <div className="flex gap-1.5 flex-wrap justify-end">
-              <button
-                onClick={onPrint}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                title="In hóa đơn"
-              >
-                <Printer size={14} />
-              </button>
-              <button
-                onClick={onSplit}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                title="Tách hóa đơn"
-              >
-                <Scissors size={14} />
-              </button>
-              <button
-                onClick={onMerge}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                title="Gộp hóa đơn"
-              >
-                <GitMerge size={14} />
-              </button>
-              <button
-                onClick={onCancel}
-                className="p-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 cursor-pointer transition-all"
-                title="Hủy hóa đơn"
-              >
-                <XCircle size={14} />
-              </button>
-            </div>
-          )}
+          <div className="flex gap-1.5 flex-wrap justify-end">
+            <button
+              onClick={onPrint}
+              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
+              title="In hóa đơn"
+            >
+              <Printer size={14} />
+            </button>
+            {canAct && (
+              <>
+                <button
+                  onClick={onSplit}
+                  className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
+                  title="Tách hóa đơn"
+                >
+                  <Scissors size={14} />
+                </button>
+                <button
+                  onClick={onMerge}
+                  className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
+                  title="Gộp hóa đơn"
+                >
+                  <GitMerge size={14} />
+                </button>
+                <button
+                  onClick={onCancel}
+                  className="p-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 cursor-pointer transition-all"
+                  title="Hủy hóa đơn"
+                >
+                  <XCircle size={14} />
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Customer info */}
@@ -124,16 +126,16 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
           <div className="mt-3 flex items-center gap-4 text-xs text-slate-600 bg-slate-50 rounded-xl p-3">
             {invoice.customerName && (
               <span className="flex items-center gap-1.5">
-                <User size={12} className="text-slate-400" /> {invoice.customerName}
+                <User size={12} className="text-slate-500" /> {invoice.customerName}
               </span>
             )}
             {invoice.customerPhone && (
               <span className="flex items-center gap-1.5">
-                <Phone size={12} className="text-slate-400" /> {invoice.customerPhone}
+                <Phone size={12} className="text-slate-500" /> {invoice.customerPhone}
               </span>
             )}
             <span className="flex items-center gap-1.5">
-              <Users size={12} className="text-slate-400" /> {invoice.guestCount} khách
+              <Users size={12} className="text-slate-500" /> {invoice.guestCount} khách
             </span>
           </div>
         )}
@@ -157,7 +159,7 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
 
       {/* Items */}
       <div className="flex-1 overflow-y-auto p-5">
-        <h4 className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mb-3">
+        <h4 className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider mb-3">
           Chi tiết món ({invoice.items.length})
         </h4>
         <div className="space-y-2">
@@ -180,10 +182,41 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
 
       {/* Footer: Total & Pay button */}
       <div className="border-t border-slate-100 p-5">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-sm font-bold text-slate-600">Tạm tính</span>
-          <span className="text-lg font-black text-slate-900 font-display">{formatVnd(invoice.totalAmount)} vnđ</span>
-        </div>
+        {invoice.subtotal !== undefined && (invoice.subtotal !== invoice.totalAmount || Boolean(invoice.tax && invoice.tax > 0) || Boolean(invoice.depositAmount && invoice.depositAmount > 0) || Boolean(invoice.discount && invoice.discount > 0)) ? (
+          <div className="space-y-1.5 mb-4">
+            <div className="flex justify-between items-center text-xs text-slate-500">
+              <span>Tạm tính</span>
+              <span className="font-semibold">{formatVnd(invoice.subtotal || invoice.totalAmount)} vnđ</span>
+            </div>
+            {Boolean(invoice.tax && invoice.tax > 0) && (
+              <div className="flex justify-between items-center text-xs text-slate-500">
+                <span>VAT ({invoice.vatRate || 10}%)</span>
+                <span className="font-semibold">+{formatVnd(invoice.tax!)} vnđ</span>
+              </div>
+            )}
+            {Boolean(invoice.discount && invoice.discount > 0) && (
+              <div className="flex justify-between items-center text-xs text-slate-500">
+                <span>Giảm giá/Voucher</span>
+                <span className="font-semibold">-{formatVnd(invoice.discount!)} vnđ</span>
+              </div>
+            )}
+            {Boolean(invoice.depositAmount && invoice.depositAmount > 0) && (
+              <div className="flex justify-between items-center text-xs text-rose-600 font-medium">
+                <span>Tiền cọc đặt bàn</span>
+                <span className="font-semibold">-{formatVnd(invoice.depositAmount!)} vnđ</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+              <span className="text-sm font-bold text-slate-700">Tổng thanh toán</span>
+              <span className="text-lg font-black text-blue-600 font-display">{formatVnd(invoice.totalAmount)} vnđ</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-sm font-bold text-slate-600">Tổng thanh toán</span>
+            <span className="text-lg font-black text-slate-900 font-display">{formatVnd(invoice.totalAmount)} vnđ</span>
+          </div>
+        )}
 
         {canAct && (
           <div className="flex gap-2">
@@ -215,8 +248,15 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
         )}
 
         {isPaid && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex justify-between items-center">
             <span className="text-xs font-bold text-emerald-700">Đã thanh toán</span>
+            <button
+              onClick={onPrint}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Printer size={13} />
+              In hóa đơn
+            </button>
           </div>
         )}
         {isCancelled && (

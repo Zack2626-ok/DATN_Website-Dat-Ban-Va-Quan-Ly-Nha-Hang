@@ -20,8 +20,8 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="h-64 animate-pulse rounded-2xl border border-gray-100 bg-white" />
-        <div className="h-64 animate-pulse rounded-2xl border border-gray-100 bg-white" />
+        <div className="h-64 animate-pulse rounded-2xl border border-sky-50 bg-white" />
+        <div className="h-64 animate-pulse rounded-2xl border border-sky-50 bg-white" />
       </div>
     );
   }
@@ -38,7 +38,7 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
       case "bank_transfer":
         return "bg-indigo-100 text-indigo-700";
       default:
-        return "bg-gray-100 text-gray-700";
+        return "bg-sky-100 text-slate-600";
     }
   };
 
@@ -46,12 +46,12 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       
       {/* 1. DÒNG TIỀN THU CHI (INCOME VS EXPENSES) */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col justify-between">
+      <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm flex flex-col justify-between">
         <div>
-          <h3 className="text-base font-black text-gray-800 font-display">
+          <h3 className="text-base font-black text-slate-700 font-display">
             Báo cáo dòng tiền & Lợi nhuận ròng
           </h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">So sánh Thu nhập (Hóa đơn + Cọc tiệc) vs Chi phí mua hàng (Nhập kho)</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">So sánh Thu nhập (Hóa đơn) vs Chi phí mua hàng (Nhập kho)</p>
         </div>
 
         {/* Tổng thu chi */}
@@ -75,10 +75,10 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
           </div>
 
           <div className="rounded-xl bg-sky-50/50 p-3 flex flex-col gap-1 border border-sky-100/50">
-            <span className="text-[10px] font-bold text-[#FF5A5F] uppercase tracking-wider flex items-center gap-1">
+            <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider flex items-center gap-1">
               Lợi nhuận ròng <TrendingUp size={12} />
             </span>
-            <span className="text-sm sm:text-base font-black text-gray-800 font-display">
+            <span className="text-sm sm:text-base font-black text-slate-700 font-display">
               {formatCurrency(cashFlow.netProfit)}
             </span>
           </div>
@@ -86,7 +86,7 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
 
         {/* Cơ cấu chi phí nhập kho */}
         <div className="mt-5 flex-1">
-          <h4 className="text-xs font-black text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-2">
+          <h4 className="text-xs font-black text-slate-600 uppercase tracking-wider border-b border-sky-50 pb-2">
             Cơ cấu chi phí thu mua nguyên liệu
           </h4>
           
@@ -97,13 +97,13 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
                 const pct = Math.round((item.amount / totalExp) * 100);
                 return (
                   <div key={idx} className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold text-gray-600">
+                    <div className="flex justify-between text-xs font-semibold text-slate-500">
                       <span>{item.category}</span>
-                      <span className="font-bold text-gray-800">
+                      <span className="font-bold text-slate-700">
                         {formatCurrency(item.amount)} ({pct}%)
                       </span>
                     </div>
-                    <div className="h-1.5 w-full rounded-full bg-gray-100">
+                    <div className="h-1.5 w-full rounded-full bg-sky-100">
                       <div
                         className="h-full rounded-full bg-rose-400"
                         style={{ width: `${pct}%` }}
@@ -122,9 +122,9 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
       </div>
 
       {/* 2. CHI TIẾT CỔNG THANH TOÁN (PAYMENT METHODS TABLE) */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col justify-between">
+      <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm flex flex-col justify-between">
         <div>
-          <h3 className="text-base font-black text-gray-800 font-display">
+          <h3 className="text-base font-black text-slate-700 font-display">
             Phân tích phương thức thanh toán
           </h3>
           <p className="text-[10px] text-gray-400 mt-0.5">Thống kê sản lượng và doanh thu thu qua từng kênh giao dịch</p>
@@ -133,33 +133,33 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
         <div className="mt-4 overflow-x-auto flex-1">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-gray-200 text-gray-400 font-bold uppercase tracking-wider">
+              <tr className="border-b border-sky-100 text-gray-400 font-bold uppercase tracking-wider">
                 <th className="py-2.5">Kênh thanh toán</th>
                 <th className="py-2.5 text-center">Giao dịch</th>
                 <th className="py-2.5 text-right">Tổng thu</th>
                 <th className="py-2.5 text-right">Tỷ trọng DT</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 font-semibold text-gray-700">
+            <tbody className="divide-y divide-gray-100 font-semibold text-slate-600">
               {paymentStats.map((stat, idx) => (
-                <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                <tr key={idx} className="hover:bg-sky-50/50/50 transition-colors">
                   <td className="py-3">
                     <span className={`inline-block rounded-md px-2 py-1 text-[10px] font-black uppercase tracking-wider ${getMethodBadgeClass(stat.method)}`}>
                       {stat.name}
                     </span>
                   </td>
-                  <td className="py-3 text-center font-bold text-gray-500">
+                  <td className="py-3 text-center font-bold text-slate-400">
                     {stat.count} GD
                   </td>
-                  <td className="py-3 text-right font-black text-gray-800">
+                  <td className="py-3 text-right font-black text-slate-700">
                     {formatCurrency(stat.total)}
                   </td>
                   <td className="py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <span className="font-bold text-gray-800">{stat.percentage}%</span>
-                      <div className="h-1.5 w-12 rounded-full bg-gray-100 overflow-hidden">
+                      <span className="font-bold text-slate-700">{stat.percentage}%</span>
+                      <div className="h-1.5 w-12 rounded-full bg-sky-100 overflow-hidden">
                         <div
-                          className="h-full bg-[#FF5A5F]"
+                          className="h-full bg-sky-500"
                           style={{ width: `${stat.percentage}%` }}
                         />
                       </div>

@@ -3,7 +3,7 @@ import { Modal } from "../../../components/Modal";
 import { AlertTriangle, Flame, Send } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-export type OrderItemStatus = "pending" | "cooking" | "done" | "served" | "voided";
+export type OrderItemStatus = "pending" | "waiting_kitchen" | "cooking" | "done" | "served" | "voided";
 
 export interface VoidableOrderItem {
   id: string;
@@ -29,7 +29,7 @@ const VOID_REASONS = [
 ];
 
 /**
- * Hủy / Hoàn trả món — extend: gửi thông báo void lên KDS khi status = cooking
+ * Hủy / Hoàn trả món — extend: gửi thông báo void lên KDS khi status = cooking / waiting_kitchen
  */
 export const VoidItemModal: React.FC<VoidItemModalProps> = ({
   isOpen,
@@ -56,7 +56,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
       toast.error("Vui lòng nhập lý do hủy món");
       return;
     }
-    const shouldNotifyKds = item.status === "cooking" && notifyKds;
+    const shouldNotifyKds = (item.status === "cooking" || item.status === "waiting_kitchen") && notifyKds;
     onConfirm(item.id, finalReason, shouldNotifyKds);
     if (shouldNotifyKds) {
       toast.success(`Đã gửi thông báo void lên KDS — Bàn ${tableName}`);
@@ -68,7 +68,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
 
   if (!item) return null;
 
-  const isCooking = item.status === "cooking";
+  const isCooking = item.status === "cooking" || item.status === "waiting_kitchen";
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Hủy / Hoàn trả món" size="md" theme="light">
@@ -76,8 +76,8 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
         <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-100 rounded-xl">
           <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-gray-900">{item.name} × {item.quantity}</p>
-            <p className="text-sm text-gray-500 mt-1">Bàn {tableName}</p>
+            <p className="font-bold text-slate-800">{item.name} × {item.quantity}</p>
+            <p className="text-sm text-slate-400 mt-1">Bàn {tableName}</p>
           </div>
         </div>
 
@@ -108,11 +108,11 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
         )}
 
         <div className="space-y-2">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lý do hủy</label>
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lý do hủy</label>
           <select
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+            className="w-full p-2.5 bg-sky-50/50 border border-sky-100 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
           >
             {VOID_REASONS.map((r) => (
               <option key={r} value={r}>{r}</option>
@@ -124,7 +124,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
               onChange={(e) => setCustomReason(e.target.value)}
               placeholder="Nhập lý do..."
               rows={2}
-              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="w-full p-2.5 bg-sky-50/50 border border-sky-100 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           )}
         </div>
@@ -132,7 +132,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
         <div className="flex gap-3 pt-2">
           <button
             onClick={handleClose}
-            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-bold text-sm hover:bg-gray-200 transition-colors"
+            className="flex-1 py-2.5 bg-sky-100 text-slate-600 rounded-lg font-bold text-sm hover:bg-gray-200 transition-colors"
           >
             Đóng
           </button>
