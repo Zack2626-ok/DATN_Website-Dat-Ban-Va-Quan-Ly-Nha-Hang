@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent } from "lucide-react";
+import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getAvailableTables, createBooking, Customer, getPublicPromotions } from "../../services/customerService";
+import { getAvailableTables, createBooking, Customer, getPublicPromotions, payBookingDeposit } from "../../services/customerService";
 
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -10,6 +10,11 @@ export const BookingPage: React.FC = () => {
   const [loadingTables, setLoadingTables] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [availableTables, setAvailableTables] = useState<any[]>([]);
+
+  const [menuItemsList, setMenuItemsList] = useState<any[]>([]);
+  const [menuCategory, setMenuCategory] = useState<string>("Tất cả");
+  const [menuSearch, setMenuSearch] = useState<string>("");
+  const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
 
   // Bắt buộc đăng nhập tài khoản khách hàng trước khi đặt bàn
   useEffect(() => {
@@ -881,6 +886,7 @@ export const BookingPage: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
         )}
       </main>
     </div>

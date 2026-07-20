@@ -132,12 +132,26 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
 export const deleteBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const success = await db.deleteBooking(Number(id));
+    const success = await db.deleteCancelledBooking(Number(id));
     if (!success) {
-      sendError(res, "Không tìm thấy đặt bàn hoặc không thể xóa", 404);
+      sendError(res, "Không tìm thấy đặt bàn đã hủy hoặc không thể xóa", 404);
       return;
     }
     sendSuccess(res, null, "Xóa đặt bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const payBookingDepositHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const success = await db.payBookingDeposit(Number(id));
+    if (!success) {
+      sendError(res, "Không tìm thấy đặt bàn hoặc trạng thái cọc không hợp lệ", 404);
+      return;
+    }
+    sendSuccess(res, { id }, "Thanh toán tiền cọc thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
