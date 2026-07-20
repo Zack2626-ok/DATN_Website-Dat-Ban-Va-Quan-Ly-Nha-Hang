@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
+import { addLoyaltyPoints } from "./crm.controller";
 
 export const getAllInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -184,6 +185,22 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     if (order.table_id) {
       await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+    }
+
+    // Tích điểm loyalty nếu có khách hàng thành viên liên kết
+    if (order.customer_id) {
+      try {
+        const invRows = await db.query(
+          "SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+          [id]
+        );
+        const invoiceId = invRows && invRows.length > 0 ? invRows[0].id : null;
+        if (invoiceId) {
+          await addLoyaltyPoints(Number(order.customer_id), finalAmount, invoiceId);
+        }
+      } catch (errLoyalty: any) {
+        console.warn("[processPayment] Loyalty points accumulation failed:", errLoyalty.message);
+      }
     }
 
     const updatedOrder = { ...order, status: "completed" };

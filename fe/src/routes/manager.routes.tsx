@@ -9,6 +9,7 @@ import {
   TableMapIndex,
   PromotionManagement,
   BookingListPage,
+  CRMManagement,
 } from "../views/manager";
 import UserManagement from "../views/manager/UserManagement";
 import RegisterPage from "../views/auth/RegisterPage";
@@ -32,6 +33,7 @@ export const ManagerRoutes = () => (
       <Route path="shifts" element={<ShiftManagement />} />
       <Route path="analytics" element={<AnalyticsView />} />
       <Route path="promotions" element={<PromotionManagement />} />
+      <Route path="crm" element={<CRMManagement />} />
     </Route>
 
     {/* Tạo tài khoản nhân viên — chỉ admin/manager mới truy cập được */}
