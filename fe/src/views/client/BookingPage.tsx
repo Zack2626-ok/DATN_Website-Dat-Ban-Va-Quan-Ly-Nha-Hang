@@ -1,20 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-<<<<<<< HEAD
-import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent } from "lucide-react";
-import { toast } from "react-hot-toast";
-import { getAvailableTables, createBooking, Customer, getPublicPromotions } from "../../services/customerService";
-=======
-<<<<<<< HEAD
 import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, ShoppingBag, Plus, Minus, Trash2, Printer, Search, Tag, ChefHat, X } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, getPublicPromotions, getPublicMenu, payBookingDeposit } from "../../services/customerService";
-=======
-import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent } from "lucide-react";
-import { toast } from "react-hot-toast";
-import { getAvailableTables, createBooking, Customer, getPublicPromotions } from "../../services/customerService";
->>>>>>> 1035002 (vietqr thu ngan)
->>>>>>> BaoToanDev-temp
 
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -31,6 +19,7 @@ export const BookingPage: React.FC = () => {
       navigate("/customer/login?redirect=/booking");
     }
   }, [navigate]);
+
   const [confirmationCode, setConfirmationCode] = useState("");
   const [selectedArea, setSelectedArea] = useState("Tất cả");
   const [createdBooking, setCreatedBooking] = useState<any>(null);
@@ -42,17 +31,12 @@ export const BookingPage: React.FC = () => {
 
   const [promotionsList, setPromotionsList] = useState<any[]>([]);
   const [selectedPromoId, setSelectedPromoId] = useState<string>("");
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
+  const [menuItemsList, setMenuItemsList] = useState<any[]>([]);
   const [menuCategoriesList, setMenuCategoriesList] = useState<any[]>([]);
   const [preOrderedDishes, setPreOrderedDishes] = useState<{ [id: string]: { name: string; price: number; quantity: number; image_url?: string; description?: string; category_name?: string } }>({});
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
   const [menuCategory, setMenuCategory] = useState("Tất cả");
-=======
->>>>>>> 1035002 (vietqr thu ngan)
->>>>>>> BaoToanDev-temp
 
   // Fetch promotions and menu items
   useEffect(() => {
@@ -64,9 +48,6 @@ export const BookingPage: React.FC = () => {
         }
       })
       .catch((e) => console.error("Error loading promotions in booking page:", e));
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
 
     getPublicMenu()
       .then((data) => {
@@ -74,9 +55,6 @@ export const BookingPage: React.FC = () => {
         setMenuCategoriesList(data.categories || []);
       })
       .catch((e) => console.error("Error loading menu in booking page:", e));
-=======
->>>>>>> 1035002 (vietqr thu ngan)
->>>>>>> BaoToanDev-temp
   }, [promoParam]);
 
   // Filtered menu items based on category + search
@@ -120,7 +98,7 @@ export const BookingPage: React.FC = () => {
   }, {} as Record<string, any[]>);
 
   const sortedRowKeys = Object.keys(groupedRows).sort();
-  
+
   const [form, setForm] = useState({
     date: "",
     time: "",
@@ -161,7 +139,7 @@ export const BookingPage: React.FC = () => {
       toast.error("Vui lòng chọn ngày và giờ đặt bàn!");
       return;
     }
-    
+
     // Kiểm tra không cho đặt giờ trong quá khứ nếu chọn ngày hôm nay
     const selectedDateTime = new Date(`${form.date}T${form.time}:00`);
     const now = new Date();
@@ -175,7 +153,7 @@ export const BookingPage: React.FC = () => {
       toast.error("Số lượng khách phải từ 1 đến 30 người!");
       return;
     }
-    
+
     setLoadingTables(true);
     try {
       const startTimeStr = `${form.date} ${form.time}:00`;
@@ -254,7 +232,6 @@ export const BookingPage: React.FC = () => {
       return;
     }
 
-
     setSubmitting(true);
     try {
       const startTimeStr = `${form.date} ${form.time}:00`;
@@ -274,9 +251,6 @@ export const BookingPage: React.FC = () => {
         }
       }
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
       // Tổng hợp món ăn đặt trước gửi lên API
       const orderedItems = Object.entries(preOrderedDishes)
         .filter(([_, d]) => d.quantity > 0)
@@ -285,9 +259,6 @@ export const BookingPage: React.FC = () => {
           quantity: d.quantity,
         }));
 
-=======
->>>>>>> 1035002 (vietqr thu ngan)
->>>>>>> BaoToanDev-temp
       const bookingResult = await createBooking({
         table_id: Number(form.tableId),
         customer_id: customerId,
@@ -298,13 +269,7 @@ export const BookingPage: React.FC = () => {
         start_time: startTimeStr,
         end_time: endTimeStr,
         guest_note: form.note.trim(),
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
         pre_ordered_items: orderedItems,
-=======
->>>>>>> 1035002 (vietqr thu ngan)
->>>>>>> BaoToanDev-temp
       });
 
       setCreatedBooking(bookingResult);
@@ -346,7 +311,7 @@ export const BookingPage: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 relative">
         {/* Ticket Outer Wrapper */}
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-gray-150 p-8 text-center animate-fade-in relative">
-          
+
           {/* Card Upper Section */}
           <div className="flex flex-col items-center">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-extrabold uppercase tracking-wider mb-3">
@@ -359,7 +324,7 @@ export const BookingPage: React.FC = () => {
           <div className="mt-6 p-4 bg-gray-50 border border-dashed border-gray-250 rounded-2xl relative">
             <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest block">Mã xác nhận đặt bàn</span>
             <span className="text-3xl font-black text-blue-700 tracking-widest mt-1 block font-mono">{confirmationCode}</span>
-            
+
             {/* Barcode Mockup */}
             <div className="flex justify-center items-center gap-[2px] h-6 opacity-60 mt-3">
               <div className="w-[3px] h-full bg-gray-800"></div>
@@ -395,10 +360,10 @@ export const BookingPage: React.FC = () => {
              <div className="flex justify-between text-xs"><span className="text-gray-400 font-bold uppercase tracking-wider">Bàn đã chọn:</span> <span className="font-semibold text-gray-900">{createdBooking?.table_name || form.tableName} ({createdBooking?.area_name || form.areaName || "Nhà hàng"})</span></div>
              <div className="flex justify-between text-xs"><span className="text-gray-400 font-bold uppercase tracking-wider">Số lượng khách:</span> <span className="font-semibold text-gray-900">{createdBooking?.party_size || form.guests} người</span></div>
              <div className="flex justify-between text-xs">
-               <span className="text-gray-400 font-bold uppercase tracking-wider">Trạng thái đặt:</span> 
+               <span className="text-gray-400 font-bold uppercase tracking-wider">Trạng thái đặt:</span>
                <span className="font-bold text-amber-600">Chờ xác nhận</span>
              </div>
-             
+
              {/* Deposit Information Box */}
              {createdBooking?.deposit_amount > 0 && (
                <div className="mt-4 pt-3 border-t border-gray-250/50 space-y-3">
@@ -782,7 +747,7 @@ export const BookingPage: React.FC = () => {
                 <h2 className="text-lg font-bold text-gray-900 font-display mb-6 border-b border-gray-50 pb-4">
                   Thông tin khách & Đặt bàn
                 </h2>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Họ và tên *</label>
@@ -794,7 +759,7 @@ export const BookingPage: React.FC = () => {
                       className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     />
                   </div>
-                  
+
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Số điện thoại *</label>
                     <div className="relative">
@@ -809,7 +774,7 @@ export const BookingPage: React.FC = () => {
                       />
                     </div>
                   </div>
-                  
+
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email</label>
                     <div className="relative">
@@ -843,41 +808,118 @@ export const BookingPage: React.FC = () => {
                     </select>
                   </div>
 
-                {/* Ghi chú */}
-                <div className="sm:col-span-2 border-t border-gray-100 pt-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ghi chú (Tùy chọn)</label>
-                  <textarea
-                    value={form.note}
-                    onChange={(e) => setField("note", e.target.value)}
-                    rows={3}
-                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, đặt trước món ăn, vị trí ngồi..."
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all"
-                  />
-                  {/* Tag ghi chú nhanh */}
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {["Đặt trước món ăn", "Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh"].map((tag) => (
+                  {/* Đặt trước món ăn */}
+                  <div className="border-t border-gray-100 pt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                        <ChefHat size={14} className="text-orange-500" /> Đặt trước món ăn (Tùy chọn)
+                      </label>
                       <button
-                        key={tag}
                         type="button"
-                        onClick={() => {
-                          setForm((prev) => {
-                            const trimmed = prev.note.trim();
-                            if (trimmed.includes(tag)) return prev;
-                            const separator = trimmed ? ", " : "";
-                            return { ...prev, note: trimmed + separator + tag };
-                          });
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-all"
+                        onClick={() => setShowMenuModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-lg text-xs font-bold transition-all border border-orange-100"
                       >
-                        + {tag}
+                        <ShoppingBag size={13} />
+                        {totalPreOrderQty > 0 ? `${totalPreOrderQty} món` : "Chọn món"}
                       </button>
-                    ))}
+                    </div>
+
+                    {/* Giỏ món đặt trước */}
+                    {Object.keys(preOrderedDishes).length > 0 && (
+                      <div className="bg-orange-50/60 border border-orange-100 rounded-2xl p-3 space-y-2">
+                        {Object.entries(preOrderedDishes).map(([id, dish]) => (
+                          <div key={id} className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-gray-700 font-medium flex-1 line-clamp-1">{dish.name}</span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreOrderedDishes((prev) => {
+                                    const current = prev[id];
+                                    if (current.quantity <= 1) {
+                                      const copy = { ...prev };
+                                      delete copy[id];
+                                      return copy;
+                                    }
+                                    return { ...prev, [id]: { ...current, quantity: current.quantity - 1 } };
+                                  });
+                                }}
+                                className="w-5 h-5 rounded bg-orange-100 text-orange-600 hover:bg-orange-200 flex items-center justify-center"
+                              >
+                                <Minus size={10} />
+                              </button>
+                              <span className="text-xs font-black text-gray-800 w-4 text-center">{dish.quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreOrderedDishes((prev) => ({
+                                    ...prev,
+                                    [id]: { ...prev[id], quantity: prev[id].quantity + 1 },
+                                  }));
+                                }}
+                                className="w-5 h-5 rounded bg-orange-500 text-white hover:bg-orange-600 flex items-center justify-center"
+                              >
+                                <Plus size={10} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreOrderedDishes((prev) => {
+                                    const copy = { ...prev };
+                                    delete copy[id];
+                                    return copy;
+                                  });
+                                }}
+                                className="w-5 h-5 rounded bg-red-50 text-red-400 hover:bg-red-100 flex items-center justify-center ml-0.5"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                            <span className="text-[11px] font-bold text-orange-600 shrink-0 w-16 text-right">
+                              {(dish.price * dish.quantity).toLocaleString("vi-VN")}đ
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Ghi chú */}
+                  <div className="border-t border-gray-100 pt-4">
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ghi chú (Tùy chọn)</label>
+                    <textarea
+                      value={form.note}
+                      onChange={(e) => setField("note", e.target.value)}
+                      rows={3}
+                      placeholder="Các yêu cầu đặc biệt như ăn kiêng, đặt trước món ăn, vị trí ngồi..."
+                      className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all"
+                    />
+                    {/* Tag ghi chú nhanh */}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {["Đặt trước món ăn", "Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh"].map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            setForm((prev) => {
+                              const trimmed = prev.note.trim();
+                              if (trimmed.includes(tag)) return prev;
+                              const separator = trimmed ? ", " : "";
+                              return { ...prev, note: trimmed + separator + tag };
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-all"
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Tóm tắt đặt bàn */}
-              <div className="bg-blue-50/50 border border-blue-100 rounded-3xl p-6 flex flex-col gap-3 text-sm text-blue-900 font-semibold shadow-2xs mt-6">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-3xl p-6 flex flex-col gap-3 text-sm text-blue-900 font-semibold shadow-2xs">
                 <h4 className="font-extrabold uppercase text-xs text-blue-500 tracking-wider">Thông tin tóm tắt đặt bàn</h4>
                 <div className="grid grid-cols-1 gap-y-2">
                   <div>Ngày đến: <span className="font-bold text-gray-900">{new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
@@ -885,7 +927,7 @@ export const BookingPage: React.FC = () => {
                   <div>Bàn ăn đã chọn: <span className="font-bold text-gray-900">{form.tableName ? `${form.tableName} ${form.areaName ? `(${form.areaName})` : ""}` : "Chưa chọn"}</span></div>
                   <div>Số khách: <span className="font-bold text-gray-900">{form.guests} người</span></div>
                 </div>
-                
+
                 {/* Hiển thị tiền cọc dự kiến */}
                 {Object.keys(preOrderedDishes).length > 0 && (
                   <div className="mt-2 pt-2 border-t border-blue-100/50 flex justify-between items-center text-xs">
@@ -910,7 +952,7 @@ export const BookingPage: React.FC = () => {
               </div>
 
               {/* Nút bấm hành động */}
-              <div className="flex gap-4 mt-6">
+              <div className="flex gap-4">
                 <button
                   type="button"
                   onClick={() => setStep(1)}
@@ -938,10 +980,7 @@ export const BookingPage: React.FC = () => {
             </div>
           </div>
         )}
-<<<<<<< HEAD
       </main>
-<<<<<<< HEAD
-=======
 
       {/* ============================================================
           Modal Đặt trước món ăn — Premium Grid UI với Category Filter
@@ -1167,147 +1206,6 @@ export const BookingPage: React.FC = () => {
           </div>
         </div>
       )}
-=======
-
-        {step === 3 && (
-          <form onSubmit={handleSubmitBooking} className="space-y-6 animate-fade-in">
-            {/* Contact details */}
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-              <h2 className="text-lg font-bold text-gray-900 font-display mb-6 border-b border-gray-50 pb-4">
-                Thông tin người đặt & Liên hệ
-              </h2>
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Họ và tên *</label>
-                  <input
-                    required
-                    value={form.name}
-                    onChange={(e) => setField("name", e.target.value)}
-                    placeholder="Nguyễn Văn A"
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Số điện thoại *</label>
-                  <div className="relative">
-                    <Phone size={16} className="absolute left-4 top-4 text-gray-400" />
-                    <input
-                      required
-                      type="tel"
-                      value={form.phone}
-                      onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
-                      placeholder="0912345678"
-                      className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    />
-                  </div>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email</label>
-                  <div className="relative">
-                    <Mail size={16} className="absolute left-4 top-4 text-gray-400" />
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => setField("email", e.target.value)}
-                      placeholder="email@example.com"
-                      className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Chọn ưu đãi */}
-                <div className="sm:col-span-2 border-t border-gray-100 pt-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Percent size={14} className="text-blue-600" /> Chọn chương trình ưu đãi (Tùy chọn)
-                  </label>
-                  <select
-                    value={selectedPromoId}
-                    onChange={(e) => setSelectedPromoId(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
-                  >
-                    <option value="">Không áp dụng ưu đãi</option>
-                    {promotionsList.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.title} ({p.discount_type === "percent" ? `Giảm ${p.discount_value}%` : `Giảm ${Number(p.discount_value).toLocaleString("vi-VN")}đ`})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Ghi chú */}
-                <div className="sm:col-span-2 border-t border-gray-100 pt-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ghi chú (Tùy chọn)</label>
-                  <textarea
-                    value={form.note}
-                    onChange={(e) => setField("note", e.target.value)}
-                    rows={3}
-                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, đặt trước món ăn, vị trí ngồi..."
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all"
-                  />
-                  {/* Tag ghi chú nhanh */}
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {["Đặt trước món ăn", "Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh"].map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => {
-                          setForm((prev) => {
-                            const trimmed = prev.note.trim();
-                            if (trimmed.includes(tag)) return prev;
-                            const separator = trimmed ? ", " : "";
-                            return { ...prev, note: trimmed + separator + tag };
-                          });
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-all"
-                      >
-                        + {tag}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Summary Box */}
-            <div className="bg-blue-50/50 border border-blue-100 rounded-3xl p-6 flex flex-col gap-3 text-sm text-blue-900 font-semibold shadow-2xs">
-              <h4 className="font-extrabold uppercase text-xs text-blue-500 tracking-wider">Thông tin tóm tắt đặt bàn</h4>
-              <div className="grid grid-cols-2 gap-y-2">
-                <div>Ngày đến: <span className="font-bold text-gray-900">{new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
-                <div>Giờ đến: <span className="font-bold text-gray-900">{form.time}</span></div>
-                <div>Bàn ăn đã chọn: <span className="font-bold text-gray-900">{form.tableName}</span></div>
-                <div>Số khách: <span className="font-bold text-gray-900">{form.guests} người</span></div>
-              </div>
-            </div>
-
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="flex-1 py-4 border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-              >
-                <ArrowLeft size={16} /> Quay lại
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="flex-[2] py-4 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" /> Đang tạo đơn...
-                  </>
-                ) : (
-                  <>
-                    Xác nhận đặt bàn <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        )}
-      </main>
->>>>>>> 1035002 (vietqr thu ngan)
->>>>>>> BaoToanDev-temp
     </div>
   );
 };
