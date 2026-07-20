@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
-import { isValidPhoneNumber, getPhoneNumberValidationError } from "../utils/validation";
+import { getPhoneNumberValidationError } from "../utils/validation";
+import { sendBookingNotification } from "../services/telegram.service";
+import { sendBookingConfirmationEmail } from "../utils/email";
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -27,8 +29,6 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
-
-import { sendBookingConfirmationEmail } from "../utils/email";
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -81,6 +81,10 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       pre_ordered_items: pre_ordered_items || items,
     });
 
+    // Send Telegram Notification to Management
+    sendBookingNotification(booking);
+
+    // Send Confirmation Email to Customer & generate local preview URL
     let emailPreviewUrl = null;
     try {
       const fullBooking = await db.getBookingById(booking.id);
@@ -100,7 +104,6 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     sendError(res, msg, msg.includes("trùng") ? 400 : 500);
   }
 };
-
 
 export const updateBookingStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -129,26 +132,12 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
 export const deleteBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const success = await db.deleteCancelledBooking(Number(id));
+    const success = await db.deleteBooking(Number(id));
     if (!success) {
-      sendError(res, "Chỉ xóa được booking đã hủy", 400);
+      sendError(res, "Không tìm thấy đặt bàn hoặc không thể xóa", 404);
       return;
     }
-    sendSuccess(res, { id: Number(id) }, "Đã xóa booking");
-  } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
-  }
-};
-
-export const payBookingDepositHandler = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const success = await db.payBookingDeposit(Number(id));
-    if (!success) {
-      sendError(res, "Không tìm thấy đặt bàn hoặc đơn không thể đặt cọc", 404);
-      return;
-    }
-    sendSuccess(res, { id: Number(id), deposit_status: "paid" }, "Thanh toán tiền cọc thành công");
+    sendSuccess(res, null, "Xóa đặt bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

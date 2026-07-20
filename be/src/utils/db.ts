@@ -288,6 +288,10 @@ const createDatabaseTables = async (): Promise<void> => {
       service_fee_rate DOUBLE NOT NULL DEFAULT 5.00,
       default_payment_method VARCHAR(50) NOT NULL DEFAULT 'cash',
       timezone VARCHAR(50) NOT NULL DEFAULT 'GMT+07:00',
+      bank_code VARCHAR(20) DEFAULT 'VCB',
+      bank_account VARCHAR(30) DEFAULT '1234567890',
+      bank_name VARCHAR(100) DEFAULT 'Ngân hàng TMCP Ngoại thương Việt Nam',
+      bank_account_name VARCHAR(150) DEFAULT 'CONG TY TNHH RESMANAGER',
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -343,8 +347,8 @@ export const initDb = async (): Promise<boolean> => {
     const infoCount = await query("SELECT COUNT(*) as count FROM restaurant_info");
     if (infoCount[0].count === 0) {
       await query(`
-        INSERT INTO restaurant_info (id, name, address, hotline, hotline_hours, email, opening_hours, happy_hour, tax_rate, service_fee_rate, default_payment_method, timezone)
-        VALUES (1, 'ResManager Bistro', '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM', '028 3829 4000', 'Hỗ trợ 10:00–22:00 hàng ngày', 'contact@resmanager.vn', 'Thứ 2 – Chủ nhật: 10:00 – 22:00', 'Happy Hour: 17:00 – 19:00', 10.00, 5.00, 'cash', 'GMT+07:00')
+        INSERT INTO restaurant_info (id, name, address, hotline, hotline_hours, email, opening_hours, happy_hour, tax_rate, service_fee_rate, default_payment_method, timezone, bank_code, bank_account, bank_name, bank_account_name)
+        VALUES (1, 'ResManager Bistro', '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM', '028 3829 4000', 'Hỗ trợ 10:00–22:00 hàng ngày', 'contact@resmanager.vn', 'Thứ 2 – Chủ nhật: 10:00 – 22:00', 'Happy Hour: 17:00 – 19:00', 10.00, 5.00, 'cash', 'GMT+07:00', 'VCB', '1234567890', 'Ngân hàng TMCP Ngoại thương Việt Nam', 'CONG TY TNHH RESMANAGER')
       `);
       console.log("✅ Seeded default restaurant_info.");
     }
@@ -2868,6 +2872,10 @@ export const getRestaurantInfo = async (): Promise<any> => {
     service_fee_rate: 5.0,
     default_payment_method: "cash",
     timezone: "GMT+07:00",
+    bank_code: "VCB",
+    bank_account: "1234567890",
+    bank_name: "Ngân hàng TMCP Ngoại thương Việt Nam",
+    bank_account_name: "CONG TY TNHH RESMANAGER",
   };
 };
 
@@ -2880,6 +2888,7 @@ export const updateRestaurantInfo = async (data: any): Promise<any> => {
     "name", "address", "hotline", "hotline_hours", "email",
     "opening_hours", "happy_hour", "map_url",
     "tax_rate", "service_fee_rate", "default_payment_method", "timezone",
+    "bank_code", "bank_account", "bank_name", "bank_account_name",
   ];
 
   for (const key of allowedKeys) {
