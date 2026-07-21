@@ -155,8 +155,8 @@ export const CashierPOS: React.FC = () => {
       printCashierInvoice({
         id: activeOrder.id,
         tableName: selectedTable?.name || "Khách lẻ",
-        customerName: activeOrder.customer_name || activeOrder.guest_name,
-        customerPhone: activeOrder.customer_phone || activeOrder.guest_phone,
+        customerName: activeOrder.customerName || activeOrder.guest_name,
+        customerPhone: activeOrder.customerPhone || activeOrder.guest_phone,
         items: activeOrder.items,
         subtotal: subtotal,
         tax: tax,

@@ -8,6 +8,10 @@ interface ProvisionalBillModalProps {
   tableName: string;
   orderId?: string | number;
   items: WaiterOrderItem[];
+  subtotal?: number;
+  tax?: number;
+  depositAmount?: number;
+  totalAmount?: number;
   waiterName?: string;
   employeeCode?: string;
   guestName?: string | null;
@@ -21,6 +25,10 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
   tableName,
   orderId,
   items,
+  subtotal,
+  tax,
+  depositAmount,
+  totalAmount,
   waiterName,
   employeeCode,
   guestName,
@@ -34,10 +42,13 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
   const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
   const validItems = items.filter((item) => item.status !== "voided" && item.status !== "cancelled");
-  const totalAmount = validItems.reduce(
+  const calcSubtotal = subtotal !== undefined ? subtotal : validItems.reduce(
     (sum, item) => sum + Number(item.unit_price) * item.quantity,
     0,
   );
+  const calcTax = tax !== undefined ? tax : Math.round(calcSubtotal * 0.10);
+  const calcDeposit = depositAmount || 0;
+  const calcTotal = totalAmount !== undefined ? totalAmount : Math.max(0, calcSubtotal + calcTax - calcDeposit);
 
   const handlePrint = () => {
     const printContent = document.getElementById("bill-print-area");
@@ -108,9 +119,24 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
           ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
         `).join("")}
         <div class="divider"></div>
+        <div class="row">
+          <span>Tạm tính (món):</span>
+          <span>${calcSubtotal.toLocaleString("vi-VN")} đ</span>
+        </div>
+        <div class="row">
+          <span>VAT (10%):</span>
+          <span>+${calcTax.toLocaleString("vi-VN")} đ</span>
+        </div>
+        ${calcDeposit > 0 ? `
+        <div class="row" style="color: #c2410c;">
+          <span>Tiền cọc đặt bàn:</span>
+          <span>-${calcDeposit.toLocaleString("vi-VN")} đ</span>
+        </div>
+        ` : ""}
+        <div class="divider"></div>
         <div class="row total-row">
-          <span>TỔNG CỘNG:</span>
-          <span>${totalAmount.toLocaleString("vi-VN")} đ</span>
+          <span>TỔNG THANH TOÁN:</span>
+          <span>${calcTotal.toLocaleString("vi-VN")} đ</span>
         </div>
         <div class="divider"></div>
         <div class="center note" style="margin-top:8px;">Quý khách vui lòng ra quầy Thu Ngân để thanh toán.</div>
@@ -200,10 +226,26 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
             )}
           </div>
 
-          {/* Tổng */}
-          <div className="border-t-2 border-gray-800 mt-3 pt-2 flex justify-between items-center">
-            <span className="font-black text-sm text-slate-800">TỔNG CỘNG:</span>
-            <span className="font-black text-base text-sky-600">{totalAmount.toLocaleString("vi-VN")} đ</span>
+          {/* Tổng chi phí */}
+          <div className="border-t-2 border-gray-800 mt-3 pt-2 space-y-1.5 text-xs">
+            <div className="flex justify-between items-center text-slate-600">
+              <span>Tạm tính (món):</span>
+              <span className="font-bold">{calcSubtotal.toLocaleString("vi-VN")} đ</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-600">
+              <span>VAT (10%):</span>
+              <span className="font-bold">+{calcTax.toLocaleString("vi-VN")} đ</span>
+            </div>
+            {calcDeposit > 0 && (
+              <div className="flex justify-between items-center text-amber-600 font-medium">
+                <span>Tiền cọc đặt bàn:</span>
+                <span className="font-bold">-{calcDeposit.toLocaleString("vi-VN")} đ</span>
+              </div>
+            )}
+            <div className="border-t border-gray-300 pt-1.5 flex justify-between items-center">
+              <span className="font-black text-sm text-slate-800 uppercase">TỔNG THANH TOÁN:</span>
+              <span className="font-black text-base text-sky-600">{calcTotal.toLocaleString("vi-VN")} đ</span>
+            </div>
           </div>
 
           <div className="border-t border-dashed border-sky-200 mt-3 pt-2 text-center text-[10px] text-gray-400 italic">
