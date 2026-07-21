@@ -69,11 +69,14 @@ const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    /** Đăng xuất — xóa token và reset state */
+    /** Đăng xuất — xóa token nhân viên và reset state */
     logoutAction(state) {
       state.user = null;
       state.error = null;
-      localStorage.clear();
+      // Chỉ xóa token nhân viên, không xóa customer_token/customer_info
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("resmanagerState");
     },
     /** Cập nhật thông tin user (vd: sau khi đổi avatar) */
     setUser(state, action: PayloadAction<User>) {

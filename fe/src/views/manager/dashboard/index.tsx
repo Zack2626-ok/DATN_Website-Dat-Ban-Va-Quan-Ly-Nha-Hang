@@ -33,19 +33,19 @@ export const ManagerDashboard: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-2xl font-bold text-gray-700">Tổng quan ca làm việc</h1>
-        <p className="mt-1 text-sm text-gray-500">Theo dõi doanh thu, bàn phục vụ và hoạt động trong ca</p>
+      <div className="border-b border-sky-100 pb-4">
+        <h1 className="text-2xl font-bold text-slate-600">Tổng quan ca làm việc</h1>
+        <p className="mt-1 text-sm text-slate-400">Theo dõi doanh thu, bàn phục vụ và hoạt động trong ca</p>
       </div>
       {/* KPIs Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* KPI 1 */}
         <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Tổng doanh thu
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <DollarSign size={14} />
             </div>
           </div>
@@ -62,10 +62,10 @@ export const ManagerDashboard: React.FC = () => {
         {/* KPI 2 */}
         <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Bàn đang phục vụ
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <Users size={14} />
             </div>
           </div>
@@ -73,7 +73,7 @@ export const ManagerDashboard: React.FC = () => {
             <span className="text-2xl font-black">
               {stats.occupiedTables + 20}/40
             </span>
-            <span className="text-slate-400 text-[10px] font-bold">
+            <span className="text-slate-500 text-[10px] font-bold">
               {Math.round(((stats.occupiedTables + 20) / 40) * 100)}% đang sử
               dụng
             </span>
@@ -83,10 +83,10 @@ export const ManagerDashboard: React.FC = () => {
         {/* KPI 3 */}
         <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Đơn hàng hoàn thành
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <ShoppingCart size={14} />
             </div>
           </div>
@@ -101,10 +101,10 @@ export const ManagerDashboard: React.FC = () => {
         {/* KPI 4 */}
         <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
           <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold">
+            <span className="text-slate-500 text-xs font-semibold">
               Cảnh báo tồn kho
             </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400">
+            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <AlertTriangle size={14} />
             </div>
           </div>
@@ -128,7 +128,7 @@ export const ManagerDashboard: React.FC = () => {
 
           <div className="relative h-64 flex gap-4 pr-4 border-b border-l border-slate-100 pb-6">
             {/* Y axis labels */}
-            <div className="absolute -left-12 top-0 h-full flex flex-col justify-between text-[10px] font-bold text-slate-400 text-right w-10">
+            <div className="absolute -left-12 top-0 h-full flex flex-col justify-between text-[10px] font-bold text-slate-500 text-right w-10">
               <span>26000</span>
               <span>19500</span>
               <span>13000</span>
@@ -249,7 +249,7 @@ export const ManagerDashboard: React.FC = () => {
               </svg>
 
               {/* X axis labels */}
-              <div className="absolute -bottom-6 left-0 w-full flex justify-between text-[10px] font-bold text-slate-400 px-1.5">
+              <div className="absolute -bottom-6 left-0 w-full flex justify-between text-[10px] font-bold text-slate-500 px-1.5">
                 <span>Thứ 2</span>
                 <span>Thứ 3</span>
                 <span>Thứ 4</span>

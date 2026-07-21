@@ -2,7 +2,7 @@ import { Route } from "react-router-dom";
 import { ClientLayout, HomeView } from "../views/client";
 import { MenuPage, PromotionsPage, BookingPage, AccountPage } from "../views/client";
 import LoginPage from "../views/auth/LoginPage";
-import RegisterPage from "../views/auth/RegisterPage";
+import { CustomerLoginPage, CustomerRegisterPage } from "../views/customer";
 
 /**
  * ClientRoutes - Sub-route tree for the customer booking website
@@ -20,6 +20,7 @@ export const ClientRoutes = () => (
 
     {/* Authentication pages (standalone, no shared layout) */}
     <Route path="/auth/login" element={<LoginPage />} />
-    <Route path="/auth/register" element={<RegisterPage />} />
+    <Route path="/customer/login" element={<CustomerLoginPage />} />
+    <Route path="/customer/register" element={<CustomerRegisterPage />} />
   </>
 );

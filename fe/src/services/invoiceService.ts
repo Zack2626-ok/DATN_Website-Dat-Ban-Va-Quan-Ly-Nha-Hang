@@ -77,3 +77,13 @@ export const getInvoicePaymentsApi = async (
   const response = await api.get(`${BASE}/${invoiceId}/payments`);
   return response.data.data;
 };
+
+export const getPaymentHistoryApi = async (params?: {
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  paymentMethod?: string;
+}): Promise<PaymentRecord[]> => {
+  const response = await api.get(`${BASE}/payment-history`, { params });
+  return response.data.data;
+};

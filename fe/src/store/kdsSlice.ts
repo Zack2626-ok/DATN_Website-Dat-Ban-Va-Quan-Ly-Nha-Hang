@@ -24,6 +24,9 @@ export interface KdsItem {
   tableName?: string;
   areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
+  voidReason?: string;
+  voidedAt?: string;
+  chefDismissed?: number;
 }
 
 export interface KdsVoidAlert {

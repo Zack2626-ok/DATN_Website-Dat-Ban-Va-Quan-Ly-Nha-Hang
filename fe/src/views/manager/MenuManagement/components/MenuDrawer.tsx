@@ -326,15 +326,15 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
       <div className="relative w-full max-w-lg bg-white shadow-xl h-full flex flex-col animate-slide-in">
         
         {/* Sticky Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10">
+        <div className="sticky top-0 bg-white border-b border-sky-100 px-6 py-4 flex justify-between items-center z-10">
           <div>
-            <h2 className="text-lg font-bold text-gray-800">
+            <h2 className="text-lg font-bold text-slate-700">
               {editingItem ? "Cập nhật món ăn" : "Thêm món ăn mới"}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">Thiết lập thông tin món và tùy chọn đi kèm</p>
+            <p className="text-xs text-slate-400 mt-0.5">Thiết lập thông tin món và tùy chọn đi kèm</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X size={20} className="text-gray-600" />
+          <button onClick={onClose} className="p-2 hover:bg-sky-100 rounded-full transition-colors">
+            <X size={20} className="text-slate-500" />
           </button>
         </div>
 
@@ -358,14 +358,14 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
           {/* Section 1: Basic Details */}
           <div className="space-y-4">
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b border-gray-100 pb-2">
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-sky-50 pb-2">
               Thông tin món ăn
             </h3>
             
             {/* Name */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Tên món ăn <span className="text-[#FF5A5F]">*</span>
+              <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+                Tên món ăn <span className="text-sky-600">*</span>
               </label>
               <input
                 type="text"
@@ -377,7 +377,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                   fieldErrors.name
                     ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                    : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                    : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
                 }`}
                 placeholder="Ví dụ: Bò lúc lắc, Trà đào sả..."
               />
@@ -388,8 +388,8 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
             {/* Price */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Giá bán (VNĐ) <span className="text-[#FF5A5F]">*</span>
+              <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+                Giá bán (VNĐ) <span className="text-sky-600">*</span>
               </label>
               <input
                 type="number"
@@ -402,7 +402,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-shadow ${
                   fieldErrors.price
                     ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                    : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                    : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
                 }`}
                 placeholder="Nhập giá bán món ăn"
               />
@@ -414,8 +414,8 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             {/* Category & Kitchen Station */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Danh mục <span className="text-[#FF5A5F]">*</span>
+                <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+                  Danh mục <span className="text-sky-600">*</span>
                 </label>
                 <select
                   value={formData.category_id}
@@ -426,7 +426,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                   className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white transition-shadow ${
                     fieldErrors.category_id
                       ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                      : "border-gray-300 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F]"
+                      : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
                   }`}
                 >
                   <option value="">-- Chọn danh mục --</option>
@@ -442,7 +442,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                <label className="block text-sm font-semibold text-slate-600 mb-1.5">
                   Trạm chế biến
                 </label>
                 <select
@@ -453,7 +453,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                       kitchen_station: e.target.value as "hot_kitchen" | "bar" | "cold_kitchen",
                     })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] bg-white transition-shadow"
+                  className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white transition-shadow"
                 >
                   <option value="hot_kitchen">Bếp nóng</option>
                   <option value="bar">Quầy Bar</option>
@@ -464,18 +464,18 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
             {/* Image URL */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              <label className="block text-sm font-semibold text-slate-600 mb-1.5">
                 Đường dẫn ảnh món ăn
               </label>
               <input
                 type="url"
                 value={formData.image_url}
                 onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] transition-shadow"
+                className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-shadow"
                 placeholder="https://example.com/image.jpg"
               />
               {formData.image_url && (
-                <div className="mt-2 relative rounded-lg overflow-hidden border border-gray-200 h-28 w-full bg-gray-50 flex items-center justify-center">
+                <div className="mt-2 relative rounded-lg overflow-hidden border border-sky-100 h-28 w-full bg-sky-50/50 flex items-center justify-center">
                   <img src={formData.image_url} alt="Preview" className="h-full w-full object-cover" />
                 </div>
               )}
@@ -483,27 +483,27 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
             {/* Description */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              <label className="block text-sm font-semibold text-slate-600 mb-1.5">
                 Mô tả chi tiết
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={2}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/20 focus:border-[#FF5A5F] transition-shadow"
+                className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-shadow"
                 placeholder="Mô tả nguyên liệu, hương vị..."
               />
             </div>
 
             {/* Status Toggles */}
-            <div className="bg-gray-50 rounded-xl p-4 space-y-3.5 border border-gray-100">
+            <div className="bg-sky-50/50 rounded-xl p-4 space-y-3.5 border border-sky-50">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-gray-700">Trạng thái bán</div>
+                <div className="text-sm font-semibold text-slate-600">Trạng thái bán</div>
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
                   className={`w-11 h-6 rounded-full transition-colors focus:outline-none ${
-                    formData.is_active ? "bg-[#FF5A5F]" : "bg-gray-300"
+                    formData.is_active ? "bg-sky-500" : "bg-gray-300"
                   }`}
                 >
                   <div
@@ -515,12 +515,12 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </div>
 
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-gray-700">Món ăn nổi bật (Trang chủ)</div>
+                <div className="text-sm font-semibold text-slate-600">Món ăn nổi bật (Trang chủ)</div>
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, is_featured: !formData.is_featured })}
                   className={`w-11 h-6 rounded-full transition-colors focus:outline-none ${
-                    formData.is_featured ? "bg-[#FF5A5F]" : "bg-gray-300"
+                    formData.is_featured ? "bg-sky-500" : "bg-gray-300"
                   }`}
                 >
                   <div
@@ -535,14 +535,14 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
           {/* Section 2: Modifiers (Groups & Options) */}
           <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+            <div className="flex items-center justify-between border-b border-sky-50 pb-2">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 Nhóm tùy chọn đi kèm <span className="text-xs font-normal text-gray-400 capitalize">(Lựa chọn)</span>
               </h3>
               <button
                 type="button"
                 onClick={handleAddGroup}
-                className="text-xs font-semibold text-[#FF5A5F] hover:text-[#ff4449] flex items-center gap-1 transition-colors"
+                className="text-xs font-semibold text-sky-600 hover:text-[#ff4449] flex items-center gap-1 transition-colors"
               >
                 <Plus size={14} />
                 Thêm nhóm tùy chọn
@@ -550,12 +550,12 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             </div>
 
             {modifierGroups.length === 0 ? (
-              <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+              <div className="text-center py-6 border border-dashed border-sky-100 rounded-xl bg-sky-50/50/50">
                 <p className="text-sm text-gray-400">Chưa có tùy chọn tùy chỉnh cho món này</p>
                 <button
                   type="button"
                   onClick={handleAddGroup}
-                  className="mt-2 text-xs font-semibold text-[#FF5A5F] hover:underline"
+                  className="mt-2 text-xs font-semibold text-sky-600 hover:underline"
                 >
                   Thêm nhóm đầu tiên
                 </button>
@@ -565,8 +565,8 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 {modifierGroups.map((group, gIdx) => (
                   <div
                     key={gIdx}
-                    className={`relative bg-white border rounded-xl p-4 shadow-sm hover:border-gray-300 transition-colors space-y-4 ${
-                      fieldErrors.groups?.[gIdx] ? "border-red-300 bg-red-50/5" : "border-gray-200"
+                    className={`relative bg-white border rounded-xl p-4 shadow-sm hover:border-sky-200 transition-colors space-y-4 ${
+                      fieldErrors.groups?.[gIdx] ? "border-red-300 bg-red-50/5" : "border-sky-100"
                     }`}
                   >
                     {/* Header Group */}
@@ -576,10 +576,10 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                           type="text"
                           value={group.name}
                           onChange={(e) => handleGroupChange(gIdx, "name", e.target.value)}
-                          className={`w-full font-bold text-sm text-gray-900 border-b focus:outline-none pb-0.5 ${
+                          className={`w-full font-bold text-sm text-slate-800 border-b focus:outline-none pb-0.5 ${
                             fieldErrors.groups?.[gIdx]?.name
                               ? "border-red-400 focus:border-red-500"
-                              : "border-gray-200 hover:border-gray-400 focus:border-[#FF5A5F]"
+                              : "border-sky-100 hover:border-gray-400 focus:border-sky-500"
                           }`}
                           placeholder="Tên nhóm (ví dụ: Độ ngọt, Kích thước)"
                         />
@@ -600,10 +600,10 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                     </div>
 
                     {/* Options Config */}
-                    <div className="grid grid-cols-3 gap-3 bg-gray-50/80 p-3 rounded-lg border border-gray-100">
+                    <div className="grid grid-cols-3 gap-3 bg-sky-50/50/80 p-3 rounded-lg border border-sky-50">
                       {/* Is Required toggle */}
                       <div className="flex flex-col justify-center">
-                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                           Bắt buộc chọn
                         </span>
                         <div className="flex items-center h-8">
@@ -611,7 +611,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                             type="button"
                             onClick={() => handleGroupChange(gIdx, "is_required", !group.is_required)}
                             className={`w-9 h-5 rounded-full transition-colors focus:outline-none ${
-                              group.is_required ? "bg-[#FF5A5F]" : "bg-gray-300"
+                              group.is_required ? "bg-sky-500" : "bg-gray-300"
                             }`}
                           >
                             <div
@@ -625,7 +625,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
 
                       {/* Min Select */}
                       <div>
-                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                           Chọn tối thiểu
                         </label>
                         <input
@@ -636,14 +636,14 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                           className={`w-full px-2.5 py-1 border rounded-md text-sm focus:outline-none focus:ring-1 bg-white ${
                             fieldErrors.groups?.[gIdx]?.range
                               ? "border-red-400 focus:ring-red-400 focus:border-red-400"
-                              : "border-gray-300 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                              : "border-sky-200 focus:ring-sky-500 focus:border-sky-500"
                           }`}
                         />
                       </div>
 
                       {/* Max Select */}
                       <div>
-                        <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                           Chọn tối đa
                         </label>
                         <input
@@ -654,7 +654,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                           className={`w-full px-2.5 py-1 border rounded-md text-sm focus:outline-none focus:ring-1 bg-white ${
                             fieldErrors.groups?.[gIdx]?.range
                               ? "border-red-400 focus:ring-red-400 focus:border-red-400"
-                              : "border-gray-300 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                              : "border-sky-200 focus:ring-sky-500 focus:border-sky-500"
                           }`}
                         />
                       </div>
@@ -670,11 +670,11 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                     {/* Options Item Options (Modifiers) */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-500">Tùy chọn chi tiết</span>
+                        <span className="text-xs font-semibold text-slate-400">Tùy chọn chi tiết</span>
                         <button
                           type="button"
                           onClick={() => handleAddModifier(gIdx)}
-                          className="text-[11px] font-bold text-[#FF5A5F] hover:text-[#ff4449] flex items-center gap-0.5 transition-colors"
+                          className="text-[11px] font-bold text-sky-600 hover:text-[#ff4449] flex items-center gap-0.5 transition-colors"
                         >
                           <Plus size={12} />
                           Thêm tùy chọn
@@ -698,7 +698,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                                   className={`flex-1 px-3 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-1 ${
                                     fieldErrors.groups?.[gIdx]?.modifiers?.[mIdx]?.name
                                       ? "border-red-400 focus:ring-red-400 focus:border-red-400 bg-red-50/5"
-                                      : "border-gray-200 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                                      : "border-sky-100 focus:ring-sky-500 focus:border-sky-500"
                                   }`}
                                   placeholder="Tên tùy chọn (ví dụ: Ít đường, Cỡ lớn)"
                                 />
@@ -715,7 +715,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                                     className={`w-full pl-3 pr-6 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-1 ${
                                       fieldErrors.groups?.[gIdx]?.modifiers?.[mIdx]?.price
                                         ? "border-red-400 focus:ring-red-400 focus:border-red-400 bg-red-50/5"
-                                        : "border-gray-200 focus:ring-[#FF5A5F] focus:border-[#FF5A5F]"
+                                        : "border-sky-100 focus:ring-sky-500 focus:border-sky-500"
                                     }`}
                                     placeholder="0"
                                   />
@@ -759,18 +759,18 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
         </form>
 
         {/* Sticky Footer Actions */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex gap-3 z-10 shadow-lg">
+        <div className="sticky bottom-0 bg-white border-t border-sky-100 px-6 py-4 flex gap-3 z-10 shadow-lg">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm"
+            className="flex-1 px-4 py-2.5 border border-sky-200 text-slate-600 rounded-lg hover:bg-sky-50/50 transition-colors font-medium text-sm"
           >
             Hủy bỏ
           </button>
           <button
             type="submit"
             form="menu-drawer-form"
-            className="flex-1 px-4 py-2.5 bg-[#FF5A5F] text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF5A5F]/30"
+            className="flex-1 px-4 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500/30"
           >
             <Save size={18} />
             Lưu món ăn

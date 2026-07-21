@@ -107,7 +107,7 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
             <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
               Bàn chính (giữ order) — {(sourceTable as any).area_name || "Cùng tầng"}
             </p>
-            <p className="font-black text-gray-900 text-xl">{sourceTable.name}</p>
+            <p className="font-black text-slate-800 text-xl">{sourceTable.name}</p>
             {isMergedPrimary && (
               <div className="flex flex-wrap gap-1 mt-1">
                 <span className="text-xs text-indigo-600 font-bold">Đang gộp với:</span>
@@ -143,7 +143,7 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
         {/* Select tables to merge */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Chọn bàn cùng {(sourceTable as any).area_name || "tầng"} để gộp vào
             </label>
             <span className="text-xs text-gray-400">
@@ -152,7 +152,7 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
           </div>
 
           {servingTables.length === 0 ? (
-            <div className="py-8 text-center rounded-2xl bg-gray-50 border border-dashed border-gray-200">
+            <div className="py-8 text-center rounded-2xl bg-sky-50/50 border border-dashed border-sky-100">
               <p className="text-sm text-gray-400 font-medium">Không có bàn đang phục vụ nào để gộp</p>
               <p className="text-xs text-gray-300 mt-1">Chỉ gộp được với bàn đang phục vụ hoặc chờ thanh toán</p>
             </div>
@@ -167,11 +167,11 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
                     className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
                       isSelected
                         ? "border-indigo-400 bg-indigo-50 shadow-sm"
-                        : "border-gray-100 bg-white hover:border-indigo-200 hover:shadow-sm"
+                        : "border-sky-50 bg-white hover:border-indigo-200 hover:shadow-sm"
                     }`}
                   >
                     <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
-                      isSelected ? "bg-indigo-600 border-indigo-600" : "border-gray-300"
+                      isSelected ? "bg-indigo-600 border-indigo-600" : "border-sky-200"
                     }`}>
                       {isSelected && <CheckCircle2 size={12} className="text-white" />}
                     </div>
@@ -183,16 +183,16 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-black text-gray-800">{t.name}</span>
+                        <span className="font-black text-slate-700">{t.name}</span>
                         <span className="text-[10px] text-gray-400">{t.capacity} chỗ</span>
                         {tableExt.area_name && (
-                          <span className="text-[10px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 font-medium">
+                          <span className="text-[10px] bg-sky-100 text-slate-400 rounded px-1.5 py-0.5 font-medium">
                             {tableExt.area_name}
                           </span>
                         )}
                       </div>
                       {(tableExt.guest_name) && (
-                        <p className="text-[11px] text-gray-500 mt-0.5">
+                        <p className="text-[11px] text-slate-400 mt-0.5">
                           👤 {tableExt.guest_name}
                           {tableExt.guest_phone && ` — ${tableExt.guest_phone}`}
                         </p>
@@ -214,7 +214,7 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
         <div className="flex gap-3 pt-1">
           <button
             onClick={handleClose}
-            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
+            className="flex-1 py-2.5 bg-sky-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all"
           >
             Hủy
           </button>

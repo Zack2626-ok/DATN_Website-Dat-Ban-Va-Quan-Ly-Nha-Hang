@@ -112,33 +112,33 @@ export const ShiftManagement: React.FC = () => {
     <div className="flex flex-col gap-6">
       {/* Header trang */}
       <div className="border-b border-gray-150 pb-4">
-        <h1 className="text-xl font-bold text-gray-800">📊 Quản lý Ca & Chấm công</h1>
-        <p className="mt-1 text-xs text-gray-500">
+        <h1 className="text-xl font-bold text-slate-700">📊 Quản lý Ca & Chấm công</h1>
+        <p className="mt-1 text-xs text-slate-400">
           Theo dõi, mở ca dự phòng tiền mặt, đóng ca kết toán sổ quỹ và quản lý chấm công thời gian thực của nhân sự.
         </p>
       </div>
 
       {/* Tabs chuyển đổi giữa Ca làm và Chấm công */}
-      <div className="flex border-b border-gray-200 gap-6">
+      <div className="flex border-b border-sky-100 gap-6">
         <button
           onClick={() => setActiveTab("shifts")}
           className={`flex items-center gap-1.5 pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-            activeTab === "shifts" ? "text-[#FF5A5F]" : "text-gray-500 hover:text-gray-700"
+            activeTab === "shifts" ? "text-sky-600" : "text-slate-400 hover:text-slate-600"
           }`}
         >
           <Calendar size={14} />
           Quản lý Ca làm (Shifts)
-          {activeTab === "shifts" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF5A5F] rounded-full" />}
+          {activeTab === "shifts" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-500 rounded-full" />}
         </button>
         <button
           onClick={() => setActiveTab("attendance")}
           className={`flex items-center gap-1.5 pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-            activeTab === "attendance" ? "text-[#FF5A5F]" : "text-gray-500 hover:text-gray-700"
+            activeTab === "attendance" ? "text-sky-600" : "text-slate-400 hover:text-slate-600"
           }`}
         >
           <UserCheck size={14} />
           Chấm công (Attendance)
-          {activeTab === "attendance" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF5A5F] rounded-full" />}
+          {activeTab === "attendance" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-500 rounded-full" />}
         </button>
       </div>
 

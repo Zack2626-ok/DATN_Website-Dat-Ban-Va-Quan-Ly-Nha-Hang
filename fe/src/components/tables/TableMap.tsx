@@ -40,7 +40,7 @@ const TableMap: React.FC<TableMapProps> = ({ tables, onTableClick }) => {
       ))}
       
       {tables.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
           <p>Không có bàn nào trong khu vực này.</p>
         </div>
       )}

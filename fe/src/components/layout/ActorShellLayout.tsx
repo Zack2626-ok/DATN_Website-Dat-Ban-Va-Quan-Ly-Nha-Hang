@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed } from "lucide-react";
+import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
@@ -12,6 +12,7 @@ import {
 } from "../../services/api";
 import { toast } from "react-hot-toast";
 import { Modal } from "../Modal";
+import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
 
 const formatTime = (timeStr: string) => {
   try {
@@ -35,7 +36,7 @@ const formatTime = (timeStr: string) => {
   }
 };
 import { logoutAction } from "../../store/authSlice";
-import { getWaiterNotifications, type WaiterNotification } from "../../services/waiterService";
+import { getWaiterNotifications } from "../../services/waiterService";
 
 export interface NavLinkItem {
   to: string;
@@ -203,6 +204,14 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   };
   const defaultName = defaultNames[displayRole] || "Demo User";
 
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+
+  useEffect(() => {
+    getRestaurantInfo()
+      .then(setRestaurantInfo)
+      .catch(() => {});
+  }, []);
+
   // Clear search query on route changes to prevent query leakage
   React.useEffect(() => {
     dispatch(clearSearchQuery());
@@ -239,11 +248,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     }
   };
 
-  // Fetch notifications and poll
+  // Track notified IDs to avoid duplicate toast side-effects in React 18 StrictMode
+  const notifiedIdsRef = React.useRef<Set<number>>(new Set());
+  const hasInitializedRef = React.useRef<boolean>(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   React.useEffect(() => {
     let active = true;
+    hasInitializedRef.current = false;
+    notifiedIdsRef.current.clear();
 
     const fetchNotifications = async () => {
       if (document.visibilityState === "hidden") return;
@@ -251,23 +264,25 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
         const data = await getNotificationsApi(displayRole);
         if (!active) return;
 
-        const unreadCount = data.filter((n: any) => !n.is_read).length;
+        const unreadItems = data.filter((n: any) => !n.is_read);
 
-        setNotifications((prev) => {
-          const prevUnreadCount = prev.filter((n: any) => !n.is_read).length;
-
-          if (prev.length > 0 && unreadCount > prevUnreadCount) {
-            const newN = data.filter(
-              (item: any) => !item.is_read && !prev.some((oldItem) => oldItem.id === item.id)
-            );
-
-            newN.forEach((notif: any) => {
+        if (!hasInitializedRef.current) {
+          // Lần đầu tiên load: ghi nhận danh sách ID đã có để không nổ toast thông báo cũ
+          unreadItems.forEach((n: any) => notifiedIdsRef.current.add(n.id));
+          hasInitializedRef.current = true;
+        } else {
+          // Lần poll tiếp theo: lọc ra các thông báo mới chưa từng nổ toast
+          const freshItems = unreadItems.filter((n: any) => !notifiedIdsRef.current.has(n.id));
+          if (freshItems.length > 0) {
+            freshItems.forEach((notif: any) => {
+              notifiedIdsRef.current.add(notif.id);
               toast.success(notif.message, { duration: 5000 });
             });
             playBeepSound();
           }
-          return data;
-        });
+        }
+
+        setNotifications(data);
       } catch (err) {
         console.error("Failed to load notifications:", err);
       }
@@ -381,10 +396,21 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           })}
         </nav>
 
-        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:items-center md:gap-2">
-          <Database size={12} className="text-green-300" />
-          Hệ thống online
-          <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
+        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:flex-col md:gap-2">
+          {restaurantInfo && (
+            <a
+              href={`tel:${restaurantInfo.hotline.replace(/\s/g, "")}`}
+              className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-white hover:bg-white/20 transition-colors mb-1"
+            >
+              <Phone size={13} className="text-green-300" />
+              <span className="font-bold text-[11px]">{restaurantInfo.hotline}</span>
+            </a>
+          )}
+          <div className="flex items-center gap-2">
+            <Database size={12} className="text-green-300" />
+            Hệ thống online
+            <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
+          </div>
         </div>
       </aside>
 

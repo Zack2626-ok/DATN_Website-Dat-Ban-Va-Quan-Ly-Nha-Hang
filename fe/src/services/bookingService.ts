@@ -19,8 +19,8 @@ export interface Booking {
   created_at: string;
 }
 
-export const getBookings = async (): Promise<Booking[]> => {
-  const response = await api.get("/v1/bookings");
+export const getBookings = async (status?: string): Promise<Booking[]> => {
+  const response = await api.get("/v1/bookings", { params: { status } });
   return response.data.data || [];
 };
 
@@ -31,6 +31,8 @@ export const getBookingById = async (id: number): Promise<Booking | null> => {
 
 export const createBooking = async (data: {
   table_id: number;
+  customer_id?: number | null;
+  promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
   party_size: number;

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   CreditCard,
   Banknote,
@@ -10,6 +10,7 @@ import {
   BadgePercent,
 } from "lucide-react";
 import { Modal } from "../../../../components/Modal";
+import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
 
 interface Props {
@@ -20,7 +21,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (n: number) => (n * 1000).toLocaleString("vi-VN");
+const formatVnd = (n: number) => Number(n).toLocaleString("vi-VN");
 
 const PAYMENT_METHODS = [
   { value: "cash" as const, label: "Tiền mặt", icon: Banknote, color: "bg-emerald-50 border-emerald-200 text-emerald-700" },
@@ -36,6 +37,15 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount, setTipAmount] = useState(0);
+
+  useEffect(() => {
+    getRestaurantInfo()
+      .then((info) => {
+        setVatRate(info.tax_rate ?? 10);
+        setServiceFeeRate(info.service_fee_rate ?? 0);
+      })
+      .catch(() => {});
+  }, []);
 
   const breakdown = useMemo(() => {
     const subtotal = invoice.totalAmount;
@@ -87,7 +97,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 onChange={(e) => setVatRate(Number(e.target.value) || 0)}
                 className="w-14 text-right text-xs border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
               />
-              <span className="text-[10px] text-slate-400">%</span>
+              <span className="text-[10px] text-slate-500">%</span>
               <span className="font-bold text-slate-900 min-w-[80px] text-right">{formatVnd(breakdown.vat)} vnđ</span>
             </div>
           </div>
@@ -107,7 +117,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 onChange={(e) => setServiceFeeRate(Number(e.target.value) || 0)}
                 className="w-14 text-right text-xs border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
               />
-              <span className="text-[10px] text-slate-400">%</span>
+              <span className="text-[10px] text-slate-500">%</span>
               <span className="font-bold text-slate-900 min-w-[80px] text-right">{formatVnd(breakdown.serviceFee)} vnđ</span>
             </div>
           </div>
@@ -134,7 +144,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 placeholder="Số tiền"
                 className="w-24 text-right text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:outline-none focus:border-blue-400"
               />
-              <span className="text-[10px] text-slate-400 self-center">.000đ</span>
+              <span className="text-[10px] text-slate-500 self-center">.000đ</span>
             </div>
           </div>
 
@@ -153,7 +163,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 placeholder="0"
                 className="w-20 text-right text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 focus:outline-none focus:border-blue-400"
               />
-              <span className="text-[10px] text-slate-400">.000đ</span>
+              <span className="text-[10px] text-slate-500">.000đ</span>
             </div>
           </div>
 

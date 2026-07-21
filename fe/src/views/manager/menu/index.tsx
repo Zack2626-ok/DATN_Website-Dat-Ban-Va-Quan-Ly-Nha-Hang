@@ -36,7 +36,7 @@ export const MenuManagement: React.FC = () => {
           </h4>
 
           <div className="relative">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
               <Search size={14} />
             </span>
             <input
@@ -63,7 +63,7 @@ export const MenuManagement: React.FC = () => {
                 >
                   <div className="flex flex-col">
                     <span className="text-xs truncate">{item.name}</span>
-                    <span className="text-[10px] text-slate-400 font-semibold">
+                    <span className="text-[10px] text-slate-500 font-semibold">
                       {item.category ?? item.category_name ?? ""}
                     </span>
                   </div>

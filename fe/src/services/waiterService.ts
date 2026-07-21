@@ -31,11 +31,12 @@ export interface WaiterOrderItem {
   seat_number?: number | null;
   course_number: number;
   kitchen_note?: string;
-  status: "pending" | "cooking" | "done" | "cancelled" | "voided";
+  status: "pending" | "cooking" | "done" | "served" | "cancelled" | "voided";
   is_held?: number | boolean;
   voided_at?: string | null;
   void_reason?: string | null;
   created_at: string;
+  merged?: boolean;
 }
 
 export interface WaiterOrder {

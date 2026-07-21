@@ -66,11 +66,18 @@ export const TableCard: React.FC<TableCardProps> = ({
           badge: "bg-rose-100 text-rose-700 border-rose-300",
           label: "Chờ thanh toán",
         };
+      case "cleaning":
+        return {
+          bg: "bg-blue-50 border-blue-200 hover:bg-blue-100/80",
+          text: "text-blue-700",
+          badge: "bg-blue-100 text-blue-700 border-blue-300",
+          label: "🧹 Đang dọn dẹp",
+        };
       default:
         return {
-          bg: "bg-gray-50 border-gray-200 hover:bg-gray-100",
-          text: "text-gray-800",
-          badge: "bg-gray-100 text-gray-800",
+          bg: "bg-sky-50/50 border-sky-100 hover:bg-sky-100",
+          text: "text-slate-700",
+          badge: "bg-sky-100 text-slate-700",
           label: "Không xác định",
         };
     }
@@ -101,15 +108,15 @@ export const TableCard: React.FC<TableCardProps> = ({
             e.stopPropagation();
             onToggleMenu(!showMenu);
           }}
-          className="p-1 hover:bg-black/5 rounded-md text-gray-500 hover:text-gray-800 transition-colors"
+          className="p-1 hover:bg-black/5 rounded-md text-slate-400 hover:text-slate-700 transition-colors"
         >
           <MoreVertical size={14} />
         </button>
 
         {/* Dropdown Menu hành động */}
         {showMenu && (
-          <div className={`absolute right-0 w-44 rounded-lg border border-gray-100 bg-white p-1 shadow-md z-30 animate-fade-in text-left ${isBottomRow ? "bottom-full mb-1" : "top-full mt-1"}`}>
-              <div className="px-2 py-1 text-[10px] font-bold text-gray-400 border-b border-gray-100 uppercase tracking-wider">
+          <div className={`absolute right-0 w-44 rounded-lg border border-sky-50 bg-white p-1 shadow-md z-30 animate-fade-in text-left ${isBottomRow ? "bottom-full mb-1" : "top-full mt-1"}`}>
+              <div className="px-2 py-1 text-[10px] font-bold text-gray-400 border-b border-sky-50 uppercase tracking-wider">
                 Thao tác: {table.name}
               </div>
 
@@ -118,18 +125,42 @@ export const TableCard: React.FC<TableCardProps> = ({
                 <>
                   <button
                     onClick={(e) => handleMenuClick(e, "open")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors font-semibold"
                   >
                     <CheckCircle size={12} className="text-green-600" />
-                    Mở bàn mới
+                    Mở bàn
                   </button>
                   <button
                     onClick={(e) => handleMenuClick(e, "reserve")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
                   >
                     <Users size={12} className="text-amber-600" />
                     Đặt trước
                   </button>
+
+                  {/* Sửa/Xóa bàn chỉ hiển thị khi bàn trống */}
+                  {showCrud && (
+                    <div className="border-t border-gray-100 mt-1 pt-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleMenuClick(e, "edit_table")}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        <Edit size={12} className="text-gray-500" />
+                        Sửa thông tin
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleMenuClick(e, "delete_table")}
+                        disabled={!canDelete}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors font-medium"
+                        title={!canDelete ? "Chỉ được xóa khi bàn trống và không có lịch đặt trước" : ""}
+                      >
+                        <Trash2 size={12} className="text-red-500" />
+                        Xóa bàn
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -138,7 +169,7 @@ export const TableCard: React.FC<TableCardProps> = ({
                 <>
                   <button
                     onClick={(e) => handleMenuClick(e, "checkin")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
                   >
                     <CheckCircle size={12} className="text-green-600" />
                     Nhận bàn (Check-in)
@@ -158,36 +189,39 @@ export const TableCard: React.FC<TableCardProps> = ({
                 <>
                   <button
                     onClick={(e) => handleMenuClick(e, "view_order")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors font-semibold"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors font-semibold"
                   >
                     <Eye size={12} className="text-blue-600" />
                     Xem order
                   </button>
                   <button
                     onClick={(e) => handleMenuClick(e, "transfer")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
                   >
                     <ArrowLeftRight size={12} className="text-indigo-600" />
                     Chuyển bàn
                   </button>
                   <button
                     onClick={(e) => handleMenuClick(e, "merge")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
                   >
                     <Link2 size={12} className="text-purple-600" />
                     Gộp bàn
                   </button>
-                  <button
-                    onClick={(e) => handleMenuClick(e, "split")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <Copy size={12} className="text-pink-600" />
-                    Tách bàn
-                  </button>
+                  {/* Tách bàn chỉ hiển thị khi có nhiều hơn 1 khách */}
+                  {((table.guest_count || 0) > 1) && (
+                    <button
+                      onClick={(e) => handleMenuClick(e, "split")}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
+                    >
+                      <Copy size={12} className="text-pink-600" />
+                      Tách bàn
+                    </button>
+                  )}
                   {(table.is_merged_primary || table.is_merged_child) && (
                     <button
                       onClick={(e) => handleMenuClick(e, "unmerge")}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 transition-colors border-t border-gray-100 mt-1"
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 transition-colors border-t border-sky-50 mt-1"
                     >
                       <XCircle size={12} className="text-red-500" />
                       Bỏ gộp bàn
@@ -195,7 +229,7 @@ export const TableCard: React.FC<TableCardProps> = ({
                   )}
                   <button
                     onClick={(e) => handleMenuClick(e, "request_payment")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors border-t border-gray-100 mt-1 font-semibold"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors border-t border-sky-50 mt-1 font-semibold"
                   >
                     <FileText size={12} className="text-rose-500" />
                     Yêu cầu thanh toán
@@ -208,36 +242,12 @@ export const TableCard: React.FC<TableCardProps> = ({
                 <>
                   <button
                     onClick={(e) => handleMenuClick(e, "view_invoice")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors font-semibold"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors font-semibold"
                   >
                     <FileText size={12} className="text-purple-600" />
-                    Thanh toán hóa đơn
+                    Xem Hóa đơn
                   </button>
                 </>
-              )}
-
-              {/* Quản lý danh sách bàn (CRUD) */}
-              {showCrud && (
-                <div className="border-t border-gray-100 mt-1 pt-1">
-                  <button
-                    type="button"
-                    onClick={(e) => handleMenuClick(e, "edit_table")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    <Edit size={12} className="text-gray-500" />
-                    Sửa thông tin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => handleMenuClick(e, "delete_table")}
-                    disabled={!canDelete}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors font-medium"
-                    title={!canDelete ? "Chỉ được xóa khi bàn trống và không có lịch đặt trước" : ""}
-                  >
-                    <Trash2 size={12} className="text-red-500" />
-                    Xóa bàn ăn
-                  </button>
-                </div>
               )}
             </div>
         )}
@@ -256,14 +266,16 @@ export const TableCard: React.FC<TableCardProps> = ({
             </span>
           )}
           {table.is_merged_child && (
-            <span className="bg-gray-100 text-gray-600 text-[8px] font-black px-1 py-0.5 rounded-sm uppercase">
+            <span className="bg-sky-100 text-slate-500 text-[8px] font-black px-1 py-0.5 rounded-sm uppercase">
               Con
             </span>
           )}
         </div>
         <p className="text-[10px] text-gray-400 font-semibold mt-0.5 flex items-center gap-1">
           <Users size={10} />
-          Sức chứa: {table.capacity} người
+          {table.status !== "empty"
+            ? `Khách: ${table.guest_count || "?"}/${table.capacity} người`
+            : `Sức chứa: ${table.capacity} người`}
         </p>
       </div>
 
@@ -271,7 +283,7 @@ export const TableCard: React.FC<TableCardProps> = ({
       <div className="flex flex-col gap-0.5 mt-2">
         {/* Tên khách nếu đang dùng hoặc đặt trước */}
         {table.guest_name && (
-          <p className="text-[10px] font-bold text-gray-600 truncate">
+          <p className="text-[10px] font-bold text-slate-500 truncate">
             👤 {table.guest_name}
           </p>
         )}
@@ -283,7 +295,7 @@ export const TableCard: React.FC<TableCardProps> = ({
           </p>
         )}
         {table.is_merged_child && table.merged_into && (
-          <p className="text-[9px] font-bold text-gray-500 truncate">
+          <p className="text-[9px] font-bold text-slate-400 truncate">
             🔗 Gộp vào: {table.merged_into.name}
           </p>
         )}

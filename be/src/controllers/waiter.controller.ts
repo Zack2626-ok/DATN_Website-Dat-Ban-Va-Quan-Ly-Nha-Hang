@@ -69,6 +69,8 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
     if (table_id) {
       await db.updateResmanagerTableStatus(Number(table_id), "serving");
+      // Tự động chuyển món đặt trước (nếu có) sang order_items
+      await db.transferBookingItemsToOrder(Number(table_id), order.id);
       await db.completeActiveBookingForTable(Number(table_id));
     }
 
