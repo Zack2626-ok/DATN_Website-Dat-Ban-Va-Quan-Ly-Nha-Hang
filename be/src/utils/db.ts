@@ -638,7 +638,7 @@ export const getOrders = async (): Promise<Order[]> => {
   if (!dbAvailable) {
     return MOCK_ORDERS;
   }
-  const rows = await query<any[]>("SELECT * FROM orders ORDER BY createdAt DESC");
+  const rows = await query<any[]>("SELECT * FROM orders ORDER BY created_at DESC");
   return rows.map(normalizeOrder);
 };
 
