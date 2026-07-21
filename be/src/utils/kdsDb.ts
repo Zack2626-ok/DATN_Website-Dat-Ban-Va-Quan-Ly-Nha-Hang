@@ -11,7 +11,7 @@ export interface KdsItem {
   seatNumber?: number | null;
   courseNumber?: number | null;
   kitchenNote?: string | null;
-  status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
+  status: "pending" | "waiting_kitchen" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
   createdAt: string;
   updatedAt?: string;
   tableName?: string;
@@ -90,8 +90,12 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
      JOIN menu_items m  ON oi.menu_item_id = m.id
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
+<<<<<<< HEAD
      WHERE (oi.status IN ('pending', 'cooking', 'done') 
         OR (oi.status IN ('cancelled', 'voided') AND oi.chef_dismissed = 0))
+=======
+     WHERE oi.status IN ('pending', 'waiting_kitchen', 'cooking', 'done')
+>>>>>>> 984048de46a547e7ab198cef87fc4aa2eb29e4b7
        AND oi.created_at >= NOW() - INTERVAL 6 HOUR
      ORDER BY oi.created_at ASC`
   );

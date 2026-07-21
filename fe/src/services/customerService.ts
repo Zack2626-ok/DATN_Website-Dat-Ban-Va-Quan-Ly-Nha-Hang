@@ -141,6 +141,7 @@ export const createBooking = async (data: {
   promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
+  guest_email?: string;
   party_size: number;
   start_time: string;
   end_time: string;
@@ -185,5 +186,17 @@ export const createEventContract = async (data: {
 export const getMyEventContracts = async (): Promise<any[]> => {
   const response = await customerApi.get("/v1/customer/contracts/my");
   return response.data.data || [];
+};
+
+export const createQROrder = async (data: {
+  table_id: number;
+  items: { menu_item_id: number; quantity: number; unit_price: number }[];
+  guest_name?: string;
+  guest_phone?: string;
+  guest_count?: number;
+  note?: string;
+}): Promise<any> => {
+  const response = await customerApi.post("/v1/waiter/qr-order", data);
+  return response.data.data;
 };
 

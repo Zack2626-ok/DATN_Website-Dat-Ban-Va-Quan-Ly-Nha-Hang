@@ -5,9 +5,8 @@ import {
   updateRestaurantInfo,
   type RestaurantInfo,
 } from "../../../services/restaurantInfoService";
-
 export const AdminSettings: React.FC = () => {
-  const [activeTab] = useState<"general" | "tax">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "tax" | "bank">("general");
   const [savedMessage, setSavedMessage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,10 +71,12 @@ export const AdminSettings: React.FC = () => {
         {[
           { key: "general" as const, label: "Thông tin chung" },
           { key: "tax" as const, label: "Thuế & Phí DV" },
+          { key: "bank" as const, label: "Ngân hàng (VietQR)" },
         ].map((tab) => (
           <button
             key={tab.key}
             type="button"
+            onClick={() => setActiveTab(tab.key)}
             className={`rounded-lg px-4 py-2 text-sm font-medium cursor-pointer ${
               activeTab === tab.key ? "bg-sky-100 border-sky-200 text-white" : "text-slate-600 hover:bg-white/80 backdrop-blur-xl"
             }`}
@@ -158,8 +159,8 @@ export const AdminSettings: React.FC = () => {
                 <option value="GMT+07:00">GMT+07:00 (Hà Nội, TP.HCM)</option>
               </select>
             </label>
-          </div>
-        ) : (
+           </div>
+        ) : activeTab === "tax" ? (
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-sm">
               <span className="font-medium text-sky-700 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">VAT (%)</span>
@@ -191,6 +192,65 @@ export const AdminSettings: React.FC = () => {
                 <option value="card">Thẻ / Ví điện tử</option>
               </select>
             </label>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Mã ngân hàng (VietQR)</span>
+              <select
+                value={info?.bank_code || "VCB"}
+                onChange={(e) => handleChange("bank_code", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              >
+                <option value="VCB">Vietcombank (VCB)</option>
+                <option value="TCB">Techcombank (TCB)</option>
+                <option value="MB">MB Bank (MB)</option>
+                <option value="ACB">ACB</option>
+                <option value="BIDV">BIDV</option>
+                <option value="VIB">VIB</option>
+                <option value="TPB">TPBank (TPB)</option>
+                <option value="CTG">VietinBank (CTG)</option>
+                <option value="AGG">Agribank (AGG)</option>
+                <option value="SACOMBANK">Sacombank</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Số tài khoản</span>
+              <input
+                type="text"
+                value={info?.bank_account || ""}
+                onChange={(e) => handleChange("bank_account", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Tên ngân hàng</span>
+              <input
+                type="text"
+                value={info?.bank_name || ""}
+                onChange={(e) => handleChange("bank_name", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium text-amber-400 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Tên chủ tài khoản</span>
+              <input
+                type="text"
+                value={info?.bank_account_name || ""}
+                onChange={(e) => handleChange("bank_account_name", e.target.value)}
+                className="rounded-lg border border-amber-500/20 px-3 py-2 focus:border-blue-700 focus:outline-none bg-white/5 text-white"
+              />
+            </label>
+            {info?.bank_code && info?.bank_account && (
+              <div className="md:col-span-2 flex flex-col items-center gap-2 bg-white/5 rounded-xl p-4 border border-amber-500/20">
+                <span className="text-xs text-amber-400 font-bold">Xem trước VietQR</span>
+                <img
+                  src={`https://img.vietqr.io/image/${info.bank_code}-${info.bank_account}-compact2.png?amount=100000&addInfo=Test`}
+                  alt="VietQR Preview"
+                  className="w-40 h-40 rounded-lg bg-white"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

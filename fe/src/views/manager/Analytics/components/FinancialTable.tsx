@@ -51,7 +51,7 @@ export const FinancialTable: React.FC<FinancialTableProps> = ({
           <h3 className="text-base font-black text-slate-700 font-display">
             Báo cáo dòng tiền & Lợi nhuận ròng
           </h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">So sánh Thu nhập (Hóa đơn + Cọc tiệc) vs Chi phí mua hàng (Nhập kho)</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">So sánh Thu nhập (Hóa đơn) vs Chi phí mua hàng (Nhập kho)</p>
         </div>
 
         {/* Tổng thu chi */}

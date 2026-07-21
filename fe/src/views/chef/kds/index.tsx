@@ -131,7 +131,7 @@ export const ChefKitchenQueue: React.FC = () => {
     let hasNewDelay = false;
 
     items.forEach((item) => {
-      if (item.status !== "pending" && item.status !== "cooking") return;
+      if (item.status !== "pending" && item.status !== "waiting_kitchen" && item.status !== "cooking") return;
 
       const elapsedMs = now - new Date(item.createdAt).getTime();
       const elapsedMins = Math.floor(elapsedMs / 60000);
@@ -236,7 +236,7 @@ export const ChefKitchenQueue: React.FC = () => {
   // Group kitchen items into 4 columns: Chờ nấu (pending), Đang nấu (cooking), Sẵn sàng (done), Hủy/Trả món (voided)
   const columns = useMemo(() => {
     return {
-      pending: filteredItems.filter((item) => item.status === "pending"),
+      pending: filteredItems.filter((item) => item.status === "pending" || item.status === "waiting_kitchen"),
       cooking: filteredItems.filter((item) => item.status === "cooking"),
       done: filteredItems.filter((item) => item.status === "done"),
       voided: filteredItems.filter((item) => (item.status === "voided" || item.status === "cancelled") && item.chefDismissed !== 1),
@@ -279,7 +279,7 @@ export const ChefKitchenQueue: React.FC = () => {
 
     // Group only "pending" and "cooking" items for batch
     filteredItems.forEach((item) => {
-      if (item.status !== "pending" && item.status !== "cooking") return;
+      if (item.status !== "pending" && item.status !== "waiting_kitchen" && item.status !== "cooking") return;
       const key = `${item.name.trim()}_${item.kitchenStation}`;
       if (!groups[key]) {
         groups[key] = {
@@ -377,8 +377,8 @@ export const ChefKitchenQueue: React.FC = () => {
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className={`px-3 py-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${soundEnabled
-                ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-                : "bg-slate-100 border-slate-350 text-slate-500 hover:bg-slate-200"
+              ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+              : "bg-slate-100 border-slate-350 text-slate-500 hover:bg-slate-200"
               }`}
             title={soundEnabled ? "Tắt âm thanh thông báo" : "Bật âm thanh thông báo"}
           >
@@ -391,8 +391,8 @@ export const ChefKitchenQueue: React.FC = () => {
             <button
               onClick={() => setActiveTab("kanban")}
               className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer transition-all ${activeTab === "kanban"
-                  ? "bg-[#0f62fe] text-white shadow-md"
-                  : "text-slate-600 hover:text-slate-850"
+                ? "bg-[#0f62fe] text-white shadow-md"
+                : "text-slate-600 hover:text-slate-850"
                 }`}
             >
               <FolderKanban size={13} />
@@ -401,8 +401,8 @@ export const ChefKitchenQueue: React.FC = () => {
             <button
               onClick={() => setActiveTab("batch")}
               className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer transition-all ${activeTab === "batch"
-                  ? "bg-[#0f62fe] text-white shadow-md"
-                  : "text-slate-600 hover:text-slate-850"
+                ? "bg-[#0f62fe] text-white shadow-md"
+                : "text-slate-600 hover:text-slate-850"
                 }`}
             >
               <Layers size={13} />
@@ -529,8 +529,8 @@ export const ChefKitchenQueue: React.FC = () => {
               key={station}
               onClick={() => dispatch(setStationFilter(station))}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${stationFilter === station
-                  ? "bg-[#0f62fe] text-white border border-[#0f62fe]"
-                  : "bg-slate-100 hover:bg-slate-200 text-slate-650 border border-slate-250"
+                ? "bg-[#0f62fe] text-white border border-[#0f62fe]"
+                : "bg-slate-100 hover:bg-slate-200 text-slate-650 border border-slate-250"
                 }`}
             >
               {station === "all" ? "Tất Cả Trạm" : getStationLabel(station)}
@@ -580,8 +580,8 @@ export const ChefKitchenQueue: React.FC = () => {
                     <div
                       key={group.tableName}
                       className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${isDelayed
-                          ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
-                          : "border-slate-200/80 border-l-blue-500 hover:border-blue-300"
+                        ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
+                        : "border-slate-200/80 border-l-blue-500 hover:border-blue-300"
                         }`}
                     >
                       {/* Tiêu đề bàn */}
@@ -699,8 +699,8 @@ export const ChefKitchenQueue: React.FC = () => {
                     <div
                       key={group.tableName}
                       className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${isDelayed
-                          ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
-                          : "border-slate-200/80 border-l-amber-500 hover:border-amber-300"
+                        ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
+                        : "border-slate-200/80 border-l-amber-500 hover:border-amber-300"
                         }`}
                     >
                       {/* Tiêu đề bàn */}
@@ -1052,7 +1052,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               <div className="flex justify-between items-center text-xs text-slate-600">
                                 <span className="flex items-center gap-1.5 font-semibold">
                                   <span
-                                    className={`w-1.5 h-1.5 rounded-full ${item.status === "pending" ? "bg-slate-350" : "bg-amber-500"
+                                    className={`w-1.5 h-1.5 rounded-full ${item.status === "pending" || item.status === "waiting_kitchen" ? "bg-slate-350" : "bg-amber-500"
                                       }`}
                                   />
                                   Bàn {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}:
@@ -1060,12 +1060,12 @@ export const ChefKitchenQueue: React.FC = () => {
                                 <span className="font-bold flex gap-2">
                                   <span>x{item.quantity}</span>
                                   <span
-                                    className={`text-[10px] px-1 rounded font-bold ${item.status === "pending"
+                                    className={`text-[10px] px-1 rounded font-bold ${item.status === "pending" || item.status === "waiting_kitchen"
                                         ? "bg-slate-100 text-slate-500 border border-slate-200"
                                         : "bg-amber-50 text-amber-600 border border-amber-200"
                                       }`}
                                   >
-                                    {item.status === "pending" ? "Chờ" : "Nấu"}
+                                    {item.status === "pending" || item.status === "waiting_kitchen" ? "Chờ" : "Nấu"}
                                   </span>
                                 </span>
                               </div>

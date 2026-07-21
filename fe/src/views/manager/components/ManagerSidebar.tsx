@@ -172,6 +172,21 @@ export const ManagerSidebar: React.FC = () => {
                   Quản lý Ưu đãi
                 </span>
               </Link>
+
+              {/* CRM & Loyalty */}
+              <Link
+                to="/manager/crm"
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isRouteActive("/manager/crm")
+                    ? "bg-sky-500 text-white"
+                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Users size={14} />
+                  Khách hàng & Loyalty
+                </span>
+              </Link>
               {/* Báo cáo & Phân tích */}
               <Link
                 to="/manager/analytics"

@@ -25,7 +25,7 @@ const statusBadge = (inv: Invoice) => {
     if (inv.status === "pending_payment") {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold border bg-red-50 border-red-300 text-red-700 animate-pulse shadow-2xs">
-          <Clock size={12} /> Chờ TT (Quầy)
+          <Clock size={12} /> Chờ thanh toán
         </span>
       );
     }
@@ -69,7 +69,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
   onStatusFilterChange,
   loading,
 }) => {
-  const unpaidCount = invoices.filter((i) => i.invoiceStatus === "unpaid").length;
+  const unpaidCount = invoices.filter((i) => i.invoiceStatus === "unpaid" && i.items && i.items.length > 0).length;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
