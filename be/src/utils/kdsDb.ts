@@ -81,13 +81,21 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.updated_at  AS updatedAt,
        t.name         AS tableName,
        ta.name        AS areaName,
-       o.order_type   AS orderType
+       o.order_type   AS orderType,
+       oi.void_reason  AS voidReason,
+       oi.voided_at    AS voidedAt,
+       oi.chef_dismissed AS chefDismissed
      FROM order_items oi
      JOIN orders o      ON oi.order_id     = o.id
      JOIN menu_items m  ON oi.menu_item_id = m.id
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
+<<<<<<< HEAD
+     WHERE (oi.status IN ('pending', 'cooking', 'done') 
+        OR (oi.status IN ('cancelled', 'voided') AND oi.chef_dismissed = 0))
+=======
      WHERE oi.status IN ('pending', 'waiting_kitchen', 'cooking', 'done')
+>>>>>>> 984048de46a547e7ab198cef87fc4aa2eb29e4b7
        AND oi.created_at >= NOW() - INTERVAL 6 HOUR
      ORDER BY oi.created_at ASC`
   );
@@ -110,7 +118,10 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
       updatedAt: row.updatedAt,
       tableName: row.tableName || "Mang về",
       areaName: row.areaName || undefined,
-      orderType: row.orderType || "dine_in"
+      orderType: row.orderType || "dine_in",
+      voidReason: row.voidReason || undefined,
+      voidedAt: row.voidedAt || undefined,
+      chefDismissed: row.chefDismissed !== undefined ? Number(row.chefDismissed) : 0
     };
   }).filter((item) => {
     if (station && station !== "all" && item.kitchenStation !== station) return false;
@@ -142,6 +153,14 @@ const getSingleKdsItemInfo = async (id: string | number): Promise<any | null> =>
  * Update KDS item status
  */
 export const updateKdsItemStatusInDb = async (id: string | number, status: string): Promise<boolean> => {
+  if (status === "dismissed") {
+    const result = await query<any>(
+      "UPDATE order_items SET chef_dismissed = 1 WHERE id = ?",
+      [id]
+    );
+    return result.affectedRows > 0;
+  }
+
   const result = await query<any>(
     "UPDATE order_items SET status = ? WHERE id = ?",
     [status, id]

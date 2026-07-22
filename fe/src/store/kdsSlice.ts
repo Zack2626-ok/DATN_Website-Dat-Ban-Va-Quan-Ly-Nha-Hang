@@ -18,12 +18,15 @@ export interface KdsItem {
   seatNumber?: number | null;
   courseNumber?: number | null;
   kitchenNote?: string | null;
-  status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
+  status: "pending" | "waiting_kitchen" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
   createdAt: string;
   updatedAt?: string;
   tableName?: string;
   areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
+  voidReason?: string;
+  voidedAt?: string;
+  chefDismissed?: number;
 }
 
 export interface KdsVoidAlert {

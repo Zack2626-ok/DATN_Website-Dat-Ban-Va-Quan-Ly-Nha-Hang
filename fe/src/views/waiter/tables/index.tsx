@@ -1186,6 +1186,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           tableName={selectedTable.name}
           orderId={activeOrder?.id}
           items={activeOrder?.items || []}
+          subtotal={activeOrder?.subtotal}
+          tax={activeOrder?.tax}
+          depositAmount={activeOrder?.depositAmount !== undefined ? activeOrder.depositAmount : selectedTable.deposit_amount}
+          totalAmount={activeOrder?.totalAmount}
           waiterName={userInfo.name}
           employeeCode={userInfo.code}
           guestName={selectedTable.guest_name}
@@ -1367,7 +1371,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             </div>
 
             {(() => {
-              const servedOrDoneCount = activeOrder?.items.filter((i) => i.status === "done").length || 0;
+              const servedOrDoneCount = activeOrder?.items.filter((i) => i.status === "served" || i.status === "done").length || 0;
               if (servedOrDoneCount === 0) {
                 return (
                   <div className="space-y-3">

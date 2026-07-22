@@ -372,6 +372,19 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added order_items.is_held");
     }
 
+    const statusCol = await query<any[]>(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'status'`,
+    );
+    if (statusCol.length > 0 && !statusCol[0].COLUMN_TYPE.includes("served")) {
+      await query(`
+        ALTER TABLE order_items 
+        MODIFY COLUMN status ENUM('pending','cooking','done','cancelled','voided','served','delivered') 
+        NOT NULL DEFAULT 'pending'
+      `);
+      console.log("✅ Migration: updated order_items.status ENUM to include served and delivered");
+    }
+
     const colsUpdatedAt = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'updated_at'`,
@@ -379,6 +392,15 @@ const runSchemaMigrations = async (): Promise<void> => {
     if (colsUpdatedAt.length === 0) {
       await query(`ALTER TABLE order_items ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`);
       console.log("✅ Migration: added order_items.updated_at");
+    }
+
+    const colsDismissed = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'chef_dismissed'`,
+    );
+    if (colsDismissed.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN chef_dismissed TINYINT(1) NOT NULL DEFAULT 0 AFTER is_held`);
+      console.log("✅ Migration: added order_items.chef_dismissed");
     }
 
     // Add employee_code if not exists
@@ -638,7 +660,7 @@ export const getOrders = async (): Promise<Order[]> => {
   if (!dbAvailable) {
     return MOCK_ORDERS;
   }
-  const rows = await query<any[]>("SELECT * FROM orders ORDER BY createdAt DESC");
+  const rows = await query<any[]>("SELECT * FROM orders ORDER BY created_at DESC");
   return rows.map(normalizeOrder);
 };
 
@@ -2360,7 +2382,7 @@ export const getWaiterDoneNotifications = async (): Promise<any[]> => {
 
 export const markOrderItemServed = async (itemId: number): Promise<boolean> => {
   const result = await query(`
-    UPDATE order_items SET status = 'served' WHERE id = ? AND status = 'done'
+    UPDATE order_items SET status = 'served' WHERE id = ? AND status IN ('done', 'served')
   `, [itemId]);
   return result.affectedRows > 0;
 };

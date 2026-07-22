@@ -248,11 +248,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     }
   };
 
-  // Fetch notifications and poll
+  // Track notified IDs to avoid duplicate toast side-effects in React 18 StrictMode
+  const notifiedIdsRef = React.useRef<Set<number>>(new Set());
+  const hasInitializedRef = React.useRef<boolean>(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   React.useEffect(() => {
     let active = true;
+    hasInitializedRef.current = false;
+    notifiedIdsRef.current.clear();
 
     const fetchNotifications = async () => {
       if (document.visibilityState === "hidden") return;
@@ -260,23 +264,25 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
         const data = await getNotificationsApi(displayRole);
         if (!active) return;
 
-        const unreadCount = data.filter((n: any) => !n.is_read).length;
+        const unreadItems = data.filter((n: any) => !n.is_read);
 
-        setNotifications((prev) => {
-          const prevUnreadCount = prev.filter((n: any) => !n.is_read).length;
-
-          if (prev.length > 0 && unreadCount > prevUnreadCount) {
-            const newN = data.filter(
-              (item: any) => !item.is_read && !prev.some((oldItem) => oldItem.id === item.id)
-            );
-
-            newN.forEach((notif: any) => {
+        if (!hasInitializedRef.current) {
+          // Lần đầu tiên load: ghi nhận danh sách ID đã có để không nổ toast thông báo cũ
+          unreadItems.forEach((n: any) => notifiedIdsRef.current.add(n.id));
+          hasInitializedRef.current = true;
+        } else {
+          // Lần poll tiếp theo: lọc ra các thông báo mới chưa từng nổ toast
+          const freshItems = unreadItems.filter((n: any) => !notifiedIdsRef.current.has(n.id));
+          if (freshItems.length > 0) {
+            freshItems.forEach((notif: any) => {
+              notifiedIdsRef.current.add(notif.id);
               toast.success(notif.message, { duration: 5000 });
             });
             playBeepSound();
           }
-          return data;
-        });
+        }
+
+        setNotifications(data);
       } catch (err) {
         console.error("Failed to load notifications:", err);
       }
@@ -560,6 +566,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               onClick={() => {
                 setShowLogoutModal(false);
                 dispatch(logoutAction());
+                navigate("/auth/login", { replace: true });
               }}
               className="px-4 py-2 rounded-lg text-sm font-medium bg-rose-500 text-white hover:bg-rose-600 transition-colors cursor-pointer shadow-[0_0_15px_rgba(244,63,94,0.3)]"
             >

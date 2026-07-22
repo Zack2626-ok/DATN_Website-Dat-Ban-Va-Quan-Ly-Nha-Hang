@@ -5,6 +5,8 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import path from "path";
+import http from "http";
+import { Server as SocketIOServer } from "socket.io";
 
 import uploadRoutes from "./routes/upload.routes";
 import authRoutes from "./routes/auth.routes";
@@ -33,13 +35,34 @@ import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import crmRoutes from "./routes/crm.routes";
  
- 
-dotenv.config();
- 
 const app = express();
+const httpServer = http.createServer(app);
+
 const DEFAULT_PORT = 5000;
 const startPort = Number(process.env.PORT) || DEFAULT_PORT;
- 
+
+const frontendOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:5173",
+  "http://localhost:5173",
+  "http://localhost:5174",
+];
+
+// ✅ Socket.io server
+export const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: frontendOrigins,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+io.on("connection", (socket) => {
+  console.log(`🔌 Socket.io client connected: ${socket.id}`);
+  socket.on("disconnect", () => {
+    console.log(`🔌 Socket.io client disconnected: ${socket.id}`);
+  });
+});
+
 console.log("Server configuration:", {
   port: startPort,
   nodeEnv: process.env.NODE_ENV || "development",
@@ -47,62 +70,60 @@ console.log("Server configuration:", {
   dbHost: process.env.DB_HOST || "localhost",
   dbName: process.env.DB_NAME || "resmanager",
 });
- 
+
 const startServer = (port: number): void => {
-  const server = app.listen(port, () => {
+  httpServer.listen(port, () => {
     console.log(`🚀 Server chạy tại http://localhost:${port}`);
+    console.log(`⚡ Socket.io đang lắng nghe tại ws://localhost:${port}`);
   });
- 
-  server.on("error", (error: NodeJS.ErrnoException) => {
+
+  httpServer.once("error", (error: NodeJS.ErrnoException) => {
     if (error.code === "EADDRINUSE") {
       console.warn(`⚠️ Cổng ${port} đang được sử dụng. Thử cổng ${port + 1}...`);
-      startServer(port + 1);
+      httpServer.close(() => startServer(port + 1));
       return;
     }
     console.error("Lỗi khởi động server:", error);
     process.exit(1);
   });
- };
+};
  
- initDb()
-   .then(() => {
-     console.log("✅ Database mode: MySQL");
-     startBookingReminderScheduler();
-     startServer(startPort);
-   })
-   .catch((err) => {
-     console.warn(
-       "⚠️ MySQL không khả dụng. Server sẽ chạy ở chế độ API-only (không có lưu trữ dữ liệu).",
-       err.message
-     );
-     // Bỏ qua lỗi database, tiếp tục chạy server
-     startServer(startPort);
-   });
+initDb()
+  .then(() => {
+    console.log("✅ Database mode: MySQL");
+    startBookingReminderScheduler();
+    startServer(startPort);
+  })
+  .catch((err) => {
+    console.warn(
+      "⚠️ MySQL không khả dụng. Server sẽ chạy ở chế độ API-only (không có lưu trữ dữ liệu).",
+      err.message
+    );
+    // Bỏ qua lỗi database, tiếp tục chạy server
+    startServer(startPort);
+  });
  
- app.use(
-   cors({
-     origin: [
-       process.env.FRONTEND_URL || "http://localhost:5173",
-       "http://localhost:5173",
-       "http://localhost:5174",
-     ],
-     credentials: true,
-   }),
- );
- app.use(express.json());
- app.use(express.urlencoded({ extended: true }));
- app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
- app.use("/api/upload", uploadRoutes);
- app.use("/api/auth", authRoutes);
- app.use("/api/users", userRoutes);
- app.use("/api/orders", orderRoutes);
- // API KDS: nhà bếp
- app.use("/api/kds", kdsRoutes);
- app.use("/api/tables", tableRoutes);
- app.use("/api/menu", menuRoutes);
- app.use("/api/inventory", inventoryRoutes);
- app.use("/api/payments", paymentRoutes);
- app.use("/api/promotions", promotionRoutes);
+app.use(
+  cors({
+    origin: frontendOrigins,
+    credentials: true,
+  }),
+);
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+app.use("/api/upload", uploadRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/orders", orderRoutes);
+// API KDS: nhà bếp
+app.use("/api/kds", kdsRoutes);
+app.use("/api/tables", tableRoutes);
+app.use("/api/menu", menuRoutes);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/promotions", promotionRoutes);
+
 // Specific routes before wildcard /api fallback
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);

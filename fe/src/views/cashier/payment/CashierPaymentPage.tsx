@@ -302,7 +302,6 @@ export const CashierPaymentPage: React.FC = () => {
       win.document.close();
       setTimeout(() => win.print(), 500);
     }
-    printCashierInvoice(selectedInvoice, restaurantInfo?.name);
   }, [selectedInvoice, restaurantInfo]);
 
   return (
