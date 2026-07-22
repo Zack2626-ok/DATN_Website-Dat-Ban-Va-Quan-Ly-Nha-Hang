@@ -1188,7 +1188,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           items={activeOrder?.items || []}
           subtotal={activeOrder?.subtotal}
           tax={activeOrder?.tax}
-          depositAmount={activeOrder?.depositAmount !== undefined ? activeOrder.depositAmount : selectedTable.deposit_amount}
+          depositAmount={activeOrder?.depositAmount ?? selectedTable.deposit_amount ?? undefined}
           totalAmount={activeOrder?.totalAmount}
           waiterName={userInfo.name}
           employeeCode={userInfo.code}

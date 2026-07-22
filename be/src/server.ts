@@ -19,6 +19,7 @@ import inventoryRoutes from "./routes/inventory.routes";
 import paymentRoutes from "./routes/payment.routes";
 import promotionRoutes from "./routes/promotion.routes";
 import { initDb } from "./utils/db";
+import { startBookingReminderScheduler } from "./utils/bookingReminder";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
  
 import bookingRoutes from "./routes/booking.routes";
@@ -86,10 +87,11 @@ const startServer = (port: number): void => {
     process.exit(1);
   });
 };
-
+ 
 initDb()
   .then(() => {
     console.log("✅ Database mode: MySQL");
+    startBookingReminderScheduler();
     startServer(startPort);
   })
   .catch((err) => {
@@ -97,9 +99,10 @@ initDb()
       "⚠️ MySQL không khả dụng. Server sẽ chạy ở chế độ API-only (không có lưu trữ dữ liệu).",
       err.message
     );
+    // Bỏ qua lỗi database, tiếp tục chạy server
     startServer(startPort);
   });
-
+ 
 app.use(
   cors({
     origin: frontendOrigins,
@@ -120,6 +123,7 @@ app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
+
 // Specific routes before wildcard /api fallback
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
