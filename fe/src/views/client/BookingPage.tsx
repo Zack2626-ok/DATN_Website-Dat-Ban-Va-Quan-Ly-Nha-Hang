@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Phone, Mail, CheckCircle, UtensilsCrossed, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -11,9 +11,6 @@ export const BookingPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [availableTables, setAvailableTables] = useState<any[]>([]);
 
-  const [menuItemsList, setMenuItemsList] = useState<any[]>([]);
-  const [menuCategory, setMenuCategory] = useState<string>("Tất cả");
-  const [menuSearch, setMenuSearch] = useState<string>("");
   const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
 
   // Bắt buộc đăng nhập tài khoản khách hàng trước khi đặt bàn
@@ -47,25 +44,6 @@ export const BookingPage: React.FC = () => {
       })
       .catch((e) => console.error("Error loading promotions in booking page:", e));
   }, [promoParam]);
-
-  // Filtered menu items based on category + search
-  const filteredMenuItems = useMemo(() => {
-    return menuItemsList.filter((item) => {
-      const matchCat = menuCategory === "Tất cả" || item.category_name === menuCategory;
-      const matchSearch = !menuSearch.trim() || item.name.toLowerCase().includes(menuSearch.toLowerCase());
-      return matchCat && matchSearch;
-    });
-  }, [menuItemsList, menuCategory, menuSearch]);
-
-  const totalPreOrderCost = useMemo(() =>
-    Object.values(preOrderedDishes).reduce((sum, d) => sum + d.price * d.quantity, 0),
-    [preOrderedDishes]
-  );
-
-  const totalPreOrderQty = useMemo(() =>
-    Object.values(preOrderedDishes).reduce((sum, d) => sum + d.quantity, 0),
-    [preOrderedDishes]
-  );
 
   // Reset filter when tables change
   useEffect(() => {
