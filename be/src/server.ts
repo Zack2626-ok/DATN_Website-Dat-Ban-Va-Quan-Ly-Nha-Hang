@@ -17,6 +17,7 @@ import inventoryRoutes from "./routes/inventory.routes";
 import paymentRoutes from "./routes/payment.routes";
 import promotionRoutes from "./routes/promotion.routes";
 import { initDb } from "./utils/db";
+import { startBookingReminderScheduler } from "./utils/bookingReminder";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
  
 import bookingRoutes from "./routes/booking.routes";
@@ -66,6 +67,7 @@ const startServer = (port: number): void => {
  initDb()
    .then(() => {
      console.log("✅ Database mode: MySQL");
+     startBookingReminderScheduler();
      startServer(startPort);
    })
    .catch((err) => {
