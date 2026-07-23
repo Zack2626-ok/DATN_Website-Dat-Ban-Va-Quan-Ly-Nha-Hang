@@ -2,8 +2,8 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { getPhoneNumberValidationError } from "../utils/validation";
-import { sendBookingNotification } from "../services/telegram.service";
 import { sendBookingConfirmationEmail } from "../utils/email";
+import { notifyWaitersAboutBooking } from "../utils/telegram";
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -81,14 +81,16 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       pre_ordered_items: pre_ordered_items || items,
     });
 
-    // Send Telegram Notification to Management
-    sendBookingNotification(booking);
-
     // Send Confirmation Email to Customer & generate local preview URL
     let emailPreviewUrl = null;
     try {
       const fullBooking = await db.getBookingById(booking.id);
       if (fullBooking) {
+        // Gửi thông báo Telegram tới nhóm Waiter
+        notifyWaitersAboutBooking(fullBooking).catch((tgErr) => {
+          console.error("⚠️ Lỗi khi gửi Telegram cho nhóm Waiter:", (tgErr as Error).message);
+        });
+
         emailPreviewUrl = await sendBookingConfirmationEmail({
           ...fullBooking,
           guest_email: targetEmail || fullBooking.guest_email || undefined,

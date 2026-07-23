@@ -570,6 +570,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               onClick={() => {
                 setShowLogoutModal(false);
                 dispatch(logoutAction());
+                navigate("/auth/login", { replace: true });
               }}
               className="px-4 py-2 rounded-lg text-sm font-medium bg-rose-500 text-white hover:bg-rose-600 transition-colors cursor-pointer shadow-[0_0_15px_rgba(244,63,94,0.3)]"
             >
