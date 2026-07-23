@@ -276,9 +276,13 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           if (freshItems.length > 0) {
             freshItems.forEach((notif: any) => {
               notifiedIdsRef.current.add(notif.id);
-              toast.success(notif.message, { duration: 5000 });
+              if (displayRole !== "chef") {
+                toast.success(notif.message, { duration: 5000 });
+              }
             });
-            playBeepSound();
+            if (displayRole !== "chef") {
+              playBeepSound();
+            }
           }
         }
 

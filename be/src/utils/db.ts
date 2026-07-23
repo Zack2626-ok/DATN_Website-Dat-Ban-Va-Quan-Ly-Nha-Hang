@@ -2350,11 +2350,26 @@ export const voidResmanagerOrderItem = async (itemId: number, reason: string): P
 export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]): Promise<boolean> => {
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
+  
+  // Lấy chi tiết các món trước khi cập nhật để tạo thông báo
+  const items = await query<any[]>(
+    `SELECT order_id, menu_item_id, quantity FROM order_items WHERE id IN (${placeholders})`,
+    orderItemIds
+  );
+
   const result = await query<any>(
     `UPDATE order_items SET status = 'waiting_kitchen', is_held = 0
      WHERE id IN (${placeholders})`,
     orderItemIds,
   );
+
+  if (result.affectedRows > 0) {
+    // Tạo thông báo cho Đầu bếp (chef)
+    for (const item of items) {
+      await createNewDishNotification(item.order_id, item.menu_item_id, item.quantity);
+    }
+  }
+
   return result.affectedRows > 0;
 };
 

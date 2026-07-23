@@ -217,15 +217,6 @@ export const ChefKitchenQueue: React.FC = () => {
       });
   };
 
-  const handleDeliver = (id: string | number) => {
-    // Delivery / archive item
-    dispatch(updateKdsItemStatus({ id, status: "delivered" }))
-      .unwrap()
-      .catch(() => {
-        dispatch(updateItemStatusLocal({ id, status: "delivered" }));
-      });
-  };
-
   const getTableNumber = (tableName?: string): number => {
     if (!tableName) return 999999;
     if (tableName === "Mang về") return 99999;
@@ -589,12 +580,6 @@ export const ChefKitchenQueue: React.FC = () => {
                         <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
                           Bàn: {group.tableName || "Mang về"}{group.areaName ? ` - ${group.areaName}` : ""}
                         </span>
-                        <span
-                          className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${isDelayed ? "text-rose-600 bg-rose-50" : "text-slate-500 bg-slate-50 border border-slate-100"
-                            }`}
-                        >
-                          <Clock size={10} /> {timeStr}
-                        </span>
                       </div>
 
                       {/* Danh sách món */}
@@ -610,7 +595,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               </span>
                             </div>
 
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5">
+                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
                               <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
                                 {getStationLabel(item.kitchenStation)}
                               </span>
@@ -619,6 +604,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                   ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
                                 </span>
                               )}
+                              <span className="text-blue-650 font-bold bg-blue-50/60 border border-blue-150 border-blue-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </span>
                             </div>
 
                             {/* Món đặt trước badge */}
@@ -708,12 +696,6 @@ export const ChefKitchenQueue: React.FC = () => {
                         <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
                           Bàn: {group.tableName || "Mang về"}{group.areaName ? ` - ${group.areaName}` : ""}
                         </span>
-                        <span
-                          className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${isDelayed ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50/55 border border-amber-100/50"
-                            }`}
-                        >
-                          <Clock size={10} className="animate-[spin_4s_linear_infinite]" /> {timeStr}
-                        </span>
                       </div>
 
                       {/* Danh sách món */}
@@ -729,7 +711,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               </span>
                             </div>
 
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5">
+                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
                               <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
                                 {getStationLabel(item.kitchenStation)}
                               </span>
@@ -738,6 +720,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                   ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
                                 </span>
                               )}
+                              <span className="text-amber-700 font-bold bg-amber-50/60 border border-amber-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </span>
                             </div>
 
                             {/* Món đặt trước badge */}
@@ -812,7 +797,12 @@ export const ChefKitchenQueue: React.FC = () => {
                     const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
                     return currentMs < earliest ? currentMs : earliest;
                   }, Date.now());
-                  const { timeStr } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
+                  const doneTimeStr = new Date(earliestUpdatedAt).toLocaleTimeString("vi-VN", {
+                    timeZone: "Asia/Ho_Chi_Minh",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  });
 
                   return (
                     <div
@@ -823,9 +813,6 @@ export const ChefKitchenQueue: React.FC = () => {
                       <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
                         <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
                           Bàn: {group.tableName || "Mang về"}{group.areaName ? ` - ${group.areaName}` : ""}
-                        </span>
-                        <span className="text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md text-emerald-600 bg-emerald-55/40 bg-emerald-50 border border-emerald-100">
-                          <Clock size={10} /> {timeStr}
                         </span>
                       </div>
 
@@ -842,7 +829,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               </span>
                             </div>
 
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5">
+                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
                               <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
                                 {getStationLabel(item.kitchenStation)}
                               </span>
@@ -851,6 +838,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                   ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
                                 </span>
                               )}
+                              <span className="text-emerald-700 font-bold bg-emerald-50/80 border border-emerald-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                🕒 {new Date(item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </span>
                             </div>
 
                             {/* Món đặt trước badge */}
@@ -859,34 +849,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                 🍳 Món đặt trước (Nấu sẵn)
                               </div>
                             )}
-
-                            {/* Nút phục vụ món lẻ (không có nút hoàn tác) */}
-                            <button
-                              onClick={() => handleDeliver(item.id)}
-                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
-                            >
-                              <CheckCheck size={9} /> Đã phục vụ
-                            </button>
                           </div>
                         ))}
                       </div>
-
-                      {/* Hành động cả bàn (nếu có > 1 món) */}
-                      {group.items.length > 1 && (
-                        <button
-                          onClick={() => {
-                            const ids = group.items.map((i) => i.id);
-                            dispatch(updateKdsBatchStatus({ itemIds: ids, status: "delivered" }))
-                              .unwrap()
-                              .catch(() => {
-                                ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "delivered" })));
-                              });
-                          }}
-                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
-                        >
-                          <CheckCheck size={10} className="animate-pulse" /> Phục vụ cả bàn ({group.items.length})
-                        </button>
-                      )}
                     </div>
                   );
                 })
@@ -930,9 +895,6 @@ export const ChefKitchenQueue: React.FC = () => {
                         <span className="text-[11px] font-black text-rose-800 px-2.5 py-1 bg-rose-50 border border-rose-200/85 rounded-lg shadow-inner">
                           Bàn: {group.tableName || "Mang về"}{group.areaName ? ` - ${group.areaName}` : ""}
                         </span>
-                        <span className="text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md text-rose-600 bg-rose-50 border border-rose-100">
-                          <Clock size={10} /> {timeStr}
-                        </span>
                       </div>
 
                       {/* Danh sách món */}
@@ -948,7 +910,7 @@ export const ChefKitchenQueue: React.FC = () => {
                               </span>
                             </div>
 
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5">
+                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
                               <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-rose-600/70 border border-slate-200/50">
                                 {getStationLabel(item.kitchenStation)}
                               </span>
@@ -957,6 +919,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                   ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
                                 </span>
                               )}
+                              <span className="text-rose-700 font-bold bg-rose-50/60 border border-rose-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                🕒 {new Date(item.voidedAt || item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </span>
                             </div>
 
                             {/* Lý do trả món */}

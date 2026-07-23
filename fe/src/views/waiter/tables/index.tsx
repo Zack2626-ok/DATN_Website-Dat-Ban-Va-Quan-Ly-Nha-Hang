@@ -138,6 +138,7 @@ const STATUS_CONFIG: Record<
 
 const ITEM_STATUS_LABELS: Record<string, { label: string; badge: string }> = {
   pending: { label: "⏳ Chờ gửi", badge: "bg-sky-100 text-slate-600" },
+  waiting_kitchen: { label: "📋 Chờ bếp", badge: "bg-amber-100 text-amber-700" },
   cooking: { label: "🔥 Đang nấu", badge: "bg-orange-100 text-orange-700" },
   done: { label: "✅ Hoàn thành", badge: "bg-green-100 text-green-700" },
   served: { label: "🛎 Đã mang ra", badge: "bg-blue-100 text-blue-700" },

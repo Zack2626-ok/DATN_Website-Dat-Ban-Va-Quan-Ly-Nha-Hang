@@ -674,8 +674,9 @@ export const OrderPage: React.FC = () => {
                         {/* Nút Đã mang ra — chỉ hiện khi bếp xong (done) */}
                         {item.status === "done" && (
                           <button
-                            disabled={servingItemId === item.id}
+                            disabled={servingItemId === item.id || isOrderLocked}
                             onClick={async () => {
+                              if (isOrderLocked) return;
                               if (!orderId) return;
                               setServingItemId(item.id);
                               try {
@@ -690,7 +691,7 @@ export const OrderPage: React.FC = () => {
                                 setServingItemId(null);
                               }
                             }}
-                            className="text-xs text-blue-600 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 hover:text-blue-800 transition-colors disabled:opacity-50 cursor-pointer"
+                            className="text-xs text-blue-600 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 hover:text-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                           >
                             {servingItemId === item.id
                               ? <Loader2 size={13} className="animate-spin" />
@@ -700,8 +701,9 @@ export const OrderPage: React.FC = () => {
                         {/* Nút Hủy — không hiện khi đã served hoặc voided */}
                         {item.status !== "voided" && item.status !== "served" && (
                           <button
-                            onClick={() => setVoidTarget(item)}
-                            className="text-xs text-red-500 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors cursor-pointer"
+                            disabled={isOrderLocked}
+                            onClick={() => !isOrderLocked && setVoidTarget(item)}
+                            className="text-xs text-red-500 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                           >
                             <XCircle size={13} /> Hủy
                           </button>
