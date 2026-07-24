@@ -68,7 +68,7 @@ export const MenuManagement: React.FC = () => {
                     </span>
                   </div>
                   <span className="text-xs font-extrabold">
-                    {(item.price * 1000).toLocaleString("vi-VN")} vnđ
+                    {Number(item.price).toLocaleString("vi-VN")} vnđ
                   </span>
                 </div>
               );
@@ -105,7 +105,7 @@ export const MenuManagement: React.FC = () => {
                   type="text"
                   value={
                     selectedItem
-                      ? `${(selectedItem.price * 1000).toLocaleString("vi-VN")} vnđ`
+                      ? `${Number(selectedItem.price).toLocaleString("vi-VN")} vnđ`
                       : ""
                   }
                   readOnly

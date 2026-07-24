@@ -148,7 +148,7 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
               VietQR - Chuyển khoản ngân hàng
             </div>
             <img
-              src={`https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${Math.round(invoice.totalAmount * 1000)}&addInfo=${encodeURIComponent(`Thanh toan HD${invoice.id.slice(-6)}`)}`}
+              src={`https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${Math.round(invoice.totalAmount)}&addInfo=${encodeURIComponent(`Thanh toan HD${invoice.id.slice(-6)}`)}`}
               alt="VietQR"
               className="w-[120px] h-[120px] rounded-lg border border-blue-200 bg-white"
             />

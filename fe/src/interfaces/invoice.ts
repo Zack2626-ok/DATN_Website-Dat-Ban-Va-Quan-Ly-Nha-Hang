@@ -21,6 +21,7 @@ export interface Invoice {
   invoiceStatus: InvoiceStatus;
   createdAt: string;
   orderType?: string;
+  paymentMethod?: string;
 }
 
 export interface PaymentBreakdown {
@@ -37,7 +38,7 @@ export interface PaymentBreakdown {
 }
 
 export interface PaymentRequest {
-  paymentMethod: "cash" | "transfer" | "card" | "wallet";
+  paymentMethod: "cash" | "transfer" | "card" | "wallet" | "momo" | "vnpay";
   vatRate?: number;
   serviceFeeRate?: number;
   voucherCode?: string;

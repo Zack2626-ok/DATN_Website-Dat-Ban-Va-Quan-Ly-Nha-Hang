@@ -63,7 +63,7 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const validMethods = ["cash", "card", "transfer", "wallet"];
+    const validMethods = ["cash", "card", "transfer", "wallet", "momo", "vnpay"];
     if (!validMethods.includes(paymentMethod)) {
       sendError(res, `Phương thức phải là: ${validMethods.join(", ")}`, 400);
       return;

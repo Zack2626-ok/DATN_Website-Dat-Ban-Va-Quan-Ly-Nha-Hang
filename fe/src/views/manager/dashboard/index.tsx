@@ -51,7 +51,7 @@ export const ManagerDashboard: React.FC = () => {
           </div>
           <div className="flex flex-col gap-0.5 mt-1">
             <span className="text-2xl font-black">
-              {(stats.totalRevenue * 1000).toLocaleString("vi-VN")} vnđ
+              {(stats.totalRevenue).toLocaleString("vi-VN")} vnđ
             </span>
             <span className="text-emerald-500 text-[10px] font-bold">
               +12.5%

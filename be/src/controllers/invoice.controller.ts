@@ -37,8 +37,9 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
           : o.status === "cancelled"
             ? "cancelled"
             : "unpaid",
-      createdAt: o.created_at,
+       createdAt: o.created_at,
       orderType: o.order_type,
+      paymentMethod: o.paymentMethod || undefined,
     }));
 
     // Nếu không có món nào (0 món) thì không đưa vào thu ngân
@@ -105,7 +106,7 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const validMethods = ["cash", "transfer", "card", "wallet"];
+    const validMethods = ["cash", "transfer", "card", "wallet", "momo", "vnpay"];
     if (!validMethods.includes(paymentMethod)) {
       sendError(res, `Phương thức phải là: ${validMethods.join(", ")}`, 400);
       return;

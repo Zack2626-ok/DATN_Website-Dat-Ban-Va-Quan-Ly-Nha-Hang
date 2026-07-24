@@ -41,10 +41,10 @@ const generateReceiptHtml = (order: OrderDetails): string => {
         <td style="padding: 12px 0; color: #f0efe8; font-weight: 500;">${item.name}</td>
         <td style="padding: 12px 0; color: #a5a5b5; text-align: center;">${item.quantity}</td>
         <td style="padding: 12px 0; color: #c5a880; font-weight: bold; text-align: right;">
-          ${(item.price * 1000).toLocaleString("vi-VN")} vnđ
+          ${(item.price).toLocaleString("vi-VN")} vnđ
         </td>
         <td style="padding: 12px 0; color: #c5a880; font-weight: bold; text-align: right;">
-          ${(item.price * item.quantity * 1000).toLocaleString("vi-VN")} vnđ
+          ${(item.price * item.quantity).toLocaleString("vi-VN")} vnđ
         </td>
       </tr>
     `
@@ -256,7 +256,7 @@ const generateReceiptHtml = (order: OrderDetails): string => {
           <div style="font-size: 11px; color: #a5a5b5; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
             Tổng tiền hóa đơn
           </div>
-          <div class="total-amount">${(order.totalAmount * 1000).toLocaleString("vi-VN")} vnđ</div>
+          <div class="total-amount">${(order.totalAmount).toLocaleString("vi-VN")} vnđ</div>
         </div>
 
         <div class="footer">
@@ -378,7 +378,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
                 <td style="padding: 12px; color: #0F172A; font-weight: 600;">${item.menu_item_name || item.name}</td>
                 <td style="padding: 12px; color: #475569; font-weight: 700; text-align: center;">${item.quantity}</td>
                 <td style="padding: 12px; color: #D97706; font-weight: 800; text-align: right;">
-                  ${((item.unit_price || item.price || 0) * 1000).toLocaleString("vi-VN")} đ
+                  ${((item.unit_price || item.price || 0)).toLocaleString("vi-VN")} đ
                 </td>
               </tr>
             `).join("")}
@@ -393,7 +393,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
       <div style="background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px; padding: 14px 18px; margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
         <span style="font-size: 13px; color: #92400E; font-weight: 700;">Tiền cọc cần thanh toán (20%):</span>
         <span style="font-size: 16px; color: #B45309; font-weight: 800;">
-          ${(booking.deposit_amount * 1000).toLocaleString("vi-VN")} đ
+          ${(booking.deposit_amount).toLocaleString("vi-VN")} đ
         </span>
       </div>
     `

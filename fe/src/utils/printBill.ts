@@ -1,4 +1,8 @@
-export const printCashierInvoice = (invoice: any, restaurantName: string = "NHÀ HÀNG RESMANAGER") => {
+export const printCashierInvoice = (
+  invoice: any,
+  restaurantName: string = "NHÀ HÀNG RESMANAGER",
+  restaurantInfo?: any
+) => {
   const printWindow = window.open("", "_blank", "width=400,height=600");
   if (!printWindow) return;
 
@@ -19,6 +23,49 @@ export const printCashierInvoice = (invoice: any, restaurantName: string = "NHÀ
   const depositAmount = Number(invoice.depositAmount || 0);
   const finalAmount = Number(invoice.totalAmount !== undefined ? invoice.totalAmount : Math.max(0, subtotal + tax - depositAmount - discount));
 
+  // Meta & Contact Info
+  const rAddr = restaurantInfo?.address || "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM";
+  const rHotline = restaurantInfo?.hotline || "028 3829 4000";
+
+  // QR Code & Payment Method Info
+  const paymentMethod = invoice.paymentMethod || invoice.method || "";
+  const bankCode = restaurantInfo?.bank_code || "";
+  const bankAcc = restaurantInfo?.bank_account || "";
+  const bankAccName = restaurantInfo?.bank_account_name || "";
+  const bankName = restaurantInfo?.bank_name || "";
+  const desc = `Thanh toan HD${String(invoice.id || "").slice(-6).toUpperCase()}`;
+
+  let qrUrl = "";
+  let qrLabel = "";
+  let qrDetails = "";
+
+  if (bankCode && bankAcc) {
+    if (paymentMethod === "momo") {
+      qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`momo://pay?phone=${rHotline}&amount=${Math.round(finalAmount)}&note=${desc}`)}`;
+      qrLabel = "Quét mã MoMo để thanh toán";
+      qrDetails = `SĐT: ${rHotline} - ${bankAccName}`;
+    } else if (paymentMethod === "vnpay") {
+      qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=${Math.round(finalAmount) * 100}&vnp_TxnRef=${String(invoice.id || "").slice(-6)}&vnp_OrderInfo=${desc}`)}`;
+      qrLabel = "Quét mã VNPay để thanh toán";
+      qrDetails = "Cổng thanh toán VNPay Sandbox";
+    } else if (paymentMethod === "transfer" || paymentMethod === "bank_transfer" || !paymentMethod) {
+      // Default to bank transfer VietQR
+      qrUrl = `https://img.vietqr.io/image/${bankCode}-${bankAcc}-qr_only.png?amount=${Math.round(finalAmount)}&addInfo=${encodeURIComponent(desc)}`;
+      qrLabel = "Quét mã VietQR để thanh toán";
+      qrDetails = `${bankName}<br>STK: ${bankAcc} - ${bankAccName}`;
+    }
+  }
+
+  const methodLabels: Record<string, string> = {
+    cash: "Tiền mặt",
+    transfer: "Chuyển khoản ngân hàng (VietQR)",
+    bank_transfer: "Chuyển khoản ngân hàng (VietQR)",
+    card: "Thẻ tín dụng",
+    momo: "Ví điện tử MoMo",
+    vnpay: "Cổng thanh toán VNPay"
+  };
+  const methodLabel = methodLabels[paymentMethod] || "Chưa xác định";
+
   printWindow.document.write(`
     <!DOCTYPE html>
     <html lang="vi">
@@ -29,54 +76,62 @@ export const printCashierInvoice = (invoice: any, restaurantName: string = "NHÀ
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: 'Courier New', Courier, monospace;
-          font-size: 12px;
+          font-size: 11px;
           width: 80mm;
-          padding: 8px 10px;
-          color: #111;
+          padding: 8px 8px;
+          color: #000;
+          background-color: #fff;
         }
         .center { text-align: center; }
         .bold { font-weight: bold; }
-        .lg { font-size: 14px; }
-        .xl { font-size: 16px; }
-        .divider { border-top: 1px dashed #999; margin: 6px 0; }
-        .row { display: flex; justify-content: space-between; margin: 3px 0; }
-        .col-name { flex: 1; padding-right: 6px; }
-        .col-qty { width: 60px; text-align: center; }
-        .col-price { width: 70px; text-align: right; }
-        .total-row { font-size: 15px; font-weight: bold; margin-top: 6px; }
-        .note { font-size: 10px; color: #555; font-style: italic; margin-top: 4px; }
-        .item-note { font-size: 10px; color: #777; padding-left: 4px; }
+        .lg { font-size: 13px; }
+        .xl { font-size: 15px; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .row { display: flex; justify-content: space-between; margin: 4px 0; }
+        .total-row { font-size: 13px; font-weight: bold; margin-top: 6px; }
+        .note { font-size: 9px; color: #333; font-style: italic; margin-top: 4px; }
+        .item-note { font-size: 9px; color: #555; padding-left: 10px; margin-top: 1px; }
+        .qr-section { text-align: center; margin-top: 10px; padding: 8px; border: 1px dashed #000; border-radius: 4px; }
+        .qr-section img { width: 130px; height: 130px; margin-top: 4px; }
+        .qr-section p { font-size: 9px; margin-top: 2px; }
+        .item-block { margin: 6px 0; }
+        @media print {
+          @page {
+            size: auto;
+            margin: 0mm;
+          }
+          body {
+            margin: 8mm 6mm;
+          }
+        }
       </style>
     </head>
     <body>
       <div class="center bold lg">${restaurantName}</div>
-      <div class="center" style="font-size:10px; margin-bottom:4px;">Hóa đơn thanh toán</div>
+      <div class="center" style="font-size:9px; margin-top:2px;">Địa chỉ: ${rAddr}</div>
+      <div class="center" style="font-size:9px;">Hotline: ${rHotline}</div>
       <div class="divider"></div>
       <div class="center bold xl" style="margin: 4px 0;">HÓA ĐƠN THANH TOÁN</div>
-      <div class="center bold" style="font-size:14px; margin-bottom:6px;">${tableName}</div>
+      <div class="center bold lg" style="margin-bottom:6px;">${tableName}</div>
       <div class="divider"></div>
       <div class="row"><span>Mã Hóa Đơn:</span><span class="bold">${invId}</span></div>
-      <div class="row"><span>Ngày:</span><span>${printDate}</span></div>
-      <div class="row"><span>Giờ in:</span><span>${printTime}</span></div>
+      <div class="row"><span>Thời gian in:</span><span>${printDate} ${printTime}</span></div>
+      <div class="row"><span>Hình thức thanh toán:</span><span class="bold">${methodLabel}</span></div>
       ${guestName || guestPhone ? `
       <div class="divider"></div>
       ${guestName ? `<div class="row"><span>Khách:</span><span class="bold">${guestName}</span></div>` : ""}
       ${guestPhone ? `<div class="row"><span>SĐT:</span><span>${guestPhone}</span></div>` : ""}
       ` : ""}
       <div class="divider"></div>
-      <div class="row bold" style="font-size:11px; color:#555;">
-        <span class="col-name">TÊN MÓN</span>
-        <span class="col-qty">SL x ĐG</span>
-        <span class="col-price">T.TIỀN</span>
-      </div>
-      <div class="divider"></div>
       ${validItems.map((item: any) => `
-        <div class="row">
-          <span class="col-name">${item.item_name || item.name || item.menu_item_name || "—"}</span>
-          <span class="col-qty">${item.quantity} × ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
-          <span class="col-price">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
+        <div class="item-block">
+          <div class="bold" style="font-size: 11px;">${item.item_name || item.name || item.menu_item_name || "—"}</div>
+          <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
+            <span>${item.quantity} x ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
+            <span class="bold">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
+          </div>
+          ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
         </div>
-        ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
       `).join("")}
       <div class="divider"></div>
       <div class="row">
@@ -107,6 +162,17 @@ export const printCashierInvoice = (invoice: any, restaurantName: string = "NHÀ
         <span>${finalAmount.toLocaleString("vi-VN")} đ</span>
       </div>
       <div class="divider"></div>
+
+      ${qrUrl && paymentMethod !== "cash" ? `
+      <div class="qr-section">
+        <p class="bold" style="font-size:10px;">${qrLabel}</p>
+        <img src="${qrUrl}" alt="Payment QR" />
+        <p class="bold" style="margin-top:4px;">${qrDetails}</p>
+        <p style="font-size:8px; color:#555; margin-top:2px;">Nội dung: ${desc}</p>
+      </div>
+      <div class="divider"></div>
+      ` : ""}
+
       <div class="center note" style="margin-top:8px;">Cảm ơn quý khách và hẹn gặp lại!</div>
     </body>
     </html>

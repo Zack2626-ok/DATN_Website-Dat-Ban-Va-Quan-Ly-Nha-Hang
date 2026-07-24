@@ -30,11 +30,12 @@ const PAYMENT_METHODS = [
   { value: "cash" as const, label: "Tiền mặt", icon: Banknote, color: "bg-emerald-50 border-emerald-200 text-emerald-700" },
   { value: "transfer" as const, label: "Chuyển khoản", icon: ArrowRightLeft, color: "bg-blue-50 border-blue-200 text-blue-700" },
   { value: "card" as const, label: "Thẻ tín dụng", icon: CreditCard, color: "bg-violet-50 border-violet-200 text-violet-700" },
-  { value: "wallet" as const, label: "Ví điện tử", icon: Wallet, color: "bg-amber-50 border-amber-200 text-amber-700" },
+  { value: "momo" as const, label: "Ví MoMo", icon: Wallet, color: "bg-pink-50 border-pink-200 text-pink-700" },
+  { value: "vnpay" as const, label: "Cổng VNPay", icon: QrCode, color: "bg-sky-50 border-sky-200 text-sky-700" },
 ];
 
 export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConfirm, loading }) => {
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "wallet">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
   const [vatRate, setVatRate] = useState(10);
   const [serviceFeeRate, setServiceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
@@ -64,10 +65,22 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
 
   const vietqrUrl = useMemo(() => {
     if (!resInfo?.bank_code || !resInfo?.bank_account) return "";
-    const amountVnd = Math.round(breakdown.finalAmount * 1000);
+    const amountVnd = Math.round(breakdown.finalAmount);
     const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
     return `https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${amountVnd}&addInfo=${encodeURIComponent(desc)}`;
   }, [resInfo, breakdown.finalAmount, invoice.id]);
+
+  const momoUrl = useMemo(() => {
+    const amountVnd = Math.round(breakdown.finalAmount);
+    const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`momo://pay?phone=${resInfo?.hotline || "028 3829 4000"}&amount=${amountVnd}&note=${desc}`)}`;
+  }, [resInfo, breakdown.finalAmount, invoice.id]);
+
+  const vnpayUrl = useMemo(() => {
+    const amountVnd = Math.round(breakdown.finalAmount);
+    const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=${amountVnd * 100}&vnp_TxnRef=${invoice.id.slice(-6)}&vnp_OrderInfo=${desc}`)}`;
+  }, [breakdown.finalAmount, invoice.id]);
 
   const copyBankInfo = () => {
     if (!resInfo) return;
@@ -219,7 +232,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
 
           {/* VietQR when transfer selected */}
           {paymentMethod === "transfer" && resInfo?.bank_code && (
-            <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-3 flex flex-col items-center gap-2">
+            <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-3 flex flex-col items-center gap-2 animate-fade-in">
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-700">
                 <QrCode size={14} />
                 Quét mã VietQR để chuyển khoản
@@ -251,6 +264,56 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 {copied ? <Check size={12} /> : <Copy size={12} />}
                 {copied ? "Đã copy!" : "Copy thông tin TK"}
               </button>
+            </div>
+          )}
+
+          {/* MoMo QR when momo selected */}
+          {paymentMethod === "momo" && (
+            <div className="bg-pink-50/50 border border-pink-200 rounded-xl p-3 flex flex-col items-center gap-2 animate-fade-in">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-pink-700">
+                <QrCode size={14} />
+                Quét mã MoMo để thanh toán
+              </div>
+              <img
+                src={momoUrl}
+                alt="MoMo QR"
+                className="w-48 h-48 rounded-lg border border-pink-200 bg-white"
+              />
+              <div className="w-full text-[10px] text-slate-600 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Số điện thoại:</span>
+                  <span className="font-bold">{resInfo?.hotline || "028 3829 4000"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Chủ tài khoản:</span>
+                  <span className="font-bold">{resInfo?.bank_account_name || "NHÀ HÀNG RESMANAGER"}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VNPay QR when vnpay selected */}
+          {paymentMethod === "vnpay" && (
+            <div className="bg-sky-50/50 border border-sky-200 rounded-xl p-3 flex flex-col items-center gap-2 animate-fade-in">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-sky-700">
+                <QrCode size={14} />
+                Quét mã VNPay để thanh toán
+              </div>
+              <img
+                src={vnpayUrl}
+                alt="VNPay QR"
+                className="w-48 h-48 rounded-lg border border-sky-200 bg-white"
+              />
+              <div className="w-full text-[10px] text-slate-600 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Cổng thanh toán:</span>
+                  <span className="font-bold">VNPay Sandbox Gateway</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Đơn vị thụ hưởng:</span>
+                  <span className="font-bold">{resInfo?.name || "ResManager"}</span>
+                </div>
+              </div>
             </div>
           )}
 

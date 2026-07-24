@@ -594,12 +594,12 @@ const MOCK_ORDERS: Order[] = [
     customerEmail: "an@gmail.com",
     guestCount: 2,
     items: [
-      { menuItemId: "m1", name: "Gỏi hải sản", price: 185, quantity: 1 },
-      { menuItemId: "m3", name: "Bò lúc lắc", price: 265, quantity: 1 },
-      { menuItemId: "m9", name: "Trà đào cam sả", price: 45, quantity: 2 },
+      { menuItemId: "m1", name: "Gỏi hải sản", price: 185000, quantity: 1 },
+      { menuItemId: "m3", name: "Bò lúc lắc", price: 265000, quantity: 1 },
+      { menuItemId: "m9", name: "Trà đào cam sả", price: 45000, quantity: 2 },
     ],
     status: "served",
-    totalAmount: 540,
+    totalAmount: 540000,
     createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
     orderType: "dine_in",
   },
@@ -612,11 +612,11 @@ const MOCK_ORDERS: Order[] = [
     customerEmail: "alex@example.com",
     guestCount: 2,
     items: [
-      { menuItemId: "m6", name: "Lẩu Thái chua cay", price: 380, quantity: 1 },
-      { menuItemId: "m10", name: "Nước ép dưa hấu", price: 40, quantity: 2 },
+      { menuItemId: "m6", name: "Lẩu Thái chua cay", price: 380000, quantity: 1 },
+      { menuItemId: "m10", name: "Nước ép dưa hấu", price: 40000, quantity: 2 },
     ],
     status: "in_kitchen",
-    totalAmount: 460,
+    totalAmount: 460000,
     createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
     orderType: "dine_in",
   },
@@ -629,11 +629,11 @@ const MOCK_ORDERS: Order[] = [
     customerEmail: "elena@yahoo.com",
     guestCount: 3,
     items: [
-      { menuItemId: "m4", name: "Cá hồi sốt chanh leo", price: 285, quantity: 1 },
-      { menuItemId: "m11", name: "Sinh tố bơ", price: 55, quantity: 1 },
+      { menuItemId: "m4", name: "Cá hồi sốt chanh leo", price: 285000, quantity: 1 },
+      { menuItemId: "m11", name: "Sinh tố bơ", price: 55000, quantity: 1 },
     ],
     status: "served",
-    totalAmount: 340,
+    totalAmount: 340000,
     createdAt: new Date(Date.now() - 65 * 60 * 1000).toISOString(),
     orderType: "dine_in",
   },
@@ -646,11 +646,11 @@ const MOCK_ORDERS: Order[] = [
     customerEmail: "marcus@philosophy.org",
     guestCount: 2,
     items: [
-      { menuItemId: "m5", name: "Sườn sụn nướng BBQ", price: 245, quantity: 1 },
-      { menuItemId: "m8", name: "Bánh tiramisu", price: 60, quantity: 1 },
+      { menuItemId: "m5", name: "Sườn sụn nướng BBQ", price: 245000, quantity: 1 },
+      { menuItemId: "m8", name: "Bánh tiramisu", price: 60000, quantity: 1 },
     ],
     status: "paid",
-    totalAmount: 305,
+    totalAmount: 305000,
     createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
     orderType: "dine_in",
   },
@@ -2107,11 +2107,12 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
     const isPaidOrder = order.status === "completed" || order.status === "paid";
     if (isPaidOrder) {
       const payRows = await query<any[]>(
-        "SELECT p.amount, p.note, i.tax, i.discount, i.total FROM payments p LEFT JOIN invoices i ON p.invoice_id = i.id WHERE i.order_id = ? OR p.invoice_id = ? ORDER BY p.paid_at DESC LIMIT 1",
+        "SELECT p.amount, p.note, p.method, i.tax, i.discount, i.total FROM payments p LEFT JOIN invoices i ON p.invoice_id = i.id WHERE i.order_id = ? OR p.invoice_id = ? ORDER BY p.paid_at DESC LIMIT 1",
         [order.id, order.id]
       ).catch(() => []);
       if (payRows && payRows.length > 0) {
         const pRow = payRows[0];
+        order.paymentMethod = pRow.method;
         let notesData: any = {};
         try {
           if (pRow.note && typeof pRow.note === "string" && pRow.note.startsWith("{")) {
