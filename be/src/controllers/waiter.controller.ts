@@ -209,6 +209,53 @@ export const markItemServedHandler = async (req: Request, res: Response): Promis
   }
 };
 
+// Waiter gửi yêu cầu thanh toán cho thu ngân
+export const requestPaymentHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId } = req.params;
+    const { note } = req.body;
+
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === orderId);
+    if (!order) {
+      sendError(res, "Không tìm thấy đơn hàng", 404);
+      return;
+    }
+    if (order.status === "completed" || order.status === "paid" || order.status === "cancelled") {
+      sendError(res, "Đơn hàng đã thanh toán hoặc đã hủy", 400);
+      return;
+    }
+
+    await db.updateOrderStatus(orderId, "pending_payment");
+
+    if (order.table_id) {
+      await db.updateResmanagerTableStatus(Number(order.table_id), "pending_payment");
+    }
+
+    const waiterName = req.user?.email || "Phục vụ";
+    await db.createNotification(
+      "Yêu cầu thanh toán",
+      `${waiterName} yêu cầu thanh toán đơn #${orderId} - Bàn ${order.table_name || "?"}`,
+      "payment_request",
+      "cashier"
+    );
+
+    req.app.get("io")?.emit("payment:request", {
+      orderId: Number(orderId),
+      tableId: order.table_id,
+      tableName: order.table_name,
+      waiterName,
+      totalAmount: order.totalAmount,
+      note,
+    });
+
+    sendSuccess(res, { orderId, status: "pending_payment", waiterName }, "Đã gửi yêu cầu thanh toán");
+  } catch (error) {
+    console.error("Error requesting payment:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
 // QR Order - khách tự đặt món qua QR (không cần auth)
 export const createQROrderHandler = async (req: Request, res: Response): Promise<void> => {
   try {

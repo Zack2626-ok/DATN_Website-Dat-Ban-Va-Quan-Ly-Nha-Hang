@@ -17,7 +17,7 @@ const INITIAL_TABLES: Table[] = [
   { id: "t6", name: "B06", status: TABLE_STATUS.AVAILABLE, seats: 2, zone: "Tầng 2", currentOrderId: null },
   { id: "t7", name: "B07", status: TABLE_STATUS.AVAILABLE, seats: 8, zone: "Tầng 2", currentOrderId: null },
   { id: "t8", name: "B08", status: TABLE_STATUS.AVAILABLE, seats: 4, zone: "Sân vườn", currentOrderId: null },
-  { id: "t9", name: "B09", status: TABLE_STATUS.CLEANING, seats: 4, zone: "Sân vườn", currentOrderId: null },
+  { id: "t9", name: "B09", status: TABLE_STATUS.PENDING_PAYMENT, seats: 4, zone: "Sân vườn", currentOrderId: null },
   { id: "t10", name: "B10", status: TABLE_STATUS.AVAILABLE, seats: 4, zone: "Sân vườn", currentOrderId: null },
 ];
 
@@ -69,7 +69,7 @@ const tableSlice = createSlice({
     releaseTableToCleaning: (state, action: PayloadAction<{ id: string }>) => {
       const table = state.tables.find((t) => t.id === action.payload.id);
       if (table) {
-        table.status = TABLE_STATUS.CLEANING;
+        table.status = TABLE_STATUS.PENDING_PAYMENT;
         table.currentOrderId = null;
       }
     },

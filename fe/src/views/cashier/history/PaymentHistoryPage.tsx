@@ -37,7 +37,7 @@ const METHOD_LABELS: Record<string, { label: string; icon: React.ReactNode; colo
   wallet: { label: "Ví điện tử", icon: <Wallet size={14} />, color: "text-amber-600 bg-amber-50 border-amber-200" },
 };
 
-const formatVnd = (amount: number) => amount.toLocaleString("vi-VN");
+const formatVnd = (amount: number) => (amount * 1000).toLocaleString("vi-VN");
 
 const formatTime = (dateStr: string) => {
   if (!dateStr) return "-";

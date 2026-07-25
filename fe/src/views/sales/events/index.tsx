@@ -28,7 +28,7 @@ export const EventsManagement: React.FC = () => {
     switch(status) {
       case 'lead': return 'Nháp (Lead)';
       case 'quoting': return 'Đang báo giá';
-      case 'deposited': return 'Đã cọc';
+      case 'deposited': return 'Đã xác nhận';
       case 'confirmed': return 'Đã xác nhận';
       case 'completed': return 'Hoàn thành';
       case 'cancelled': return 'Đã hủy';
@@ -84,7 +84,6 @@ export const EventsManagement: React.FC = () => {
                       <div className="text-[10px] text-slate-500">{event.start_time} - {event.end_time}</div>
                     </td>
                     <td className="p-3">
-                      <div className="text-[10px]">Cọc: <span className="text-rose-600 font-bold">{formatCurrency(event.deposit_amount)}</span></div>
                       <div className="text-[10px]">Tổng: <span className="text-emerald-600 font-bold">{formatCurrency(event.total_estimated_amount)}</span></div>
                     </td>
                     <td className="p-3">
