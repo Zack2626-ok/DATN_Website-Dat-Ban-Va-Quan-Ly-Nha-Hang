@@ -13,6 +13,8 @@ import {
   Clock,
   LineChart,
   Percent,
+  FileText,
+  TrendingDown,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { ROLE_LABELS } from "../../../constants/roles";
@@ -24,6 +26,7 @@ export const ManagerSidebar: React.FC = () => {
   const location = useLocation();
   const { user } = useAppSelector((state) => state.auth);
   const [isSystemMenuOpen, setIsSystemMenuOpen] = useState(true);
+  const canViewReports = user?.role === "admin" || user?.role === "manager";
 
   // Check if route is active
   const isRouteActive = (to: string) => {
@@ -47,11 +50,10 @@ export const ManagerSidebar: React.FC = () => {
         {/* Dashboard - Top Level Item */}
         <Link
           to="/manager/dashboard"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/dashboard")
+          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isRouteActive("/manager/dashboard")
               ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
+            }`}
         >
           <span className="flex items-center gap-2.5">
             <LayoutDashboard size={16} />
@@ -62,11 +64,10 @@ export const ManagerSidebar: React.FC = () => {
         {/* Sơ đồ bàn - Top Level Item */}
         <Link
           to="/manager/tables"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/tables")
+          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isRouteActive("/manager/tables")
               ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
+            }`}
         >
           <span className="flex items-center gap-2.5">
             <Grid size={16} />
@@ -77,11 +78,10 @@ export const ManagerSidebar: React.FC = () => {
         {/* Đặt bàn - Top Level Item */}
         <Link
           to="/manager/bookings"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/bookings")
+          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isRouteActive("/manager/bookings")
               ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
+            }`}
         >
           <span className="flex items-center gap-2.5">
             <CalendarDays size={16} />
@@ -92,11 +92,10 @@ export const ManagerSidebar: React.FC = () => {
         {/* Ca làm việc - Top Level Item */}
         <Link
           to="/manager/shifts"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/shifts")
+          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isRouteActive("/manager/shifts")
               ? "bg-sky-500 text-white"
               : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
+            }`}
         >
           <span className="flex items-center gap-2.5">
             <Clock size={16} />
@@ -123,19 +122,17 @@ export const ManagerSidebar: React.FC = () => {
 
           {/* Accordion Content */}
           <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              isSystemMenuOpen ? "max-h-64" : "max-h-0"
-            }`}
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${isSystemMenuOpen ? "max-h-64" : "max-h-0"
+              }`}
           >
             <div className="ml-4 space-y-1 py-1">
               {/* Quản lý Nhân sự */}
               <Link
                 to="/manager/staff"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/staff")
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/staff")
                     ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-2.5">
                   <Users size={14} />
@@ -146,11 +143,10 @@ export const ManagerSidebar: React.FC = () => {
               {/* Quản lý Thực đơn */}
               <Link
                 to="/manager/menu"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/menu")
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/menu")
                     ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-2.5">
                   <Utensils size={14} />
@@ -161,11 +157,10 @@ export const ManagerSidebar: React.FC = () => {
               {/* Quản lý Ưu đãi */}
               <Link
                 to="/manager/promotions"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/promotions")
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/promotions")
                     ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-2.5">
                   <Percent size={14} />
@@ -176,11 +171,10 @@ export const ManagerSidebar: React.FC = () => {
               {/* CRM & Loyalty */}
               <Link
                 to="/manager/crm"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/crm")
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/crm")
                     ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-2.5">
                   <Users size={14} />
@@ -190,17 +184,44 @@ export const ManagerSidebar: React.FC = () => {
               {/* Báo cáo & Phân tích */}
               <Link
                 to="/manager/analytics"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/analytics")
+                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/analytics")
                     ? "bg-sky-500 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
+                  }`}
               >
                 <span className="flex items-center gap-2.5">
                   <LineChart size={14} />
                   Báo cáo & Phân tích
                 </span>
               </Link>
+              {canViewReports && (
+                <>
+                  <Link
+                    to="/manager/finance-report"
+                    className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/finance-report")
+                        ? "bg-sky-500 text-white"
+                        : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                      }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <FileText size={14} />
+                      Báo cáo tài chính
+                    </span>
+                  </Link>
+                  <Link
+                    to="/manager/loss-debt-report"
+                    className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/loss-debt-report")
+                        ? "bg-sky-500 text-white"
+                        : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                      }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <TrendingDown size={14} />
+                      Hao hụt & Công nợ
+                    </span>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
