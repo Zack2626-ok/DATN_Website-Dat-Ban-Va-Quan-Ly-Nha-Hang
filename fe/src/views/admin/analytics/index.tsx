@@ -1,13 +1,24 @@
-import React, { useMemo } from "react";
-import { useAppSelector } from "../../../store/hooks";
+import React, { useEffect, useMemo, useState } from "react";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { ORDER_STATUS } from "../../../constants/orderStatus";
 import { TABLE_STATUS } from "../../../constants/tableStatus";
-import { DollarSign, Users, ShoppingCart, AlertTriangle } from "lucide-react";
+import { makeTableAvailable } from "../../../store/tableSlice";
+import { DollarSign, Users, ShoppingCart, AlertTriangle, DoorOpen, DoorClosed, RefreshCw } from "lucide-react";
 
 /** Admin Analytics — Dashboard tổng thể doanh thu & hoạt động */
 export const AdminAnalytics: React.FC = () => {
+  const dispatch = useAppDispatch();
   const tables = useAppSelector((state) => state.tables.tables);
   const orders = useAppSelector((state) => state.orders.orders);
+  const [serviceMode, setServiceMode] = useState<"open" | "closed">(() => {
+    if (typeof window === "undefined") return "open";
+    return window.localStorage.getItem("resmanager_service_mode") === "closed" ? "closed" : "open";
+  });
+  const [notice, setNotice] = useState<string>("Sẵn sàng điều hành nhà hàng từ bảng quản trị.");
+
+  useEffect(() => {
+    window.localStorage.setItem("resmanager_service_mode", serviceMode);
+  }, [serviceMode]);
 
   // Compute metrics
   const stats = useMemo(() => {
@@ -29,11 +40,66 @@ export const AdminAnalytics: React.FC = () => {
     };
   }, [orders, tables]);
 
+  const handleToggleService = () => {
+    const nextMode = serviceMode === "open" ? "closed" : "open";
+    setServiceMode(nextMode);
+    setNotice(nextMode === "open" ? "Đã mở cửa phục vụ cho khách." : "Đã chuyển sang chế độ đóng cửa tạm thời.");
+  };
+
+  const handleResetTables = () => {
+    tables.forEach((table) => {
+      dispatch(makeTableAvailable({ id: table.id }));
+    });
+    setNotice("Đã đặt toàn bộ bàn về trạng thái sẵn sàng.");
+  };
+
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
       <div className="border-b border-sky-100 pb-4">
         <h1 className="text-2xl font-bold text-sky-700 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Analytics tổng thể</h1>
         <p className="mt-1 text-sm text-slate-500">Tổng quan doanh thu, chi phí và hoạt động toàn hệ thống</p>
+      </div>
+
+      <div className="rounded-2xl border border-sky-100 bg-white/80 p-5 shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Tác vụ quản trị nhanh</h2>
+            <p className="text-sm text-slate-500">Điều hành nhà hàng nhanh hơn từ một bảng điều khiển duy nhất.</p>
+          </div>
+          <div className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-700">
+            {serviceMode === "open" ? "Đang mở cửa" : "Đã đóng cửa tạm thời"}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={handleToggleService}
+            className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-left text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+          >
+            <span className="flex items-center gap-2">
+              {serviceMode === "open" ? <DoorOpen size={16} /> : <DoorClosed size={16} />}
+              {serviceMode === "open" ? "Đóng cửa tạm thời" : "Mở cửa phục vụ"}
+            </span>
+            <span className="text-xs uppercase tracking-wide">Quick action</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleResetTables}
+            className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+          >
+            <span className="flex items-center gap-2">
+              <RefreshCw size={16} />
+              Đặt tất cả bàn về sẵn sàng
+            </span>
+            <span className="text-xs uppercase tracking-wide">Reset</span>
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          {notice}
+        </div>
       </div>
       {/* KPIs Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
