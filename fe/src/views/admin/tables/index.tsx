@@ -358,7 +358,7 @@ export const WaiterTableMap: React.FC = () => {
               </div>
             )}
 
-            {selectedTable.status === TABLE_STATUS.CLEANING && (
+            {selectedTable.status === TABLE_STATUS.PENDING_PAYMENT && (
               <div className="flex flex-col gap-4 text-center py-6">
                 <RefreshCw
                   size={36}
