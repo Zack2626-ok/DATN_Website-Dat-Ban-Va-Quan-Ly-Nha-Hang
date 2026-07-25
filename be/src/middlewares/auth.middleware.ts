@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { sendError } from "../utils/response";
 import { findCustomerById } from "../utils/db";
+import { verifyToken } from "../utils/jwt";
 
 const getCustomerSecret = (): string => {
   return process.env.JWT_CUSTOMER_SECRET || (process.env.JWT_SECRET ? process.env.JWT_SECRET + "_customer" : "customer_default_secret_key");
