@@ -1,6 +1,6 @@
 import type { OrderItem } from "./index";
 
-export type InvoiceStatus = "unpaid" | "paid" | "cancelled";
+export type InvoiceStatus = "unpaid" | "pending" | "paid" | "cancelled";
 
 export interface Invoice {
   id: string;
@@ -22,6 +22,7 @@ export interface Invoice {
   createdAt: string;
   orderType?: string;
   paymentMethod?: string;
+  staffName?: string;
 }
 
 export interface PaymentBreakdown {
