@@ -14,7 +14,6 @@ import {
   KdsItem
 } from "../../../store/kdsSlice";
 import {
-  Clock,
   Check,
   CheckCheck,
   Play,
@@ -565,7 +564,7 @@ export const ChefKitchenQueue: React.FC = () => {
                     const currentMs = new Date(current.createdAt).getTime();
                     return currentMs < earliest ? currentMs : earliest;
                   }, Date.now());
-                  const { timeStr, isDelayed } = getTimerInfo(new Date(earliestCreatedAt).toISOString());
+                  const { isDelayed } = getTimerInfo(new Date(earliestCreatedAt).toISOString());
 
                   return (
                     <div
@@ -681,7 +680,7 @@ export const ChefKitchenQueue: React.FC = () => {
                     const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
                     return currentMs < earliest ? currentMs : earliest;
                   }, Date.now());
-                  const { timeStr, isDelayed } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
+                  const { isDelayed } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
 
                   return (
                     <div
@@ -793,17 +792,6 @@ export const ChefKitchenQueue: React.FC = () => {
                 </div>
               ) : (
                 groupedDone.map((group) => {
-                  const earliestUpdatedAt = group.items.reduce((earliest, current) => {
-                    const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
-                    return currentMs < earliest ? currentMs : earliest;
-                  }, Date.now());
-                  const doneTimeStr = new Date(earliestUpdatedAt).toLocaleTimeString("vi-VN", {
-                    timeZone: "Asia/Ho_Chi_Minh",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  });
-
                   return (
                     <div
                       key={group.tableName}
@@ -879,12 +867,6 @@ export const ChefKitchenQueue: React.FC = () => {
                 </div>
               ) : (
                 groupedVoided.map((group) => {
-                  const earliestVoidedAt = group.items.reduce((earliest, current) => {
-                    const currentMs = current.voidedAt ? new Date(current.voidedAt).getTime() : new Date(current.createdAt).getTime();
-                    return currentMs < earliest ? currentMs : earliest;
-                  }, Date.now());
-                  const timeStr = new Date(earliestVoidedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-
                   return (
                     <div
                       key={group.tableName}

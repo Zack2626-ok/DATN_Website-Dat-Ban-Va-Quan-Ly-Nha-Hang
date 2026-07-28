@@ -105,8 +105,8 @@ const normalizeInventory = (row: any): Inventory => ({
 
 const normalizePayment = (row: any): Payment => ({
   ...row,
-  amount: Number(row.amount),
-  discountAmount: row.discountAmount !== null ? Number(row.discountAmount) : undefined,
+  amount: Number(row.amount || 0),
+  discountAmount: row.discountAmount !== null && row.discountAmount !== undefined ? Number(row.discountAmount) : undefined,
 });
 
 const normalizeOrder = (row: any): Order => ({
@@ -326,6 +326,15 @@ export const initDb = async (): Promise<boolean> => {
   await createDatabaseTables();
   await runSchemaMigrations();
   console.log("✅ MySQL tables verified/created successfully.");
+
+  // Chuẩn hóa số tiền các thanh toán/hóa đơn lịch sử quá lớn (> 100 triệu) về đúng đơn vị VND
+  try {
+    await query("UPDATE payments SET amount = amount / 1000 WHERE amount > 100000000");
+    await query("UPDATE invoices SET subtotal = subtotal / 1000, tax = tax / 1000, discount = discount / 1000, total = total / 1000 WHERE total > 100000000");
+    console.log("✅ Đã chuẩn hóa số tiền các thanh toán/hóa đơn lịch sử (> 100 triệu) về đơn vị gốc.");
+  } catch (errCleanup: any) {
+    console.warn("⚠️ Không thể tự động dọn dẹp số tiền lịch sử:", errCleanup.message);
+  }
 
   // Tự động seed dữ liệu ưu đãi mẫu nếu bảng promotions đang trống
   try {
