@@ -719,6 +719,11 @@ export const updateOrderStatus = async (id: string, status: string): Promise<boo
     }
     return false;
   }
+  const isClosed = status === "completed" || status === "paid" || status === "cancelled";
+  if (isClosed) {
+    const result = await query<any>("UPDATE orders SET status = ?, closed_at = NOW() WHERE id = ?", [status, id]);
+    return result.affectedRows > 0;
+  }
   const result = await query<any>("UPDATE orders SET status = ? WHERE id = ?", [status, id]);
   return result.affectedRows > 0;
 };
@@ -2661,17 +2666,36 @@ export const removeFromWaitlist = async (id: number): Promise<boolean> => {
 };
 
 // ===== CUSTOMER DATABASE OPERATIONS =====
+const MOCK_CUSTOMERS: any[] = [];
+
 export const findCustomerByEmail = async (email: string): Promise<any | null> => {
+  if (!dbAvailable) return MOCK_CUSTOMERS.find((c) => c.email === email && !c.is_deleted) || null;
   const rows = await query("SELECT * FROM customers WHERE email = ? AND is_deleted = 0", [email]);
   return rows[0] || null;
 };
 
 export const findCustomerById = async (id: number | string): Promise<any | null> => {
+  if (!dbAvailable) return MOCK_CUSTOMERS.find((c) => c.id === id && !c.is_deleted) || null;
   const rows = await query("SELECT * FROM customers WHERE id = ? AND is_deleted = 0", [id]);
   return rows[0] || null;
 };
 
 export const createCustomer = async (data: any): Promise<any> => {
+  const newCustomer = {
+    id: Date.now(),
+    name: data.name,
+    email: data.email,
+    phone: data.phone || null,
+    password_hash: data.password_hash,
+    member_level: "bronze",
+    loyalty_points: 0,
+    is_deleted: 0,
+    created_at: new Date().toISOString(),
+  };
+  if (!dbAvailable) {
+    MOCK_CUSTOMERS.push(newCustomer);
+    return newCustomer;
+  }
   const result = await query(`
     INSERT INTO customers (name, email, phone, password_hash, member_level, loyalty_points)
     VALUES (?, ?, ?, ?, 'bronze', 0)
@@ -2680,6 +2704,12 @@ export const createCustomer = async (data: any): Promise<any> => {
 };
 
 export const updateCustomerProfile = async (id: number | string, data: any): Promise<boolean> => {
+  if (!dbAvailable) {
+    const customer = MOCK_CUSTOMERS.find((c) => c.id === id);
+    if (!customer) return false;
+    Object.assign(customer, data);
+    return true;
+  }
   const fields: string[] = [];
   const values: any[] = [];
   Object.keys(data).forEach((key) => {

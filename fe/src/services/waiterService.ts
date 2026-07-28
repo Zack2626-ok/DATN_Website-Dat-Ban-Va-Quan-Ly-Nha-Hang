@@ -133,3 +133,8 @@ export const getWaiterNotifications = async (): Promise<WaiterNotification[]> =>
 export const markItemAsServed = async (orderId: number, itemId: number): Promise<void> => {
   await api.patch(`/v1/waiter/orders/${orderId}/items/${itemId}/served`);
 };
+
+export const requestPayment = async (orderId: number, note?: string): Promise<{ orderId: number; status: string; waiterName: string }> => {
+  const response = await api.post(`/v1/waiter/orders/${orderId}/request-payment`, { note });
+  return response.data.data;
+};

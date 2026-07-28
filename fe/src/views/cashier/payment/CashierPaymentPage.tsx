@@ -74,9 +74,9 @@ export const CashierPaymentPage: React.FC = () => {
 
   const filteredInvoices = useMemo(() => {
     let result = [...invoices];
-    // Nếu không có món nào thì không hiển thị trong thu ngân theo yêu cầu người dùng
-    result = result.filter((inv) => inv.items && inv.items.length > 0);
-    if (statusFilter !== "all") {
+    if (statusFilter === "pending") {
+      result = result.filter((inv) => inv.status === "pending_payment");
+    } else if (statusFilter !== "all") {
       result = result.filter((inv) => inv.invoiceStatus === statusFilter);
     }
     if (statusFilter === "unpaid") {
@@ -90,7 +90,8 @@ export const CashierPaymentPage: React.FC = () => {
         (inv) =>
           inv.id.toLowerCase().includes(q) ||
           (inv.tableName || "").toLowerCase().includes(q) ||
-          (inv.customerName || "").toLowerCase().includes(q),
+          (inv.customerName || "").toLowerCase().includes(q) ||
+          (inv.staffName || "").toLowerCase().includes(q),
       );
     }
 

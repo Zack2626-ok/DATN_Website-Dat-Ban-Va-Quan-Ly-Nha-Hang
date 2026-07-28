@@ -7,7 +7,7 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
   try {
     const { status, search, dateFrom, dateTo } = req.query;
 
-    const orders = await db.getAllResmanagerOrders(status as string);
+    const orders = await db.getAllResmanagerOrders();
 
     let invoices = orders.map((o: any) => ({
       id: String(o.id),
@@ -17,6 +17,7 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       customerPhone: o.guest_phone || o.customer_phone || undefined,
       customerEmail: o.customer_email || undefined,
       guestCount: o.guest_count || o.items?.length || 0,
+      staffName: o.staff_name || undefined,
       items: (o.items || []).map((item: any) => ({
         menuItemId: String(item.menu_item_id),
         name: item.item_name || `Món #${item.menu_item_id}`,
@@ -36,8 +37,10 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
           ? "paid"
           : o.status === "cancelled"
             ? "cancelled"
-            : "unpaid",
-       createdAt: o.created_at,
+            : o.status === "pending_payment"
+              ? "pending"
+              : "unpaid",
+      createdAt: o.created_at,
       orderType: o.order_type,
       paymentMethod: o.paymentMethod || undefined,
     }));
@@ -47,7 +50,8 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
 
     if (status && status !== "all") {
       const statusMap: Record<string, string[]> = {
-        unpaid: ["open", "serving", "pending_payment"],
+        unpaid: ["open", "serving"],
+        pending: ["pending_payment"],
         paid: ["completed", "paid"],
         cancelled: ["cancelled"],
       };

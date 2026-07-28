@@ -25,12 +25,12 @@ CREATE TABLE roles (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO roles (name, description) VALUES
- ('admin',       N'Toàn quyền hệ thống'),
- ('manager',     N'Quản lý thực đơn, báo cáo, nhân sự'),
- ('waiter',      N'Mở bàn, gọi món, chuyển bàn'),
- ('cashier',     N'Thanh toán, áp voucher'),
- ('chef',        N'Xem KDS, cập nhật trạng thái món'),
- ('sales_event', N'Quản lý hợp đồng, đặt tiệc');
+ ('admin',       'Toàn quyền hệ thống'),
+ ('manager',     'Quản lý thực đơn, báo cáo, nhân sự'),
+ ('waiter',      'Mở bàn, gọi món, chuyển bàn'),
+ ('cashier',     'Thanh toán, áp voucher'),
+ ('chef',        'Xem KDS, cập nhật trạng thái món'),
+ ('sales_event', 'Quản lý hợp đồng, đặt tiệc');
 
 CREATE TABLE users (
     id            INT          NOT NULL AUTO_INCREMENT,
@@ -55,13 +55,13 @@ CREATE TABLE users (
 
 -- password thật: "123456", hash bcrypt cost 10
 INSERT INTO users (role_id, employee_code, full_name, email, password_hash, phone) VALUES
- (1, 'NV001', N'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
- (2, 'NV002', N'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
- (4, 'NV003', N'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
- (3, 'NV004', N'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
- (3, 'NV005', N'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
- (5, 'NV006', N'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006'),
- (6, 'NV007', N'Sales Event 1',      'sales@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000007');
+ (1, 'NV001', 'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
+ (2, 'NV002', 'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
+ (4, 'NV003', 'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
+ (3, 'NV004', 'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
+ (3, 'NV005', 'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
+ (5, 'NV006', 'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006'),
+ (6, 'NV007', 'Sales Event 1',      'sales@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000007');
 
 CREATE TABLE customers (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -79,11 +79,11 @@ CREATE TABLE customers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO customers (name, phone, email, member_level, loyalty_points) VALUES
- (N'Nguyen Van A', '0911111111', 'a@gmail.com', 'silver', 172),
- (N'Tran Thi B',   '0922222222', 'b@gmail.com', 'gold',   400),
- (N'Le Van C',     '0933333333', 'c@gmail.com', 'silver',  50),
- (N'Pham Thi D',   '0944444444', 'd@gmail.com', 'vip',    500),
- (N'Hoang Van E',  '0955555555', 'e@gmail.com', 'gold',   300);
+ ('Nguyen Van A', '0911111111', 'a@gmail.com', 'silver', 172),
+ ('Tran Thi B',   '0922222222', 'b@gmail.com', 'gold',   400),
+ ('Le Van C',     '0933333333', 'c@gmail.com', 'silver',  50),
+ ('Pham Thi D',   '0944444444', 'd@gmail.com', 'vip',    500),
+ ('Hoang Van E',  '0955555555', 'e@gmail.com', 'gold',   300);
 
 CREATE TABLE loyalty_transactions (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -132,8 +132,8 @@ CREATE TABLE promotions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO promotions (title, description, discount_type, discount_value, image_url, start_date, end_date, is_active) VALUES
- (N'Giảm giá khai vị',    N'Giảm 15% cho tất cả món khai vị', 'percent', 15.00, 'promo_khai_vi.jpg',   '2026-06-01 00:00:00', '2026-07-31 23:59:59', 1),
- (N'Tiệc trưa tiết kiệm', N'Tiệc trưa 11h–14h giảm 10%',      'percent', 10.00, 'promo_tiec_trua.jpg', '2026-06-01 00:00:00', '2026-08-31 23:59:59', 1);
+ ('Giảm giá khai vị',    'Giảm 15% cho tất cả món khai vị', 'percent', 15.00, 'promo_khai_vi.jpg',   '2026-06-01 00:00:00', '2026-07-31 23:59:59', 1),
+ ('Tiệc trưa tiết kiệm', 'Tiệc trưa 11h–14h giảm 10%',      'percent', 10.00, 'promo_tiec_trua.jpg', '2026-06-01 00:00:00', '2026-08-31 23:59:59', 1);
 
 CREATE TABLE shifts (
     id          INT           NOT NULL AUTO_INCREMENT,
@@ -148,10 +148,10 @@ CREATE TABLE shifts (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO shifts (employee_id, start_time, end_time, cash_open, cash_close, note) VALUES
- (2, '2026-06-23 08:00:00', '2026-06-23 18:00:00', 2000000.00, 2500000.00, N'Ca sáng quản lý'),
- (3, '2026-06-23 10:00:00', '2026-06-23 22:00:00', 1000000.00, 1200000.00, N'Ca chiều thu ngân'),
- (4, '2026-06-23 07:00:00', '2026-06-23 15:00:00', 500000.00,  520000.00,  N'Ca sáng phục vụ'),
- (5, '2026-06-23 15:00:00', NULL,                  500000.00,  NULL,       N'Ca tối phục vụ (chưa đóng)');
+ (2, '2026-06-23 08:00:00', '2026-06-23 18:00:00', 2000000.00, 2500000.00, 'Ca sáng quản lý'),
+ (3, '2026-06-23 10:00:00', '2026-06-23 22:00:00', 1000000.00, 1200000.00, 'Ca chiều thu ngân'),
+ (4, '2026-06-23 07:00:00', '2026-06-23 15:00:00', 500000.00,  520000.00,  'Ca sáng phục vụ'),
+ (5, '2026-06-23 15:00:00', NULL,                  500000.00,  NULL,       'Ca tối phục vụ (chưa đóng)');
 
 CREATE TABLE attendance (
     id          INT       NOT NULL AUTO_INCREMENT,
@@ -183,7 +183,7 @@ CREATE TABLE table_areas (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO table_areas (name) VALUES
- (N'Tầng 1'), (N'Tầng 2'), (N'Sân vườn');
+ ('Tầng 1'), ('Tầng 2'), ('Sân vườn');
 
 CREATE TABLE tables (
     id          INT          NOT NULL AUTO_INCREMENT,
@@ -296,9 +296,9 @@ CREATE TABLE waitlist (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO waitlist (guest_name, party_size, phone, joined_at, notified_at) VALUES
- (N'Le Van C',   4, '0933333333', '2026-06-23 18:30:00', NULL),
- (N'Pham Thi D', 2, '0944444444', '2026-06-23 18:45:00', '2026-06-23 19:00:00'),
- (N'Nguyen Minh', 5, '0977777777', '2026-06-23 19:10:00', NULL);
+ ('Le Van C',   4, '0933333333', '2026-06-23 18:30:00', NULL),
+ ('Pham Thi D', 2, '0944444444', '2026-06-23 18:45:00', '2026-06-23 19:00:00'),
+ ('Nguyen Minh', 5, '0977777777', '2026-06-23 19:10:00', NULL);
 
 CREATE TABLE table_merges (
     id                INT      NOT NULL AUTO_INCREMENT,
@@ -338,11 +338,11 @@ CREATE TABLE categories (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO categories (name, sort_order) VALUES
- (N'Khai vị',    1),
- (N'Món chính',  2),
- (N'Lẩu',        3),
- (N'Đồ uống',    4),
- (N'Tráng miệng',5);
+ ('Khai vị',    1),
+ ('Món chính',  2),
+ ('Lẩu',        3),
+ ('Đồ uống',    4),
+ ('Tráng miệng',5);
 
 CREATE TABLE menu_items (
     id              INT           NOT NULL AUTO_INCREMENT,
@@ -362,18 +362,18 @@ CREATE TABLE menu_items (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO menu_items (category_id, name, description, price, image_url, kitchen_station, is_featured) VALUES
- (1, N'Gỏi hải sản',      N'Gỏi tôm mực rau thơm sốt chanh',      120000, 'goi.jpg',      'cold_kitchen', 1),
- (1, N'Chả giò',          N'Chả giò nhân thịt heo, chiên giòn',     80000, 'chagio.jpg',   'hot_kitchen',  0),
- (2, N'Bò lúc lắc',       N'Thăn bò xào dầu hào, khoai tây chiên', 180000, 'bo.jpg',       'hot_kitchen',  1),
- (2, N'Gà nướng',         N'Gà nướng mật ong sả tắc',              160000, 'ga.jpg',       'hot_kitchen',  0),
- (2, N'Cá hồi sốt chanh', N'Phi lê cá hồi áp chảo, sốt bơ chanh', 220000, 'cahoi.jpg',    'hot_kitchen',  1),
- (3, N'Lẩu Thái',         N'Lẩu chua cay kiểu Thái',               350000, 'lauthai.jpg',  'hot_kitchen',  0),
- (3, N'Lẩu hải sản',      N'Lẩu hải sản tươi: tôm, mực, nghêu',   400000, 'lauhs.jpg',    'hot_kitchen',  0),
- (4, N'Coca Cola',        N'Lon 330ml',                              20000, 'coca.jpg',     'bar',          0),
- (4, N'Pepsi',            N'Lon 330ml',                              20000, 'pepsi.jpg',    'bar',          0),
- (4, N'Trà đào',          N'Trà đào cam sả, đá viên',               35000, 'tradao.jpg',   'bar',          0),
- (5, N'Kem Vani',         N'Kem vani 2 viên, sốt caramel',          45000, 'kem.jpg',      'cold_kitchen', 0),
- (5, N'Chè thái',         N'Chè thái nhiều màu, nước cốt dừa',      40000, 'che_thai.jpg', 'cold_kitchen', 0);
+ (1, 'Gỏi hải sản',      'Gỏi tôm mực rau thơm sốt chanh',      120000, 'goi.jpg',      'cold_kitchen', 1),
+ (1, 'Chả giò',          'Chả giò nhân thịt heo, chiên giòn',     80000, 'chagio.jpg',   'hot_kitchen',  0),
+ (2, 'Bò lúc lắc',       'Thăn bò xào dầu hào, khoai tây chiên', 180000, 'bo.jpg',       'hot_kitchen',  1),
+ (2, 'Gà nướng',         'Gà nướng mật ong sả tắc',              160000, 'ga.jpg',       'hot_kitchen',  0),
+ (2, 'Cá hồi sốt chanh', 'Phi lê cá hồi áp chảo, sốt bơ chanh', 220000, 'cahoi.jpg',    'hot_kitchen',  1),
+ (3, 'Lẩu Thái',         'Lẩu chua cay kiểu Thái',               350000, 'lauthai.jpg',  'hot_kitchen',  0),
+ (3, 'Lẩu hải sản',      'Lẩu hải sản tươi: tôm, mực, nghêu',   400000, 'lauhs.jpg',    'hot_kitchen',  0),
+ (4, 'Coca Cola',        'Lon 330ml',                              20000, 'coca.jpg',     'bar',          0),
+ (4, 'Pepsi',            'Lon 330ml',                              20000, 'pepsi.jpg',    'bar',          0),
+ (4, 'Trà đào',          'Trà đào cam sả, đá viên',               35000, 'tradao.jpg',   'bar',          0),
+ (5, 'Kem Vani',         'Kem vani 2 viên, sốt caramel',          45000, 'kem.jpg',      'cold_kitchen', 0),
+ (5, 'Chè thái',         'Chè thái nhiều màu, nước cốt dừa',      40000, 'che_thai.jpg', 'cold_kitchen', 0);
 
 CREATE TABLE modifier_groups (
     id           INT          NOT NULL AUTO_INCREMENT,
@@ -387,11 +387,11 @@ CREATE TABLE modifier_groups (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO modifier_groups (menu_item_id, name, is_required, min_select, max_select) VALUES
- (3, N'Độ chín',  1, 1, 1),
- (3, N'Đồ kèm',   0, 0, 2),
- (5, N'Kích cỡ',  1, 1, 1),
- (6, N'Mức độ cay', 0, 0, 1),
- (7, N'Mức độ cay', 0, 0, 1);
+ (3, 'Độ chín',  1, 1, 1),
+ (3, 'Đồ kèm',   0, 0, 2),
+ (5, 'Kích cỡ',  1, 1, 1),
+ (6, 'Mức độ cay', 0, 0, 1),
+ (7, 'Mức độ cay', 0, 0, 1);
 
 CREATE TABLE modifiers (
     id                 INT           NOT NULL AUTO_INCREMENT,
@@ -406,23 +406,23 @@ CREATE TABLE modifiers (
 
 INSERT INTO modifiers (group_id, parent_modifier_id, name, extra_price) VALUES
  -- Độ chín (group 1)
- (1, NULL, N'Rare',      0.00),
- (1, NULL, N'Medium',    0.00),
- (1, NULL, N'Well done', 0.00),
+ (1, NULL, 'Rare',      0.00),
+ (1, NULL, 'Medium',    0.00),
+ (1, NULL, 'Well done', 0.00),
  -- Đồ kèm (group 2)
- (2, NULL, N'Khoai tây chiên', 20000.00),
- (2, NULL, N'Salad',           15000.00),
+ (2, NULL, 'Khoai tây chiên', 20000.00),
+ (2, NULL, 'Salad',           15000.00),
  -- Kích cỡ cá hồi (group 3)
- (3, NULL, N'Nhỏ (150g)',   0.00),
- (3, NULL, N'Vừa (200g)',   50000.00),
- (3, NULL, N'Lớn (250g)',   100000.00),
+ (3, NULL, 'Nhỏ (150g)',   0.00),
+ (3, NULL, 'Vừa (200g)',   50000.00),
+ (3, NULL, 'Lớn (250g)',   100000.00),
  -- Mức cay lẩu Thái (group 4) — có 2 cấp
- (4, NULL, N'Không cay',   0.00),
- (4, NULL, N'Cay vừa',     0.00),
- (4, NULL, N'Cay nhiều',   0.00),
+ (4, NULL, 'Không cay',   0.00),
+ (4, NULL, 'Cay vừa',     0.00),
+ (4, NULL, 'Cay nhiều',   0.00),
  -- Mức cay lẩu hải sản (group 5)
- (5, NULL, N'Không cay',   0.00),
- (5, NULL, N'Cay vừa',     0.00);
+ (5, NULL, 'Không cay',   0.00),
+ (5, NULL, 'Cay vừa',     0.00);
 
 CREATE TABLE combos (
     id        INT           NOT NULL AUTO_INCREMENT,
@@ -433,9 +433,9 @@ CREATE TABLE combos (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO combos (name, price, is_active) VALUES
- (N'Combo gia đình', 800000.00, 1),
- (N'Combo cặp đôi',  500000.00, 1),
- (N'Combo nhậu vui', 650000.00, 1);
+ ('Combo gia đình', 800000.00, 1),
+ ('Combo cặp đôi',  500000.00, 1),
+ ('Combo nhậu vui', 650000.00, 1);
 
 CREATE TABLE combo_items (
     id           INT NOT NULL AUTO_INCREMENT,
@@ -475,13 +475,13 @@ CREATE TABLE orders (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, created_at, closed_at) VALUES
- (1, 1, 4, 'dine_in',  NULL, 'completed',      N'Khách yêu cầu ít muối', NULL,               NULL,           '2026-06-23 12:00:00', '2026-06-23 13:30:00'),
- (8, NULL, 5, 'dine_in', NULL, 'serving',        NULL,                     N'Nguyễn Văn Bình', '0912345678',   '2026-06-23 18:15:00', NULL),
+ (1, 1, 4, 'dine_in',  NULL, 'completed',      'Khách yêu cầu ít muối', NULL,               NULL,           '2026-06-23 12:00:00', '2026-06-23 13:30:00'),
+ (8, NULL, 5, 'dine_in', NULL, 'serving',        NULL,                     'Nguyễn Văn Bình', '0912345678',   '2026-06-23 18:15:00', NULL),
  (4, 3, 4, 'dine_in',  NULL, 'pending_payment', NULL,                     NULL,               NULL,           '2026-06-23 19:00:00', NULL),
- (4, NULL, 4, 'dine_in', NULL, 'pending_payment', NULL,                   N'Lê Thị C',        '0933333333',   '2026-06-23 19:00:00', NULL),
- (NULL, NULL, 4, 'takeaway', NULL, 'completed',   N'Mang về',               NULL,               NULL,           '2026-06-23 11:00:00', '2026-06-23 11:20:00'),
+ (4, NULL, 4, 'dine_in', NULL, 'pending_payment', NULL,                   'Lê Thị C',        '0933333333',   '2026-06-23 19:00:00', NULL),
+ (NULL, NULL, 4, 'takeaway', NULL, 'completed',   'Mang về',               NULL,               NULL,           '2026-06-23 11:00:00', '2026-06-23 11:20:00'),
  -- Order 6 (bàn B02 vừa thanh toán thành công, đang chờ dọn bàn)
- (2, 2, 4, 'dine_in',  NULL, 'completed',      N'Khách vừa thanh toán chuyển khoản thành công', N'Trần Văn Dũng', '0988888888', '2026-06-24 19:30:00', '2026-06-24 20:45:00');
+ (2, 2, 4, 'dine_in',  NULL, 'completed',      'Khách vừa thanh toán chuyển khoản thành công', 'Trần Văn Dũng', '0988888888', '2026-06-24 19:30:00', '2026-06-24 20:45:00');
 
 
 CREATE TABLE order_items (
@@ -507,7 +507,7 @@ CREATE TABLE order_items (
 INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, status) VALUES
  -- Order 1 (completed, bàn B01, khách 1)
  (1, 1, 2, 120000.00, NULL, 1, NULL,              'done'),
- (1, 3, 2, 180000.00, 1,    2, N'Medium, ít muối','done'),
+ (1, 3, 2, 180000.00, 1,    2, 'Medium, ít muối','done'),
  (1, 9, 2,  20000.00, NULL, 3, NULL,              'done'),
  (1,12, 2,  40000.00, NULL, 4, NULL,              'done'),
  -- Order 2 (serving, bàn B08)
@@ -515,20 +515,20 @@ INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_numb
  (2, 4, 1, 160000.00, NULL, 2, NULL,             'pending'),
  (2,10, 2,  35000.00, NULL, 1, NULL,             'done'),
  -- Order 3 (pending_payment, bàn B04 nhóm 4:1)
- (3, 3, 1, 180000.00, 1, 1, N'Well done',        'done'),
- (3, 5, 1, 220000.00, 2, 1, N'Vừa (200g)',       'done'),
+ (3, 3, 1, 180000.00, 1, 1, 'Well done',        'done'),
+ (3, 5, 1, 220000.00, 2, 1, 'Vừa (200g)',       'done'),
  (3, 8, 2,  20000.00, NULL,2, NULL,              'done'),
  -- Order 4 (pending_payment, bàn B04 nhóm 4:2)
  (4, 4, 1, 160000.00, 3, 1, NULL,                'done'),
- (4, 6, 1, 350000.00, NULL,1, N'Cay vừa',        'done'),
+ (4, 6, 1, 350000.00, NULL,1, 'Cay vừa',        'done'),
  (4,12, 2,  40000.00, NULL,2, NULL,              'done'),
  -- Order 5 (takeaway completed)
  (5, 2, 2,  80000.00, NULL, 1, NULL,             'done'),
  (5,11, 1,  45000.00, NULL, 1, NULL,             'done'),
  -- Order 6 (bàn B02 completed)
- (6, 3, 2, 180000.00, NULL, 1, N'Bò lúc lắc vừa chín', 'done'),
- (6,10, 2,  35000.00, NULL, 2, N'Trà đào ít đá',       'done'),
- (6,12, 1,  40000.00, NULL, 3, N'Chè thái',            'done');
+ (6, 3, 2, 180000.00, NULL, 1, 'Bò lúc lắc vừa chín', 'done'),
+ (6,10, 2,  35000.00, NULL, 2, 'Trà đào ít đá',       'done'),
+ (6,12, 1,  40000.00, NULL, 3, 'Chè thái',            'done');
 
 CREATE TABLE order_item_status_log (
     id            INT         NOT NULL AUTO_INCREMENT,
@@ -585,9 +585,9 @@ CREATE TABLE suppliers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO suppliers (name, phone, address, total_debt) VALUES
- (N'Công ty TNHH Thực phẩm ABC', '0987654321', N'123 Đường ABC, Quận 1, TP.HCM',  0.00),
- (N'Nhà phân phối Hải sản XYZ',  '0912345678', N'456 Đường XYZ, Quận 3, TP.HCM',  0.00),
- (N'Công ty Nông sản Việt',      '0901234567', N'789 Đường DEF, Quận 5, TP.HCM',  0.00);
+ ('Công ty TNHH Thực phẩm ABC', '0987654321', '123 Đường ABC, Quận 1, TP.HCM',  0.00),
+ ('Nhà phân phối Hải sản XYZ',  '0912345678', '456 Đường XYZ, Quận 3, TP.HCM',  0.00),
+ ('Công ty Nông sản Việt',      '0901234567', '789 Đường DEF, Quận 5, TP.HCM',  0.00);
 
 CREATE TABLE ingredients (
     id            INT           NOT NULL AUTO_INCREMENT,
@@ -601,16 +601,16 @@ CREATE TABLE ingredients (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO ingredients (name, unit, current_stock, min_stock) VALUES
- (N'Thịt bò',   'kg',  47.500, 10.000),
- (N'Thịt gà',   'kg',  39.700,  8.000),
- (N'Cá hồi',    'kg',  20.000,  5.000),
- (N'Tôm',       'kg',  29.600, 10.000),
- (N'Rau sống',  'kg',  24.750,  8.000),
- (N'Gạo',       'kg', 100.000, 30.000),
- (N'Nước mắm',  'lit', 20.000,  5.000),
- (N'Dầu ăn',   'lit',  15.000,  3.000),
- (N'Trái cây',  'kg',  15.000,  5.000),
- (N'Bột mì',    'kg',  30.000, 10.000);
+ ('Thịt bò',   'kg',  47.500, 10.000),
+ ('Thịt gà',   'kg',  39.700,  8.000),
+ ('Cá hồi',    'kg',  20.000,  5.000),
+ ('Tôm',       'kg',  29.600, 10.000),
+ ('Rau sống',  'kg',  24.750,  8.000),
+ ('Gạo',       'kg', 100.000, 30.000),
+ ('Nước mắm',  'lit', 20.000,  5.000),
+ ('Dầu ăn',   'lit',  15.000,  3.000),
+ ('Trái cây',  'kg',  15.000,  5.000),
+ ('Bột mì',    'kg',  30.000, 10.000);
 
 CREATE TABLE recipes (
     id           INT NOT NULL AUTO_INCREMENT,
@@ -674,14 +674,14 @@ CREATE TABLE stock_in (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO stock_in (ingredient_id, quantity, unit_cost, supplier_id, note, created_by, created_at) VALUES
- (1, 50.000, 250000.00, 1, N'Nhập hàng tháng 6', 2, '2026-06-01 08:00:00'),
- (2, 40.000, 120000.00, 1, N'Nhập hàng tháng 6', 2, '2026-06-01 08:00:00'),
- (3, 20.000, 400000.00, 2, N'Nhập hàng tháng 6', 2, '2026-06-01 08:30:00'),
- (4, 30.000, 180000.00, 2, N'Nhập hàng tháng 6', 2, '2026-06-01 08:30:00'),
- (5, 25.000,  30000.00, 3, N'Nhập hàng tháng 6', 2, '2026-06-01 09:00:00'),
- (6,100.000,  20000.00, 3, N'Nhập gạo tháng 6',  2, '2026-06-01 09:00:00'),
- (9, 15.000,  80000.00, 3, N'Nhập trái cây',      2, '2026-06-10 09:00:00'),
- (10,30.000,  25000.00, 3, N'Nhập bột mì',        2, '2026-06-10 09:00:00');
+ (1, 50.000, 250000.00, 1, 'Nhập hàng tháng 6', 2, '2026-06-01 08:00:00'),
+ (2, 40.000, 120000.00, 1, 'Nhập hàng tháng 6', 2, '2026-06-01 08:00:00'),
+ (3, 20.000, 400000.00, 2, 'Nhập hàng tháng 6', 2, '2026-06-01 08:30:00'),
+ (4, 30.000, 180000.00, 2, 'Nhập hàng tháng 6', 2, '2026-06-01 08:30:00'),
+ (5, 25.000,  30000.00, 3, 'Nhập hàng tháng 6', 2, '2026-06-01 09:00:00'),
+ (6,100.000,  20000.00, 3, 'Nhập gạo tháng 6',  2, '2026-06-01 09:00:00'),
+ (9, 15.000,  80000.00, 3, 'Nhập trái cây',      2, '2026-06-10 09:00:00'),
+ (10,30.000,  25000.00, 3, 'Nhập bột mì',        2, '2026-06-10 09:00:00');
 
 CREATE TABLE stock_out (
     id             INT           NOT NULL AUTO_INCREMENT,
@@ -698,12 +698,12 @@ CREATE TABLE stock_out (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO stock_out (ingredient_id, quantity, reason, ref_invoice_id, note, created_by, created_at) VALUES
- (1, 2.500, 'sale_deduction', NULL, N'Trừ kho bán hàng order #1 & #3', NULL, '2026-06-23 13:30:00'),
- (2, 0.300, 'sale_deduction', NULL, N'Trừ kho bán hàng order #4',       NULL, '2026-06-23 20:00:00'),
- (3, 0.200, 'sale_deduction', NULL, N'Trừ kho bán hàng order #3',       NULL, '2026-06-23 20:00:00'),
- (4, 0.900, 'sale_deduction', NULL, N'Trừ kho bán hàng order #1,3,4',   NULL, '2026-06-23 20:00:00'),
- (5, 0.250, 'waste',          NULL, N'Rau sống hư không dùng được',      2,   '2026-06-23 07:30:00'),
- (8, 0.050, 'internal_use',   NULL, N'Dùng nội bộ vệ sinh bếp',          2,   '2026-06-23 08:00:00');
+ (1, 2.500, 'sale_deduction', NULL, 'Trừ kho bán hàng order #1 & #3', NULL, '2026-06-23 13:30:00'),
+ (2, 0.300, 'sale_deduction', NULL, 'Trừ kho bán hàng order #4',       NULL, '2026-06-23 20:00:00'),
+ (3, 0.200, 'sale_deduction', NULL, 'Trừ kho bán hàng order #3',       NULL, '2026-06-23 20:00:00'),
+ (4, 0.900, 'sale_deduction', NULL, 'Trừ kho bán hàng order #1,3,4',   NULL, '2026-06-23 20:00:00'),
+ (5, 0.250, 'waste',          NULL, 'Rau sống hư không dùng được',      2,   '2026-06-23 07:30:00'),
+ (8, 0.050, 'internal_use',   NULL, 'Dùng nội bộ vệ sinh bếp',          2,   '2026-06-23 08:00:00');
 
 CREATE TABLE stock_inventory (
     id            INT           NOT NULL AUTO_INCREMENT,
@@ -757,17 +757,18 @@ CREATE TABLE invoices (
 
 -- Invoice 1: Order 1 hoàn thành, dùng voucher SAVE10 (10%)
 -- subtotal = (120k×2)+(180k×2)+(20k×2)+(40k×2) = 720,000
--- discount = 72,000 (10%), tax = 64,800 (10% của sau giảm), service_fee = 32,400 (5%), total = 645,200
-INSERT INTO invoices (order_id, parent_invoice_id, subtotal, discount, tax, service_fee, tips, total, voucher_id, status, paid_at, created_by) VALUES
- (1, NULL, 720000.00, 72000.00, 64800.00, 32400.00, 0.00,   745200.00, 1, 'paid',  '2026-06-23 13:30:00', 3),
--- Invoice 2&3: Order 3 tách bill (nhóm 4:1) — parent = NULL, 2 invoices con
- (3, NULL, 620000.00, 0.00,     62000.00, 31000.00, 0.00,   713000.00, NULL, 'draft', NULL, 3),
--- Invoice 4: Order 4 tách bill (nhóm 4:2)
- (4, NULL, 630000.00, 0.00,     63000.00, 31500.00, 50000.00, 774500.00, NULL, 'draft', NULL, 3),
--- Invoice 5: Order 5 (takeaway)
- (5, NULL, 205000.00, 0.00,     20500.00, 0.00,     0.00,   225500.00, NULL, 'paid',  '2026-06-23 11:20:00', 3),
--- Invoice 6: Order 6 (bàn B02 vừa thanh toán thành công, đang dọn bàn)
- (6, NULL, 470000.00, 0.00,     47000.00, 0.00,     0.00,   517000.00, NULL, 'paid',  '2026-06-24 20:45:00', 3);
+-- discount = 72,000 (10%), tax = 64,800 (10% của sau giảm), service_fee = 32,400 (5%), total = 745,200
+INSERT INTO invoices (id, order_id, parent_invoice_id, subtotal, discount, tax, service_fee, tips, total, voucher_id, status, paid_at, created_by) VALUES
+-- Invoice 1: Order 1
+ (1, 1, NULL, 720000.00, 72000.00, 64800.00, 32400.00, 0.00, 745200.00, 1, 'paid', '2026-06-23 13:30:00', 3),
+-- Invoice 2: Order 3 (bàn B04 — nhóm tách bill 1)
+ (2, 3, NULL, 620000.00, 0.00, 62000.00, 31000.00, 0.00, 713000.00, NULL, 'draft', NULL, 3),
+-- Invoice 3: Order 4 (bàn B04 — nhóm tách bill 2)
+ (3, 4, NULL, 630000.00, 0.00, 63000.00, 31500.00, 50000.00, 774500.00, NULL, 'draft', NULL, 3),
+-- Invoice 4: Order 5 (takeaway)
+ (4, 5, NULL, 205000.00, 0.00, 20500.00, 0.00, 0.00, 225500.00, NULL, 'paid', '2026-06-23 11:20:00', 3),
+-- Invoice 6: Order 6 (bàn B02 — id=6, bỏ qua id=5 để khớp với invoice_items và payments)
+ (6, 6, NULL, 470000.00, 0.00, 47000.00, 0.00, 0.00, 517000.00, NULL, 'paid', '2026-06-24 20:45:00', 3);
 
 CREATE TABLE invoice_items (
     id            INT           NOT NULL AUTO_INCREMENT,
@@ -813,9 +814,9 @@ CREATE TABLE payments (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO payments (invoice_id, method, amount, note, paid_at) VALUES
- (1, 'cash',          745200.00, N'Thanh toán tiền mặt',       '2026-06-23 13:30:00'),
- (4, 'momo',          225500.00, N'Thanh toán MoMo mang về',   '2026-06-23 11:20:00'),
- (6, 'bank_transfer', 517000.00, N'Thanh toán chuyển khoản Vietcombank thành công', '2026-06-24 20:45:00');
+ (1, 'cash',          745200.00, 'Thanh toán tiền mặt',       '2026-06-23 13:30:00'),
+ (4, 'momo',          225500.00, 'Thanh toán MoMo mang về',   '2026-06-23 11:20:00'),
+ (6, 'bank_transfer', 517000.00, 'Thanh toán chuyển khoản Vietcombank thành công', '2026-06-24 20:45:00');
 
 
 -- ============================================================================
@@ -832,8 +833,8 @@ CREATE TABLE halls (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO halls (name, capacity, description) VALUES
- (N'Sảnh Hoa Hồng', 150, N'Sảnh tiệc cưới chính, có sân khấu và phòng tân lang'),
- (N'Sảnh Hoa Mai',   80, N'Sảnh nhỏ cho tiệc công ty, sinh nhật, hội nghị');
+ ('Sảnh Hoa Hồng', 150, 'Sảnh tiệc cưới chính, có sân khấu và phòng tân lang'),
+ ('Sảnh Hoa Mai',   80, 'Sảnh nhỏ cho tiệc công ty, sinh nhật, hội nghị');
 
 CREATE TABLE event_packages (
     id               INT           NOT NULL AUTO_INCREMENT,
@@ -845,9 +846,9 @@ CREATE TABLE event_packages (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO event_packages (name, price_per_person, description, is_active) VALUES
- (N'Gói tiệc cưới cơ bản', 1500000.00, N'Tiệc cưới đủ món, tráng miệng, nước uống', 1),
- (N'Gói tiệc công ty',      800000.00, N'Gói tiệc hội nghị, buffet trưa/tối',        1),
- (N'Gói sinh nhật VIP',    1200000.00, N'Sinh nhật sang trọng, bánh kem, trang trí', 1);
+ ('Gói tiệc cưới cơ bản', 1500000.00, 'Tiệc cưới đủ món, tráng miệng, nước uống', 1),
+ ('Gói tiệc công ty',      800000.00, 'Gói tiệc hội nghị, buffet trưa/tối',        1),
+ ('Gói sinh nhật VIP',    1200000.00, 'Sinh nhật sang trọng, bánh kem, trang trí', 1);
 
 CREATE TABLE event_package_items (
     id           INT NOT NULL AUTO_INCREMENT,
@@ -892,9 +893,9 @@ CREATE TABLE event_contracts (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO event_contracts (hall_id, customer_id, package_id, contact_name, contact_phone, event_date, guest_count, table_count, total_amount, deposit_amount, remaining, status, note, created_by) VALUES
- (1, 1, 1, N'Nguyen Van A', '0911111111', '2026-07-15', 150, 15, 225000000.00, 67500000.00, 157500000.00, 'confirmed', N'Tiệc cưới, yêu cầu hoa hồng trắng', 7),
- (2, 3, 2, N'Le Van C',     '0933333333', '2026-08-20',  80,  8,  64000000.00, 19200000.00,  44800000.00, 'draft',     N'Hội nghị công ty, cần máy chiếu',   7),
- (1, 5, 3, N'Hoang Van E',  '0955555555', '2026-09-10',  50,  5,  60000000.00, 18000000.00,  42000000.00, 'confirmed', N'Sinh nhật VIP tháng 9',             7);
+ (1, 1, 1, 'Nguyen Van A', '0911111111', '2026-07-15', 150, 15, 225000000.00, 67500000.00, 157500000.00, 'confirmed', 'Tiệc cưới, yêu cầu hoa hồng trắng', 7),
+ (2, 3, 2, 'Le Van C',     '0933333333', '2026-08-20',  80,  8,  64000000.00, 19200000.00,  44800000.00, 'draft',     'Hội nghị công ty, cần máy chiếu',   7),
+ (1, 5, 3, 'Hoang Van E',  '0955555555', '2026-09-10',  50,  5,  60000000.00, 18000000.00,  42000000.00, 'confirmed', 'Sinh nhật VIP tháng 9',             7);
 
 CREATE TABLE hall_bookings (
     id          INT      NOT NULL AUTO_INCREMENT,
@@ -927,8 +928,8 @@ CREATE TABLE event_deposits (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO event_deposits (contract_id, amount, method, note, paid_at) VALUES
- (1, 67500000.00, 'bank_transfer', N'Đặt cọc 30% tiệc cưới',     '2026-06-20 10:30:00'),
- (3, 18000000.00, 'cash',          N'Đặt cọc 30% sinh nhật VIP',  '2026-06-22 15:00:00');
+ (1, 67500000.00, 'bank_transfer', 'Đặt cọc 30% tiệc cưới',     '2026-06-20 10:30:00'),
+ (3, 18000000.00, 'cash',          'Đặt cọc 30% sinh nhật VIP',  '2026-06-22 15:00:00');
 
 CREATE TABLE event_timelines (
     id          INT          NOT NULL AUTO_INCREMENT,
@@ -943,18 +944,18 @@ CREATE TABLE event_timelines (
 
 INSERT INTO event_timelines (contract_id, time, activity, note, sort_order) VALUES
  -- Tiệc cưới (contract 1)
- (1, '16:00:00', N'Khách đến, chụp ảnh đón khách', NULL, 1),
- (1, '17:00:00', N'Lễ cưới tại sân khấu',          NULL, 2),
- (1, '18:00:00', N'Khai tiệc, phục vụ khai vị',    NULL, 3),
- (1, '19:00:00', N'Phục vụ món chính',              NULL, 4),
- (1, '20:30:00', N'Cắt bánh cưới, tráng miệng',    NULL, 5),
- (1, '21:30:00', N'Kết thúc tiệc',                 NULL, 6),
+ (1, '16:00:00', 'Khách đến, chụp ảnh đón khách', NULL, 1),
+ (1, '17:00:00', 'Lễ cưới tại sân khấu',          NULL, 2),
+ (1, '18:00:00', 'Khai tiệc, phục vụ khai vị',    NULL, 3),
+ (1, '19:00:00', 'Phục vụ món chính',              NULL, 4),
+ (1, '20:30:00', 'Cắt bánh cưới, tráng miệng',    NULL, 5),
+ (1, '21:30:00', 'Kết thúc tiệc',                 NULL, 6),
  -- Sinh nhật VIP (contract 3)
- (3, '17:00:00', N'Khách đến',                     NULL, 1),
- (3, '17:30:00', N'Khai tiệc, khai vị',            NULL, 2),
- (3, '18:30:00', N'Món chính',                     NULL, 3),
- (3, '20:00:00', N'Cắt bánh sinh nhật',            NULL, 4),
- (3, '21:30:00', N'Kết thúc',                      NULL, 5);
+ (3, '17:00:00', 'Khách đến',                     NULL, 1),
+ (3, '17:30:00', 'Khai tiệc, khai vị',            NULL, 2),
+ (3, '18:30:00', 'Món chính',                     NULL, 3),
+ (3, '20:00:00', 'Cắt bánh sinh nhật',            NULL, 4),
+ (3, '21:30:00', 'Kết thúc',                      NULL, 5);
 
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -973,19 +974,19 @@ ALTER TABLE stock_out
 -- ============================================================================
 INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note, created_at) VALUES
  -- Khách 1: earn từ invoice #1 (745,200 / 10,000 ≈ 74 điểm) + earn lịch sử → tổng 172
- (1,  74, 'earn',   1,    N'Tích điểm hóa đơn #1 ngày 23/06',     '2026-06-23 13:30:00'),
- (1,  98, 'earn',   NULL, N'Tích điểm tích lũy các lần trước',     '2026-05-01 12:00:00'),
+ (1,  74, 'earn',   1,    'Tích điểm hóa đơn #1 ngày 23/06',     '2026-06-23 13:30:00'),
+ (1,  98, 'earn',   NULL, 'Tích điểm tích lũy các lần trước',     '2026-05-01 12:00:00'),
  -- Khách 2: earn + redeem → tổng 400
- (2, 250, 'earn',   NULL, N'Tích điểm lịch sử',                    '2026-04-10 20:00:00'),
- (2, 200, 'earn',   NULL, N'Tích điểm tiệc sinh nhật tháng 5',     '2026-05-10 20:00:00'),
- (2,  50, 'redeem', NULL, N'Đổi điểm giảm giá đơn hàng 01/06',    '2026-06-01 12:00:00'),
+ (2, 250, 'earn',   NULL, 'Tích điểm lịch sử',                    '2026-04-10 20:00:00'),
+ (2, 200, 'earn',   NULL, 'Tích điểm tiệc sinh nhật tháng 5',     '2026-05-10 20:00:00'),
+ (2,  50, 'redeem', NULL, 'Đổi điểm giảm giá đơn hàng 01/06',    '2026-06-01 12:00:00'),
  -- Khách 3: earn → tổng 50
- (3,  50, 'earn',   NULL, N'Tích điểm lần đầu đặt bàn',            '2026-04-15 19:00:00'),
+ (3,  50, 'earn',   NULL, 'Tích điểm lần đầu đặt bàn',            '2026-04-15 19:00:00'),
  -- Khách 4: earn → tổng 500
- (4, 300, 'earn',   NULL, N'Tích điểm sự kiện VIP tháng 3',        '2026-03-20 18:00:00'),
- (4, 200, 'earn',   NULL, N'Tích điểm tiệc công ty tháng 5',       '2026-05-05 20:00:00'),
+ (4, 300, 'earn',   NULL, 'Tích điểm sự kiện VIP tháng 3',        '2026-03-20 18:00:00'),
+ (4, 200, 'earn',   NULL, 'Tích điểm tiệc công ty tháng 5',       '2026-05-05 20:00:00'),
  -- Khách 5: earn → tổng 300
- (5, 300, 'earn',   NULL, N'Tích điểm tích lũy',                   '2026-04-01 18:00:00');
+ (5, 300, 'earn',   NULL, 'Tích điểm tích lũy',                   '2026-04-01 18:00:00');
 
 -- ============================================================================
 --  CẬP NHẬT used_count voucher sau khi đã dùng
@@ -996,9 +997,9 @@ UPDATE vouchers SET used_count = 1 WHERE code = 'SAVE10';
 --  BOOKINGS SEEDS (Lịch sử đặt bàn bao gồm cả lịch đặt đã hủy)
 -- ============================================================================
 INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, note, created_at) VALUES
- (1, 1, 1, NULL, N'Nguyễn Văn A', '0912345678', 4, '2026-07-16 18:00:00', '2026-07-16 20:00:00', 'BK2026071601', 'confirmed', N'Bàn gần cửa sổ', NULL, '2026-07-16 10:00:00'),
- (2, 2, 2, NULL, N'Trần Thị B', '0987654321', 2, '2026-07-16 19:00:00', '2026-07-16 21:00:00', 'BK2026071602', 'cancelled', N'Cần ghế trẻ em', N'Khách gọi điện báo hủy do bận việc đột xuất', '2026-07-16 11:00:00'),
- (3, 3, NULL, NULL, N'Phan Thanh C', '0905556677', 6, '2026-07-17 12:00:00', '2026-07-17 14:00:00', 'BK2026071701', 'pending', NULL, NULL, '2026-07-16 12:00:00'),
- (4, 5, 3, NULL, N'Lê Hoàng D', '0933445566', 4, '2026-07-15 18:30:00', '2026-07-15 20:30:00', 'BK2026071501', 'completed', N'Tiệc kỷ niệm ngày cưới', NULL, '2026-07-15 09:00:00'),
- (5, 6, NULL, NULL, N'Đặng Thị E', '0977889900', 8, '2026-07-16 20:00:00', '2026-07-16 22:00:00', 'BK2026071603', 'cancelled', N'Tổ chức sinh nhật', N'Đổi kế hoạch tổ chức tiệc tại nhà', '2026-07-16 13:00:00'),
- (6, 10, 4, NULL, N'Bùi Quang F', '0944556677', 4, '2026-07-16 19:30:00', '2026-07-16 21:30:00', 'BK2026071604', 'cancelled', NULL, N'Muốn đổi sang sảnh sự kiện lớn', '2026-07-16 14:00:00');
+ (1, 1, 1, NULL, 'Nguyễn Văn A', '0912345678', 4, '2026-07-16 18:00:00', '2026-07-16 20:00:00', 'BK2026071601', 'confirmed', 'Bàn gần cửa sổ', NULL, '2026-07-16 10:00:00'),
+ (2, 2, 2, NULL, 'Trần Thị B', '0987654321', 2, '2026-07-16 19:00:00', '2026-07-16 21:00:00', 'BK2026071602', 'cancelled', 'Cần ghế trẻ em', 'Khách gọi điện báo hủy do bận việc đột xuất', '2026-07-16 11:00:00'),
+ (3, 3, NULL, NULL, 'Phan Thanh C', '0905556677', 6, '2026-07-17 12:00:00', '2026-07-17 14:00:00', 'BK2026071701', 'pending', NULL, NULL, '2026-07-16 12:00:00'),
+ (4, 5, 3, NULL, 'Lê Hoàng D', '0933445566', 4, '2026-07-15 18:30:00', '2026-07-15 20:30:00', 'BK2026071501', 'completed', 'Tiệc kỷ niệm ngày cưới', NULL, '2026-07-15 09:00:00'),
+ (5, 6, NULL, NULL, 'Đặng Thị E', '0977889900', 8, '2026-07-16 20:00:00', '2026-07-16 22:00:00', 'BK2026071603', 'cancelled', 'Tổ chức sinh nhật', 'Đổi kế hoạch tổ chức tiệc tại nhà', '2026-07-16 13:00:00'),
+ (6, 10, 4, NULL, 'Bùi Quang F', '0944556677', 4, '2026-07-16 19:30:00', '2026-07-16 21:30:00', 'BK2026071604', 'cancelled', NULL, 'Muốn đổi sang sảnh sự kiện lớn', '2026-07-16 14:00:00');

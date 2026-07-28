@@ -10,6 +10,8 @@ import {
   Banknote,
   ArrowRightLeft,
   QrCode,
+  UserCheck,
+  Hourglass,
 } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
@@ -38,6 +40,7 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
   useEffect(() => {
     getRestaurantInfo().then(setResInfo).catch(() => {});
   }, []);
+
   if (!invoice) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-slate-200 text-slate-500 gap-3">
@@ -50,7 +53,12 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
 
   const isPaid = invoice.invoiceStatus === "paid";
   const isCancelled = invoice.invoiceStatus === "cancelled";
+  const isPendingPayment = invoice.status === "pending_payment";
   const canAct = !isPaid && !isCancelled;
+
+  const vatRate = resInfo?.tax_rate ?? 10;
+  const serviceFeeRate = resInfo?.service_fee_rate ?? 0;
+  const finalAmount = invoice.totalAmount + invoice.totalAmount * (vatRate / 100) + invoice.totalAmount * (serviceFeeRate / 100);
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -69,6 +77,16 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
               {invoice.tableName && (
                 <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold text-[10px]">
                   {invoice.tableName}
+                </span>
+              )}
+              {isPendingPayment && (
+                <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                  <Hourglass size={10} /> Chờ thanh toán
+                </span>
+              )}
+              {invoice.staffName && (
+                <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                  <UserCheck size={10} /> {invoice.staffName}
                 </span>
               )}
             </div>
@@ -113,7 +131,7 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
               VietQR - Chuyển khoản ngân hàng
             </div>
             <img
-              src={`https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${Math.round(invoice.totalAmount)}&addInfo=${encodeURIComponent(`Thanh toan HD${invoice.id.slice(-6)}`)}`}
+              src={`https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${Math.round(finalAmount * 1000)}&addInfo=${encodeURIComponent(`Thanh toan HD${invoice.id.slice(-6)}`)}`}
               alt="VietQR"
               className="w-[120px] h-[120px] rounded-lg border border-blue-200 bg-white"
             />
@@ -147,41 +165,10 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
 
       {/* Footer: Total & Pay button */}
       <div className="border-t border-slate-100 p-5">
-        {invoice.subtotal !== undefined && (invoice.subtotal !== invoice.totalAmount || Boolean(invoice.tax && invoice.tax > 0) || Boolean(invoice.depositAmount && invoice.depositAmount > 0) || Boolean(invoice.discount && invoice.discount > 0)) ? (
-          <div className="space-y-1.5 mb-4">
-            <div className="flex justify-between items-center text-xs text-slate-500">
-              <span>Tạm tính</span>
-              <span className="font-semibold">{formatVnd(invoice.subtotal || invoice.totalAmount)} vnđ</span>
-            </div>
-            {Boolean(invoice.tax && invoice.tax > 0) && (
-              <div className="flex justify-between items-center text-xs text-slate-500">
-                <span>VAT ({invoice.vatRate || 10}%)</span>
-                <span className="font-semibold">+{formatVnd(invoice.tax!)} vnđ</span>
-              </div>
-            )}
-            {Boolean(invoice.discount && invoice.discount > 0) && (
-              <div className="flex justify-between items-center text-xs text-slate-500">
-                <span>Giảm giá/Voucher</span>
-                <span className="font-semibold">-{formatVnd(invoice.discount!)} vnđ</span>
-              </div>
-            )}
-            {Boolean(invoice.depositAmount && invoice.depositAmount > 0) && (
-              <div className="flex justify-between items-center text-xs text-rose-600 font-medium">
-                <span>Tiền cọc đặt bàn</span>
-                <span className="font-semibold">-{formatVnd(invoice.depositAmount!)} vnđ</span>
-              </div>
-            )}
-            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-              <span className="text-sm font-bold text-slate-700">Tổng thanh toán</span>
-              <span className="text-lg font-black text-blue-600 font-display">{formatVnd(invoice.totalAmount)} vnđ</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-sm font-bold text-slate-600">Tổng thanh toán</span>
-            <span className="text-lg font-black text-slate-900 font-display">{formatVnd(invoice.totalAmount)} vnđ</span>
-          </div>
-        )}
+        <div className="flex justify-between items-center mb-4">
+          <span className="text-sm font-bold text-slate-600">Tổng thanh toán</span>
+          <span className="text-lg font-black text-slate-900 font-display">{formatVnd(finalAmount)} vnđ</span>
+        </div>
 
         {canAct && (
           <div className="flex gap-2">

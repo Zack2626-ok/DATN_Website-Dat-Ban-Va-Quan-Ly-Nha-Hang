@@ -12,6 +12,7 @@ import {
   getWaiterNotificationsHandler,
   markItemServedHandler,
   createQROrderHandler,
+  requestPaymentHandler,
 } from "../controllers/waiter.controller";
 
 const router = Router();
@@ -32,6 +33,7 @@ router.patch("/orders/:orderId/items/:itemId/void", voidOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/served", markItemServedHandler);
 router.post("/orders/:orderId/send-to-kitchen", sendItemsToKitchenHandler);
 router.post("/orders/:orderId/hold-items", holdOrderItemsHandler);
+router.post("/orders/:orderId/request-payment", requestPaymentHandler);
 
 // QR Order - khách tự đặt qua QR
 router.post("/qr-order", createQROrderHandler);

@@ -11,6 +11,7 @@ import {
   BookingListPage,
   CRMManagement,
 } from "../views/manager";
+import { FinanceReport, LossDebtReport } from "../views/admin";
 import UserManagement from "../views/manager/UserManagement";
 import RegisterPage from "../views/auth/RegisterPage";
 
@@ -32,6 +33,8 @@ export const ManagerRoutes = () => (
       <Route path="menu" element={<MenuManagement />} />
       <Route path="shifts" element={<ShiftManagement />} />
       <Route path="analytics" element={<AnalyticsView />} />
+      <Route path="finance-report" element={<FinanceReport />} />
+      <Route path="loss-debt-report" element={<LossDebtReport />} />
       <Route path="promotions" element={<PromotionManagement />} />
       <Route path="crm" element={<CRMManagement />} />
     </Route>

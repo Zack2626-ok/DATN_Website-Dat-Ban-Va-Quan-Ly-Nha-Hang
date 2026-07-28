@@ -179,40 +179,18 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
           <div className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100">
             <span className="text-slate-500 flex items-center gap-1">
               <BadgePercent size={10} className="text-orange-500" />
-              VAT
+              VAT ({vatRate}%)
             </span>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={vatRate}
-                onChange={(e) => setVatRate(Number(e.target.value) || 0)}
-                className="w-10 text-right text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-slate-50 focus:outline-none focus:border-blue-400"
-              />
-              <span className="text-[10px] text-slate-400">%</span>
-              <span className="font-bold text-slate-900 min-w-[70px] text-right text-[11px]">{formatVnd(breakdown.vat)} vnđ</span>
-            </div>
+            <span className="font-bold text-slate-900 text-[11px]">{formatVnd(breakdown.vat)} vnđ</span>
           </div>
 
           {/* Service Fee */}
           <div className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100">
             <span className="text-slate-500 flex items-center gap-1">
               <BadgePercent size={10} className="text-teal-500" />
-              Phí DV
+              Phí DV ({serviceFeeRate}%)
             </span>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={serviceFeeRate}
-                onChange={(e) => setServiceFeeRate(Number(e.target.value) || 0)}
-                className="w-10 text-right text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-slate-50 focus:outline-none focus:border-blue-400"
-              />
-              <span className="text-[10px] text-slate-400">%</span>
-              <span className="font-bold text-slate-900 min-w-[70px] text-right text-[11px]">{formatVnd(breakdown.serviceFee)} vnđ</span>
-            </div>
+            <span className="font-bold text-slate-900 text-[11px]">{formatVnd(breakdown.serviceFee)} vnđ</span>
           </div>
 
           {/* Voucher */}
