@@ -1002,4 +1002,4 @@ INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest
  (3, 3, NULL, NULL, 'Phan Thanh C', '0905556677', 6, '2026-07-17 12:00:00', '2026-07-17 14:00:00', 'BK2026071701', 'pending', NULL, NULL, '2026-07-16 12:00:00'),
  (4, 5, 3, NULL, 'Lê Hoàng D', '0933445566', 4, '2026-07-15 18:30:00', '2026-07-15 20:30:00', 'BK2026071501', 'completed', 'Tiệc kỷ niệm ngày cưới', NULL, '2026-07-15 09:00:00'),
  (5, 6, NULL, NULL, 'Đặng Thị E', '0977889900', 8, '2026-07-16 20:00:00', '2026-07-16 22:00:00', 'BK2026071603', 'cancelled', 'Tổ chức sinh nhật', 'Đổi kế hoạch tổ chức tiệc tại nhà', '2026-07-16 13:00:00'),
- (6, 10, 4, NULL, 'Bùi Quang F', '0944556677', 4, '2026-07-16 19:30:00', '2026-07-16 21:30:00', 'BK2026071604', 'cancelled', NULL, 'Muốn đổi sang sảnh sự kiện lớn', '2026-07-16 14:00:00');
+ (6, 10, 4, NULL, 'Bùi Quang F', '0944556677', 4, '2026-07-16 19:30:00', '2026-07-16 21:30:00', 'BK2026071604', 'cancelled', NULL, 'Muốn đổi sang sảnh sự kiện lớn', '2026-07-16 14:00:00');    
