@@ -103,17 +103,11 @@ export const CashierPOS: React.FC = () => {
   }, [orders, selectedTable]);
 
   // Calculations
-<<<<<<< HEAD
   const subtotal = activeOrder ? (activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount) : 0;
   const depositAmount = activeOrder?.depositAmount || 0;
-  const tax = vatEnabled ? Math.round(subtotal * (vatRate / 100)) : 0;
+  const tax = Math.round(subtotal * (vatRate / 100));
   const tipVal = (parseFloat(tipAmount) || 0) * 1000;
-=======
-  const subtotal = activeOrder ? activeOrder.totalAmount : 0;
-  const depositAmount = 0;
-  const tax = subtotal * (vatRate / 100);
-  const tipVal = parseFloat(tipAmount) || 0;
->>>>>>> 5e74e0f8054190cf2d055ee3b4970148ac8c08c0
+
   let totalAmount = Math.max(0, subtotal + tax + tipVal - depositAmount);
   if (roundEnabled) {
     totalAmount = Math.round(totalAmount);
