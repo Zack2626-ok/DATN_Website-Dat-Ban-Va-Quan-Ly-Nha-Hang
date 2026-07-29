@@ -6,9 +6,6 @@ import {
   Users,
   Clock,
   CreditCard,
-  Scissors,
-  GitMerge,
-  XCircle,
   Printer,
   Banknote,
   ArrowRightLeft,
@@ -36,15 +33,8 @@ const formatTime = (dateStr: string) => {
   return d.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
 };
 
-export const InvoiceDetailPanel: React.FC<Props> = ({
-  invoice,
-  onPay,
-  onSplit,
-  onMerge,
-  onCancel,
-  onPrint,
-  loading,
-}) => {
+export const InvoiceDetailPanel: React.FC<Props> = (props) => {
+  const { invoice, onPay, onPrint, loading } = props;
   const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
 
   useEffect(() => {
@@ -111,31 +101,6 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
             >
               <Printer size={14} />
             </button>
-            {canAct && (
-              <>
-                <button
-                  onClick={onSplit}
-                  className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                  title="Tách hóa đơn"
-                >
-                  <Scissors size={14} />
-                </button>
-                <button
-                  onClick={onMerge}
-                  className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                  title="Gộp hóa đơn"
-                >
-                  <GitMerge size={14} />
-                </button>
-                <button
-                  onClick={onCancel}
-                  className="p-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 cursor-pointer transition-all"
-                  title="Hủy hóa đơn"
-                >
-                  <XCircle size={14} />
-                </button>
-              </>
-            )}
           </div>
         </div>
 

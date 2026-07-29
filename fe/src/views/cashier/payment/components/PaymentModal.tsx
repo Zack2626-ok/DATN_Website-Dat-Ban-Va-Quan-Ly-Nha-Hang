@@ -15,6 +15,7 @@ import {
 import { Modal } from "../../../../components/Modal";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
+import { crmService, type Voucher } from "../../../../services/crmService";
 
 interface Props {
   isOpen: boolean;
@@ -44,6 +45,10 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [suggestedVouchers, setSuggestedVouchers] = useState<Voucher[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [customerName, setCustomerName] = useState<string | null>(null);
+
   useEffect(() => {
     getRestaurantInfo()
       .then((info) => {
@@ -54,12 +59,65 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setSuggestedVouchers([]);
+      setCustomerName(null);
+      return;
+    }
+
+    const loadSuggestions = async () => {
+      setLoadingSuggestions(true);
+      try {
+        const [customers, vouchers] = await Promise.all([
+          crmService.getCustomers(),
+          crmService.getVouchers(),
+        ]);
+
+        const normalizePhone = (phone?: string | null) => {
+          if (!phone) return "";
+          return phone.replace(/\s+/g, "").replace(/^\+84/, "0");
+        };
+
+        const customer = customers.find(c => {
+          const cPhone = normalizePhone(c.phone);
+          const iPhone = normalizePhone(invoice.customerPhone);
+          const phoneMatch = cPhone && iPhone && cPhone === iPhone;
+          const nameMatch = c.name && invoice.customerName && c.name.toLowerCase().trim() === invoice.customerName.toLowerCase().trim();
+          return phoneMatch || nameMatch;
+        });
+
+        if (customer) {
+          setCustomerName(customer.name);
+          const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
+          
+          const eligible = vouchers.filter(v => {
+            if (v.is_active !== 1) return false;
+            if (v.expired_at && new Date(v.expired_at) < new Date()) return false;
+            if (subtotal < v.min_order) return false;
+            return true;
+          });
+          setSuggestedVouchers(eligible);
+        } else {
+          setSuggestedVouchers([]);
+          setCustomerName(null);
+        }
+      } catch (err) {
+        console.error("Failed to load voucher suggestions:", err);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+
+    loadSuggestions();
+  }, [isOpen, invoice.customerPhone, invoice.customerName, invoice.subtotal, invoice.totalAmount]);
+
   const breakdown = useMemo(() => {
     const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
     const vat = Math.round(subtotal * (vatRate / 100));
     const serviceFee = Math.round(subtotal * (serviceFeeRate / 100));
     const depositAmount = invoice.depositAmount || 0;
-    const finalAmount = Math.max(0, subtotal + vat + serviceFee + tipAmount - depositAmount - voucherAmount);
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000));
     return { subtotal, vat, serviceFee, depositAmount, finalAmount };
   }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, serviceFeeRate, tipAmount, voucherAmount]);
 
@@ -96,8 +154,8 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
       vatRate,
       serviceFeeRate: 0,
       voucherCode: voucherCode || undefined,
-      voucherAmount: voucherAmount || undefined,
-      tipAmount: 0,
+      voucherAmount: voucherAmount ? voucherAmount * 1000 : undefined,
+      tipAmount: tipAmount ? tipAmount * 1000 : undefined,
     });
   };
 
@@ -159,6 +217,47 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
               />
               <span className="text-[10px] text-slate-500 self-center">.000đ</span>
             </div>
+
+            {/* Voucher Suggestions */}
+            {customerName && (
+              <div className="mt-2 bg-pink-50/40 rounded-lg p-2 border border-pink-100">
+                <p className="text-[10px] font-bold text-pink-700 mb-1.5 flex items-center gap-1">
+                  💡 Voucher gợi ý cho {customerName}:
+                </p>
+                {loadingSuggestions ? (
+                  <p className="text-[9px] text-slate-400">Đang tìm voucher...</p>
+                ) : suggestedVouchers.length === 0 ? (
+                  <p className="text-[9px] text-slate-400 italic">Không có voucher phù hợp điều kiện.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestedVouchers.map((v) => {
+                      const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
+                      const discountVal = v.type === "percent"
+                        ? Math.round(subtotal * (v.value / 100))
+                        : v.value;
+                      const displayVal = v.type === "percent"
+                        ? `${v.value}%`
+                        : `-${Math.round(v.value / 1000)}k`;
+                        
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => {
+                            setVoucherCode(v.code);
+                            setVoucherAmount(Math.round(discountVal / 1000));
+                          }}
+                          className="px-2 py-1 rounded bg-white hover:bg-pink-100 border border-pink-200 text-[10px] font-bold text-pink-700 transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <span className="bg-pink-600 text-white px-1 py-0.2 rounded text-[8px] font-black uppercase">{v.code}</span>
+                          <span>Giảm {displayVal}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Tip */}
