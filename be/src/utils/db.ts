@@ -109,11 +109,21 @@ const normalizePayment = (row: any): Payment => ({
   discountAmount: row.discountAmount !== null && row.discountAmount !== undefined ? Number(row.discountAmount) : undefined,
 });
 
-const normalizeOrder = (row: any): Order => ({
-  ...row,
-  items: JSON.parse(row.items),
-  guestCount: Number(row.guestCount),
-});
+const normalizeOrder = (row: any): Order => {
+  let parsedItems = [];
+  try {
+    if (row.items && row.items !== "undefined") {
+      parsedItems = typeof row.items === "string" ? JSON.parse(row.items) : row.items;
+    }
+  } catch (err) {
+    console.error("Lỗi khi phân tích JSON items cho order:", row.id, row.items, err);
+  }
+  return {
+    ...row,
+    items: Array.isArray(parsedItems) ? parsedItems : [],
+    guestCount: Number(row.guestCount || 0),
+  };
+};
 
 const createDatabaseTables = async (): Promise<void> => {
   await query(`

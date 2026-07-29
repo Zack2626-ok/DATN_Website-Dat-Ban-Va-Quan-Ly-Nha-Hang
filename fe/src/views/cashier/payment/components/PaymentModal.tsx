@@ -6,7 +6,6 @@ import {
   Wallet,
   Receipt,
   Tag,
-  Gift,
   BadgePercent,
   QrCode,
   Copy,
@@ -41,7 +40,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   const [serviceFeeRate, setServiceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
-  const [tipAmount, setTipAmount] = useState(0);
+  const [tipAmount] = useState(0);
   const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -258,24 +257,6 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 )}
               </div>
             )}
-          </div>
-
-          {/* Tip */}
-          <div className="flex justify-between items-center text-xs py-1.5">
-            <span className="text-slate-500 flex items-center gap-1">
-              <Gift size={10} className="text-yellow-500" />
-              Tip
-            </span>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                value={tipAmount || ""}
-                onChange={(e) => setTipAmount(Number(e.target.value) || 0)}
-                placeholder="0"
-                className="w-16 text-right text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
-              />
-            </div>
           </div>
 
           {/* Final total */}
