@@ -91,6 +91,12 @@ const fetchDashboardData = async (filter: DateFilter) => {
 };
 
 export const analyticsService = {
+  clearCache: () => {
+    cachedFilter = null;
+    cachedData = null;
+    pendingPromise = null;
+  },
+
   getSummaryKpis: async (filter: DateFilter): Promise<SummaryKpis> => {
     const data = await fetchDashboardData(filter);
     return data.kpis;

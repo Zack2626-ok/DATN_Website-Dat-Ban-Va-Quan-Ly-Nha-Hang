@@ -331,6 +331,12 @@ export const ChefKitchenQueue: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const handleManualRefresh = () => {
+    dispatch(fetchKdsItems(stationFilter === "all" ? undefined : stationFilter));
+    dispatch(fetchKdsVoidAlerts());
+    toast.success("Làm mới dữ liệu thành công");
+  };
+
   // Station Label mapper
   const getStationLabel = (station: string) => {
     switch (station) {
@@ -363,6 +369,17 @@ export const ChefKitchenQueue: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          {/* Nút Làm mới */}
+          <button
+            onClick={handleManualRefresh}
+            disabled={loading}
+            className="px-3 py-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all bg-white border-slate-300 text-slate-755 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-50"
+            title="Làm mới dữ liệu"
+          >
+            <RefreshCcw size={15} className={`${loading ? "animate-spin" : ""}`} />
+            <span>Làm mới</span>
+          </button>
+
           {/* Sound Toggle */}
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}

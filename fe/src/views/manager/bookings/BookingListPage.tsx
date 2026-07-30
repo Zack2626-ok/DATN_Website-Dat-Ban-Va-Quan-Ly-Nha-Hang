@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Plus,
@@ -54,6 +54,9 @@ export const BookingListPage: React.FC = () => {
     return now.toISOString().slice(0, 16);
   };
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
   const [formData, setFormData] = useState({
     guest_name: "",
     guest_phone: "",
@@ -81,6 +84,11 @@ export const BookingListPage: React.FC = () => {
     fetchData();
   }, [formData.start_time]); // Fetch lại khi start_time thay đổi
 
+  // Reset page when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus]);
+
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
       b.guest_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -89,6 +97,13 @@ export const BookingListPage: React.FC = () => {
     const matchesStatus = filterStatus === "all" || b.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
+
+  const totalPages = Math.ceil(filteredBookings.length / ITEMS_PER_PAGE);
+
+  const paginatedBookings = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredBookings.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredBookings, currentPage]);
 
   const handleStatusChange = async (id: number, newStatus: Booking["status"]) => {
     try {
@@ -274,7 +289,7 @@ export const BookingListPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-admin-border">
-            {filteredBookings.length === 0 ? (
+            {paginatedBookings.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-6 py-12 text-center text-admin-text-sub">
                   <CalendarDays className="mx-auto mb-2 opacity-30" size={32} />
@@ -282,7 +297,7 @@ export const BookingListPage: React.FC = () => {
                 </td>
               </tr>
             ) : (
-              filteredBookings.map((b) => {
+              paginatedBookings.map((b) => {
                 const dt = formatDateTime(b.start_time);
                 return (
                   <tr
@@ -358,6 +373,68 @@ export const BookingListPage: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {filteredBookings.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4 mt-4 rounded-xl shadow-xs">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Trước
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Sau
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs text-slate-500">
+                Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
+                <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredBookings.length)}</span> trong tổng số{" "}
+                <span className="font-semibold text-slate-700">{filteredBookings.length}</span> lượt đặt bàn
+              </p>
+            </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                >
+                  Trước
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                      currentPage === page
+                        ? "z-10 bg-blue-600 text-white"
+                        : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                >
+                  Sau
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )}
 

@@ -56,12 +56,12 @@ export const ClientLayout: React.FC = () => {
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
-            <Link
+            {/* <Link
               to="/admin"
               className="rounded-lg border border-sky-100 px-4 py-2 text-sm font-semibold text-slate-400 hover:text-slate-600 hover:bg-sky-50/50 transition-colors"
             >
               Nhân viên
-            </Link>
+            </Link> */}
             {customerToken ? (
               <Link
                 to="/account"

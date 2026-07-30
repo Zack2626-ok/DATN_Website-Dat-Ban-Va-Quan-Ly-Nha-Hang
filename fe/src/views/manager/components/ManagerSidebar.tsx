@@ -13,7 +13,6 @@ import {
   Clock,
   LineChart,
   TrendingDown,
-  ShoppingBag,
   BadgeCheck,
   Building2,
   Ticket,
@@ -114,7 +113,7 @@ export const ManagerSidebar: React.FC = () => {
             </Link>
 
             {/* Quản lý đơn hàng */}
-            <Link
+            {/* <Link
               to="/manager/dashboard"
               className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
             >
@@ -125,7 +124,7 @@ export const ManagerSidebar: React.FC = () => {
               <span className="rounded-full bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-300">
                 Soon
               </span>
-            </Link>
+            </Link> */}
 
             {/* Ca làm việc */}
             <Link
@@ -193,7 +192,7 @@ export const ManagerSidebar: React.FC = () => {
                   </Link>
 
                   {/* Quản lý khuyến mãi */}
-                  <Link
+                  {/* <Link
                     to="/manager/promotions"
                     className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isRouteActive("/manager/promotions")
                       ? "bg-sky-500 text-white"
@@ -204,7 +203,7 @@ export const ManagerSidebar: React.FC = () => {
                       <Ticket size={14} />
                       Quản lý khuyến mãi
                     </span>
-                  </Link>
+                  </Link> */}
 
                   {/* Quản lý khách hàng */}
                   <Link
