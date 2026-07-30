@@ -12,6 +12,7 @@ dotenv.config();
 
 let connectionPool: mysql.Pool | null = null;
 let dbAvailable = false;
+let isInitializing = false;
 const JSON_DB_DIR = path.join(process.cwd(), "src", "database");
 const JSON_DB_PATH = path.join(JSON_DB_DIR, "db.json");
 
@@ -23,6 +24,17 @@ const ensurePool = (): mysql.Pool => {
 };
 
 export const query = async <T = any>(sql: string, params: any[] = []): Promise<T> => {
+  if (!connectionPool && !isInitializing) {
+    isInitializing = true;
+    try {
+      console.log("Database connection pool is not initialized. Attempting auto-initialization...");
+      await initDb();
+    } catch (err) {
+      console.error("Failed to auto-initialize database pool:", err);
+    } finally {
+      isInitializing = false;
+    }
+  }
   const pool = ensurePool();
   const [rows] = await pool.query(sql, params);
   return rows as T;
