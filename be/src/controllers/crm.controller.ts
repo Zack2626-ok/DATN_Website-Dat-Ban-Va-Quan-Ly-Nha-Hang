@@ -10,6 +10,19 @@ const getTierLevel = (points: number): "bronze" | "silver" | "gold" | "vip" => {
   return "bronze";
 };
 
+// Helper to convert ISO 8601 or other datetime strings to MySQL DATETIME format (YYYY-MM-DD HH:mm:ss)
+const toMySQLDateTime = (val: any): string | null => {
+  if (!val) return null;
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return null;
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch (e) {
+    return null;
+  }
+};
+
 // ============================================================================
 // 1. CUSTOMERS CRUD & LOYALTY OPERATIONS
 // ============================================================================
@@ -238,6 +251,8 @@ export const createVoucher = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const mysqlExpiredAt = toMySQLDateTime(expired_at);
+
     const result = await db.query(
       `INSERT INTO vouchers (code, type, value, min_order, max_uses, used_count, expired_at, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
@@ -247,24 +262,13 @@ export const createVoucher = async (req: Request, res: Response): Promise<void> 
         Number(value),
         Number(min_order || 0),
         max_uses !== undefined && max_uses !== null ? Number(max_uses) : null,
-        expired_at || null,
+        mysqlExpiredAt,
         Number(is_active)
       ]
     );
 
-    const newVoucher = {
-      id: result.insertId,
-      code: uppercaseCode,
-      type,
-      value,
-      min_order,
-      max_uses,
-      used_count: 0,
-      expired_at,
-      is_active,
-    };
-
-    sendSuccess(res, newVoucher, "Tạo voucher mới thành công", 201);
+    const newVouchers = await db.query("SELECT * FROM vouchers WHERE id = ?", [result.insertId]);
+    sendSuccess(res, newVouchers[0], "Tạo voucher mới thành công", 201);
   } catch (error) {
     console.error("Error in createVoucher:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -293,6 +297,8 @@ export const updateVoucher = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    const mysqlExpiredAt = toMySQLDateTime(expired_at);
+
     await db.query(
       `UPDATE vouchers 
        SET code = ?, type = ?, value = ?, min_order = ?, max_uses = ?, expired_at = ?, is_active = ?
@@ -303,7 +309,7 @@ export const updateVoucher = async (req: Request, res: Response): Promise<void> 
         Number(value),
         Number(min_order || 0),
         max_uses !== undefined && max_uses !== null ? Number(max_uses) : null,
-        expired_at || null,
+        mysqlExpiredAt,
         Number(is_active),
         Number(id)
       ]
