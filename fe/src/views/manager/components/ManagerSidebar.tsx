@@ -15,8 +15,7 @@ import {
   TrendingDown,
   BadgeCheck,
   Building2,
-  Ticket,
-  CircleDollarSign,
+    CircleDollarSign,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { ROLE_LABELS } from "../../../constants/roles";
@@ -293,3 +292,4 @@ export const ManagerSidebar: React.FC = () => {
     </aside>
   );
 };
+

@@ -711,18 +711,20 @@ INSERT INTO order_item_status_log (order_item_id, from_status, to_status, change
 -- ============================================================================
 
 CREATE TABLE suppliers (
-    id         INT           NOT NULL AUTO_INCREMENT,
-    name       VARCHAR(150)  NOT NULL,
-    phone      VARCHAR(20)   DEFAULT NULL,
-    address    VARCHAR(255)  DEFAULT NULL,
-    total_debt DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    PRIMARY KEY (id)
+      id               INT           NOT NULL AUTO_INCREMENT,
+      name             VARCHAR(150)  NOT NULL,
+      contact          VARCHAR(100)  DEFAULT NULL,
+      phone            VARCHAR(20)   DEFAULT NULL,
+      address          VARCHAR(255)  DEFAULT NULL,
+      main_ingredients VARCHAR(255)  DEFAULT NULL,
+      total_debt       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+      PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO suppliers (name, phone, address, total_debt) VALUES
- ('Công ty TNHH Thực phẩm ABC', '0987654321', '123 Đường ABC, Quận 1, TP.HCM', 0.00),
- ('Nhà phân phối Hải sản XYZ',  '0912345678', '456 Đường XYZ, Quận 3, TP.HCM', 0.00),
- ('Công ty Nông sản Việt',      '0901234567', '789 Đường DEF, Quận 5, TP.HCM', 0.00);
+INSERT INTO suppliers (name, contact, phone, address, main_ingredients, total_debt) VALUES
+ ('Công ty TNHH Thực phẩm ABC', 'Nguyễn Văn A', '0987654321', '123 Đường ABC, Quận 1, TP.HCM', 'Thịt heo, Thịt bò', 0.00),
+ ('Nhà phân phối Hải sản XYZ', 'Trần Thị B', '0912345678', '456 Đường XYZ, Quận 3, TP.HCM', 'Tôm, Cua, Mực', 0.00),
+ ('Công ty Nông sản Việt', 'Lê Văn C', '0901234567', '789 Đường DEF, Quận 5, TP.HCM', 'Rau củ, Nấm', 0.00);
 
 CREATE TABLE ingredients (
     id            INT           NOT NULL AUTO_INCREMENT,

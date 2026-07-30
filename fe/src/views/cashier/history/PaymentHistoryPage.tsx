@@ -11,8 +11,7 @@ import {
   Clock,
   CheckCircle2,
   Printer,
-  Eye,
-} from "lucide-react";
+  } from "lucide-react";
 import { getPaymentHistoryApi, getInvoiceByIdApi } from "../../../services/invoiceService";
 import { printCashierInvoice } from "../../../utils/printBill";
 
@@ -359,3 +358,4 @@ export const PaymentHistoryPage: React.FC = () => {
     </div>
   );
 };
+

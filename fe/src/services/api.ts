@@ -127,3 +127,34 @@ export const getInventoryTransactionsApi = async (): Promise<any[]> => {
   const response = await api.get("/inventory/transactions");
   return response.data.data;
 };
+
+export const uploadInventoryExcelApi = async (file: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await api.post("/inventory/upload-excel", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return response.data;
+};
+
+export const getSuppliersApi = async (): Promise<any[]> => {
+  const response = await api.get("/inventory/suppliers");
+  return response.data.data;
+};
+
+export const addSupplierApi = async (data: any): Promise<any> => {
+  const response = await api.post("/inventory/suppliers", data);
+  return response.data.data;
+};
+
+export const updateSupplierApi = async (id: string | number, data: any): Promise<any> => {
+  const response = await api.put(`/inventory/suppliers/${id}`, data);
+  return response.data.data;
+};
+
+export const deleteSupplierApi = async (id: string | number): Promise<any> => {
+  const response = await api.delete(`/inventory/suppliers/${id}`);
+  return response.data.data;
+};

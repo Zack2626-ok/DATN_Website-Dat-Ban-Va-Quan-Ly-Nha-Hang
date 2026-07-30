@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import * as xlsx from "xlsx";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 
@@ -35,6 +36,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           so.quantity as quantity,
           i.unit as unit,
           so.reason as reasonOrSupplier,
+          0 as unit_cost,
+          so.note as note,
           so.created_at as timestamp
         FROM stock_out so
         JOIN ingredients i ON so.ingredient_id = i.id
@@ -48,6 +51,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           si.quantity as quantity,
           i.unit as unit,
           COALESCE(s.name, si.note) as reasonOrSupplier,
+          si.unit_cost as unit_cost,
+          si.note as note,
           si.created_at as timestamp
         FROM stock_in si
         JOIN ingredients i ON si.ingredient_id = i.id
@@ -163,5 +168,123 @@ export const getLowStockItems = async (_req: Request, res: Response): Promise<vo
     sendSuccess(res, items, "Lấy danh sách hàng sắp hết thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const uploadExcel = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      sendError(res, "Không tìm thấy file tải lên", 400);
+      return;
+    }
+
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data = xlsx.utils.sheet_to_json<any>(sheet);
+
+    if (!data || data.length === 0) {
+      sendError(res, "File Excel trống hoặc sai định dạng", 400);
+      return;
+    }
+
+    const createdBy = 1; 
+
+    for (const row of data) {
+      const ingredientId = row["Mã nguyên liệu"] || row["Mã NL"] || row["ingredient_id"];
+      const quantity = parseFloat(row["Số lượng nhập"] || row["quantity"] || 0);
+      const unitCost = parseFloat(row["Đơn giá"] || row["unit_cost"] || 0);
+      const supplierName = row["Nhà cung cấp"] || row["supplier"] || "";
+      const note = row["Ghi chú"] || row["note"] || "Nhập từ file Excel";
+
+      if (!ingredientId || isNaN(quantity) || quantity <= 0) {
+        continue;
+      }
+
+      let supplierId = null;
+      if (supplierName && typeof supplierName === 'string' && supplierName.trim() !== '') {
+        const existingSupplier = await db.query(
+          "SELECT id FROM suppliers WHERE name = ?",
+          [supplierName.trim()]
+        );
+        
+        if (existingSupplier && existingSupplier.length > 0) {
+          supplierId = existingSupplier[0].id;
+        } else {
+          const newSupplier = await db.query(
+            "INSERT INTO suppliers (name, total_debt) VALUES (?, 0)",
+            [supplierName.trim()]
+          );
+          supplierId = newSupplier.insertId;
+        }
+      }
+
+      await db.query(
+        "INSERT INTO stock_in (ingredient_id, quantity, unit_cost, supplier_id, note, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+        [ingredientId, quantity, unitCost, supplierId, note, createdBy]
+      );
+
+      await db.query(
+        "UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?",
+        [quantity, ingredientId]
+      );
+    }
+
+    sendSuccess(res, null, "Tải file Excel và cập nhật kho thành công");
+  } catch (error) {
+    console.error("Error processing Excel file:", error);
+    sendError(res, `Lỗi xử lý file Excel: ${(error as Error).message}`, 500);
+  }
+};
+
+export const getSuppliers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const suppliers = await db.query(
+      "SELECT id, name, contact, phone, address, main_ingredients as mainIngredients, total_debt FROM suppliers"
+    );
+    sendSuccess(res, suppliers, "L?y danh s�ch nh� cung c?p th�nh c�ng");
+  } catch (error) {
+    console.error("Error fetching suppliers:", error);
+    sendError(res, "L?i: " + (error as Error).message, 500);
+  }
+};
+
+export const addSupplier = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, contact, phone, address, mainIngredients } = req.body;
+    const result = await db.query(
+      "INSERT INTO suppliers (name, contact, phone, address, main_ingredients) VALUES (?, ?, ?, ?, ?)",
+      [name, contact, phone, address, mainIngredients]
+    );
+    sendSuccess(res, { id: result.insertId, ...req.body }, "Th�m nh� cung c?p th�nh c�ng", 201);
+  } catch (error) {
+    console.error("Error adding supplier:", error);
+    sendError(res, "L?i: " + (error as Error).message, 500);
+  }
+};
+
+export const updateSupplier = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { name, contact, phone, address, mainIngredients } = req.body;
+    await db.query(
+      "UPDATE suppliers SET name = ?, contact = ?, phone = ?, address = ?, main_ingredients = ? WHERE id = ?",
+      [name, contact, phone, address, mainIngredients, id]
+    );
+    sendSuccess(res, { id, ...req.body }, "C?p nh?t nh� cung c?p th�nh c�ng");
+  } catch (error) {
+    console.error("Error updating supplier:", error);
+    sendError(res, "L?i: " + (error as Error).message, 500);
+  }
+};
+
+export const deleteSupplier = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    await db.query("DELETE FROM suppliers WHERE id = ?", [id]);
+    sendSuccess(res, { id }, "X�a nh� cung c?p th�nh c�ng");
+  } catch (error) {
+    console.error("Error deleting supplier:", error);
+    sendError(res, "L?i: " + (error as Error).message, 500);
   }
 };
