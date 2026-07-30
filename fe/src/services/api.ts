@@ -91,3 +91,39 @@ export const clearNotificationsApi = async (role?: string): Promise<any> => {
   return response.data.data;
 };
 
+
+/**
+ * Fetch all real ingredients from backend
+ */
+export const getIngredientsApi = async (): Promise<any[]> => {
+  const response = await api.get("/inventory/ingredients");
+  return response.data.data;
+};
+
+export const createIngredientApi = async (data: any): Promise<any> => {
+  const response = await api.post("/inventory", data);
+  return response.data.data;
+};
+
+export const updateIngredientApi = async (id: string | number, data: any): Promise<any> => {
+  const response = await api.put(`/inventory/${id}`, data);
+  return response.data.data;
+};
+
+export const deleteIngredientApi = async (id: string | number): Promise<any> => {
+  const response = await api.delete(`/inventory/${id}`);
+  return response.data.data;
+};
+
+export const updateInventoryQuantityApi = async (id: string | number, quantity: number, type: "import" | "export" | "adjust", reasonOrSupplier?: string): Promise<any> => {
+  const response = await api.patch(`/inventory/${id}/quantity`, { quantity, type, reasonOrSupplier });
+  return response.data.data;
+};
+
+/**
+ * Fetch real inventory transactions from backend
+ */
+export const getInventoryTransactionsApi = async (): Promise<any[]> => {
+  const response = await api.get("/inventory/transactions");
+  return response.data.data;
+};

@@ -1038,6 +1038,55 @@ export const getInventory = async (): Promise<Inventory[]> => {
   return rows.map(normalizeInventory);
 };
 
+export const getIngredients = async (): Promise<any[]> => {
+  const rows = await query<any[]>("SELECT id, name, unit, current_stock as stock, min_stock as threshold FROM ingredients WHERE is_deleted = 0 ORDER BY name ASC");
+  return rows.map(r => ({
+    id: String(r.id),
+    name: r.name,
+    unit: r.unit,
+    stock: Number(r.stock),
+    threshold: Number(r.threshold)
+  }));
+};
+
+export const getInventoryTransactions = async (): Promise<any[]> => {
+  const stockIn = await query<any[]>(`
+    SELECT
+      CONCAT('in_', t.id) as id,
+      'import' as type,
+      i.name as ingredientName,
+      t.quantity,
+      i.unit,
+      t.note as reasonOrSupplier,
+      t.created_at as timestamp
+    FROM stock_in t
+    JOIN ingredients i ON t.ingredient_id = i.id
+  `);
+
+  const stockOut = await query<any[]>(`
+    SELECT
+      CONCAT('out_', t.id) as id,
+      'export' as type,
+      i.name as ingredientName,
+      t.quantity,
+      i.unit,
+      t.note as reasonOrSupplier,
+      t.created_at as timestamp
+    FROM stock_out t
+    JOIN ingredients i ON t.ingredient_id = i.id
+  `);
+
+  const all = [...stockIn, ...stockOut];
+  all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  
+  return all.map(tx => ({
+    ...tx,
+    quantity: Number(tx.quantity),
+    timestamp: new Date(tx.timestamp).toISOString().replace("T", " ").slice(0, 16)
+  }));
+};
+
+
 export const getInventoryById = async (id: string): Promise<Inventory | null> => {
   const rows = await query<any[]>("SELECT * FROM inventory_items WHERE id = ?", [id]);
   return rows[0] ? normalizeInventory(rows[0]) : null;
@@ -2184,6 +2233,98 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
   }
   return orders;
 };
+
+export const deductInventoryForItem = async (orderItemId: string | number): Promise<void> => {
+  try {
+    if (!dbAvailable) return;
+    
+    // 1. Get the item
+    const items = await query<any[]>(
+      `SELECT menu_item_id, quantity FROM order_items WHERE id = ?`,
+      [orderItemId]
+    );
+
+    if (!items || items.length === 0) return;
+    const item = items[0];
+
+    // 2. Get recipes for this menu_item
+    const recipeItems = await query<any[]>(
+      `SELECT r.ingredient_id, r.quantity
+       FROM recipe_items r
+       JOIN recipes m ON r.recipe_id = m.id
+       WHERE m.menu_item_id = ?`,
+      [item.menu_item_id]
+    );
+
+    if (!recipeItems || recipeItems.length === 0) return;
+
+    for (const recipe of recipeItems) {
+      const totalUsed = Number(item.quantity) * Number(recipe.quantity);
+      
+      // 3. Update ingredients current_stock
+      await query(
+        `UPDATE ingredients SET current_stock = GREATEST(0, current_stock - ?) WHERE id = ?`,
+        [totalUsed, recipe.ingredient_id]
+      );
+
+      // 4. Update stock_out
+      await query(
+        `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
+         VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động khi bếp nấu xong', NOW())`,
+        [recipe.ingredient_id, totalUsed]
+      );
+    }
+  } catch (error: any) {
+    console.error(`❌ Error deducting inventory for item ${orderItemId}:`, error.message);
+  }
+};
+
+export const refundInventoryForItem = async (orderItemId: string | number): Promise<void> => {
+  try {
+    if (!dbAvailable) return;
+    
+    // 1. Get the item
+    const items = await query<any[]>(
+      `SELECT menu_item_id, quantity FROM order_items WHERE id = ?`,
+      [orderItemId]
+    );
+
+    if (!items || items.length === 0) return;
+    const item = items[0];
+
+    // 2. Get recipes for this menu_item
+    const recipeItems = await query<any[]>(
+      `SELECT r.ingredient_id, r.quantity
+       FROM recipe_items r
+       JOIN recipes m ON r.recipe_id = m.id
+       WHERE m.menu_item_id = ?`,
+      [item.menu_item_id]
+    );
+
+    if (!recipeItems || recipeItems.length === 0) return;
+
+    for (const recipe of recipeItems) {
+      const totalUsed = Number(item.quantity) * Number(recipe.quantity);
+      
+      // 3. Update ingredients current_stock
+      await query(
+        `UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`,
+        [totalUsed, recipe.ingredient_id]
+      );
+
+      // 4. Insert into stock_in to record the refund (or delete the exact stock_out if preferred, 
+      // but inserting a refund record is safer for audit)
+      await query(
+        `INSERT INTO stock_in (ingredient_id, quantity, unit_cost, note, created_by, created_at)
+         VALUES (?, ?, 0, 'Hoàn lại kho do món bị hủy/hoàn tác', 1, NOW())`,
+        [recipe.ingredient_id, totalUsed]
+      );
+    }
+  } catch (error: any) {
+    console.error(`❌ Error refunding inventory for item ${orderItemId}:`, error.message);
+  }
+};
+
 
 export const getResmanagerPayments = async (): Promise<any[]> => {
   const rows = await query<any[]>(`

@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
 import {
@@ -66,8 +67,15 @@ interface StockTransaction {
 
 export const InventoryControl: React.FC = () => {
   const dispatch = useAppDispatch();
-  const reduxIngredients = useAppSelector((state) => state.inventory.ingredients);
   const globalSearchQuery = useAppSelector((state) => state.ui.searchQuery);
+
+  const [reduxIngredients, setReduxIngredients] = useState<any[]>([]);
+
+  useEffect(() => {
+    getIngredientsApi()
+      .then((data) => setReduxIngredients(data))
+      .catch((err) => console.error("Failed to load ingredients", err));
+  }, []);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<"ingredients" | "categories_suppliers" | "import_export" | "stocktake" | "expiry" | "reports">("ingredients");
@@ -100,12 +108,13 @@ export const InventoryControl: React.FC = () => {
     { id: "b5", ingredientName: "Nấm tươi", quantity: 100, unit: "g", batchNo: "LOT-NAM-0708", expiryDate: "2026-07-11" } // 2 days left
   ]);
 
-  const [transactions, setTransactions] = useState<StockTransaction[]>([
-    { id: "t1", type: "import", ingredientName: "Trứng cá tầm", quantity: 300, unit: "g", reasonOrSupplier: "NCC Hải Sản Đại Dương", timestamp: "2026-07-09 10:15" },
-    { id: "t2", type: "import", ingredientName: "Thịt bò Mỹ", quantity: 10, unit: "kg", reasonOrSupplier: "NCC Meat Deli Việt Nam", timestamp: "2026-07-09 09:30" },
-    { id: "t3", type: "export", ingredientName: "Thịt bò Mỹ", quantity: 1.5, unit: "kg", reasonOrSupplier: "Chế biến món Bò lúc lắc", timestamp: "2026-07-09 18:20" },
-    { id: "t4", type: "adjust", ingredientName: "Cá hồi", quantity: -0.5, unit: "kg", reasonOrSupplier: "Hao hụt kiểm kho thực tế", timestamp: "2026-07-08 22:00" }
-  ]);
+  const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+
+  useEffect(() => {
+    getInventoryTransactionsApi()
+      .then((data) => setTransactions(data))
+      .catch((err) => console.error("Failed to load transactions", err));
+  }, []);
 
   // Modals / Input States
   const [showAddIngModal, setShowAddIngModal] = useState(false);
@@ -193,109 +202,57 @@ export const InventoryControl: React.FC = () => {
   }, [reduxIngredients, ingSearch, globalSearchQuery, selectedCategoryFilter, stockStatusFilter]);
 
   // Form Submissions
-  const handleAddIngredient = (e: React.FormEvent) => {
+  const handleAddIngredient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIngForm.name) return;
 
-    // Simulate addition to Redux by directly setting stock
-    // Since redux is initialized from constants, we generate a mock ID and set stock.
-    // For DATN full save, it would call an API, here we just dispatch a setting action.
-    const newId = `i_${Date.now()}`;
-    dispatch(setIngredientStockDirect({ id: newId, stock: Number(newIngForm.stock) }));
-    
-    // We add to state locally (normally Redux holds all, but we mock the state update for visual demonstration)
-    // Redux slice does not have "addIngredient" reducer, so we sync menu
-    reduxIngredients.push({
-      id: newId,
-      name: newIngForm.name,
-      stock: Number(newIngForm.stock),
-      unit: newIngForm.unit,
-      threshold: Number(newIngForm.threshold)
-    });
-
-    // Add expiry batch automatically for the new ingredient
-    const expiryDateStr = new Date();
-    expiryDateStr.setDate(expiryDateStr.getDate() + 7); // 7 days expiry mock
-    setExpiryBatches([
-      ...expiryBatches,
-      {
-        id: `b_${Date.now()}`,
-        ingredientName: newIngForm.name,
-        quantity: Number(newIngForm.stock),
+    try {
+      await createIngredientApi({
+        name: newIngForm.name,
+        stock: newIngForm.stock,
         unit: newIngForm.unit,
-        batchNo: `LOT-${newIngForm.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-        expiryDate: expiryDateStr.toISOString().split("T")[0]
-      }
-    ]);
-
-    // Log transaction
-    setTransactions([
-      {
-        id: `t_${Date.now()}`,
-        type: "import",
-        ingredientName: newIngForm.name,
-        quantity: Number(newIngForm.stock),
-        unit: newIngForm.unit,
-        reasonOrSupplier: "Nhập hàng khởi tạo ban đầu",
-        timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-      },
-      ...transactions
-    ]);
-
-    triggerInventoryMenuSync();
-    setShowAddIngModal(false);
-    setNewIngForm({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
+        threshold: newIngForm.threshold
+      });
+      toast.success("Thêm nguyên liệu thành công");
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
+      
+      // triggerInventoryMenuSync();
+      setShowAddIngModal(false);
+      setNewIngForm({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
+    } catch (error) {
+      toast.error("Lỗi thêm nguyên liệu");
+      console.error(error);
+    }
   };
 
-  const handlePostTransaction = (e: React.FormEvent) => {
+  const handlePostTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     const ing = reduxIngredients.find((i) => i.id === transactionForm.ingredientId);
     if (!ing) return;
 
-    const qty = Number(transactionForm.quantity);
-    const multiplier = transactionForm.type === "import" ? 1 : -1;
-    const nextStock = Math.max(0, ing.stock + (qty * multiplier));
-
-    handleModifyStockDirect(ing.id as string, nextStock);
-
-    // Log transaction
-    setTransactions([
-      {
-        id: `t_${Date.now()}`,
-        type: transactionForm.type,
-        ingredientName: ing.name,
-        quantity: qty,
-        unit: ing.unit,
-        reasonOrSupplier: transactionForm.reasonOrSupplier || (transactionForm.type === "import" ? "Nhập kho bổ sung" : "Xuất kho sử dụng"),
-        timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-      },
-      ...transactions
-    ]);
-
-    // Log expiry batch if import
-    if (transactionForm.type === "import") {
-      const expDate = new Date();
-      expDate.setDate(expDate.getDate() + 5); // Mock 5 days
-      setExpiryBatches([
-        ...expiryBatches,
-        {
-          id: `b_${Date.now()}`,
-          ingredientName: ing.name,
-          quantity: qty,
-          unit: ing.unit,
-          batchNo: `LOT-${ing.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-          expiryDate: expDate.toISOString().split("T")[0]
-        }
-      ]);
+    try {
+      await updateInventoryQuantityApi(
+        ing.id,
+        transactionForm.quantity,
+        transactionForm.type,
+        transactionForm.reasonOrSupplier
+      );
+      toast.success("Cập nhật kho thành công");
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
+      
+      setShowImportExportModal(false);
+      setTransactionForm({
+        type: "import",
+        ingredientId: reduxIngredients[0]?.id || "",
+        quantity: 1,
+        reasonOrSupplier: ""
+      });
+    } catch (error) {
+      toast.error("Lỗi cập nhật kho");
+      console.error(error);
     }
-
-    setShowImportExportModal(false);
-    setTransactionForm({
-      type: "import",
-      ingredientId: reduxIngredients[0]?.id || "",
-      quantity: 1,
-      reasonOrSupplier: ""
-    });
   };
 
   const handleSaveSupplier = (e: React.FormEvent) => {
@@ -326,41 +283,38 @@ export const InventoryControl: React.FC = () => {
     setNewCategoryForm({ name: "", code: "", description: "" });
   };
 
-  // Perform Stocktake adjustment
-  const handleApplyStocktake = () => {
+  const handleApplyStocktake = async () => {
     let changed = false;
-    const newTxList = [...transactions];
 
-    reduxIngredients.forEach((ing) => {
+    for (const ing of reduxIngredients) {
       const val = stocktakeValues[ing.id];
       if (val !== undefined && val.trim() !== "") {
         const actualQty = Number(val);
         const discrepancy = actualQty - ing.stock;
 
         if (discrepancy !== 0) {
-          handleModifyStockDirect(ing.id as string, actualQty);
-          changed = true;
-
-          // Log discrepancy transaction
-          newTxList.unshift({
-            id: `t_${Date.now()}_${ing.id}`,
-            type: "adjust",
-            ingredientName: ing.name,
-            quantity: Math.abs(discrepancy),
-            unit: ing.unit,
-            reasonOrSupplier: `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`,
-            timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-          });
+          try {
+            await updateInventoryQuantityApi(
+              ing.id,
+              Math.abs(discrepancy),
+              discrepancy > 0 ? "import" : "adjust",
+              `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`
+            );
+            changed = true;
+          } catch (e) {
+            console.error("Lỗi cập nhật", e);
+          }
         }
       }
-    });
+    }
 
     if (changed) {
-      setTransactions(newTxList);
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
       setStocktakeValues({});
-      alert("✅ Cân đối kho thành công! Số lượng thực tế đã được cập nhật.");
+      toast.success("✅ Cân đối kho thành công! Số lượng thực tế đã được cập nhật.");
     } else {
-      alert("Chưa có số lượng kiểm kê thực tế nào được nhập hoặc không có chênh lệch.");
+      toast.error("Chưa có số lượng kiểm kê thực tế nào được nhập hoặc không có chênh lệch.");
     }
   };
 
@@ -629,8 +583,8 @@ export const InventoryControl: React.FC = () => {
                     </tr>
                   ) : (
                     filteredIngredients.map((ing) => {
-                      const isLow = ing.stock <= ing.threshold;
-                      const percentage = Math.min(100, Math.max(0, (ing.stock / (ing.threshold * 3)) * 100));
+                      const isLow = Number(ing.stock) <= Number(ing.threshold);
+                      const percentage = Math.min(100, Math.max(0, (Number(ing.stock) / (Number(ing.threshold) * 3)) * 100));
 
                       return (
                         <tr key={ing.id} className="hover:bg-slate-50/50 transition-colors">
@@ -646,7 +600,7 @@ export const InventoryControl: React.FC = () => {
                           <td className="px-5 py-4">
                             <div className="flex flex-col gap-1 w-32 mx-auto md:mx-0">
                               <span className={`font-black text-center md:text-left ${isLow ? "text-rose-600" : "text-[#0f62fe]"}`}>
-                                {ing.stock.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
                               </span>
                               {/* Progress bar */}
                               <div className="w-full bg-slate-100 rounded-full h-1.5 border border-slate-200/50">
@@ -909,14 +863,14 @@ export const InventoryControl: React.FC = () => {
                       <tr key={ing.id} className="hover:bg-slate-50/50">
                         <td className="px-5 py-4 font-extrabold text-slate-900">{ing.name}</td>
                         <td className="px-5 py-4 text-center font-bold text-slate-500">
-                          {ing.stock.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                          {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
                         </td>
                         <td className="px-5 py-4 text-center">
                           <div className="flex items-center justify-center gap-1 w-32 mx-auto">
                             <input
                               type="number"
                               step={ing.unit === "kg" ? "0.1" : "1"}
-                              placeholder={ing.stock.toFixed(0)}
+                              placeholder={Number(ing.stock).toFixed(0)}
                               value={stocktakeValues[ing.id] || ""}
                               onChange={(e) => setStocktakeValues({ ...stocktakeValues, [ing.id]: e.target.value })}
                               className="w-20 px-2 py-1 text-center font-black border border-slate-250 rounded bg-white text-slate-800 focus:outline-none focus:border-blue-500"
