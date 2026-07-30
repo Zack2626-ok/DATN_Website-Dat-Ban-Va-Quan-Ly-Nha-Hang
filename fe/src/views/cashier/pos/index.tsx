@@ -272,21 +272,6 @@ export const CashierPOS: React.FC = () => {
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-                <span>Tip (tùy chọn)</span>
-                <div className="relative rounded-lg bg-slate-50 border border-slate-200 flex items-center px-3 py-1">
-                  <input
-                    type="text"
-                    value={tipAmount}
-                    onChange={(e) => setTipAmount(e.target.value)}
-                    className="w-16 bg-transparent text-right font-bold focus:outline-none text-slate-900 text-xs"
-                    placeholder="0"
-                  />
-                  <span className="text-[11px] text-slate-500 ml-1">
-                    .000 vnđ
-                  </span>
-                </div>
-              </div>
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
                 <span className="flex items-center gap-2">

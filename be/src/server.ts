@@ -125,6 +125,8 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
 
 // Specific routes before wildcard /api fallback
+app.use("/api/restaurant-info", restaurantInfoRoutes);
+app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);
@@ -140,8 +142,6 @@ app.use("/api/v1/crm", crmRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
-app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
-app.use("/api/restaurant-info", restaurantInfoRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

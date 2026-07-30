@@ -56,9 +56,7 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
   const isPendingPayment = invoice.status === "pending_payment";
   const canAct = !isPaid && !isCancelled;
 
-  const vatRate = resInfo?.tax_rate ?? 10;
-  const serviceFeeRate = resInfo?.service_fee_rate ?? 0;
-  const finalAmount = invoice.totalAmount + invoice.totalAmount * (vatRate / 100) + invoice.totalAmount * (serviceFeeRate / 100);
+  const finalAmount = invoice.totalAmount;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -122,22 +120,6 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
             </span>
           </div>
         )}
-
-        {/* VietQR Code */}
-        {resInfo?.bank_code && resInfo?.bank_account && (
-          <div className="mt-3 flex flex-col items-center gap-1.5 bg-blue-50/50 border border-blue-200 rounded-xl p-3">
-            <div className="flex items-center gap-1 text-[10px] font-bold text-blue-700">
-              <QrCode size={12} />
-              VietQR - Chuyển khoản ngân hàng
-            </div>
-            <img
-              src={`https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${Math.round(finalAmount * 1000)}&addInfo=${encodeURIComponent(`Thanh toan HD${invoice.id.slice(-6)}`)}`}
-              alt="VietQR"
-              className="w-[120px] h-[120px] rounded-lg border border-blue-200 bg-white"
-            />
-            <span className="text-[9px] text-slate-500">{resInfo.bank_account} - {resInfo.bank_account_name}</span>
-          </div>
-        )}
       </div>
 
       {/* Items */}
@@ -161,13 +143,55 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
             </div>
           ))}
         </div>
+
+        {/* VietQR Code */}
+        {resInfo?.bank_code && resInfo?.bank_account && (
+          <div className="mt-5 flex flex-col items-center gap-1.5 bg-blue-50/50 border border-blue-200 rounded-xl p-3">
+            <div className="flex items-center gap-1 text-[10px] font-bold text-blue-700">
+              <QrCode size={12} />
+              VietQR - Chuyển khoản ngân hàng
+            </div>
+            <img
+              src={`https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${Math.round(finalAmount)}&addInfo=${encodeURIComponent(`Thanh toan HD${invoice.id.slice(-6)}`)}`}
+              alt="VietQR"
+              className="w-[120px] h-[120px] rounded-lg border border-blue-200 bg-white"
+            />
+            <span className="text-[9px] text-slate-500">{resInfo.bank_account} - {resInfo.bank_account_name}</span>
+          </div>
+        )}
       </div>
 
       {/* Footer: Total & Pay button */}
       <div className="border-t border-slate-100 p-5">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-sm font-bold text-slate-600">Tổng thanh toán</span>
-          <span className="text-lg font-black text-slate-900 font-display">{formatVnd(finalAmount)} vnđ</span>
+        <div className="space-y-2 mb-4">
+          <div className="flex justify-between items-center text-xs text-slate-500">
+            <span>Tạm tính</span>
+            <span className="font-semibold text-slate-800">
+              {formatVnd(invoice.subtotal !== undefined ? invoice.subtotal : invoice.items.reduce((sum, item) => sum + item.price * item.quantity, 0))} vnđ
+            </span>
+          </div>
+          {Boolean(invoice.tax && invoice.tax > 0) && (
+            <div className="flex justify-between items-center text-xs text-slate-500">
+              <span>VAT ({invoice.vatRate || 10}%)</span>
+              <span className="font-semibold text-slate-800">+{formatVnd(invoice.tax || 0)} vnđ</span>
+            </div>
+          )}
+          {Boolean(invoice.discount && invoice.discount > 0) && (
+            <div className="flex justify-between items-center text-xs text-slate-500">
+              <span>Giảm giá/Voucher</span>
+              <span className="font-semibold text-emerald-600">-{formatVnd(invoice.discount || 0)} vnđ</span>
+            </div>
+          )}
+          {Boolean(invoice.depositAmount && invoice.depositAmount > 0) && (
+            <div className="flex justify-between items-center text-xs text-rose-600 font-medium">
+              <span>Tiền cọc đặt bàn</span>
+              <span className="font-semibold">-{formatVnd(invoice.depositAmount || 0)} vnđ</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+            <span className="text-sm font-bold text-slate-700">Tổng thanh toán</span>
+            <span className="text-lg font-black text-blue-600 font-display">{formatVnd(finalAmount)} vnđ</span>
+          </div>
         </div>
 
         {canAct && (

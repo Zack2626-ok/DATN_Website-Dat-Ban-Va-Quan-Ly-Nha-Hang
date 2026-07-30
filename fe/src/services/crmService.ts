@@ -111,6 +111,9 @@ export const crmService = {
   deleteVoucher: async (id: number): Promise<void> => {
     await api.delete(`/v1/crm/vouchers/${id}`);
   },
+  toggleVoucher: async (id: number, is_active: number): Promise<void> => {
+    await api.patch(`/v1/crm/vouchers/${id}/toggle`, { is_active });
+  },
 
   // Promotions API
   getPromotions: async (): Promise<Promotion[]> => {
