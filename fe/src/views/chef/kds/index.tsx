@@ -135,7 +135,7 @@ export const ChefKitchenQueue: React.FC = () => {
       const elapsedMs = now - new Date(item.createdAt).getTime();
       const elapsedMins = Math.floor(elapsedMs / 60000);
 
-      if (elapsedMins >= 120) { // 2 giờ
+      if (elapsedMins >= 30) { // 30 phút
         if (!remindedItemIds.current.has(item.id)) {
           remindedItemIds.current.add(item.id);
           hasNewDelay = true;
@@ -157,7 +157,7 @@ export const ChefKitchenQueue: React.FC = () => {
                       <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
                     </p>
                     <p className="mt-1 text-[11px] font-semibold text-slate-600 leading-relaxed">
-                      Món <strong className="text-red-600 font-black">"{item.name}"</strong> của Bàn <strong className="text-slate-800 font-extrabold">{item.tableName || "Mang về"}</strong> đã chờ hơn 2 giờ!
+                      Món <strong className="text-red-600 font-black">"{item.name}"</strong> của Bàn <strong className="text-slate-800 font-extrabold">{item.tableName || "Mang về"}</strong> đã chờ hơn 30 phút!
                     </p>
                   </div>
                 </div>
@@ -320,7 +320,7 @@ export const ChefKitchenQueue: React.FC = () => {
     const elapsedMins = Math.floor(elapsedMs / 60000);
     const elapsedSecs = Math.floor((elapsedMs % 60000) / 1000);
     const timeStr = `${elapsedMins}:${elapsedSecs < 10 ? "0" : ""}${elapsedSecs}`;
-    const isDelayed = elapsedMins >= 120; // 2 giờ = 120 phút
+    const isDelayed = elapsedMins >= 30; // 30 phút
     return { timeStr, isDelayed, elapsedMins };
   };
 

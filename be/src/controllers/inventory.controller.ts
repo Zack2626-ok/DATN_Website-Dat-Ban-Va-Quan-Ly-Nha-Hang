@@ -4,7 +4,17 @@ import { sendError, sendSuccess } from "../utils/response";
 
 export const getAllInventory = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const items = await db.getInventory();
+    const items = await db.query(`
+      SELECT 
+        id, 
+        name,
+        name as itemName,
+        current_stock as stock, 
+        unit, 
+        min_stock as threshold 
+      FROM ingredients 
+      WHERE is_deleted = 0
+    `);
     sendSuccess(res, items, "Lấy danh sách kho thành công");
   } catch (error) {
     console.error("Error fetching inventory:", error);
@@ -12,55 +22,82 @@ export const getAllInventory = async (_req: Request, res: Response): Promise<voi
   }
 };
 
+export const getIngredientsList = getAllInventory;
+
+export const getTransactionsList = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const items = await db.query(`
+      (
+        SELECT 
+          CONCAT('OUT-', so.id) as id,
+          'export' as type,
+          i.name as ingredientName,
+          so.quantity as quantity,
+          i.unit as unit,
+          so.reason as reasonOrSupplier,
+          so.created_at as timestamp
+        FROM stock_out so
+        JOIN ingredients i ON so.ingredient_id = i.id
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('IN-', si.id) as id,
+          'import' as type,
+          i.name as ingredientName,
+          si.quantity as quantity,
+          i.unit as unit,
+          COALESCE(s.name, si.note) as reasonOrSupplier,
+          si.created_at as timestamp
+        FROM stock_in si
+        JOIN ingredients i ON si.ingredient_id = i.id
+        LEFT JOIN suppliers s ON si.supplier_id = s.id
+      )
+      ORDER BY timestamp DESC
+      LIMIT 100
+    `);
+    sendSuccess(res, items, "Lấy lịch sử nhập/xuất kho thành công");
+  } catch (error) {
+    console.error("Error fetching inventory transactions:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
 export const getInventoryById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    if (!id) {
-      sendError(res, "ID kho là bắt buộc", 400);
-      return;
-    }
-
-    const item = await db.getInventoryById(id);
-    if (!item) {
-      sendError(res, "Không tìm thấy mục kho", 404);
-      return;
-    }
-
-    sendSuccess(res, item, "Lấy thông tin kho thành công");
+    const items = await db.query(
+      `SELECT id, name as itemName, current_stock as stock, unit, min_stock as threshold FROM ingredients WHERE id = ? AND is_deleted = 0`,
+      [id]
+    );
+    if (items.length === 0) return sendError(res, "Không tìm thấy mục kho", 404);
+    sendSuccess(res, items[0], "Lấy thông tin kho thành công");
   } catch (error) {
-    console.error("Error fetching inventory item by id:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
 
 export const createInventoryItem = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { itemName, itemCode, category, quantity, unit, minQuantity, supplier, lastRestocked } = req.body;
-
-    if (!itemName || !itemCode || !category || quantity === undefined || !unit || minQuantity === undefined) {
-      sendError(res, "Tên, mã, danh mục, số lượng, đơn vị và mức tồn tối thiểu là bắt buộc", 400);
-      return;
+    const { name, stock, unit, threshold } = req.body;
+    if (!name || stock === undefined || !unit || threshold === undefined) {
+      return sendError(res, "Tên, số lượng, đơn vị và mức tồn tối thiểu là bắt buộc", 400);
     }
-
-    if (quantity < 0 || minQuantity < 0) {
-      sendError(res, "Số lượng và mức tồn tối thiểu phải >= 0", 400);
-      return;
+    const result = await db.query(
+      `INSERT INTO ingredients (name, unit, current_stock, min_stock) VALUES (?, ?, ?, ?)`,
+      [name, unit, Number(stock), Number(threshold)]
+    );
+    
+    // Log import if stock > 0
+    if (Number(stock) > 0) {
+      await db.query(
+        `INSERT INTO stock_in (ingredient_id, quantity, unit_cost, note, created_by) VALUES (?, ?, ?, ?, ?)`,
+        [result.insertId, Number(stock), 0, 'Nhập kho ban đầu', 1]
+      );
     }
-
-    const newItem = await db.createInventoryItem({
-      itemName,
-      itemCode,
-      category,
-      quantity,
-      unit,
-      minQuantity,
-      supplier,
-      lastRestocked,
-    });
-
-    sendSuccess(res, newItem, "Tạo mục kho thành công", 201);
+    
+    sendSuccess(res, { id: result.insertId, name, stock, unit, threshold }, "Thêm nguyên liệu thành công", 201);
   } catch (error) {
-    console.error("Error creating inventory item:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
@@ -68,42 +105,13 @@ export const createInventoryItem = async (req: Request, res: Response): Promise<
 export const updateInventoryItem = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { itemName, itemCode, category, quantity, unit, minQuantity, supplier, lastRestocked } = req.body;
-
-    if (!id) {
-      sendError(res, "ID kho là bắt buộc", 400);
-      return;
-    }
-
-    if (quantity !== undefined && quantity < 0) {
-      sendError(res, "Số lượng phải >= 0", 400);
-      return;
-    }
-
-    if (minQuantity !== undefined && minQuantity < 0) {
-      sendError(res, "Mức tồn tối thiểu phải >= 0", 400);
-      return;
-    }
-
-    const updatedItem = await db.updateInventoryItem(id, {
-      itemName,
-      itemCode,
-      category,
-      quantity,
-      unit,
-      minQuantity,
-      supplier,
-      lastRestocked,
-    });
-
-    if (!updatedItem) {
-      sendError(res, "Không tìm thấy mục kho cần cập nhật", 404);
-      return;
-    }
-
-    sendSuccess(res, updatedItem, "Cập nhật kho thành công");
+    const { name, unit, threshold } = req.body;
+    await db.query(
+      `UPDATE ingredients SET name = ?, unit = ?, min_stock = ? WHERE id = ?`,
+      [name, unit, Number(threshold), id]
+    );
+    sendSuccess(res, { id }, "Cập nhật kho thành công");
   } catch (error) {
-    console.error("Error updating inventory item:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
@@ -111,20 +119,9 @@ export const updateInventoryItem = async (req: Request, res: Response): Promise<
 export const deleteInventoryItem = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    if (!id) {
-      sendError(res, "ID kho là bắt buộc", 400);
-      return;
-    }
-
-    const deleted = await db.deleteInventoryItem(id);
-    if (!deleted) {
-      sendError(res, "Không tìm thấy mục kho cần xóa", 404);
-      return;
-    }
-
+    await db.query(`UPDATE ingredients SET is_deleted = 1, deleted_at = NOW() WHERE id = ?`, [id]);
     sendSuccess(res, { id }, "Xóa kho thành công");
   } catch (error) {
-    console.error("Error deleting inventory item:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
@@ -132,37 +129,39 @@ export const deleteInventoryItem = async (req: Request, res: Response): Promise<
 export const updateInventoryQuantity = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { quantity, type } = req.body;
+    const { quantity, type, reasonOrSupplier } = req.body; // type: import | export | adjust
 
-    if (!id) {
-      sendError(res, "ID kho là bắt buộc", 400);
-      return;
+    const qty = Number(quantity);
+    if (type === "import") {
+      await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, id]);
+      await db.query(
+        `INSERT INTO stock_in (ingredient_id, quantity, unit_cost, note, created_by) VALUES (?, ?, ?, ?, ?)`,
+        [id, qty, 0, reasonOrSupplier || 'Nhập kho thủ công', 1]
+      );
+    } else if (type === "export" || type === "adjust") {
+      await db.query(`UPDATE ingredients SET current_stock = current_stock - ? WHERE id = ?`, [qty, id]);
+      await db.query(
+        `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?)`,
+        [id, qty, 'other', reasonOrSupplier || 'Xuất/Điều chỉnh kho thủ công', 1]
+      );
     }
-
-    if (quantity === undefined || !["add", "subtract"].includes(type)) {
-      sendError(res, "Số lượng và loại (add/subtract) là bắt buộc", 400);
-      return;
-    }
-
-    const updatedItem = await db.updateInventoryQuantity(id, Number(quantity), type);
-    if (!updatedItem) {
-      sendError(res, "Không thể cập nhật số lượng, kiểm tra số lượng hoặc ID kho", 400);
-      return;
-    }
-
-    sendSuccess(res, updatedItem, "Cập nhật số lượng thành công");
+    
+    const updated = await db.query(`SELECT current_stock as stock FROM ingredients WHERE id = ?`, [id]);
+    sendSuccess(res, updated[0], "Cập nhật số lượng thành công");
   } catch (error) {
-    console.error("Error updating inventory quantity:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
 
 export const getLowStockItems = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const items = await db.getLowStockItems();
+    const items = await db.query(`
+      SELECT id, name as itemName, current_stock as stock, unit, min_stock as threshold 
+      FROM ingredients 
+      WHERE current_stock <= min_stock AND is_deleted = 0
+    `);
     sendSuccess(res, items, "Lấy danh sách hàng sắp hết thành công");
   } catch (error) {
-    console.error("Error fetching low stock items:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };

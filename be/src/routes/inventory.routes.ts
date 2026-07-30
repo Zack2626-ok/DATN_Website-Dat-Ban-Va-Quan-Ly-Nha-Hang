@@ -7,11 +7,15 @@ import {
   deleteInventoryItem,
   updateInventoryQuantity,
   getLowStockItems,
+  getIngredientsList,
+  getTransactionsList,
 } from "../controllers/inventory.controller";
 
 const router = Router();
 
 router.get("/", getAllInventory);
+router.get("/ingredients", getIngredientsList);
+router.get("/transactions", getTransactionsList);
 router.get("/low-stock", getLowStockItems);
 router.post("/", createInventoryItem);
 router.get("/:id", getInventoryById);

@@ -197,3 +197,53 @@ export const toggleMenuItemAvailability = async (req: Request, res: Response): P
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+export const getMenuRecipe = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const recipeRows = await db.query(
+      `SELECT r.id as recipe_id, ri.ingredient_id, i.name as ingredientName, ri.quantity as quantity, i.unit
+       FROM recipes r
+       JOIN recipe_items ri ON r.id = ri.recipe_id
+       JOIN ingredients i ON ri.ingredient_id = i.id
+       WHERE r.menu_item_id = ?`,
+      [id]
+    );
+    sendSuccess(res, recipeRows, "Lấy định lượng thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const updateMenuRecipe = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params; // menu item id
+    const { items } = req.body; // Array of { ingredient_id, quantity }
+    
+    // Check if recipe exists
+    let recipes = await db.query(`SELECT id FROM recipes WHERE menu_item_id = ?`, [id]);
+    let recipeId = recipes.length > 0 ? recipes[0].id : null;
+    
+    if (!recipeId) {
+      const result = await db.query(`INSERT INTO recipes (menu_item_id) VALUES (?)`, [id]);
+      recipeId = result.insertId;
+    } else {
+      // Clear old items
+      await db.query(`DELETE FROM recipe_items WHERE recipe_id = ?`, [recipeId]);
+    }
+    
+    // Insert new items
+    if (items && items.length > 0) {
+      for (const item of items) {
+        await db.query(
+          `INSERT INTO recipe_items (recipe_id, ingredient_id, quantity) VALUES (?, ?, ?)`,
+          [recipeId, item.ingredient_id, item.quantity]
+        );
+      }
+    }
+    
+    sendSuccess(res, { recipe_id: recipeId }, "Cập nhật định lượng thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};

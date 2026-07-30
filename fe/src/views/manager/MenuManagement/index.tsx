@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { menuService } from "../../../services/menuService";
 import { MenuDrawer } from "./components/MenuDrawer";
 import { MenuDetailModal } from "./components/MenuDetailModal";
+import { RecipeModal } from "./components/RecipeModal";
 import type { MenuItem, Category } from "../../../interfaces";
 
 /**
@@ -16,8 +17,10 @@ const MenuManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [viewingItem, setViewingItem] = useState<MenuItem | null>(null);
+  const [recipeItem, setRecipeItem] = useState<MenuItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -324,6 +327,16 @@ const MenuManagement: React.FC = () => {
                         </button>
                         <button
                           onClick={() => {
+                            setRecipeItem(item);
+                            setIsRecipeModalOpen(true);
+                          }}
+                          className="p-2 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors focus:outline-none"
+                          title="Định lượng món ăn"
+                        >
+                          <Layers size={18} />
+                        </button>
+                        <button
+                          onClick={() => {
                             setEditingItem(item);
                             setIsDrawerOpen(true);
                           }}
@@ -442,6 +455,13 @@ const MenuManagement: React.FC = () => {
           setViewingItem(null);
         }}
         menuItem={viewingItem}
+      />
+
+      {/* Recipe Modal */}
+      <RecipeModal
+        isOpen={isRecipeModalOpen}
+        onClose={() => setIsRecipeModalOpen(false)}
+        item={recipeItem}
       />
     </div>
   );

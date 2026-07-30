@@ -311,3 +311,138 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+export const getFinanceReport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Resolve dates (default to this month if not provided)
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date();
+    start.setDate(1); // First day of current month
+    start.setHours(0, 0, 0, 0);
+    
+    const startStr = formatMySQLDateTime(startDate ? new Date(startDate as string) : start);
+    const endStr = formatMySQLDateTime(endDate ? new Date(endDate as string) : end);
+
+    // 1) Summary
+    const incomeRow = await db.query(
+      `SELECT COALESCE(SUM(total), 0) AS val FROM invoices WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const totalIncome = Number(incomeRow[0].val);
+
+    const expenseRow = await db.query(
+      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val FROM stock_in WHERE created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const totalExpenses = Number(expenseRow[0].val);
+    const netProfit = totalIncome - totalExpenses;
+
+    // 2) Recent Transactions
+    const txRows = await db.query(
+      `
+      (
+        SELECT 
+          CONCAT('INV-', id) as id,
+          'income' as type,
+          CONCAT('Thanh toán hóa đơn #', id) as description,
+          total as amount,
+          paid_at as date,
+          'completed' as status
+        FROM invoices 
+        WHERE status = 'paid' AND paid_at BETWEEN ? AND ?
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('EXP-', id) as id,
+          'expense' as type,
+          COALESCE(note, 'Nhập nguyên liệu') as description,
+          (quantity * unit_cost) as amount,
+          created_at as date,
+          'completed' as status
+        FROM stock_in 
+        WHERE created_at BETWEEN ? AND ?
+      )
+      ORDER BY date DESC
+      LIMIT 100
+      `,
+      [startStr, endStr, startStr, endStr]
+    );
+
+    sendSuccess(
+      res,
+      {
+        summary: { totalIncome, totalExpenses, netProfit },
+        recentTransactions: txRows,
+      },
+      "Tải báo cáo tài chính thành công"
+    );
+  } catch (error) {
+    console.error("Error fetching finance report:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const getLossDebtReport = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    // 1) Variances (Hao hụt)
+    const varianceRows = await db.query(`
+      SELECT 
+        si.id,
+        si.ingredient_id,
+        i.name AS ingredientName,
+        si.actual_stock AS actualStock,
+        si.system_stock AS systemStock,
+        si.variance,
+        si.noted_at AS notedAt
+      FROM stock_inventory si
+      JOIN ingredients i ON si.ingredient_id = i.id
+      ORDER BY si.noted_at DESC
+      LIMIT 100
+    `);
+
+    // 2) Supplier Debts (Công nợ)
+    const debtRows = await db.query(`
+      SELECT 
+        id,
+        name AS supplierName,
+        total_debt AS amount
+      FROM suppliers
+      WHERE total_debt > 0
+    `);
+    
+    const supplierDebts = debtRows.map((r: any) => {
+       const due = new Date();
+       due.setDate(due.getDate() + 7);
+       return {
+         id: `SUP-${r.id}`,
+         supplierName: r.supplierName,
+         amount: Number(r.amount),
+         due: due.toISOString().split("T")[0],
+         status: "Chưa thanh toán"
+       };
+    });
+
+    sendSuccess(
+      res,
+      {
+        variances: varianceRows.map((r: any) => ({
+           id: r.id,
+           ingredientName: r.ingredientName,
+           expected: Number(r.systemStock),
+           actual: Number(r.actualStock),
+           variance: Number(r.variance),
+           date: r.notedAt,
+        })),
+        supplierDebts,
+      },
+      "Tải báo cáo hao hụt công nợ thành công"
+    );
+  } catch (error) {
+    console.error("Error fetching loss debt report:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
