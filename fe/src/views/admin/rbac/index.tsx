@@ -99,96 +99,252 @@ export const AdminRbac: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in text-slate-800">
-      
-      <div className="border-b border-slate-200 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-xl font-black font-display text-slate-900">Phân quyền vai trò (RBAC)</h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Quản lý quyền truy cập và tài khoản nhân viên theo vai trò
-          </p>
-        </div>
-        <button
-          onClick={handleSaveSettings}
-          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold font-display flex items-center gap-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all cursor-pointer"
-        >
-          <Save size={14} /> Lưu cấu hình
-        </button>
+  <div className="flex flex-col gap-6 animate-fade-in">
+
+    {/* Header */}
+
+    <div className="flex justify-between items-center">
+
+      <div>
+        <h2 className="text-3xl font-black text-slate-800">
+          Phân quyền hệ thống (RBAC)
+        </h2>
+
+        <p className="text-slate-500 mt-1">
+          Quản lý quyền truy cập của từng vai trò trong nhà hàng
+        </p>
       </div>
 
-      {savedMessage && (
-        <div className="bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-xl p-4 text-xs font-bold flex items-center gap-2 animate-fade-in">
-          <Info size={14} className="text-emerald-600" /> Cập nhật cấu hình thành công! Ma trận phân quyền đã được lưu trữ cục bộ.
-        </div>
-      )}
-
-      {/* Dynamic Tab Content rendering */}
-      {activeTab === "rbac" ? (
-        <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-slate-200 overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.4)] p-6 flex flex-col gap-5">
-          <div>
-            <h4 className="text-base font-black text-slate-900 font-display">Ma trận Phân quyền (RBAC)</h4>
-            <p className="text-xs text-slate-500 mt-1">Quản lý quyền truy cập cho từng vai trò nhân viên</p>
-          </div>
-
-          <div className="overflow-x-auto border border-slate-150 rounded-xl">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                  <th className="p-4 min-w-[240px]">Quyền truy cập</th>
-                  <th className="p-4 text-center">Admin</th>
-                  <th className="p-4 text-center">Quản lý</th>
-                  <th className="p-4 text-center">Thu ngân</th>
-                  <th className="p-4 text-center">Bếp trưởng</th>
-                  <th className="p-4 text-center">Phục vụ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {permissions.map((row) => (
-                  <tr key={row.key} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                    <td className="p-4">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-extrabold text-slate-850">{row.name}</span>
-                        <span className="text-[10px] text-slate-500 font-medium">{row.desc}</span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      <input
-                        type="checkbox"
-                        checked={row.roles.admin}
-                        readOnly
-                        className="w-3.5 h-3.5 rounded border-slate-350 text-slate-900 focus:ring-0 opacity-70 cursor-not-allowed"
-                      />
-                    </td>
-                    {[
-                      { key: "manager", label: "Quản lý" },
-                      { key: "cashier", label: "Thu ngân" },
-                      { key: "chef", label: "Bếp trưởng" },
-                      { key: "waiter", label: "Phục vụ" },
-                    ].map((roleObj) => {
-                      const rKey = roleObj.key as RoleKey;
-                      const hasPerm = row.roles[rKey];
-                      return (
-                        <td key={rKey} className="p-4 text-center">
-                          <button
-                            onClick={() => handleToggle(row.key, rKey)}
-                            className="inline-flex items-center justify-center p-1 rounded-lg text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
-                          >
-                            {hasPerm ? (
-                              <ToggleRight size={32} className="text-slate-900 transition-all" />
-                            ) : (
-                              <ToggleLeft size={32} className="text-slate-600 transition-all" />
-                            )}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
+      <button
+        onClick={handleSaveSettings}
+        className="flex items-center gap-2 px-5 py-3 rounded-xl
+        bg-blue-600 hover:bg-blue-700 text-white font-semibold
+        shadow-lg transition"
+      >
+        <Save size={18} />
+        Lưu cấu hình
+      </button>
     </div>
-  );
+
+    {savedMessage && (
+      <div
+        className="
+        bg-green-50
+        border
+        border-green-200
+        rounded-xl
+        p-4
+        text-green-700
+        font-semibold"
+      >
+        Đã lưu cấu hình thành công.
+      </div>
+    )}
+
+    {/* Statistic */}
+
+    <div className="grid grid-cols-4 gap-5">
+
+      <div className="bg-white rounded-2xl shadow p-5">
+        <div className="text-sm text-slate-500">
+          Quyền
+        </div>
+
+        <div className="text-3xl font-bold mt-2">
+          {permissions.length}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow p-5">
+        <div className="text-sm text-slate-500">
+          Vai trò
+        </div>
+
+        <div className="text-3xl font-bold mt-2">
+          5
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow p-5">
+        <div className="text-sm text-slate-500">
+          Admin
+        </div>
+
+        <div className="text-green-600 font-bold text-xl mt-2">
+          Full Access
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow p-5">
+        <div className="text-sm text-slate-500">
+          Trạng thái
+        </div>
+
+        <div className="text-blue-600 font-bold text-xl mt-2">
+          Hoạt động
+        </div>
+      </div>
+
+    </div>
+
+    {/* TABLE */}
+
+    <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+
+      <div className="p-6 border-b">
+
+        <h3 className="font-bold text-xl">
+          Ma trận phân quyền
+        </h3>
+
+        <p className="text-slate-500 text-sm mt-1">
+          Bật hoặc tắt quyền của từng vai trò.
+        </p>
+
+      </div>
+
+      <div className="overflow-auto">
+
+        <table className="w-full">
+
+          <thead className="sticky top-0 bg-slate-100">
+
+            <tr>
+
+              <th className="text-left px-6 py-4">
+                Quyền
+              </th>
+
+              <th className="text-center">
+
+                <span className="px-3 py-1 rounded-full bg-red-100 text-red-600 text-xs">
+                  ADMIN
+                </span>
+
+              </th>
+
+              <th className="text-center">
+
+                <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-600 text-xs">
+                  QUẢN LÝ
+                </span>
+
+              </th>
+
+              <th className="text-center">
+
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-600 text-xs">
+                  THU NGÂN
+                </span>
+
+              </th>
+
+              <th className="text-center">
+
+                <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-600 text-xs">
+                  BẾP
+                </span>
+
+              </th>
+
+              <th className="text-center">
+
+                <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-600 text-xs">
+                  PHỤC VỤ
+                </span>
+
+              </th>
+
+            </tr>
+
+          </thead>
+
+          <tbody>
+
+            {permissions.map((row) => (
+
+              <tr
+                key={row.key}
+                className="hover:bg-slate-50 transition border-b"
+              >
+
+                <td className="px-6 py-5">
+
+                  <div className="font-bold">
+                    {row.name}
+                  </div>
+
+                  <div className="text-sm text-slate-500">
+                    {row.desc}
+                  </div>
+
+                </td>
+
+                <td className="text-center">
+
+                  <input
+                    checked={row.roles.admin}
+                    readOnly
+                    type="checkbox"
+                    className="w-5 h-5"
+                  />
+
+                </td>
+
+                {(
+                  ["manager","cashier","chef","waiter"] as RoleKey[]
+                ).map((role)=>(
+
+                  <td
+                    key={role}
+                    className="text-center"
+                  >
+
+                    <button
+                      onClick={() =>
+                        handleToggle(row.key,role)
+                      }
+                      className="
+                      rounded-full
+                      hover:bg-slate-100
+                      p-2
+                      transition"
+                    >
+
+                      {row.roles[role] ?
+
+                      <ToggleRight
+                        size={34}
+                        className="text-green-500"
+                      />
+
+                      :
+
+                      <ToggleLeft
+                        size={34}
+                        className="text-slate-400"
+                      />
+
+                      }
+
+                    </button>
+
+                  </td>
+
+                ))}
+
+              </tr>
+
+            ))}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+
+  </div>
+);
 };
