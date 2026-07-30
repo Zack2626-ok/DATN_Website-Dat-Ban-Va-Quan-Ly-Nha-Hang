@@ -258,7 +258,7 @@ const MenuManagement: React.FC = () => {
                     {/* Price */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-bold text-slate-800">
-                        {item.price.toLocaleString("vi-VN")}₫
+                        {Number(item.price).toLocaleString("vi-VN")}₫
                       </span>
                     </td>
 
