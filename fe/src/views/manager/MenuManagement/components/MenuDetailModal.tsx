@@ -70,7 +70,7 @@ export const MenuDetailModal: React.FC<MenuDetailModalProps> = ({
                 Giá bán
               </label>
               <p className="text-base font-bold text-sky-600">
-                {menuItem.price.toLocaleString("vi-VN")}₫
+                {Number(menuItem.price).toLocaleString("vi-VN")}₫
               </p>
             </div>
           </div>

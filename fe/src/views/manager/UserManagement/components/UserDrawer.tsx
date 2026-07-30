@@ -314,14 +314,16 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
             <select
               value={formData.role_id}
               onChange={(e) => setFormData({ ...formData, role_id: Number(e.target.value) })}
-              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white transition-shadow"
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white transition-shadow shadow-2xs outline-none"
               disabled={loading}
             >
-              {roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.description}
-                </option>
-              ))}
+              {roles
+                .filter((role) => role.name !== "admin")
+                .map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.description}
+                  </option>
+                ))}
             </select>
           </div>
 

@@ -32,6 +32,13 @@ export const createUserHandler = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    // Guard: Prevent Manager from assigning/creating the admin role
+    const selectedRoles = await db.query("SELECT name FROM roles WHERE id = ?", [Number(role_id)]);
+    if (selectedRoles && selectedRoles.length > 0 && selectedRoles[0].name === "admin") {
+      sendError(res, "Không có quyền gán hoặc tạo vai trò Quản trị hệ thống!", 403);
+      return;
+    }
+
     // Check email uniqueness
     const existing = await db.findUserByEmail(email);
     if (existing) {
@@ -64,6 +71,25 @@ export const updateUserHandler = async (req: Request, res: Response): Promise<vo
     if (!id) {
       sendError(res, "ID nhân viên là bắt buộc", 400);
       return;
+    }
+
+    // Guard: Prevent modifying the System Admin account
+    const targetUsers = await db.query(
+      "SELECT u.*, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+      [Number(id)]
+    );
+    if (targetUsers && targetUsers.length > 0 && targetUsers[0].role_name === "admin") {
+      sendError(res, "Không có quyền sửa đổi tài khoản Quản trị hệ thống!", 403);
+      return;
+    }
+
+    // Guard: Prevent setting any user to Admin role
+    if (role_id) {
+      const selectedRoles = await db.query("SELECT name FROM roles WHERE id = ?", [Number(role_id)]);
+      if (selectedRoles && selectedRoles.length > 0 && selectedRoles[0].name === "admin") {
+        sendError(res, "Không có quyền nâng cấp vai trò lên Quản trị hệ thống!", 403);
+        return;
+      }
     }
 
     // Check email uniqueness if email is changed
@@ -117,6 +143,16 @@ export const deleteUserHandler = async (req: Request, res: Response): Promise<vo
 
     if (!id) {
       sendError(res, "ID nhân viên là bắt buộc", 400);
+      return;
+    }
+
+    // Guard: Prevent deleting the System Admin account
+    const targetUsers = await db.query(
+      "SELECT u.*, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+      [Number(id)]
+    );
+    if (targetUsers && targetUsers.length > 0 && targetUsers[0].role_name === "admin") {
+      sendError(res, "Không có quyền xóa tài khoản Quản trị hệ thống!", 403);
       return;
     }
 
