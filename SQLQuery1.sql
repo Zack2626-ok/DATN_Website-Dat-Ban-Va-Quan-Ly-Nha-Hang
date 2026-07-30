@@ -1015,7 +1015,7 @@ UPDATE vouchers SET used_count = 2 WHERE code = 'SAVE10';
 --  Mục đích: Demo báo cáo thống kê bên Quản lý — doanh thu theo ngày/tuần,
 --             theo phương thức thanh toán, món bán chạy, giờ cao điểm
 --
---  Thêm 20 orders hoàn thành trải từ 01/07 → 25/07
+--  Thêm 20 orders hoàn thành trải từ 01/07 → 12/7
 --  Xoay vòng đủ 5 phương thức: cash → momo → bank_transfer → card → vnpay
 -- ============================================================================
 
@@ -1037,7 +1037,7 @@ INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_lab
  (26, NULL, 5, 4, 'dine_in', NULL, 'completed', NULL,                  NULL, NULL, '2026-07-20 19:00:00', '2026-07-20 20:30:00'),
  (27, NULL, 1, 5, 'dine_in', NULL, 'completed', NULL,                  NULL, NULL, '2026-07-20 20:00:00', '2026-07-20 21:30:00'),
  (28, NULL, 2, 4, 'dine_in', NULL, 'completed', NULL,                  NULL, NULL, '2026-07-22 19:30:00', '2026-07-22 21:00:00'),
- (29, NULL, 3, 5, 'dine_in', NULL, 'completed', 'Áp voucher SAVE10',   NULL, NULL, '2026-07-22 12:00:00', '2026-07-22 13:30:00'),
+ (29, NULL, 3, 5, 'dine_in', NULL, 'completed', NULL,                  NULL, NULL, '2026-07-22 12:00:00', '2026-07-22 13:30:00'),
  (30, NULL, 4, 4, 'dine_in', NULL, 'completed', NULL,                  NULL, NULL, '2026-07-25 12:00:00', '2026-07-25 13:30:00'),
  (31, NULL, 5, 5, 'dine_in', NULL, 'completed', NULL,                  NULL, NULL, '2026-07-25 19:00:00', '2026-07-25 20:30:00');
 
@@ -1077,50 +1077,7 @@ INSERT INTO order_items (id, order_id, menu_item_id, quantity, unit_price, seat_
  (54, 20,  1, 2, 120000.00, NULL, 1, NULL,     'done', NULL, NULL),
  (55, 20,  4, 1, 160000.00, NULL, 1, NULL,     'done', NULL, NULL),
  (56, 20, 10, 2,  35000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 21 (12/07 tối): Cá hồi + Bò + Coca×2 = 440k
- (57, 21,  5, 1, 220000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (58, 21,  3, 1, 180000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (59, 21,  8, 2,  20000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 22 (15/07 tối): Lẩu hải sản + Chả giò + Pepsi×2 = 520k
- (60, 22,  7, 1, 400000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (61, 22,  2, 1,  80000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (62, 22,  9, 2,  20000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 23 (15/07 tối): Bò×2 + Trà đào×3 + Chè thái = 505k
- (63, 23,  3, 2, 180000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (64, 23, 10, 3,  35000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (65, 23, 12, 1,  40000.00, NULL, 2, NULL,     'done', NULL, NULL),
- -- Order 24 (18/07 trưa): Gà + Lẩu Thái + Coca×3 = 570k
- (66, 24,  4, 1, 160000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (67, 24,  6, 1, 350000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (68, 24,  8, 3,  20000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 25 (18/07 tối): Cá hồi + Gỏi + Kem Vani×2 = 430k
- (69, 25,  5, 1, 220000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (70, 25,  1, 1, 120000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (71, 25, 11, 2,  45000.00, NULL, 2, NULL,     'done', NULL, NULL),
- -- Order 26 (20/07 tối): Bò + Chả giò×2 + Pepsi×2 = 380k
- (72, 26,  3, 1, 180000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (73, 26,  2, 2,  80000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (74, 26,  9, 2,  20000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 27 (20/07 tối): Lẩu hải sản + Trà đào×2 = 470k
- (75, 27,  7, 1, 400000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (76, 27, 10, 2,  35000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 28 (22/07 tối): Gà + Bò + Coca×2 + Chè thái = 420k
- (77, 28,  4, 1, 160000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (78, 28,  3, 1, 180000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (79, 28,  8, 2,  20000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (80, 28, 12, 1,  40000.00, NULL, 2, NULL,     'done', NULL, NULL),
- -- Order 29 (22/07 trưa — SAVE10 10%): Lẩu Thái + Gỏi×2 + Pepsi×2 = 630k
- (81, 29,  6, 1, 350000.00, NULL, 1, 'Cay vừa','done', NULL, NULL),
- (82, 29,  1, 2, 120000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (83, 29,  9, 2,  20000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 30 (25/07 trưa): Cá hồi + Chả giò + Trà đào×3 = 405k
- (84, 30,  5, 1, 220000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (85, 30,  2, 1,  80000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (86, 30, 10, 3,  35000.00, NULL, 1, NULL,     'done', NULL, NULL),
- -- Order 31 (25/07 tối): Bò×2 + Kem Vani + Coca×3 = 465k
- (87, 31,  3, 2, 180000.00, NULL, 1, NULL,     'done', NULL, NULL),
- (88, 31, 11, 1,  45000.00, NULL, 2, NULL,     'done', NULL, NULL),
- (89, 31,  8, 3,  20000.00, NULL, 1, NULL,     'done', NULL, NULL);
+
 
 -- INVOICES bổ sung (IDs 8–27)
 -- Công thức: tax=10%, service=5%, total = subtotal - discount + tax + service + tips
