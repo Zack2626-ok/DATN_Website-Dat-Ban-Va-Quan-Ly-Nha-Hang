@@ -422,6 +422,16 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added order_items.chef_dismissed");
     }
 
+    const colsCreatedBy = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'created_by'`,
+    );
+    if (colsCreatedBy.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN created_by VARCHAR(50) DEFAULT NULL`);
+      await query(`UPDATE order_items oi JOIN orders o ON oi.order_id = o.id SET oi.created_by = o.created_by WHERE oi.created_by IS NULL`);
+      console.log("✅ Migration: added order_items.created_by");
+    }
+
     // Add employee_code if not exists
     const empCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -2332,11 +2342,23 @@ export const addResmanagerOrderItem = async (data: any): Promise<any> => {
       }
     }
 
+    let itemCreator = data.created_by;
+    if (!itemCreator && data.order_id) {
+      try {
+        const parentOrder = await query<any[]>(`SELECT created_by FROM orders WHERE id = ? LIMIT 1`, [data.order_id]);
+        if (parentOrder && parentOrder.length > 0) {
+          itemCreator = parentOrder[0].created_by;
+        }
+      } catch (err) {
+        console.warn("Failed to fetch parent order creator:", err);
+      }
+    }
+
     await query(`
       UPDATE order_items 
-      SET quantity = ?, kitchen_note = ? 
+      SET quantity = ?, kitchen_note = ?, created_by = COALESCE(?, created_by) 
       WHERE id = ?
-    `, [newQuantity, newNote, existing.id]);
+    `, [newQuantity, newNote, itemCreator || null, existing.id]);
 
     return { 
       id: existing.id, 
@@ -2348,9 +2370,21 @@ export const addResmanagerOrderItem = async (data: any): Promise<any> => {
     };
   }
 
+  let itemCreator = data.created_by;
+  if (!itemCreator && data.order_id) {
+    try {
+      const parentOrder = await query<any[]>(`SELECT created_by FROM orders WHERE id = ? LIMIT 1`, [data.order_id]);
+      if (parentOrder && parentOrder.length > 0) {
+        itemCreator = parentOrder[0].created_by;
+      }
+    } catch (err) {
+      console.warn("Failed to fetch parent order creator:", err);
+    }
+  }
+
   const result = await query(`
-    INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+    INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
   `, [
     data.order_id,
     data.menu_item_id,
@@ -2358,7 +2392,8 @@ export const addResmanagerOrderItem = async (data: any): Promise<any> => {
     data.unit_price,
     data.seat_number || null,
     data.course_number || 1,
-    data.kitchen_note || null
+    data.kitchen_note || null,
+    itemCreator || null
   ]);
   return { id: result.insertId, ...data, status: 'pending', merged: false };
 };

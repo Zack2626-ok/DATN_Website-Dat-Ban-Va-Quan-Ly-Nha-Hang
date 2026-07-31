@@ -27,6 +27,7 @@ export interface KdsItem {
   voidReason?: string;
   voidedAt?: string;
   chefDismissed?: number;
+  waiterName?: string;
 }
 
 export interface KdsVoidAlert {

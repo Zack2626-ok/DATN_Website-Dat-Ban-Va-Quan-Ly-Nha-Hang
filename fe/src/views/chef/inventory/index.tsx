@@ -25,7 +25,9 @@ import {
   RefreshCw,
   Info,
   UploadCloud,
-  FileText
+  FileText,
+  BarChart3,
+  Printer
 } from "lucide-react";
 
 // Types for local interactive states
@@ -112,6 +114,22 @@ export const InventoryControl: React.FC = () => {
   const [newIngForm, setNewIngForm] = useState({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
 
   const [showImportExportModal, setShowImportExportModal] = useState(false);
+
+  // Unified Import File Modal State
+  const [showImportFileModal, setShowImportFileModal] = useState(false);
+  const [importFileTarget, setImportFileTarget] = useState<"ingredients" | "categories" | "suppliers" | "transactions" | "stocktake" | "expiry">("ingredients");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFileError, setImportFileError] = useState<string | null>(null);
+
+  // New Expiry Batch manual modal state
+  const [showAddExpiryModal, setShowAddExpiryModal] = useState(false);
+  const [newExpiryForm, setNewExpiryForm] = useState({ 
+    ingredientName: reduxIngredients[0]?.name || "Trứng cá tầm", 
+    quantity: 10, 
+    unit: "kg", 
+    batchNo: "", 
+    expiryDate: "" 
+  });
   const [transactionForm, setTransactionForm] = useState({
     type: "import" as "import" | "export",
     ingredientId: reduxIngredients[0]?.id || "",
@@ -326,6 +344,228 @@ export const InventoryControl: React.FC = () => {
     setNewCategoryForm({ name: "", code: "", description: "" });
   };
 
+  const handlePostExpiryBatch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newExpiryForm.ingredientName || !newExpiryForm.batchNo || !newExpiryForm.expiryDate) return;
+    
+    setExpiryBatches([
+      ...expiryBatches,
+      {
+        id: `b_${Date.now()}`,
+        ingredientName: newExpiryForm.ingredientName,
+        quantity: Number(newExpiryForm.quantity),
+        unit: newExpiryForm.unit,
+        batchNo: newExpiryForm.batchNo,
+        expiryDate: newExpiryForm.expiryDate
+      }
+    ]);
+
+    // Log transaction
+    setTransactions([
+      {
+        id: `t_${Date.now()}`,
+        type: "import",
+        ingredientName: newExpiryForm.ingredientName,
+        quantity: Number(newExpiryForm.quantity),
+        unit: newExpiryForm.unit,
+        reasonOrSupplier: `Ghi nhận lô hàng mới (${newExpiryForm.batchNo})`,
+        timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
+      },
+      ...transactions
+    ]);
+
+    // Update ingredients stock
+    const ing = reduxIngredients.find(i => i.name === newExpiryForm.ingredientName);
+    if (ing) {
+      handleModifyStockDirect(ing.id as string, ing.stock + Number(newExpiryForm.quantity));
+    }
+
+    setShowAddExpiryModal(false);
+    toast.success("Thêm lô hàng mới thành công!");
+  };
+
+  const handlePostImportFile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importFile) return;
+
+    // Simulate import based on target
+    const fileName = importFile.name;
+    
+    switch (importFileTarget) {
+      case "ingredients":
+        // Mock import 2 ingredients
+        const id1 = `i_imp_${Date.now()}_1`;
+        const id2 = `i_imp_${Date.now()}_2`;
+        reduxIngredients.push(
+          { id: id1, name: "Thịt vịt bầu", stock: 15, unit: "kg", threshold: 3.0 },
+          { id: id2, name: "Nước cốt dừa", stock: 8, unit: "l", threshold: 2.0 }
+        );
+        toast.success(`Đã nhập thành công 2 nguyên liệu mới từ file ${fileName}`);
+        break;
+      case "categories":
+        setCategories([
+          ...categories,
+          { id: `c_imp_1`, name: "Đồ uống có cồn", code: "RUOUBIA", description: "Các loại rượu, bia nhập khẩu" },
+          { id: `c_imp_2`, name: "Rau thơm & gia vị tươi", code: "RAUTHOM", description: "Hành, tỏi, ớt, rau thơm các loại" }
+        ]);
+        toast.success(`Đã nhập thành công 2 danh mục mới từ file ${fileName}`);
+        break;
+      case "suppliers":
+        setSuppliers([
+          ...suppliers,
+          { id: `s_imp_1`, name: "Tổng kho Thực phẩm Hùng Cường", contact: "A. Cường", phone: "0967 888 999", address: "Hoàng Mai, Hà Nội", mainIngredients: "Thịt vịt, Nước cốt dừa" }
+        ]);
+        toast.success(`Đã nhập thành công nhà cung cấp mới từ file ${fileName}`);
+        break;
+      case "transactions":
+        setTransactions([
+          { id: `t_imp_1`, type: "import", ingredientName: "Cá hồi", quantity: 20, unit: "kg", reasonOrSupplier: `Nhập lô lớn từ file ${fileName}`, timestamp: new Date().toISOString().replace("T", " ").slice(0, 16) },
+          { id: `t_imp_2`, type: "export", ingredientName: "Thịt bò Mỹ", quantity: 3, unit: "kg", reasonOrSupplier: `Xuất hao hụt từ file ${fileName}`, timestamp: new Date().toISOString().replace("T", " ").slice(0, 16) },
+          ...transactions
+        ]);
+        toast.success(`Đã nạp thành công 2 giao dịch lịch sử từ file ${fileName}`);
+        break;
+      case "stocktake":
+        // Prefill actual quantities for stocktake values
+        const updatedStocktake: { [id: string]: string } = {};
+        reduxIngredients.forEach(ing => {
+          // Add a small discrepancy for mock demo
+          const randomDiscrepancy = Math.random() > 0.5 ? (Math.random() > 0.5 ? 1 : -1) * (ing.unit === "kg" ? 0.5 : 10) : 0;
+          updatedStocktake[ing.id] = Math.max(0, ing.stock + randomDiscrepancy).toFixed(ing.unit === "kg" ? 1 : 0);
+        });
+        setStocktakeValues(updatedStocktake);
+        toast.success(`Đã nhập dữ liệu thực tế kiểm kê từ file ${fileName}. Hãy nhấn Cân đối tồn kho để áp dụng.`);
+        break;
+      case "expiry":
+        setExpiryBatches([
+          ...expiryBatches,
+          { id: `b_imp_1`, ingredientName: "Cá hồi", quantity: 12.0, unit: "kg", batchNo: "LOT-CAH-IMP", expiryDate: new Date(Date.now() + 86400000 * 5).toISOString().split("T")[0] }
+        ]);
+        toast.success(`Đã nạp lô hàng hạn sử dụng mới từ file ${fileName}`);
+        break;
+    }
+
+    setShowImportFileModal(false);
+    setImportFile(null);
+  };
+
+  // Shared Export to Excel Helper
+  const handleExportExcelShared = (title: string, headers: string[], rows: string[][], filename: string) => {
+    toast.success("Đang xuất dữ liệu Excel...");
+    const htmlContent = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8"/>
+        <style>
+          body { font-family: 'Segoe UI', sans-serif; }
+          table { border-collapse: collapse; width: 100%; }
+          th { background-color: #1e3a8a; color: white; font-weight: bold; padding: 8px 12px; border: 1px solid #cbd5e1; }
+          td { padding: 8px 12px; border: 1px solid #e2e8f0; }
+          .title { font-size: 16pt; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr><td colspan="${headers.length}" class="title" style="border: none;">${title}</td></tr>
+          <tr><td colspan="${headers.length}" style="border: none; font-size: 9pt;">Ngày xuất: ${new Date().toLocaleString("vi-VN")}</td></tr>
+          <tr><td colspan="${headers.length}" style="border: none; height: 10px;"></td></tr>
+        </table>
+        <table>
+          <thead>
+            <tr>
+              ${headers.map(h => `<th>${h}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row, idx) => `
+              <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                ${row.map(cell => `<td>${cell}</td>`).join("")}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+    const blob = new Blob([htmlContent], { type: "application/vnd.ms-excel" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${filename}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success("Tải file Excel thành công!");
+  };
+
+  // Shared Export to PDF Helper
+  const handleExportPdfShared = (title: string, headers: string[], colX: number[], rows: string[][], filename: string) => {
+    toast.success("Đang xuất dữ liệu PDF...");
+    try {
+      const doc = new jsPDF();
+      doc.setProperties({ title });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text(removeVietnameseAccents(title), 105, 20, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`Ngay xuat: ${new Date().toLocaleDateString("vi-VN")} ${new Date().toLocaleTimeString("vi-VN")}`, 105, 27, { align: "center" });
+      doc.setDrawColor(200, 200, 200);
+      doc.line(15, 30, 195, 30);
+
+      // Draw Headers
+      doc.setFillColor(30, 58, 138);
+      doc.rect(15, 35, 180, 8, "F");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255);
+      headers.forEach((h, idx) => {
+        doc.text(removeVietnameseAccents(h), colX[idx], 40);
+      });
+
+      // Draw Rows
+      doc.setTextColor(15, 23, 42);
+      let y = 49;
+      rows.forEach((row, idx) => {
+        if (y > 275) {
+          doc.addPage();
+          doc.setFillColor(30, 58, 138);
+          doc.rect(15, 15, 180, 8, "F");
+          doc.setFontSize(8);
+          doc.setTextColor(255, 255, 255);
+          headers.forEach((h, hidx) => {
+            doc.text(removeVietnameseAccents(h), colX[hidx], 20);
+          });
+          y = 28;
+        }
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(15, y - 4, 180, 6, "F");
+        }
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(15, y + 2, 195, y + 2);
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(71, 85, 105);
+        
+        row.forEach((cell, cidx) => {
+          doc.text(removeVietnameseAccents(cell), colX[cidx], y);
+        });
+
+        y += 8;
+      });
+
+      doc.save(`${filename}.pdf`);
+      toast.success("Tải file PDF thành công!");
+    } catch (e) {
+      console.error(e);
+      toast.error("Không thể tạo file PDF");
+    }
+  };
+
   // Perform Stocktake adjustment
   const handleApplyStocktake = () => {
     let changed = false;
@@ -491,26 +731,6 @@ export const InventoryControl: React.FC = () => {
             Quản lý nguyên liệu, nhà cung cấp, nhập xuất kho, kiểm kê và theo dõi hạn sử dụng thời gian thực.
           </p>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => {
-              setImportExportMode("manual");
-              setFileError(null);
-              setSelectedFile(null);
-              setShowImportExportModal(true);
-            }}
-            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold tracking-wide flex items-center gap-1.5 shadow-sm hover:shadow active:scale-95 transition-all cursor-pointer"
-          >
-            <PlusCircle size={14} /> Nhập / Xuất kho
-          </button>
-          <button
-            onClick={() => setShowAddIngModal(true)}
-            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs rounded-xl text-xs font-bold tracking-wide flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
-          >
-            <Plus size={14} /> Thêm nguyên liệu
-          </button>
-        </div>
       </div>
 
       {/* 2. Top-level Alert Banners */}
@@ -571,6 +791,66 @@ export const InventoryControl: React.FC = () => {
         {/* Tab 1: Nguyên liệu */}
         {activeTab === "ingredients" && (
           <div className="flex flex-col gap-4">
+            {/* Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
+                <Layers size={14} className="text-[#0f62fe]" /> Thao tác dữ liệu nguyên liệu
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setShowAddIngModal(true)}
+                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Plus size={12} /> Nhập bằng tay
+                </button>
+                <button
+                  onClick={() => {
+                    setImportFileTarget("ingredients");
+                    setImportFile(null);
+                    setImportFileError(null);
+                    setShowImportFileModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Mã số", "Tên nguyên liệu", "Danh mục", "Tồn kho", "Đơn vị", "Ngưỡng an toàn"];
+                    const colX = [15, 30, 85, 120, 140, 155];
+                    const rows = reduxIngredients.map(i => [
+                      String(i.id),
+                      i.name,
+                      getIngredientCategory(i.name),
+                      i.stock.toString(),
+                      i.unit,
+                      i.threshold.toString()
+                    ]);
+                    handleExportPdfShared("DANH SACH NGUYEN LIEU KHO HANG", headers, colX, rows, `Danh_Sach_Nguyen_Lieu_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileText size={12} className="text-red-500" /> Xuất PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Mã số", "Tên nguyên liệu", "Danh mục", "Tồn kho", "Đơn vị", "Ngưỡng an toàn"];
+                    const rows = reduxIngredients.map(i => [
+                      String(i.id),
+                      i.name,
+                      getIngredientCategory(i.name),
+                      i.stock.toString(),
+                      i.unit,
+                      i.threshold.toString()
+                    ]);
+                    handleExportExcelShared("DANH SÁCH NGUYÊN LIỆU KHO HÀNG", headers, rows, `Danh_Sach_Nguyen_Lieu_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
+                </button>
+              </div>
+            </div>
             {/* Search & Filters */}
             <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/60">
               <div className="relative w-full md:w-80">
@@ -716,7 +996,67 @@ export const InventoryControl: React.FC = () => {
 
         {/* Tab 2: Danh mục & Nhà cung cấp */}
         {activeTab === "categories_suppliers" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="flex flex-col gap-5">
+            {/* Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
+                <Truck size={14} className="text-[#0f62fe]" /> Thao tác danh mục & Nhà cung cấp
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setShowAddSupplierModal(true)}
+                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-655 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Plus size={12} /> Thêm nhà cung cấp
+                </button>
+                <button
+                  onClick={() => {
+                    setImportFileTarget("suppliers");
+                    setImportFile(null);
+                    setImportFileError(null);
+                    setShowImportFileModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Ten nha cung cap", "Nguoi lien he", "SDT", "Dia chi", "Nguyen lieu cung cap"];
+                    const colX = [15, 60, 95, 125, 165];
+                    const rows = suppliers.map(s => [
+                      s.name,
+                      s.contact,
+                      s.phone,
+                      s.address,
+                      s.mainIngredients
+                    ]);
+                    handleExportPdfShared("DANH SACH NHA CUNG CAP", headers, colX, rows, `Danh_Sach_Nha_Cung_Cap_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileText size={12} className="text-red-500" /> Xuất PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Tên nhà cung cấp", "Người liên hệ", "Số điện thoại", "Địa chỉ", "Nguyên liệu chính"];
+                    const rows = suppliers.map(s => [
+                      s.name,
+                      s.contact,
+                      s.phone,
+                      s.address,
+                      s.mainIngredients
+                    ]);
+                    handleExportExcelShared("DANH SÁCH NHÀ CUNG CẤP", headers, rows, `Danh_Sach_Nha_Cung_Cap_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
             {/* Left Box: Danh mục nguyên liệu */}
             <div className="flex flex-col gap-3">
@@ -802,24 +1142,76 @@ export const InventoryControl: React.FC = () => {
             </div>
 
           </div>
-        )}
+        </div>
+      )}
 
         {/* Tab 3: Nhập / Xuất kho & Lịch sử */}
         {activeTab === "import_export" && (
           <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Lịch sử giao dịch nhập/xuất kho</span>
-              <button
-                onClick={() => {
-                  setImportExportMode("manual");
-                  setFileError(null);
-                  setSelectedFile(null);
-                  setShowImportExportModal(true);
-                }}
-                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center gap-1 shadow-sm cursor-pointer"
-              >
-                <Plus size={10} /> Thực hiện Nhập/Xuất mới
-              </button>
+            {/* Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
+                <History size={14} className="text-[#0f62fe]" /> Thao tác Nhập / Xuất kho
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    setImportExportMode("manual");
+                    setFileError(null);
+                    setSelectedFile(null);
+                    setShowImportExportModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Plus size={12} /> Thực hiện Nhập/Xuất mới
+                </button>
+                <button
+                  onClick={() => {
+                    setImportFileTarget("transactions");
+                    setImportFile(null);
+                    setImportFileError(null);
+                    setShowImportFileModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Thoi gian", "Loai", "Nguyen lieu", "So luong", "Don vi", "Chi tiet / NCC"];
+                    const colX = [15, 50, 75, 110, 130, 145];
+                    const rows = transactions.map(t => [
+                      t.timestamp,
+                      t.type === "import" ? "NHAP KHO" : t.type === "export" ? "XUAT KHO" : "DIEU CHINH",
+                      t.ingredientName,
+                      t.quantity.toString(),
+                      t.unit,
+                      t.reasonOrSupplier
+                    ]);
+                    handleExportPdfShared("LICH SU GIAO DICH NHAP XUAT KHO", headers, colX, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileText size={12} className="text-red-500" /> Xuất PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Chi tiết / Nhà cung cấp"];
+                    const rows = transactions.map(t => [
+                      t.timestamp,
+                      t.type === "import" ? "NHẬP KHO" : t.type === "export" ? "XUẤT KHO" : "ĐIỀU CHỈNH",
+                      t.ingredientName,
+                      t.quantity.toString(),
+                      t.unit,
+                      t.reasonOrSupplier
+                    ]);
+                    handleExportExcelShared("LỊCH SỬ GIAO DỊCH NHẬP XUẤT KHO", headers, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
@@ -876,17 +1268,75 @@ export const InventoryControl: React.FC = () => {
         {/* Tab 4: Kiểm kê */}
         {activeTab === "stocktake" && (
           <div className="flex flex-col gap-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <div>
-                <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
-                <p className="text-[10px] text-slate-400 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
+            {/* Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
+                <ClipboardCheck size={14} className="text-[#0f62fe]" /> Thao tác Kiểm kê kho
               </div>
-              <button
-                onClick={handleApplyStocktake}
-                className="px-3.5 py-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-750 text-white rounded-xl text-xs font-black tracking-wide flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer transition-all"
-              >
-                <ClipboardCheck size={14} /> Áp dụng cân đối tồn kho
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleApplyStocktake}
+                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <ClipboardCheck size={12} /> Áp dụng cân đối tồn kho
+                </button>
+                <button
+                  onClick={() => {
+                    setImportFileTarget("stocktake");
+                    setImportFile(null);
+                    setImportFileError(null);
+                    setShowImportFileModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Ten nguyen lieu", "Ton he thong", "Thuc te kiem dem", "Don vi", "Chenh lech"];
+                    const colX = [15, 60, 100, 135, 150];
+                    const rows = reduxIngredients.map(ing => {
+                      const actualStr = stocktakeValues[ing.id];
+                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
+                      const diff = actualQty - ing.stock;
+                      const diffText = diff === 0 ? "Khop kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
+                      return [
+                        ing.name,
+                        ing.stock.toString(),
+                        actualQty.toString(),
+                        ing.unit,
+                        diffText
+                      ];
+                    });
+                    handleExportPdfShared("PHIEU KIEM KE CAN DOI TON KHO", headers, colX, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileText size={12} className="text-red-500" /> Xuất PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Tên nguyên liệu", "Tồn hệ thống", "Thực tế kiểm đếm", "Đơn vị", "Chênh lệch"];
+                    const rows = reduxIngredients.map(ing => {
+                      const actualStr = stocktakeValues[ing.id];
+                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
+                      const diff = actualQty - ing.stock;
+                      const diffText = diff === 0 ? "Khớp kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
+                      return [
+                        ing.name,
+                        ing.stock.toString(),
+                        actualQty.toString(),
+                        ing.unit,
+                        diffText
+                      ];
+                    });
+                    handleExportExcelShared("PHIẾU KIỂM KÊ CÂN ĐỐI TỒN KHO", headers, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
@@ -949,9 +1399,74 @@ export const InventoryControl: React.FC = () => {
         {/* Tab 5: Hạn sử dụng */}
         {activeTab === "expiry" && (
           <div className="flex flex-col gap-4">
-            <div className="pb-2 border-b border-slate-100">
-              <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh sách Lô hàng & Theo dõi Hạn sử dụng</span>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">Cảnh báo nguyên liệu đã hết hạn hoặc sắp hết hạn cần ưu tiên tiêu thụ.</p>
+            {/* Action Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
+                <CalendarRange size={14} className="text-[#0f62fe]" /> Thao tác Quản lý hạn sử dụng
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => {
+                    setNewExpiryForm({
+                      ingredientName: reduxIngredients[0]?.name || "Trứng cá tầm",
+                      quantity: 10,
+                      unit: reduxIngredients[0]?.unit || "kg",
+                      batchNo: `LOT-${(reduxIngredients[0]?.name || "TCT").slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+                      expiryDate: new Date(Date.now() + 86400000 * 7).toISOString().split("T")[0]
+                    });
+                    setShowAddExpiryModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Plus size={12} /> Thêm lô hàng mới
+                </button>
+                <button
+                  onClick={() => {
+                    setImportFileTarget("expiry");
+                    setImportFile(null);
+                    setImportFileError(null);
+                    setShowImportFileModal(true);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["So lo (Batch No)", "Ten nguyen lieu", "So luong", "Don vi", "Ngay het han", "Tinh trang"];
+                    const colX = [15, 60, 105, 125, 140, 170];
+                    const rows = expiryBatches.map(b => [
+                      b.batchNo,
+                      b.ingredientName,
+                      b.quantity.toString(),
+                      b.unit,
+                      b.expiryDate,
+                      getExpiryLabel(b.expiryDate).text
+                    ]);
+                    handleExportPdfShared("DANH SACH LO HANG - THEO DOI HAN SU DUNG", headers, colX, rows, `Theo_Doi_Han_Su_Dung_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileText size={12} className="text-red-500" /> Xuất PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Số lô (Batch No)", "Tên nguyên liệu", "Số lượng", "Đơn vị", "Ngày hết hạn", "Tình trạng hạn"];
+                    const rows = expiryBatches.map(b => [
+                      b.batchNo,
+                      b.ingredientName,
+                      b.quantity.toString(),
+                      b.unit,
+                      b.expiryDate,
+                      getExpiryLabel(b.expiryDate).text
+                    ]);
+                    handleExportExcelShared("DANH SÁCH LÔ HÀNG - THEO DÕI HẠN SỬ DỤNG", headers, rows, `Theo_Doi_Han_Su_Dung_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
@@ -1160,6 +1675,179 @@ export const InventoryControl: React.FC = () => {
       </div>
 
       {/* MODALS */}
+
+      {/* Modal E: Nhập từ File chung (Import File Modal) */}
+      {showImportFileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowImportFileModal(false)}
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">
+              Nhập dữ liệu bằng File (Excel / PDF)
+            </h3>
+            <form onSubmit={handlePostImportFile} className="flex flex-col gap-4 text-xs">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] font-semibold text-blue-700 leading-relaxed">
+                ℹ️ Bạn đang tải dữ liệu lên danh mục: <strong className="uppercase">{
+                  importFileTarget === "ingredients" ? "Nguyên liệu" :
+                  importFileTarget === "categories" ? "Danh mục" :
+                  importFileTarget === "suppliers" ? "Nhà cung cấp" :
+                  importFileTarget === "transactions" ? "Lịch sử Nhập/Xuất" :
+                  importFileTarget === "stocktake" ? "Dữ liệu kiểm kê" : "Theo dõi hạn dùng"
+                }</strong>.
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100/50 hover:border-slate-400 cursor-pointer transition-all gap-1.5 text-center">
+                  <UploadCloud size={24} className="text-slate-400" />
+                  <span className="font-extrabold text-slate-700">
+                    {importFile ? importFile.name : "Chọn file tài liệu từ thiết bị"}
+                  </span>
+                  <span className="text-[9px] text-slate-450 font-semibold">Chấp nhận .pdf, .xlsx, .xls</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const ext = file.name.split('.').pop()?.toLowerCase();
+                        if (!ext || !["pdf", "xlsx", "xls"].includes(ext)) {
+                          setImportFileError("Định dạng file không hợp lệ! Vui lòng chọn file .pdf hoặc excel (.xlsx, .xls)");
+                          setImportFile(null);
+                        } else {
+                          setImportFileError(null);
+                          setImportFile(file);
+                        }
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              {importFileError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-600 font-extrabold rounded-xl flex items-center gap-1.5">
+                  <span>⚠️ Lỗi:</span>
+                  <span>{importFileError}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowImportFileModal(false)}
+                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={!importFile || !!importFileError}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Tiến hành Nhập kho
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal F: Thêm Lô hàng mới (Add Expiry Batch Modal) */}
+      {showAddExpiryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowAddExpiryModal(false)}
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm Lô hàng Hạn sử dụng mới</h3>
+            <form onSubmit={handlePostExpiryBatch} className="flex flex-col gap-4 text-xs">
+              
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Tên nguyên liệu</label>
+                <select
+                  value={newExpiryForm.ingredientName}
+                  onChange={(e) => {
+                    const ing = reduxIngredients.find(i => i.name === e.target.value);
+                    setNewExpiryForm({
+                      ...newExpiryForm,
+                      ingredientName: e.target.value,
+                      unit: ing?.unit || "kg"
+                    });
+                  }}
+                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
+                >
+                  {reduxIngredients.map((i) => (
+                    <option key={i.id} value={i.name}>{i.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Mã Lô hàng (Batch No)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ví dụ: LOT-RAU-01"
+                    value={newExpiryForm.batchNo}
+                    onChange={(e) => setNewExpiryForm({ ...newExpiryForm, batchNo: e.target.value.toUpperCase() })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Số lượng nhập</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      required
+                      value={newExpiryForm.quantity}
+                      onChange={(e) => setNewExpiryForm({ ...newExpiryForm, quantity: Number(e.target.value) })}
+                      className="px-3 py-2 w-full border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                    <span className="text-[10px] font-black text-slate-400">{newExpiryForm.unit}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Ngày hết hạn</label>
+                <input
+                  type="date"
+                  required
+                  value={newExpiryForm.expiryDate}
+                  onChange={(e) => setNewExpiryForm({ ...newExpiryForm, expiryDate: e.target.value })}
+                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAddExpiryModal(false)}
+                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                >
+                  Xác nhận
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal A: Thêm nguyên liệu mới */}
       {showAddIngModal && (

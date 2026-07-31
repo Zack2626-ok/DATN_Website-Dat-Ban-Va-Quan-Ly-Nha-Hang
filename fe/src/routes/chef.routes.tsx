@@ -1,6 +1,6 @@
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
-import { ChefLayout, ChefKitchenQueue, InventoryControl } from "../views/chef";
+import { ChefLayout, ChefKitchenQueue, InventoryControl, ChefCookingHistory } from "../views/chef";
 
 export const ChefRoutes = () => (
   <Route
@@ -14,5 +14,6 @@ export const ChefRoutes = () => (
     <Route index element={<Navigate to="/chef/kds" replace />} />
     <Route path="kds" element={<ChefKitchenQueue />} />
     <Route path="inventory" element={<InventoryControl />} />
+    <Route path="cooking-history" element={<ChefCookingHistory />} />
   </Route>
 );

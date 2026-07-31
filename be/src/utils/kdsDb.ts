@@ -17,6 +17,7 @@ export interface KdsItem {
   tableName?: string;
   areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
+  waiterName?: string;
 }
 
 export interface KdsVoidAlert {
@@ -84,13 +85,16 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        o.order_type   AS orderType,
        oi.void_reason  AS voidReason,
        oi.voided_at    AS voidedAt,
-       oi.chef_dismissed AS chefDismissed
+       oi.chef_dismissed AS chefDismissed,
+       u.full_name    AS waiterName
      FROM order_items oi
      JOIN orders o      ON oi.order_id     = o.id
      JOIN menu_items m  ON oi.menu_item_id = m.id
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
-     WHERE (oi.status IN ('waiting_kitchen', 'cooking', 'done') 
+     LEFT JOIN users u  ON oi.created_by   = u.id
+     WHERE (oi.status IN ('waiting_kitchen', 'cooking') 
+        OR (oi.status = 'done' AND oi.updated_at >= NOW() - INTERVAL 3 MINUTE)
         OR (oi.status IN ('cancelled', 'voided') AND oi.chef_dismissed = 0))
        AND oi.created_at >= NOW() - INTERVAL 6 HOUR
      ORDER BY oi.created_at ASC`
@@ -117,7 +121,8 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
       orderType: row.orderType || "dine_in",
       voidReason: row.voidReason || undefined,
       voidedAt: row.voidedAt || undefined,
-      chefDismissed: row.chefDismissed !== undefined ? Number(row.chefDismissed) : 0
+      chefDismissed: row.chefDismissed !== undefined ? Number(row.chefDismissed) : 0,
+      waiterName: row.waiterName || "Phục vụ"
     };
   }).filter((item) => {
     if (station && station !== "all" && item.kitchenStation !== station) return false;
@@ -233,4 +238,72 @@ export const getKdsVoidAlertsFromDb = async (): Promise<KdsVoidAlert[]> => {
     (alert) => new Date(alert.voidedAt).getTime() > fiveMinutesAgo
   );
   return inMemoryVoidAlerts;
+};
+
+/**
+ * Fetch KDS history of completed and returned items
+ */
+export const getKdsHistoryFromDb = async (date?: string): Promise<any[]> => {
+  let dateFilter = "";
+  const params: any[] = [];
+  
+  if (date) {
+    dateFilter = "AND DATE(oi.created_at) = ?";
+    params.push(date);
+  } else {
+    dateFilter = "AND oi.created_at >= NOW() - INTERVAL 1 DAY";
+  }
+
+  const rows = await query<any[]>(
+    `SELECT
+       oi.id,
+       oi.order_id    AS orderId,
+       oi.menu_item_id AS menuItemId,
+       m.name,
+       oi.quantity,
+       oi.unit_price  AS unitPrice,
+       oi.status,
+       oi.created_at  AS createdAt,
+       oi.updated_at  AS updatedAt,
+       t.name         AS tableName,
+       ta.name        AS areaName,
+       o.order_type   AS orderType,
+       oi.void_reason  AS voidReason,
+       oi.voided_at    AS voidedAt,
+       oi.kitchen_note AS kitchenNote,
+       u.full_name    AS waiterName
+     FROM order_items oi
+     JOIN orders o      ON oi.order_id     = o.id
+     JOIN menu_items m  ON oi.menu_item_id = m.id
+     LEFT JOIN tables t ON o.table_id      = t.id
+     LEFT JOIN table_areas ta ON t.area_id = ta.id
+     LEFT JOIN users u  ON oi.created_by    = u.id
+     WHERE oi.status IN ('done', 'served', 'delivered', 'cancelled', 'voided')
+       ${dateFilter}
+     ORDER BY oi.created_at DESC`,
+    params
+  );
+
+  return rows.map((row) => {
+    const kitchenStation = getKitchenStationFromName(row.name);
+    return {
+      id: row.id,
+      orderId: row.orderId,
+      menuItemId: row.menuItemId,
+      name: row.name,
+      kitchenStation,
+      quantity: Number(row.quantity),
+      unitPrice: Number(row.unitPrice),
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      tableName: row.tableName || "Mang về",
+      areaName: row.areaName || undefined,
+      orderType: row.orderType || "dine_in",
+      voidReason: row.voidReason || undefined,
+      voidedAt: row.voidedAt || undefined,
+      kitchenNote: row.kitchenNote || undefined,
+      waiterName: row.waiterName || "Phục vụ"
+    };
+  });
 };
