@@ -15,7 +15,6 @@ import {
   TrendingDown,
   BadgeCheck,
   Building2,
-  Ticket,
   CircleDollarSign,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
