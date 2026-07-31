@@ -35,6 +35,19 @@ export const CRMManagement: React.FC = () => {
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState<string>("");
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeTab]);
+
+  const [reactivateModal, setReactivateModal] = useState<{
+    isOpen: boolean;
+    voucher: Voucher | null;
+    expiredAt: string;
+  }>({ isOpen: false, voucher: null, expiredAt: "" });
+
   // Modals
   const [customerModal, setCustomerModal] = useState<{
     isOpen: boolean;
@@ -248,17 +261,42 @@ export const CRMManagement: React.FC = () => {
 
   const toggleVoucherActive = async (voucher: Voucher) => {
     try {
-      const targetState = voucher.is_active === 1 ? 0 : 1;
-      await crmService.updateVoucher(voucher.id, {
-        code: voucher.code,
-        type: voucher.type,
-        value: voucher.value,
-        is_active: targetState,
-      });
-      toast.success("Đổi trạng thái voucher thành công");
-      loadData();
+      if (voucher.is_active === 1) {
+        // Tắt kích hoạt - Dùng toggle PATCH api để không ảnh hưởng đến hạn dùng & đơn tối thiểu trong db
+        await crmService.toggleVoucher(voucher.id, 0);
+        toast.success("Đã tắt kích hoạt voucher");
+        loadData();
+      } else {
+        // Bật kích hoạt - Hiển thị popup nhỏ đặt lại hạn dùng
+        setReactivateModal({
+          isOpen: true,
+          voucher,
+          expiredAt: voucher.expired_at ? new Date(voucher.expired_at).toISOString().slice(0, 16) : "",
+        });
+      }
     } catch (err: any) {
       toast.error("Lỗi thay đổi trạng thái");
+    }
+  };
+
+  const handleConfirmReactivate = async () => {
+    if (!reactivateModal.voucher) return;
+    try {
+      const v = reactivateModal.voucher;
+      await crmService.updateVoucher(v.id, {
+        code: v.code,
+        type: v.type,
+        value: v.value,
+        min_order: v.min_order,
+        max_uses: v.max_uses,
+        expired_at: reactivateModal.expiredAt || null,
+        is_active: 1,
+      });
+      toast.success("Kích hoạt lại voucher thành công");
+      setReactivateModal({ isOpen: false, voucher: null, expiredAt: "" });
+      loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi kích hoạt voucher");
     }
   };
 
@@ -377,6 +415,21 @@ export const CRMManagement: React.FC = () => {
         (p.description && p.description.toLowerCase().includes(term))
     );
   }, [promotions, searchTerm]);
+
+  const paginatedCustomers = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredCustomers.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredCustomers, currentPage]);
+
+  const paginatedVouchers = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredVouchers.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredVouchers, currentPage]);
+
+  const paginatedPromotions = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredPromotions.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredPromotions, currentPage]);
 
   // Stylized tier badges helper
   const renderTierBadge = (tier: string) => {
@@ -533,14 +586,14 @@ export const CRMManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-admin-border">
-                  {filteredCustomers.length === 0 ? (
+                  {paginatedCustomers.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-16 text-center text-admin-text-sub">
                         Không tìm thấy khách hàng nào.
                       </td>
                     </tr>
                   ) : (
-                    filteredCustomers.map((c) => (
+                    paginatedCustomers.map((c) => (
                       <tr key={c.id} className="hover:bg-admin-primary-light/10 transition-colors">
                         <td className="px-6 py-4 font-bold text-admin-text-main">{c.name}</td>
                         <td className="px-6 py-4 text-admin-text-sub font-mono">{c.phone || "—"}</td>
@@ -579,6 +632,67 @@ export const CRMManagement: React.FC = () => {
                   )}
                 </tbody>
               </table>
+
+              {filteredCustomers.length > 0 && Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE) > 1 && (
+                <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4">
+                  <div className="flex flex-1 justify-between sm:hidden">
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE), p + 1))}
+                      disabled={currentPage === Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE)}
+                      className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Sau
+                    </button>
+                  </div>
+                  <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs text-slate-500">
+                        Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
+                        <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredCustomers.length)}</span> trong tổng số{" "}
+                        <span className="font-semibold text-slate-700">{filteredCustomers.length}</span> khách hàng
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                        >
+                          Trước
+                        </button>
+                        {Array.from({ length: Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE) }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page)}
+                            className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                              currentPage === page
+                                ? "z-10 bg-blue-600 text-white"
+                                : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE), p + 1))}
+                          disabled={currentPage === Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE)}
+                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                        >
+                          Sau
+                        </button>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -598,14 +712,14 @@ export const CRMManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-admin-border">
-                  {filteredVouchers.length === 0 ? (
+                  {paginatedVouchers.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-16 text-center text-admin-text-sub">
                         Không có voucher nào.
                       </td>
                     </tr>
                   ) : (
-                    filteredVouchers.map((v) => (
+                    paginatedVouchers.map((v) => (
                       <tr key={v.id} className="hover:bg-admin-primary-light/10 transition-colors">
                         <td className="px-6 py-4 font-black font-mono text-emerald-700">{v.code}</td>
                         <td className="px-6 py-4">
@@ -668,6 +782,67 @@ export const CRMManagement: React.FC = () => {
                   )}
                 </tbody>
               </table>
+
+              {filteredVouchers.length > 0 && Math.ceil(filteredVouchers.length / ITEMS_PER_PAGE) > 1 && (
+                <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4">
+                  <div className="flex flex-1 justify-between sm:hidden">
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredVouchers.length / ITEMS_PER_PAGE), p + 1))}
+                      disabled={currentPage === Math.ceil(filteredVouchers.length / ITEMS_PER_PAGE)}
+                      className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Sau
+                    </button>
+                  </div>
+                  <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs text-slate-500">
+                        Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
+                        <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredVouchers.length)}</span> trong tổng số{" "}
+                        <span className="font-semibold text-slate-700">{filteredVouchers.length}</span> voucher
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                        >
+                          Trước
+                        </button>
+                        {Array.from({ length: Math.ceil(filteredVouchers.length / ITEMS_PER_PAGE) }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page)}
+                            className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                              currentPage === page
+                                ? "z-10 bg-blue-600 text-white"
+                                : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredVouchers.length / ITEMS_PER_PAGE), p + 1))}
+                          disabled={currentPage === Math.ceil(filteredVouchers.length / ITEMS_PER_PAGE)}
+                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                        >
+                          Sau
+                        </button>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -687,14 +862,14 @@ export const CRMManagement: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-admin-border">
-                  {filteredPromotions.length === 0 ? (
+                  {paginatedPromotions.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-16 text-center text-admin-text-sub">
                         Không có chương trình khuyến mãi nào.
                       </td>
                     </tr>
                   ) : (
-                    filteredPromotions.map((p) => {
+                    paginatedPromotions.map((p) => {
                       const now = new Date();
                       const start = new Date(p.start_date);
                       const end = new Date(p.end_date);
@@ -764,9 +939,125 @@ export const CRMManagement: React.FC = () => {
                   )}
                 </tbody>
               </table>
+
+              {filteredPromotions.length > 0 && Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE) > 1 && (
+                <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4">
+                  <div className="flex flex-1 justify-between sm:hidden">
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Trước
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE), p + 1))}
+                      disabled={currentPage === Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE)}
+                      className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Sau
+                    </button>
+                  </div>
+                  <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs text-slate-500">
+                        Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
+                        <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredPromotions.length)}</span> trong tổng số{" "}
+                        <span className="font-semibold text-slate-700">{filteredPromotions.length}</span> khuyến mãi
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                        >
+                          Trước
+                        </button>
+                        {Array.from({ length: Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE) }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => setCurrentPage(page)}
+                            className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                              currentPage === page
+                                ? "z-10 bg-blue-600 text-white"
+                                : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE), p + 1))}
+                          disabled={currentPage === Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE)}
+                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                        >
+                          Sau
+                        </button>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>
+      )}
+
+      {/* ============================================================================
+          REACTIVATE VOUCHER MODAL
+          ============================================================================ */}
+      {reactivateModal.isOpen && reactivateModal.voucher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden border border-gray-100 animate-scale-up">
+            <div className="p-5 border-b border-admin-border flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Ticket className="text-emerald-600" size={18} />
+                Kích hoạt lại Voucher
+              </h3>
+              <button
+                onClick={() => setReactivateModal({ isOpen: false, voucher: null, expiredAt: "" })}
+                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-gray-500">
+                Voucher <span className="font-bold text-emerald-700 font-mono">#{reactivateModal.voucher.code}</span> đang được kích hoạt lại. Vui lòng thiết lập hạn sử dụng mới cho voucher này:
+              </p>
+              
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Hạn sử dụng</label>
+                <input
+                  type="datetime-local"
+                  value={reactivateModal.expiredAt}
+                  onChange={(e) => setReactivateModal({ ...reactivateModal, expiredAt: e.target.value })}
+                  className="w-full px-3 py-2 border border-admin-border rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <span className="text-[10px] text-gray-400 block mt-1">Để trống nếu muốn áp dụng không thời hạn.</span>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReactivateModal({ isOpen: false, voucher: null, expiredAt: "" })}
+                  className="px-4 py-2 border border-admin-border rounded-lg text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReactivate}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
+                >
+                  Kích hoạt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ============================================================================

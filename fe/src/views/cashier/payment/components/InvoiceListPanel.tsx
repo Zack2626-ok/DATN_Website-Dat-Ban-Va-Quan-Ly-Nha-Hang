@@ -17,7 +17,6 @@ const STATUS_OPTIONS: { value: InvoiceStatus | "all"; label: string }[] = [
   { value: "all", label: "Tất cả" },
   { value: "unpaid", label: "Chưa thanh toán" },
   { value: "pending", label: "Chờ thanh toán" },
-  { value: "paid", label: "Đã thanh toán" },
   { value: "cancelled", label: "Đã hủy" },
 ];
 
@@ -40,10 +39,10 @@ const timeAgo = (dateStr: string) => {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "Vừa xong";
-  if (mins < 60) return `${mins}p`;
+  if (mins < 60) return `${mins} phút trước`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
+  if (hrs < 24) return `${hrs} giờ trước`;
+  return `${Math.floor(hrs / 24)} ngày trước`;
 };
 
 export const InvoiceListPanel: React.FC<Props> = ({

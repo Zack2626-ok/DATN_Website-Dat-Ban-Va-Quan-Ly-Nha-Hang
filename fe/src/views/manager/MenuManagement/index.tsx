@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Plus, Edit, Trash2, Search, Eye, RefreshCw, Layers } from "lucide-react";
 import toast from "react-hot-toast";
 import { menuService } from "../../../services/menuService";
 import { MenuDrawer } from "./components/MenuDrawer";
 import { MenuDetailModal } from "./components/MenuDetailModal";
+import { RecipeModal } from "./components/RecipeModal";
 import type { MenuItem, Category } from "../../../interfaces";
 
 /**
@@ -16,10 +17,15 @@ const MenuManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [viewingItem, setViewingItem] = useState<MenuItem | null>(null);
+  const [recipeItem, setRecipeItem] = useState<MenuItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   // Fetch data from backend service
   const fetchData = async () => {
@@ -43,6 +49,11 @@ const MenuManagement: React.FC = () => {
     fetchData();
   }, []);
 
+  // Reset page when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory]);
+
   // Filter items: search term, selected category, and absolutely exclude soft-deleted items
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -51,6 +62,13 @@ const MenuManagement: React.FC = () => {
     const isNotDeleted = !item.is_deleted;
     return matchesSearch && matchesCategory && isNotDeleted;
   });
+
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredItems.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredItems, currentPage]);
 
   // Handle create or update menu item
   const handleSave = async (data: Omit<MenuItem, "id" | "created_at" | "updated_at">) => {
@@ -216,7 +234,7 @@ const MenuManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredItems.map((item) => (
+                {paginatedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-sky-50/50/50 transition-colors">
                     {/* Image & Name */}
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -258,7 +276,7 @@ const MenuManagement: React.FC = () => {
                     {/* Price */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-bold text-slate-800">
-                        {item.price.toLocaleString("vi-VN")}₫
+                        {Number(item.price).toLocaleString("vi-VN")}₫
                       </span>
                     </td>
 
@@ -309,6 +327,16 @@ const MenuManagement: React.FC = () => {
                         </button>
                         <button
                           onClick={() => {
+                            setRecipeItem(item);
+                            setIsRecipeModalOpen(true);
+                          }}
+                          className="p-2 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors focus:outline-none"
+                          title="Định lượng món ăn"
+                        >
+                          <Layers size={18} />
+                        </button>
+                        <button
+                          onClick={() => {
                             setEditingItem(item);
                             setIsDrawerOpen(true);
                           }}
@@ -330,6 +358,68 @@ const MenuManagement: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {!loading && filteredItems.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4">
+            <div className="flex flex-1 justify-between sm:hidden">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Trước
+              </button>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Sau
+              </button>
+            </div>
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs text-slate-500">
+                  Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
+                  <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length)}</span> trong tổng số{" "}
+                  <span className="font-semibold text-slate-700">{filteredItems.length}</span> món ăn
+                </p>
+              </div>
+              <div>
+                <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                  >
+                    Trước
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                        currentPage === page
+                          ? "z-10 bg-sky-500 text-white"
+                          : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                  >
+                    Sau
+                  </button>
+                </nav>
+              </div>
+            </div>
           </div>
         )}
 
@@ -365,6 +455,13 @@ const MenuManagement: React.FC = () => {
           setViewingItem(null);
         }}
         menuItem={viewingItem}
+      />
+
+      {/* Recipe Modal */}
+      <RecipeModal
+        isOpen={isRecipeModalOpen}
+        onClose={() => setIsRecipeModalOpen(false)}
+        item={recipeItem}
       />
     </div>
   );

@@ -1,4 +1,5 @@
-import { Order, createNotification, query } from "./db";
+import { Order, createNotification, query, deductInventoryForItem, refundInventoryForItem } from "./db";
+
 
 export interface KdsItem {
   id: string | number;
@@ -162,16 +163,23 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
     return result.affectedRows > 0;
   }
 
+  // Get current status before update to handle refund properly
+  const rows = await query<any[]>("SELECT status FROM order_items WHERE id = ?", [id]);
+  const currentStatus = rows.length > 0 ? rows[0].status : null;
+
   const result = await query<any>(
     "UPDATE order_items SET status = ? WHERE id = ?",
     [status, id]
   );
   
+
   if (result.affectedRows === 0) return false;
 
-  // If status is done, trigger a notification to waiter/order
+  // If status is done, trigger a notification to waiter/order and deduct inventory
   if (status === "done") {
     try {
+      await deductInventoryForItem(id);
+      
       const itemInfo = await getSingleKdsItemInfo(id);
       if (itemInfo) {
         const title = "Món ăn hoàn thành";
@@ -179,13 +187,17 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
         await createNotification(title, message, "success", "waiter");
       }
     } catch (e) {
-      console.warn("Failed to create KDS done notification:", e);
+      console.warn("Failed to process KDS done action:", e);
     }
   }
 
-  // If status is cancelled/voided, log it to the in-memory alerts
+  // If status is cancelled/voided, log it to the in-memory alerts and refund if it was done
   if (status === "cancelled" || status === "voided") {
     try {
+      if (currentStatus === "done") {
+        await refundInventoryForItem(id);
+      }
+      
       const itemInfo = await getSingleKdsItemInfo(id);
       if (itemInfo) {
         inMemoryVoidAlerts.push({
@@ -199,7 +211,7 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
         });
       }
     } catch (e) {
-      console.warn("Failed to log void alert in memory:", e);
+      console.warn("Failed to log void alert in memory or refund:", e);
     }
   }
 
@@ -225,6 +237,16 @@ export const recallKdsItemStatusInDb = async (id: string | number): Promise<bool
     "UPDATE order_items SET status = ? WHERE id = ?",
     [nextStatus, id]
   );
+
+  // If recalled from 'done' back to 'cooking', we must refund the inventory
+  if (result.affectedRows > 0 && currentStatus === "done") {
+    try {
+      await refundInventoryForItem(id);
+    } catch (e) {
+      console.error("Failed to refund inventory on recall:", e);
+    }
+  }
+
   return result.affectedRows > 0;
 };
 

@@ -92,6 +92,7 @@ export const AnalyticsView: React.FC = () => {
   }, [filter, fetchAnalyticsData]);
 
   const handleRefresh = () => {
+    analyticsService.clearCache();
     fetchAnalyticsData(filter);
     toast.success("Đã làm mới dữ liệu báo cáo thành công!");
   };

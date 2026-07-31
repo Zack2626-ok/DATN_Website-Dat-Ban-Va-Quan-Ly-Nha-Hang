@@ -91,6 +91,7 @@ export const clearNotificationsApi = async (role?: string): Promise<any> => {
   return response.data.data;
 };
 
+<<<<<<< HEAD
 /**
  * Fetch KDS history of completed and returned items
  */
@@ -99,3 +100,72 @@ export const getKdsHistoryApi = async (date?: string): Promise<any[]> => {
   return response.data.data;
 };
 
+=======
+
+/**
+ * Fetch all real ingredients from backend
+ */
+export const getIngredientsApi = async (): Promise<any[]> => {
+  const response = await api.get("/inventory/ingredients");
+  return response.data.data;
+};
+
+export const createIngredientApi = async (data: any): Promise<any> => {
+  const response = await api.post("/inventory", data);
+  return response.data.data;
+};
+
+export const updateIngredientApi = async (id: string | number, data: any): Promise<any> => {
+  const response = await api.put(`/inventory/${id}`, data);
+  return response.data.data;
+};
+
+export const deleteIngredientApi = async (id: string | number): Promise<any> => {
+  const response = await api.delete(`/inventory/${id}`);
+  return response.data.data;
+};
+
+export const updateInventoryQuantityApi = async (id: string | number, quantity: number, type: "import" | "export" | "adjust", reasonOrSupplier?: string): Promise<any> => {
+  const response = await api.patch(`/inventory/${id}/quantity`, { quantity, type, reasonOrSupplier });
+  return response.data.data;
+};
+
+/**
+ * Fetch real inventory transactions from backend
+ */
+export const getInventoryTransactionsApi = async (): Promise<any[]> => {
+  const response = await api.get("/inventory/transactions");
+  return response.data.data;
+};
+
+export const uploadInventoryExcelApi = async (file: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await api.post("/inventory/upload-excel", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return response.data;
+};
+
+export const getSuppliersApi = async (): Promise<any[]> => {
+  const response = await api.get("/inventory/suppliers");
+  return response.data.data;
+};
+
+export const addSupplierApi = async (data: any): Promise<any> => {
+  const response = await api.post("/inventory/suppliers", data);
+  return response.data.data;
+};
+
+export const updateSupplierApi = async (id: string | number, data: any): Promise<any> => {
+  const response = await api.put(`/inventory/suppliers/${id}`, data);
+  return response.data.data;
+};
+
+export const deleteSupplierApi = async (id: string | number): Promise<any> => {
+  const response = await api.delete(`/inventory/suppliers/${id}`);
+  return response.data.data;
+};
+>>>>>>> 02754ae707ee8d36514eaa72ea6f2faa04350b12
