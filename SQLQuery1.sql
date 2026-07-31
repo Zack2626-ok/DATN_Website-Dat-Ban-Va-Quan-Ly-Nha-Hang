@@ -1173,5 +1173,25 @@ UPDATE vouchers SET used_count = 1 WHERE code = 'GOLD25';
 UPDATE vouchers SET used_count = 1 WHERE code = 'VIP30';
 
 
+-- ===== Bổ sung: Báo cáo hao hụt & công nợ NCC =====
 
+ALTER TABLE suppliers
+  ADD COLUMN payment_terms INT NOT NULL DEFAULT 30 COMMENT 'Số ngày nợ cho phép';
+
+CREATE TABLE debt_payments (
+  id          INT           NOT NULL AUTO_INCREMENT,
+  supplier_id INT           NOT NULL,
+  amount      DECIMAL(12,2) NOT NULL,
+  method      ENUM('cash','bank_transfer','card') NOT NULL DEFAULT 'cash',
+  note        TEXT          DEFAULT NULL,
+  paid_by     INT           NOT NULL,
+  paid_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_debt_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_debt_user     FOREIGN KEY (paid_by)     REFERENCES users(id)     ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE stock_in
+  ADD COLUMN is_credit  TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = mua chịu chưa trả tiền',
+  ADD COLUMN due_date   DATE       DEFAULT NULL        COMMENT 'Hạn thanh toán lô hàng này';
 

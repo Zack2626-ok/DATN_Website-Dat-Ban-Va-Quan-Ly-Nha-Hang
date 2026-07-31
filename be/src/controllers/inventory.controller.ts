@@ -165,3 +165,164 @@ export const getLowStockItems = async (_req: Request, res: Response): Promise<vo
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+export const submitStockCheck = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { records } = req.body; // array
+    const userId = (req as any).user?.id ?? 1;
+ 
+    if (!Array.isArray(records) || records.length === 0) {
+      sendError(res, "Dữ liệu kiểm kê không hợp lệ", 400);
+      return;
+    }
+ 
+    for (const rec of records) {
+      const { ingredient_id, actual_stock } = rec;
+ 
+      // Lấy current_stock hiện tại làm system_stock
+      const rows = await db.query(
+        `SELECT current_stock FROM ingredients WHERE id = ?`,
+        [ingredient_id]
+      );
+      if (rows.length === 0) continue;
+ 
+      const system_stock = Number(rows[0].current_stock);
+      const actual = Number(actual_stock);
+ 
+      // Lưu bản ghi kiểm kê
+      await db.query(
+        `INSERT INTO stock_inventory (ingredient_id, actual_stock, system_stock, noted_at, created_by)
+         VALUES (?, ?, ?, CURDATE(), ?)`,
+        [ingredient_id, actual, system_stock, userId]
+      );
+ 
+      // Cân bằng sổ sách: cập nhật current_stock về actual
+      await db.query(
+        `UPDATE ingredients SET current_stock = ? WHERE id = ?`,
+        [actual, ingredient_id]
+      );
+ 
+      // Nếu actual < system → ghi stock_out waste để cân bằng
+      const diff = actual - system_stock;
+      if (diff < 0) {
+        await db.query(
+          `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by)
+           VALUES (?, ?, 'waste', 'Chênh lệch kiểm kê kho', ?)`,
+          [ingredient_id, Math.abs(diff), userId]
+        );
+      }
+    }
+ 
+    sendSuccess(res, { count: records.length }, "Lưu kiểm kê thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+ 
+// GET /v1/inventory/stock-check/today
+// Trả về danh sách nguyên liệu + current_stock để bếp trưởng điền actual
+export const getTodayCheckList = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const rows = await db.query(`
+      SELECT 
+        i.id,
+        i.name,
+        i.unit,
+        i.current_stock AS system_stock,
+        -- Lấy actual_stock lần kiểm kê gần nhất nếu hôm nay đã kiểm
+        (SELECT si.actual_stock 
+         FROM stock_inventory si 
+         WHERE si.ingredient_id = i.id AND DATE(si.noted_at) = CURDATE()
+         ORDER BY si.id DESC LIMIT 1) AS actual_today,
+        (SELECT si.noted_at 
+         FROM stock_inventory si 
+         WHERE si.ingredient_id = i.id
+         ORDER BY si.id DESC LIMIT 1) AS last_checked
+      FROM ingredients i
+      WHERE i.is_deleted = 0
+      ORDER BY i.name
+    `);
+    sendSuccess(res, rows, "Lấy danh sách kiểm kê thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+ 
+// ---------------- TASK 4: Trả nợ NCC ----------------
+ 
+// PATCH /v1/inventory/suppliers/:id/pay
+// Body: { amount, method, note }
+export const paySupplierDebt = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { amount, method = "cash", note } = req.body;
+    const userId = (req as any).user?.id ?? 1;
+ 
+    if (!amount || Number(amount) <= 0) {
+      sendError(res, "Số tiền không hợp lệ", 400);
+      return;
+    }
+ 
+    // Kiểm tra NCC tồn tại
+    const suppliers = await db.query(
+      `SELECT id, name, total_debt FROM suppliers WHERE id = ?`,
+      [id]
+    );
+    if (suppliers.length === 0) {
+      sendError(res, "Không tìm thấy nhà cung cấp", 404);
+      return;
+    }
+ 
+    const supplier = suppliers[0];
+    const payAmount = Math.min(Number(amount), Number(supplier.total_debt));
+ 
+    // Trừ nợ
+    await db.query(
+      `UPDATE suppliers SET total_debt = GREATEST(0, total_debt - ?) WHERE id = ?`,
+      [payAmount, id]
+    );
+ 
+    // Ghi lịch sử
+    await db.query(
+      `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, payAmount, method, note || null, userId]
+    );
+ 
+    // Lấy nợ còn lại
+    const updated = await db.query(`SELECT total_debt FROM suppliers WHERE id = ?`, [id]);
+ 
+    sendSuccess(
+      res,
+      {
+        supplierId: id,
+        paid: payAmount,
+        remaining: Number(updated[0].total_debt),
+      },
+      "Thanh toán công nợ thành công"
+    );
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+ 
+// GET /v1/inventory/suppliers/:id/debt-history
+export const getDebtHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const rows = await db.query(
+      `
+      SELECT dp.id, dp.amount, dp.method, dp.note, dp.paid_at,
+             u.full_name AS paid_by_name
+      FROM debt_payments dp
+      JOIN users u ON dp.paid_by = u.id
+      WHERE dp.supplier_id = ?
+      ORDER BY dp.paid_at DESC
+      LIMIT 50
+      `,
+      [id]
+    );
+    sendSuccess(res, rows, "Lịch sử thanh toán nợ");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
