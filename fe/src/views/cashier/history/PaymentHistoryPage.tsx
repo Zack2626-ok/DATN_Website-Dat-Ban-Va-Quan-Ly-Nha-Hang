@@ -10,8 +10,10 @@ import {
   Wallet,
   Clock,
   CheckCircle2,
-} from "lucide-react";
-import { getPaymentHistoryApi } from "../../../services/invoiceService";
+  Printer,
+  } from "lucide-react";
+import { getPaymentHistoryApi, getInvoiceByIdApi } from "../../../services/invoiceService";
+import { printCashierInvoice } from "../../../utils/printBill";
 
 interface PaymentRecord {
   id: string;
@@ -61,6 +63,21 @@ export const PaymentHistoryPage: React.FC = () => {
 
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
+  
+  const [printingId, setPrintingId] = useState<string | null>(null);
+
+  const handlePrint = async (orderId: string) => {
+    try {
+      setPrintingId(orderId);
+      const invoice = await getInvoiceByIdApi(orderId);
+      printCashierInvoice(invoice);
+    } catch (error) {
+      console.error("Failed to print invoice:", error);
+      alert("Không thể tải chi tiết hóa đơn để in.");
+    } finally {
+      setPrintingId(null);
+    }
+  };
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -217,6 +234,7 @@ export const PaymentHistoryPage: React.FC = () => {
                     <th className="text-right px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Số tiền</th>
                     <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Thời gian</th>
                     <th className="text-center px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                    <th className="text-right px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -255,6 +273,16 @@ export const PaymentHistoryPage: React.FC = () => {
                               <Clock size={11} /> {p.status}
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handlePrint(p.orderId)}
+                            disabled={printingId === p.orderId}
+                            title="In lại hóa đơn"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <Printer size={14} />
+                          </button>
                         </td>
                       </tr>
                     );
@@ -330,3 +358,4 @@ export const PaymentHistoryPage: React.FC = () => {
     </div>
   );
 };
+

@@ -14,7 +14,7 @@ import {
 import { Modal } from "../../../../components/Modal";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
-import { crmService, type Voucher } from "../../../../services/crmService";
+import { crmService, type Voucher, type Customer } from "../../../../services/crmService";
 
 interface Props {
   isOpen: boolean;
@@ -37,7 +37,6 @@ const PAYMENT_METHODS = [
 export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConfirm, loading }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
   const [vatRate, setVatRate] = useState(10);
-  const [serviceFeeRate, setServiceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount] = useState(0);
@@ -47,12 +46,15 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   const [suggestedVouchers, setSuggestedVouchers] = useState<Voucher[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [customerName, setCustomerName] = useState<string | null>(null);
+  const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
+  const [pointsToUse, setPointsToUse] = useState<number>(0);
 
   useEffect(() => {
     getRestaurantInfo()
       .then((info) => {
-        setVatRate(info.tax_rate ?? 10);
-        setServiceFeeRate(info.service_fee_rate ?? 0);
+        if (info) {
+          setVatRate(info.tax_rate ?? 10);
+        }
         setResInfo(info);
       })
       .catch(() => {});
@@ -62,6 +64,8 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
     if (!isOpen) {
       setSuggestedVouchers([]);
       setCustomerName(null);
+      setMatchedCustomer(null);
+      setPointsToUse(0);
       return;
     }
 
@@ -88,6 +92,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
 
         if (customer) {
           setCustomerName(customer.name);
+          setMatchedCustomer(customer);
           const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
           
           const eligible = vouchers.filter(v => {
@@ -100,6 +105,8 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
         } else {
           setSuggestedVouchers([]);
           setCustomerName(null);
+          setMatchedCustomer(null);
+          setPointsToUse(0);
         }
       } catch (err) {
         console.error("Failed to load voucher suggestions:", err);
@@ -114,11 +121,11 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
   const breakdown = useMemo(() => {
     const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
     const vat = Math.round(subtotal * (vatRate / 100));
-    const serviceFee = Math.round(subtotal * (serviceFeeRate / 100));
     const depositAmount = invoice.depositAmount || 0;
-    const finalAmount = Math.max(0, subtotal + vat + serviceFee + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000));
-    return { subtotal, vat, serviceFee, depositAmount, finalAmount };
-  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, serviceFeeRate, tipAmount, voucherAmount]);
+    const pointsDiscount = pointsToUse * 100;
+    const finalAmount = Math.max(0, subtotal + vat + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000) - pointsDiscount);
+    return { subtotal, vat, depositAmount, pointsDiscount, finalAmount };
+  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, tipAmount, voucherAmount, pointsToUse]);
 
   const vietqrUrl = useMemo(() => {
     if (!resInfo?.bank_code || !resInfo?.bank_account) return "";
@@ -151,10 +158,10 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
     onConfirm({
       paymentMethod,
       vatRate,
-      serviceFeeRate: 0,
       voucherCode: voucherCode || undefined,
       voucherAmount: voucherAmount ? voucherAmount * 1000 : undefined,
       tipAmount: tipAmount ? tipAmount * 1000 : undefined,
+      pointsUsed: pointsToUse > 0 ? pointsToUse : undefined,
     });
   };
 
@@ -181,15 +188,6 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
               VAT ({vatRate}%)
             </span>
             <span className="font-bold text-slate-900 text-[11px]">{formatVnd(breakdown.vat)} vnđ</span>
-          </div>
-
-          {/* Service Fee */}
-          <div className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100">
-            <span className="text-slate-500 flex items-center gap-1">
-              <BadgePercent size={10} className="text-teal-500" />
-              Phí DV ({serviceFeeRate}%)
-            </span>
-            <span className="font-bold text-slate-900 text-[11px]">{formatVnd(breakdown.serviceFee)} vnđ</span>
           </div>
 
           {/* Voucher */}
@@ -258,6 +256,42 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
               </div>
             )}
           </div>
+
+          {/* Loyalty Points */}
+          {matchedCustomer && matchedCustomer.loyalty_points > 0 && (
+            <div className="space-y-1.5 py-1.5 border-b border-slate-100">
+              <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                <Tag size={10} className="text-blue-500" />
+                Điểm tích lũy
+              </span>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center bg-blue-50/50 p-2 rounded-lg border border-blue-100">
+                  <span className="text-[10px] text-slate-600">Hiện có: <strong>{formatVnd(matchedCustomer.loyalty_points)}</strong> điểm</span>
+                  <span className="text-[10px] text-blue-700 font-bold">~ {formatVnd(matchedCustomer.loyalty_points * 100)} vnđ</span>
+                </div>
+                <div className="flex gap-1.5 items-center">
+                  <span className="text-[10px] text-slate-500">Sử dụng:</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={matchedCustomer.loyalty_points}
+                    value={pointsToUse || ""}
+                    onChange={(e) => {
+                      const val = Number(e.target.value) || 0;
+                      setPointsToUse(Math.min(val, matchedCustomer.loyalty_points));
+                    }}
+                    placeholder="Nhập số điểm"
+                    className="flex-1 text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
+                  />
+                  {pointsToUse > 0 && (
+                    <span className="text-[10px] text-red-500 font-bold whitespace-nowrap">
+                      - {formatVnd(pointsToUse * 100)} vnđ
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Final total */}
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex justify-between items-center">

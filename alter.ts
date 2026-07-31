@@ -1,0 +1,1 @@
+import db from './be/src/utils/db'; async function run() { await db.query('ALTER TABLE suppliers ADD COLUMN contact VARCHAR(100) DEFAULT NULL, ADD COLUMN main_ingredients VARCHAR(255) DEFAULT NULL;'); console.log('Done'); process.exit(0); }; run();
