@@ -2776,6 +2776,62 @@ export const getCustomerEventContracts = async (customerId: number | string): Pr
   `, [customerId]);
 };
 
+// ===== ATTENDANCE OPERATIONS =====
+export const getTodayAttendance = async (employeeId: number): Promise<any | null> => {
+  if (!dbAvailable) {
+    const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
+    (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
+    const today = new Date().toISOString().slice(0, 10);
+    return MOCK_ATTENDANCE_STORE.find(
+      (a) => a.employee_id === employeeId && a.clock_in?.startsWith(today) && !a.clock_out
+    ) || null;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await query<any[]>(
+    "SELECT * FROM attendance WHERE employee_id = ? AND DATE(clock_in) = ? ORDER BY clock_in DESC LIMIT 1",
+    [employeeId, today]
+  );
+  return rows[0] || null;
+};
+
+export const clockInEmployee = async (employeeId: number): Promise<any> => {
+  const now = new Date();
+  if (!dbAvailable) {
+    const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
+    (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
+    const newRecord = { id: Date.now(), employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
+    MOCK_ATTENDANCE_STORE.push(newRecord);
+    return newRecord;
+  }
+  const result = await query(
+    "INSERT INTO attendance (employee_id, clock_in) VALUES (?, NOW())",
+    [employeeId]
+  );
+  return { id: result.insertId, employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
+};
+
+export const clockOutEmployee = async (employeeId: number): Promise<any | null> => {
+  if (!dbAvailable) {
+    const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
+    (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
+    const today = new Date().toISOString().slice(0, 10);
+    const record = MOCK_ATTENDANCE_STORE.find(
+      (a) => a.employee_id === employeeId && a.clock_in?.startsWith(today) && !a.clock_out
+    );
+    if (record) {
+      record.clock_out = new Date().toISOString();
+      return record;
+    }
+    return null;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  await query(
+    "UPDATE attendance SET clock_out = NOW() WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
+    [employeeId, today]
+  );
+  return getTodayAttendance(employeeId);
+};
+
 
 
 
