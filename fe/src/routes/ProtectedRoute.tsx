@@ -5,9 +5,10 @@ import type { UserRole } from "../interfaces/auth";
 interface Props {
   children: React.ReactNode;
   allowedRoles?: UserRole[];
+  requireCheckIn?: boolean;
 }
 
-export default function ProtectedRoute({ children, allowedRoles }: Props) {
+export default function ProtectedRoute({ children, allowedRoles, requireCheckIn = true }: Props) {
   const { user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
@@ -22,6 +23,15 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   // Chưa đăng nhập → về trang đăng nhập nhân viên
   if (!user) {
     return <Navigate to="/auth/login" replace />;
+  }
+
+  // Admin không cần chấm công
+  if (requireCheckIn && user.role !== "admin") {
+    const checkedIn = localStorage.getItem("checkedInToday");
+    const today = new Date().toISOString().slice(0, 10);
+    if (checkedIn !== today) {
+      return <Navigate to="/checkin" replace />;
+    }
   }
 
   // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
