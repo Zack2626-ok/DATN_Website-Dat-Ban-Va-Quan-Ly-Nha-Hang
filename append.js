@@ -5,10 +5,10 @@ const code = `\n\nexport const getSuppliers = async (req: Request, res: Response
     const suppliers = await db.query(
       "SELECT id, name, contact, phone, address, main_ingredients as mainIngredients, total_debt FROM suppliers"
     );
-    sendSuccess(res, suppliers, "L?y danh s·ch nh‡ cung c?p th‡nh cÙng");
+    sendSuccess(res, suppliers, "L·∫•y danh s√°ch nh√† cung c·∫•p th√†nh c√¥ng");
   } catch (error) {
     console.error("Error fetching suppliers:", error);
-    sendError(res, "L?i: " + (error as Error).message, 500);
+    sendError(res, "L·ªói: " + (error as Error).message, 500);
   }
 };
 
@@ -19,10 +19,10 @@ export const addSupplier = async (req: Request, res: Response): Promise<void> =>
       "INSERT INTO suppliers (name, contact, phone, address, main_ingredients) VALUES (?, ?, ?, ?, ?)",
       [name, contact, phone, address, mainIngredients]
     );
-    sendSuccess(res, { id: result.insertId, ...req.body }, "ThÍm nh‡ cung c?p th‡nh cÙng", 201);
+    sendSuccess(res, { id: result.insertId, ...req.body }, "Th√™m nh√† cung c·∫•p th√†nh c√¥ng", 201);
   } catch (error) {
     console.error("Error adding supplier:", error);
-    sendError(res, "L?i: " + (error as Error).message, 500);
+    sendError(res, "L·ªói: " + (error as Error).message, 500);
   }
 };
 
@@ -34,10 +34,10 @@ export const updateSupplier = async (req: Request, res: Response): Promise<void>
       "UPDATE suppliers SET name = ?, contact = ?, phone = ?, address = ?, main_ingredients = ? WHERE id = ?",
       [name, contact, phone, address, mainIngredients, id]
     );
-    sendSuccess(res, { id, ...req.body }, "C?p nh?t nh‡ cung c?p th‡nh cÙng");
+    sendSuccess(res, { id, ...req.body }, "C·∫≠p nh·∫≠t nh√† cung c·∫•p th√†nh c√¥ng");
   } catch (error) {
     console.error("Error updating supplier:", error);
-    sendError(res, "L?i: " + (error as Error).message, 500);
+    sendError(res, "L·ªói: " + (error as Error).message, 500);
   }
 };
 
@@ -45,10 +45,10 @@ export const deleteSupplier = async (req: Request, res: Response): Promise<void>
   try {
     const { id } = req.params;
     await db.query("DELETE FROM suppliers WHERE id = ?", [id]);
-    sendSuccess(res, { id }, "XÛa nh‡ cung c?p th‡nh cÙng");
+    sendSuccess(res, { id }, "X√≥a nh√† cung c·∫•p th√†nh c√¥ng");
   } catch (error) {
     console.error("Error deleting supplier:", error);
-    sendError(res, "L?i: " + (error as Error).message, 500);
+    sendError(res, "L·ªói: " + (error as Error).message, 500);
   }
 };
 `;
