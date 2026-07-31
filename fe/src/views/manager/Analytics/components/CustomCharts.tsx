@@ -23,15 +23,11 @@ const describeArc = (cx: number, cy: number, r: number, startAngle: number, endA
 
 export const CustomCharts: React.FC<CustomChartsProps> = ({
   timelineData,
-  peakHourData,
   topItems,
   isLoading,
 }) => {
   // State phục vụ tooltip của Line Chart
   const [hoveredTimelineIdx, setHoveredTimelineIdx] = useState<number | null>(null);
-  
-  // State phục vụ tooltip của Bar Chart
-  const [hoveredBarHour, setHoveredBarHour] = useState<number | null>(null);
 
   // State phục vụ hover của Doughnut Chart
   const [hoveredDoughnutIdx, setHoveredDoughnutIdx] = useState<number | null>(null);
@@ -130,34 +126,13 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
   }, [topItems]);
 
   // ============================================================================
-  // C. XỬ LÝ DỮ LIỆU BAR CHART (PEAK HOURS)
+  // C. XỬ LÝ DỮ LIỆU BAR CHART (PEAK HOURS) - REMOVED AS REQUESTED
   // ============================================================================
-  const barChartData = useMemo(() => {
-    if (peakHourData.length === 0) return { bars: [], maxCount: 0 };
-    
-    const maxCount = Math.max(...peakHourData.map((d) => d.count)) || 1;
-    const height = 140; // Chiều cao tối đa cột
-    
-    const bars = peakHourData.map((d) => {
-      const ratio = d.count / maxCount;
-      const barHeight = ratio * height;
-      return {
-        hour: d.hour,
-        count: d.count,
-        percentage: d.percentage,
-        barHeight,
-      };
-    });
-
-    return { bars, maxCount };
-  }, [peakHourData]);
-
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="h-80 animate-pulse rounded-2xl border border-sky-50 bg-white lg:col-span-2" />
         <div className="h-80 animate-pulse rounded-2xl border border-sky-50 bg-white lg:col-span-1" />
-        <div className="h-64 animate-pulse rounded-2xl border border-sky-50 bg-white lg:col-span-3" />
       </div>
     );
   }
@@ -279,14 +254,14 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
                   fill={hoveredTimelineIdx === idx ? "#FF5A5F" : "#FFFFFF"}
                   stroke="#FF5A5F"
                   strokeWidth="1.5"
-                  className="transition-all duration-150"
+                  className="transition-all duration-300"
                 />
               ))}
 
               {/* Nhãn trục X (Ngày / Giờ) */}
               {lineChartData.points.map((pt, idx) => {
-                // Chỉ hiển thị nhãn xen kẽ nếu số lượng mốc dữ liệu quá nhiều
-                const shouldShow = lineChartData.points.length <= 10 || idx % 2 === 0 || idx === lineChartData.points.length - 1;
+                // Chỉ hiển thị nhãn trục X khi số điểm nhỏ hơn 10 hoặc chia hết cho khoảng cách
+                const shouldShow = lineChartData.points.length <= 10 || idx % Math.round(lineChartData.points.length / 6) === 0;
                 if (!shouldShow) return null;
                 return (
                   <text
@@ -394,55 +369,51 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
                       strokeWidth={strokeWidth}
                       onMouseEnter={() => setHoveredDoughnutIdx(idx)}
                       onMouseLeave={() => setHoveredDoughnutIdx(null)}
-                      className="cursor-pointer transition-all duration-200"
+                      className="cursor-pointer transition-all duration-300"
                     />
                   );
                 })}
               </svg>
 
-              {/* Chú giải chính giữa vòng tròn */}
+              {/* Thông tin ở tâm vòng tròn khi hover */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 {hoveredDoughnutIdx !== null && doughnutSegments[hoveredDoughnutIdx] ? (
                   <>
-                    <span className="text-lg font-black text-slate-700 leading-none">
-                      {doughnutSegments[hoveredDoughnutIdx].percentageVal}%
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider max-w-[80px] truncate">
+                      {doughnutSegments[hoveredDoughnutIdx].item.name}
                     </span>
-                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                      {doughnutSegments[hoveredDoughnutIdx].item.name.slice(0, 10)}...
+                    <span className="text-sm font-black text-slate-700">
+                      {doughnutSegments[hoveredDoughnutIdx].item.quantity} đĩa
                     </span>
                   </>
                 ) : (
                   <>
-                    <span className="text-sm font-black text-slate-700 leading-none">TOP 5</span>
-                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                      Món nổi bật
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Tổng số</span>
+                    <span className="text-sm font-black text-slate-700">
+                      {topItems.reduce((sum, item) => sum + item.quantity, 0)} đĩa
                     </span>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Danh sách chú thích bên dưới */}
-            <div className="w-full space-y-1.5 border-t border-sky-50 pt-3 text-[11px] font-semibold text-slate-500">
+            {/* List Chú giải chi tiết */}
+            <div className="w-full space-y-2 mt-2">
               {doughnutSegments.map((seg, idx) => (
                 <div
                   key={idx}
+                  className="flex items-center justify-between text-[10px] font-bold"
                   onMouseEnter={() => setHoveredDoughnutIdx(idx)}
                   onMouseLeave={() => setHoveredDoughnutIdx(null)}
-                  className={`flex items-center justify-between rounded-lg p-1 transition-all ${
-                    hoveredDoughnutIdx === idx ? "bg-sky-50/50 scale-102" : ""
-                  }`}
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-slate-500">
                     <span
                       className="h-2 w-2 rounded-full shrink-0"
                       style={{ backgroundColor: seg.color }}
                     />
                     <span className="truncate max-w-[120px]">{seg.item.name}</span>
                   </span>
-                  <span className="font-black text-slate-700">
-                    {seg.item.quantity} đĩa ({seg.percentageVal}%)
-                  </span>
+                  <span className="text-slate-700">{seg.item.quantity} đĩa</span>
                 </div>
               ))}
             </div>
@@ -453,80 +424,6 @@ export const CustomCharts: React.FC<CustomChartsProps> = ({
           </div>
         )}
       </div>
-
-      {/* 3. BIỂU ĐỒ GIỜ CAO ĐIỂM (BAR CHART) */}
-      <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm lg:col-span-3 flex flex-col justify-between">
-        <div>
-          <h3 className="text-base font-black text-slate-700 font-display">
-            Phân tích giờ cao điểm trong ngày
-          </h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Số lượng đơn hàng được mở theo giờ để bố trí nhân lực bếp & phục vụ</p>
-        </div>
-
-        {barChartData.bars.length > 0 ? (
-          <div className="relative mt-5 flex-1">
-            {/* Lưới phân phối Bar Chart bằng HTML/Tailwind */}
-            <div className="relative flex h-40 items-end justify-between border-b border-sky-50 pb-2 px-2">
-              
-              {/* Thước kẻ trục ngang chỉ dẫn */}
-              <div className="absolute left-0 bottom-2 w-full border-b border-sky-50 pointer-events-none" />
-
-              {barChartData.bars.map((bar, idx) => {
-                const isHovered = hoveredBarHour === bar.hour;
-                
-                return (
-                  <div
-                    key={idx}
-                    className="relative flex flex-col items-center flex-1 group"
-                    style={{ minWidth: "18px" }}
-                  >
-                    {/* Cột Bar */}
-                    <div
-                      onMouseEnter={() => setHoveredBarHour(bar.hour)}
-                      onMouseLeave={() => setHoveredBarHour(null)}
-                      style={{ height: `${bar.barHeight}px` }}
-                      className={`w-4/5 sm:w-8 max-w-10 rounded-t-md transition-all duration-300 cursor-pointer ${
-                        isHovered 
-                          ? "bg-sky-500" 
-                          : bar.count === barChartData.maxCount 
-                          ? "bg-sky-500/80" // Cột max nhất thì màu đậm hơn tí
-                          : "bg-sky-500/40 hover:bg-sky-500/60"
-                      }`}
-                    />
-
-                    {/* Nhãn giờ bên dưới cột */}
-                    <span className="mt-2 text-[9px] font-black text-gray-400">
-                      {bar.hour}h
-                    </span>
-
-                    {/* Tooltip nhỏ ngay trên đỉnh cột khi hover */}
-                    {isHovered && (
-                      <div className="absolute -top-12 z-10 w-24 rounded-lg bg-gray-900 px-2 py-1.5 text-center text-[9px] font-bold text-white shadow-md animate-fade-in pointer-events-none">
-                        <div>Giờ: {bar.hour}:00</div>
-                        <div className="text-sky-600">{bar.count} đơn ({bar.percentage}%)</div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-40 items-center justify-center text-xs font-semibold text-gray-400">
-            Không tìm thấy thông tin ca làm việc
-          </div>
-        )}
-
-        <div className="mt-3 flex items-center justify-center gap-6 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-6 rounded-xs bg-sky-500/40" /> Thấp điểm
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-6 rounded-xs bg-sky-500" /> Cao điểm
-          </span>
-        </div>
-      </div>
-
     </div>
   );
 };

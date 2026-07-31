@@ -82,6 +82,8 @@ export const CashierPaymentPage: React.FC = () => {
     if (statusFilter === "unpaid") {
       result = result.filter((inv) => inv.totalAmount > 0);
     }
+    // Lọc bỏ hóa đơn đã thanh toán khỏi màn hình Active
+    result = result.filter((inv) => inv.invoiceStatus !== "paid");
     // Loại bỏ "Mang về" theo yêu cầu người dùng
     result = result.filter((inv) => inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName));
     if (searchQuery) {

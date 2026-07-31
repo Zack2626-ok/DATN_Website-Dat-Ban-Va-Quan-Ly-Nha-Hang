@@ -47,7 +47,7 @@ export const PackageDetailModal: React.FC<PackageDetailModalProps> = ({ isOpen, 
                 Giá / Người
               </label>
               <p className="text-lg font-bold text-sky-600">
-                {pkg.price_per_person.toLocaleString("vi-VN")}₫
+                {Number(pkg.price_per_person).toLocaleString("vi-VN")}₫
               </p>
             </div>
           </div>

@@ -103,7 +103,7 @@ export const getInvoiceById = async (req: Request, res: Response): Promise<void>
 export const processPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { paymentMethod, vatRate, serviceFeeRate, voucherCode, voucherAmount, tipAmount, notes } = req.body;
+    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed } = req.body;
 
     if (!paymentMethod) {
       sendError(res, "Phương thức thanh toán là bắt buộc", 400);
@@ -147,12 +147,13 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
     const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
-    const serviceFee = serviceFeeRate !== undefined ? Math.round(subtotal * (serviceFeeRate / 100)) : 0;
     const voucher = voucherAmount || 0;
     const tip = tipAmount || 0;
+    const pointsToUse = pointsUsed || 0;
+    const pointsDiscount = pointsToUse * 100; // 1 point = 100 VND
     
-    // Khấu trừ tiền cọc từ tổng số tiền cần thanh toán
-    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher - depositAmount + tip);
+    // Khấu trừ tiền cọc và điểm từ tổng số tiền cần thanh toán
+    const finalAmount = Math.max(0, subtotal + vat - voucher - depositAmount + tip - pointsDiscount);
 
     const payment = await db.createPayment({
       orderId: id,
@@ -164,14 +165,14 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       notes: JSON.stringify({
         subtotal,
         vat,
-        serviceFee,
         voucher,
         voucherCode,
         tip,
         depositAmount,
+        pointsUsed: pointsToUse,
+        pointsDiscount,
         finalAmount,
         vatRate: vatRate ?? 10,
-        serviceFeeRate: serviceFeeRate ?? 0,
         rawNotes: notes,
       }),
       completedAt: new Date().toISOString(),
@@ -201,10 +202,22 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         );
         const invoiceId = invRows && invRows.length > 0 ? invRows[0].id : null;
         if (invoiceId) {
+          // Trừ điểm tích lũy nếu có sử dụng
+          if (pointsToUse > 0) {
+            await db.query(
+              "UPDATE customers SET loyalty_points = GREATEST(0, loyalty_points - ?) WHERE id = ?",
+              [pointsToUse, order.customer_id]
+            );
+            await db.query(
+              "INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note) VALUES (?, ?, 'redeem', ?, ?)",
+              [order.customer_id, pointsToUse, invoiceId, `Quy đổi ${pointsToUse} điểm để giảm ${pointsDiscount}đ cho đơn #${invoiceId}`]
+            );
+          }
+          // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)
           await addLoyaltyPoints(Number(order.customer_id), finalAmount, invoiceId);
         }
       } catch (errLoyalty: any) {
-        console.warn("[processPayment] Loyalty points accumulation failed:", errLoyalty.message);
+        console.warn("[processPayment] Loyalty points processing failed:", errLoyalty.message);
       }
     }
 
@@ -467,7 +480,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
 export const payPartial = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { paymentMethod, amount, vatRate, serviceFeeRate, tipAmount, notes } = req.body;
+    const { paymentMethod, amount, vatRate, tipAmount, notes } = req.body;
 
     if (!paymentMethod || !amount) {
       sendError(res, "Phương thức thanh toán và số tiền là bắt buộc", 400);
@@ -493,7 +506,6 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
       notes: JSON.stringify({
         partialPayment: true,
         vatRate,
-        serviceFeeRate,
         tipAmount,
         rawNotes: notes,
       }),

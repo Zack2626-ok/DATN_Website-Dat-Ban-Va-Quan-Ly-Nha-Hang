@@ -46,6 +46,7 @@ export interface PaymentRequest {
   voucherAmount?: number;
   tipAmount?: number;
   notes?: string;
+  pointsUsed?: number;
 }
 
 export interface SplitBillEqualRequest {

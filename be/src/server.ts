@@ -126,6 +126,8 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
 
 // Specific routes before wildcard /api fallback
+app.use("/api/restaurant-info", restaurantInfoRoutes);
+app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);

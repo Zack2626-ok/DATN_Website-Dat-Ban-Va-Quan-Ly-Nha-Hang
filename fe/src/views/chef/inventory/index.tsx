@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
 import {
@@ -25,7 +26,8 @@ import {
   RefreshCw,
   Info,
   UploadCloud,
-  FileText
+  FileText,
+  Pencil
 } from "lucide-react";
 
 // Types for local interactive states
@@ -36,14 +38,7 @@ interface Category {
   description: string;
 }
 
-interface Supplier {
-  id: string;
-  name: string;
-  contact: string;
-  phone: string;
-  address: string;
-  mainIngredients: string;
-}
+
 
 interface ExpiryBatch {
   id: string;
@@ -66,8 +61,15 @@ interface StockTransaction {
 
 export const InventoryControl: React.FC = () => {
   const dispatch = useAppDispatch();
-  const reduxIngredients = useAppSelector((state) => state.inventory.ingredients);
   const globalSearchQuery = useAppSelector((state) => state.ui.searchQuery);
+
+  const [reduxIngredients, setReduxIngredients] = useState<any[]>([]);
+
+  useEffect(() => {
+    getIngredientsApi()
+      .then((data) => setReduxIngredients(data))
+      .catch((err) => console.error("Failed to load ingredients", err));
+  }, []);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<"ingredients" | "categories_suppliers" | "import_export" | "stocktake" | "expiry" | "reports">("ingredients");
@@ -85,12 +87,9 @@ export const InventoryControl: React.FC = () => {
     { id: "c4", name: "Gia vị & Hàng khô", code: "GIAVI", description: "Các loại nước xốt, muối tiêu, dầu ăn" }
   ]);
 
-  const [suppliers, setSuppliers] = useState<Supplier[]>([
-    { id: "s1", name: "NCC Hải Sản Đại Dương", contact: "A. Nam", phone: "0901 234 567", address: "Cảng cá Vũng Tàu", mainIngredients: "Cá hồi, Tôm sú, Cua hoàng đế" },
-    { id: "s2", name: "NCC Meat Deli Việt Nam", contact: "C. Hoa", phone: "0912 345 678", address: "KCN Đồng Văn, Hà Nam", mainIngredients: "Thịt bò Mỹ, Sườn heo" },
-    { id: "s3", name: "Nông Sản Sạch Đà Lạt", contact: "A. Lâm", phone: "0983 987 654", address: "Đường Hùng Vương, Đà Lạt", mainIngredients: "Nấm tươi, Xà lách, Cà chua" },
-    { id: "s4", name: "Gia vị Hào Gia", contact: "C. Linh", phone: "0934 555 888", address: "Chợ Đồng Xuân, Hà Nội", mainIngredients: "Nước xốt, Dầu mè, Tiêu đen" }
-  ]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [showEditSupplierModal, setShowEditSupplierModal] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<any>(null);
 
   const [expiryBatches, setExpiryBatches] = useState<ExpiryBatch[]>([
     { id: "b1", ingredientName: "Trứng cá tầm", quantity: 150, unit: "g", batchNo: "LOT-TCT-0701", expiryDate: "2026-07-12" }, // 3 days left
@@ -100,12 +99,17 @@ export const InventoryControl: React.FC = () => {
     { id: "b5", ingredientName: "Nấm tươi", quantity: 100, unit: "g", batchNo: "LOT-NAM-0708", expiryDate: "2026-07-11" } // 2 days left
   ]);
 
-  const [transactions, setTransactions] = useState<StockTransaction[]>([
-    { id: "t1", type: "import", ingredientName: "Trứng cá tầm", quantity: 300, unit: "g", reasonOrSupplier: "NCC Hải Sản Đại Dương", timestamp: "2026-07-09 10:15" },
-    { id: "t2", type: "import", ingredientName: "Thịt bò Mỹ", quantity: 10, unit: "kg", reasonOrSupplier: "NCC Meat Deli Việt Nam", timestamp: "2026-07-09 09:30" },
-    { id: "t3", type: "export", ingredientName: "Thịt bò Mỹ", quantity: 1.5, unit: "kg", reasonOrSupplier: "Chế biến món Bò lúc lắc", timestamp: "2026-07-09 18:20" },
-    { id: "t4", type: "adjust", ingredientName: "Cá hồi", quantity: -0.5, unit: "kg", reasonOrSupplier: "Hao hụt kiểm kho thực tế", timestamp: "2026-07-08 22:00" }
-  ]);
+  const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+
+  useEffect(() => {
+    getInventoryTransactionsApi()
+      .then((data) => setTransactions(data))
+      .catch((err) => console.error("Failed to load transactions", err));
+      
+    getSuppliersApi()
+      .then((data) => setSuppliers(data))
+      .catch((err) => console.error("Failed to load suppliers", err));
+  }, []);
 
   // Modals / Input States
   const [showAddIngModal, setShowAddIngModal] = useState(false);
@@ -193,123 +197,107 @@ export const InventoryControl: React.FC = () => {
   }, [reduxIngredients, ingSearch, globalSearchQuery, selectedCategoryFilter, stockStatusFilter]);
 
   // Form Submissions
-  const handleAddIngredient = (e: React.FormEvent) => {
+  const handleAddIngredient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIngForm.name) return;
 
-    // Simulate addition to Redux by directly setting stock
-    // Since redux is initialized from constants, we generate a mock ID and set stock.
-    // For DATN full save, it would call an API, here we just dispatch a setting action.
-    const newId = `i_${Date.now()}`;
-    dispatch(setIngredientStockDirect({ id: newId, stock: Number(newIngForm.stock) }));
-    
-    // We add to state locally (normally Redux holds all, but we mock the state update for visual demonstration)
-    // Redux slice does not have "addIngredient" reducer, so we sync menu
-    reduxIngredients.push({
-      id: newId,
-      name: newIngForm.name,
-      stock: Number(newIngForm.stock),
-      unit: newIngForm.unit,
-      threshold: Number(newIngForm.threshold)
-    });
-
-    // Add expiry batch automatically for the new ingredient
-    const expiryDateStr = new Date();
-    expiryDateStr.setDate(expiryDateStr.getDate() + 7); // 7 days expiry mock
-    setExpiryBatches([
-      ...expiryBatches,
-      {
-        id: `b_${Date.now()}`,
-        ingredientName: newIngForm.name,
-        quantity: Number(newIngForm.stock),
+    try {
+      await createIngredientApi({
+        name: newIngForm.name,
+        stock: newIngForm.stock,
         unit: newIngForm.unit,
-        batchNo: `LOT-${newIngForm.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-        expiryDate: expiryDateStr.toISOString().split("T")[0]
-      }
-    ]);
-
-    // Log transaction
-    setTransactions([
-      {
-        id: `t_${Date.now()}`,
-        type: "import",
-        ingredientName: newIngForm.name,
-        quantity: Number(newIngForm.stock),
-        unit: newIngForm.unit,
-        reasonOrSupplier: "Nhập hàng khởi tạo ban đầu",
-        timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-      },
-      ...transactions
-    ]);
-
-    triggerInventoryMenuSync();
-    setShowAddIngModal(false);
-    setNewIngForm({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
+        threshold: newIngForm.threshold
+      });
+      toast.success("Thêm nguyên liệu thành công");
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
+      
+      // triggerInventoryMenuSync();
+      setShowAddIngModal(false);
+      setNewIngForm({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
+    } catch (error) {
+      toast.error("Lỗi thêm nguyên liệu");
+      console.error(error);
+    }
   };
 
-  const handlePostTransaction = (e: React.FormEvent) => {
+  const handlePostTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     const ing = reduxIngredients.find((i) => i.id === transactionForm.ingredientId);
     if (!ing) return;
 
-    const qty = Number(transactionForm.quantity);
-    const multiplier = transactionForm.type === "import" ? 1 : -1;
-    const nextStock = Math.max(0, ing.stock + (qty * multiplier));
-
-    handleModifyStockDirect(ing.id as string, nextStock);
-
-    // Log transaction
-    setTransactions([
-      {
-        id: `t_${Date.now()}`,
-        type: transactionForm.type,
-        ingredientName: ing.name,
-        quantity: qty,
-        unit: ing.unit,
-        reasonOrSupplier: transactionForm.reasonOrSupplier || (transactionForm.type === "import" ? "Nhập kho bổ sung" : "Xuất kho sử dụng"),
-        timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-      },
-      ...transactions
-    ]);
-
-    // Log expiry batch if import
-    if (transactionForm.type === "import") {
-      const expDate = new Date();
-      expDate.setDate(expDate.getDate() + 5); // Mock 5 days
-      setExpiryBatches([
-        ...expiryBatches,
-        {
-          id: `b_${Date.now()}`,
-          ingredientName: ing.name,
-          quantity: qty,
-          unit: ing.unit,
-          batchNo: `LOT-${ing.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-          expiryDate: expDate.toISOString().split("T")[0]
-        }
-      ]);
+    try {
+      await updateInventoryQuantityApi(
+        ing.id,
+        transactionForm.quantity,
+        transactionForm.type,
+        transactionForm.reasonOrSupplier
+      );
+      toast.success("Cập nhật kho thành công");
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
+      
+      setShowImportExportModal(false);
+      setTransactionForm({
+        type: "import",
+        ingredientId: reduxIngredients[0]?.id || "",
+        quantity: 1,
+        reasonOrSupplier: ""
+      });
+    } catch (error) {
+      toast.error("Lỗi cập nhật kho");
+      console.error(error);
     }
-
-    setShowImportExportModal(false);
-    setTransactionForm({
-      type: "import",
-      ingredientId: reduxIngredients[0]?.id || "",
-      quantity: 1,
-      reasonOrSupplier: ""
-    });
   };
 
-  const handleSaveSupplier = (e: React.FormEvent) => {
+  const fetchSuppliersData = async () => {
+    try {
+      const data = await getSuppliersApi();
+      setSuppliers(data);
+    } catch (err) {
+      console.error("Failed to load suppliers", err);
+    }
+  };
+
+  const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupplierForm.name) return;
-    setSuppliers([
-      ...suppliers,
-      {
-        id: `s_${Date.now()}`,
-        ...newSupplierForm
-      }
-    ]);
-    setShowAddSupplierModal(false);
-    setNewSupplierForm({ name: "", contact: "", phone: "", address: "", mainIngredients: "" });
+    
+    try {
+      await addSupplierApi(newSupplierForm);
+      toast.success("Thêm nhà cung cấp thành công!");
+      fetchSuppliersData();
+      setShowAddSupplierModal(false);
+      setNewSupplierForm({ name: "", contact: "", phone: "", address: "", mainIngredients: "" });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi thêm nhà cung cấp");
+    }
+  };
+
+  const handleUpdateSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSupplier || !editingSupplier.name) return;
+    
+    try {
+      await updateSupplierApi(editingSupplier.id, editingSupplier);
+      toast.success("Cập nhật nhà cung cấp thành công!");
+      fetchSuppliersData();
+      setShowEditSupplierModal(false);
+      setEditingSupplier(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi cập nhật nhà cung cấp");
+    }
+  };
+
+  const handleDeleteSupplier = async (id: string | number) => {
+    if (!window.confirm("Bạn có chắc muốn xóa nhà cung cấp này?")) return;
+    try {
+      await deleteSupplierApi(id);
+      toast.success("Xóa nhà cung cấp thành công!");
+      fetchSuppliersData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi xóa nhà cung cấp");
+    }
   };
 
   const handleSaveCategory = (e: React.FormEvent) => {
@@ -326,41 +314,38 @@ export const InventoryControl: React.FC = () => {
     setNewCategoryForm({ name: "", code: "", description: "" });
   };
 
-  // Perform Stocktake adjustment
-  const handleApplyStocktake = () => {
+  const handleApplyStocktake = async () => {
     let changed = false;
-    const newTxList = [...transactions];
 
-    reduxIngredients.forEach((ing) => {
+    for (const ing of reduxIngredients) {
       const val = stocktakeValues[ing.id];
       if (val !== undefined && val.trim() !== "") {
         const actualQty = Number(val);
         const discrepancy = actualQty - ing.stock;
 
         if (discrepancy !== 0) {
-          handleModifyStockDirect(ing.id as string, actualQty);
-          changed = true;
-
-          // Log discrepancy transaction
-          newTxList.unshift({
-            id: `t_${Date.now()}_${ing.id}`,
-            type: "adjust",
-            ingredientName: ing.name,
-            quantity: Math.abs(discrepancy),
-            unit: ing.unit,
-            reasonOrSupplier: `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`,
-            timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-          });
+          try {
+            await updateInventoryQuantityApi(
+              ing.id,
+              Math.abs(discrepancy),
+              discrepancy > 0 ? "import" : "adjust",
+              `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`
+            );
+            changed = true;
+          } catch (e) {
+            console.error("Lỗi cập nhật", e);
+          }
         }
       }
-    });
+    }
 
     if (changed) {
-      setTransactions(newTxList);
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
       setStocktakeValues({});
-      alert("✅ Cân đối kho thành công! Số lượng thực tế đã được cập nhật.");
+      toast.success("✅ Cân đối kho thành công! Số lượng thực tế đã được cập nhật.");
     } else {
-      alert("Chưa có số lượng kiểm kê thực tế nào được nhập hoặc không có chênh lệch.");
+      toast.error("Chưa có số lượng kiểm kê thực tế nào được nhập hoặc không có chênh lệch.");
     }
   };
 
@@ -487,7 +472,7 @@ export const InventoryControl: React.FC = () => {
             <Layers className="text-[#0f62fe]" size={24} />
             Hệ thống Quản lý Kho Nguyên liệu
           </h2>
-          <p className="text-xs text-slate-500 font-medium mt-1">
+          <p className="text-xs text-slate-700 font-medium mt-1">
             Quản lý nguyên liệu, nhà cung cấp, nhập xuất kho, kiểm kê và theo dõi hạn sử dụng thời gian thực.
           </p>
         </div>
@@ -556,7 +541,7 @@ export const InventoryControl: React.FC = () => {
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all duration-200 ${
               activeTab === tab.id
                 ? "bg-white text-blue-700 shadow-sm border border-slate-200/50"
-                : "text-slate-500 hover:text-slate-800 hover:bg-white/40"
+                : "text-slate-700 hover:text-slate-800 hover:bg-white/40"
             }`}
           >
             {tab.icon}
@@ -574,7 +559,7 @@ export const InventoryControl: React.FC = () => {
             {/* Search & Filters */}
             <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/60">
               <div className="relative w-full md:w-80">
-                <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+                <Search className="absolute left-3 top-2.5 text-slate-600" size={14} />
                 <input
                   type="text"
                   placeholder="Tìm kiếm nguyên liệu..."
@@ -611,7 +596,7 @@ export const InventoryControl: React.FC = () => {
             {/* Ingredients Table */}
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner">
               <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-wider">
+                <thead className="bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-wider">
                   <tr>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-left">Danh mục</th>
@@ -623,20 +608,20 @@ export const InventoryControl: React.FC = () => {
                 <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
                   {filteredIngredients.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-5 py-12 text-center text-slate-400 italic">
+                      <td colSpan={5} className="px-5 py-12 text-center text-slate-600 italic">
                         Không tìm thấy nguyên liệu nào phù hợp với bộ lọc
                       </td>
                     </tr>
                   ) : (
                     filteredIngredients.map((ing) => {
-                      const isLow = ing.stock <= ing.threshold;
-                      const percentage = Math.min(100, Math.max(0, (ing.stock / (ing.threshold * 3)) * 100));
+                      const isLow = Number(ing.stock) <= Number(ing.threshold);
+                      const percentage = Math.min(100, Math.max(0, (Number(ing.stock) / (Number(ing.threshold) * 3)) * 100));
 
                       return (
                         <tr key={ing.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-5 py-4">
                             <span className="font-extrabold text-slate-900">{ing.name}</span>
-                            <div className="text-[10px] text-slate-400 font-medium mt-0.5">Mã số: {ing.id}</div>
+                            <div className="text-[10px] text-slate-600 font-medium mt-0.5">Mã số: {ing.id}</div>
                           </td>
                           <td className="px-5 py-4">
                             <span className="px-2 py-0.5 bg-slate-100 border border-slate-200/60 rounded-md text-[9px] font-extrabold text-slate-600">
@@ -646,7 +631,7 @@ export const InventoryControl: React.FC = () => {
                           <td className="px-5 py-4">
                             <div className="flex flex-col gap-1 w-32 mx-auto md:mx-0">
                               <span className={`font-black text-center md:text-left ${isLow ? "text-rose-600" : "text-[#0f62fe]"}`}>
-                                {ing.stock.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
                               </span>
                               {/* Progress bar */}
                               <div className="w-full bg-slate-100 rounded-full h-1.5 border border-slate-200/50">
@@ -740,11 +725,11 @@ export const InventoryControl: React.FC = () => {
                           {c.code}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-400 font-medium mt-1 leading-snug">{c.description}</p>
+                      <p className="text-[10px] text-slate-600 font-medium mt-1 leading-snug">{c.description}</p>
                     </div>
                     <button
                       onClick={() => setCategories(categories.filter((cat) => cat.id !== c.id))}
-                      className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 cursor-pointer"
+                      className="p-1 hover:bg-rose-50 rounded text-slate-600 hover:text-rose-600 cursor-pointer"
                       title="Xóa danh mục"
                     >
                       <Trash2 size={11} />
@@ -771,30 +756,45 @@ export const InventoryControl: React.FC = () => {
                   <div key={s.id} className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl hover:shadow-xs transition-shadow">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="font-extrabold text-xs text-slate-800">{s.name}</span>
-                        <div className="text-[10px] text-slate-500 font-semibold mt-1">
-                          Liên hệ: {s.contact} | SĐT: {s.phone}
+                        <span className="font-extrabold text-[13px] text-slate-900">{s.name}</span>
+                        <div className="text-[11px] text-slate-700 font-bold mt-1">
+                          Liên hệ: {s.contact || "N/A"} | SĐT: {s.phone || "N/A"}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">
-                          Địa chỉ: {s.address}
+                        <div className="text-[11px] text-slate-600 font-bold mt-0.5">
+                          Địa chỉ: {s.address || "N/A"}
                         </div>
                       </div>
-                      <button
-                        onClick={() => setSuppliers(suppliers.filter((sup) => sup.id !== s.id))}
-                        className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 cursor-pointer"
-                        title="Xóa nhà cung cấp"
-                      >
-                        <Trash2 size={11} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingSupplier(s);
+                            setShowEditSupplierModal(true);
+                          }}
+                          className="p-1 hover:bg-blue-50 rounded text-slate-600 hover:text-blue-600 cursor-pointer"
+                          title="Sửa nhà cung cấp"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSupplier(s.id)}
+                          className="p-1 hover:bg-rose-50 rounded text-slate-600 hover:text-rose-600 cursor-pointer"
+                          title="Xóa nhà cung cấp"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-2 pt-2 border-t border-slate-200/50 flex flex-wrap gap-1 items-center">
-                      <span className="text-[9px] font-bold text-slate-400">Nguyên liệu chính:</span>
-                      {s.mainIngredients.split(",").map((ing, index) => (
-                        <span key={index} className="text-[8px] font-extrabold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200/40">
-                          {ing.trim()}
-                        </span>
-                      ))}
+                      <span className="text-[10px] font-extrabold text-slate-600">Nguyên liệu chính:</span>
+                      {(s.mainIngredients || "").split(",").map((ing: string, index: number) => {
+                        if (!ing.trim()) return null;
+                        return (
+                          <span key={index} className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/40">
+                            {ing.trim()}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -824,7 +824,7 @@ export const InventoryControl: React.FC = () => {
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
               <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
                   <tr>
                     <th scope="col" className="px-5 py-3 text-left">Thời gian</th>
                     <th scope="col" className="px-5 py-3 text-center">Loại</th>
@@ -839,7 +839,15 @@ export const InventoryControl: React.FC = () => {
                     const isExport = tx.type === "export";
                     return (
                       <tr key={tx.id} className="hover:bg-slate-50/50">
-                        <td className="px-5 py-3 text-slate-400 font-medium whitespace-nowrap">{tx.timestamp}</td>
+                        <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
+                          {new Date(tx.timestamp).toLocaleString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
                         <td className="px-5 py-3 text-center whitespace-nowrap">
                           {isImport && (
                             <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-black uppercase">
@@ -863,7 +871,7 @@ export const InventoryControl: React.FC = () => {
                             {isImport ? "+" : isExport ? "-" : ""}{tx.quantity} {tx.unit}
                           </span>
                         </td>
-                        <td className="px-5 py-3 text-slate-500">{tx.reasonOrSupplier}</td>
+                        <td className="px-5 py-3 text-slate-700">{tx.reasonOrSupplier}</td>
                       </tr>
                     );
                   })}
@@ -879,7 +887,7 @@ export const InventoryControl: React.FC = () => {
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <div>
                 <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
-                <p className="text-[10px] text-slate-400 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
+                <p className="text-[10px] text-slate-600 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
               </div>
               <button
                 onClick={handleApplyStocktake}
@@ -891,7 +899,7 @@ export const InventoryControl: React.FC = () => {
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
               <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
                   <tr>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-center">Hệ thống ghi nhận (A)</th>
@@ -908,25 +916,25 @@ export const InventoryControl: React.FC = () => {
                     return (
                       <tr key={ing.id} className="hover:bg-slate-50/50">
                         <td className="px-5 py-4 font-extrabold text-slate-900">{ing.name}</td>
-                        <td className="px-5 py-4 text-center font-bold text-slate-500">
-                          {ing.stock.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                        <td className="px-5 py-4 text-center font-bold text-slate-700">
+                          {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
                         </td>
                         <td className="px-5 py-4 text-center">
                           <div className="flex items-center justify-center gap-1 w-32 mx-auto">
                             <input
                               type="number"
                               step={ing.unit === "kg" ? "0.1" : "1"}
-                              placeholder={ing.stock.toFixed(0)}
+                              placeholder={Number(ing.stock).toFixed(0)}
                               value={stocktakeValues[ing.id] || ""}
                               onChange={(e) => setStocktakeValues({ ...stocktakeValues, [ing.id]: e.target.value })}
                               className="w-20 px-2 py-1 text-center font-black border border-slate-250 rounded bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                             />
-                            <span className="text-[10px] font-extrabold text-slate-400">{ing.unit}</span>
+                            <span className="text-[10px] font-extrabold text-slate-600">{ing.unit}</span>
                           </div>
                         </td>
                         <td className="px-5 py-4 text-center">
                           {diff === 0 ? (
-                            <span className="text-slate-400 font-bold">Khớp kho (0)</span>
+                            <span className="text-slate-600 font-bold">Khớp kho (0)</span>
                           ) : diff > 0 ? (
                             <span className="text-emerald-600 font-extrabold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
                               Thừa +{diff.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
@@ -951,12 +959,12 @@ export const InventoryControl: React.FC = () => {
           <div className="flex flex-col gap-4">
             <div className="pb-2 border-b border-slate-100">
               <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh sách Lô hàng & Theo dõi Hạn sử dụng</span>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">Cảnh báo nguyên liệu đã hết hạn hoặc sắp hết hạn cần ưu tiên tiêu thụ.</p>
+              <p className="text-[10px] text-slate-600 font-semibold mt-1">Cảnh báo nguyên liệu đã hết hạn hoặc sắp hết hạn cần ưu tiên tiêu thụ.</p>
             </div>
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
               <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
                   <tr>
                     <th scope="col" className="px-5 py-3 text-left">Số Lô hàng (Batch No)</th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
@@ -971,7 +979,7 @@ export const InventoryControl: React.FC = () => {
                     const expiryInfo = getExpiryLabel(b.expiryDate);
                     return (
                       <tr key={b.id} className="hover:bg-slate-50/50">
-                        <td className="px-5 py-3 font-mono font-bold text-slate-500">{b.batchNo}</td>
+                        <td className="px-5 py-3 font-mono font-bold text-slate-700">{b.batchNo}</td>
                         <td className="px-5 py-3 font-extrabold text-slate-800">{b.ingredientName}</td>
                         <td className="px-5 py-3 text-center font-bold">{b.quantity} {b.unit}</td>
                         <td className="px-5 py-3 whitespace-nowrap text-slate-600">{b.expiryDate}</td>
@@ -1036,14 +1044,14 @@ export const InventoryControl: React.FC = () => {
             {/* Header chuyên nghiệp khi in ấn */}
             <div className="print-only text-center pb-6 border-b-2 border-slate-800 mb-6">
               <h1 className="text-2xl font-black uppercase tracking-wide text-slate-900">Báo Cáo Phân Tích Tồn Kho</h1>
-              <p className="text-xs text-slate-500 mt-1.5 font-bold">Hệ thống Quản lý ResManager Bistro</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">Ngày lập báo cáo: {new Date().toLocaleDateString("vi-VN")} | Thời gian: {new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</p>
+              <p className="text-xs text-slate-700 mt-1.5 font-bold">Hệ thống Quản lý ResManager Bistro</p>
+              <p className="text-[10px] text-slate-600 mt-0.5">Ngày lập báo cáo: {new Date().toLocaleDateString("vi-VN")} | Thời gian: {new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</p>
             </div>
 
             <div className="pb-2 border-b border-slate-100 flex justify-between items-center print-hide">
               <div>
                 <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Báo cáo phân tích tồn kho nhanh</span>
-                <p className="text-[10px] text-slate-400 font-semibold mt-1">Tổng quan về số lượng nguyên liệu, tỷ lệ cảnh báo và cơ cấu chủng loại.</p>
+                <p className="text-[10px] text-slate-600 font-semibold mt-1">Tổng quan về số lượng nguyên liệu, tỷ lệ cảnh báo và cơ cấu chủng loại.</p>
               </div>
               <button
                 onClick={() => window.print()}
@@ -1056,9 +1064,9 @@ export const InventoryControl: React.FC = () => {
             {/* Quick stats grids */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print-avoid-break">
               <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Tổng số mặt hàng</span>
+                <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">Tổng số mặt hàng</span>
                 <span className="text-2xl font-black text-slate-800 block mt-1">{reportsStats.totalIngredients}</span>
-                <span className="text-[10px] text-slate-400 font-semibold mt-0.5 block">Nguyên liệu trong danh mục</span>
+                <span className="text-[10px] text-slate-600 font-semibold mt-0.5 block">Nguyên liệu trong danh mục</span>
               </div>
               <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-2xl">
                 <span className="text-[9px] font-black text-rose-500 uppercase tracking-wider block">Nguyên liệu tồn thấp</span>
@@ -1082,7 +1090,7 @@ export const InventoryControl: React.FC = () => {
               
               {/* Category distribution chart */}
               <div className="border border-slate-200 p-5 rounded-2xl flex flex-col gap-4">
-                <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Cơ cấu chủng loại nguyên liệu</span>
+                <span className="text-xs font-black uppercase text-slate-700 tracking-wider">Cơ cấu chủng loại nguyên liệu</span>
                 <div className="flex flex-col sm:flex-row items-center justify-around gap-4 h-full">
                   {/* Mock SVG Pie/Donut Chart */}
                   <svg className="w-36 h-36 transform -rotate-90" viewBox="0 0 100 100">
@@ -1115,7 +1123,7 @@ export const InventoryControl: React.FC = () => {
 
               {/* Transactions trend report */}
               <div className="border border-slate-200 p-5 rounded-2xl flex flex-col gap-4">
-                <span className="text-xs font-black uppercase text-slate-500 tracking-wider">Hao hụt & Biến động tuần qua</span>
+                <span className="text-xs font-black uppercase text-slate-700 tracking-wider">Hao hụt & Biến động tuần qua</span>
                 <div className="flex flex-col justify-between gap-3 h-full">
                   <div className="flex flex-col gap-2">
                     <div className="flex justify-between items-center text-xs">
@@ -1147,7 +1155,7 @@ export const InventoryControl: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl text-[10px] text-slate-400 font-semibold leading-relaxed">
+                  <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl text-[10px] text-slate-600 font-semibold leading-relaxed">
                     💡 Báo cáo trên được trích xuất dữ liệu tổng hợp dựa trên nhật ký nhập, xuất sử dụng từ khu vực bếp và ghi nhận hao hụt thực tế từ các lần cân đối tồn kho.
                   </div>
                 </div>
@@ -1167,7 +1175,7 @@ export const InventoryControl: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
             <button
               onClick={() => setShowAddIngModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -1267,7 +1275,7 @@ export const InventoryControl: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
             <button
               onClick={() => setShowImportExportModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -1281,7 +1289,7 @@ export const InventoryControl: React.FC = () => {
                 className={`flex-1 pb-2 text-center border-b-2 cursor-pointer transition-all ${
                   importExportMode === "manual"
                     ? "text-[#0f62fe] border-[#0f62fe]"
-                    : "text-slate-400 border-transparent hover:text-slate-600"
+                    : "text-slate-600 border-transparent hover:text-slate-600"
                 }`}
               >
                 Ghi nhận thủ công
@@ -1292,7 +1300,7 @@ export const InventoryControl: React.FC = () => {
                 className={`flex-1 pb-2 text-center border-b-2 cursor-pointer transition-all ${
                   importExportMode === "file"
                     ? "text-[#0f62fe] border-[#0f62fe]"
-                    : "text-slate-400 border-transparent hover:text-slate-600"
+                    : "text-slate-600 border-transparent hover:text-slate-600"
                 }`}
               >
                 Nhập / Xuất bằng File
@@ -1310,7 +1318,7 @@ export const InventoryControl: React.FC = () => {
                       className={`py-2 rounded-xl font-extrabold text-center cursor-pointer transition-all border ${
                         transactionForm.type === "import"
                           ? "bg-blue-50 text-blue-700 border-blue-400 shadow-2xs"
-                          : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                       }`}
                     >
                       Nhập kho
@@ -1321,7 +1329,7 @@ export const InventoryControl: React.FC = () => {
                       className={`py-2 rounded-xl font-extrabold text-center cursor-pointer transition-all border ${
                         transactionForm.type === "export"
                           ? "bg-amber-50 text-amber-700 border-amber-400 shadow-2xs"
-                          : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                       }`}
                     >
                       Xuất kho
@@ -1396,7 +1404,7 @@ export const InventoryControl: React.FC = () => {
                   
                   <div className="mt-1">
                     <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100/50 hover:border-slate-400 cursor-pointer transition-all gap-1.5 text-center">
-                      <UploadCloud size={20} className="text-slate-400" />
+                      <UploadCloud size={20} className="text-slate-600" />
                       <span className="font-extrabold text-slate-700">
                         {selectedFile ? selectedFile.name : "Chọn file tài liệu từ thiết bị"}
                       </span>
@@ -1405,7 +1413,7 @@ export const InventoryControl: React.FC = () => {
                         type="file"
                         accept=".pdf,.xlsx,.xls"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
                             const ext = file.name.split('.').pop()?.toLowerCase();
@@ -1415,6 +1423,32 @@ export const InventoryControl: React.FC = () => {
                             } else {
                               setFileError(null);
                               setSelectedFile(file);
+                              
+                              if (ext === "xlsx" || ext === "xls") {
+                                const loadingToast = toast.loading("Đang xử lý file Excel...");
+                                try {
+                                  await uploadInventoryExcelApi(file);
+                                  toast.success("Tải file và cập nhật kho thành công!", { id: loadingToast });
+                                  
+                                  // Reload data
+                                  getIngredientsApi()
+                                    .then((data) => setReduxIngredients(data))
+                                    .catch((err) => console.error("Failed to load ingredients", err));
+                                  getInventoryTransactionsApi()
+                                    .then((data) => setTransactions(data))
+                                    .catch((err) => console.error("Failed to load transactions", err));
+                                    
+                                  getSuppliersApi()
+                                    .then((data) => setSuppliers(data))
+                                    .catch((err) => console.error("Failed to load suppliers", err));
+                                    
+                                  setShowImportExportModal(false);
+                                  setSelectedFile(null);
+                                  setImportExportMode("manual");
+                                } catch (error: any) {
+                                  toast.error(error.response?.data?.message || "Có lỗi xảy ra khi tải file", { id: loadingToast });
+                                }
+                              }
                             }
                           }
                         }}
@@ -1516,7 +1550,7 @@ export const InventoryControl: React.FC = () => {
                             // Stat label
                             doc.setFont("helvetica", "bold");
                             doc.setFontSize(8);
-                            doc.setTextColor(71, 85, 105); // text-slate-500
+                            doc.setTextColor(71, 85, 105); // text-slate-700
                             doc.text(removeVietnameseAccents(s.label), x + 3, 53);
 
                             // Stat value
@@ -1773,12 +1807,96 @@ export const InventoryControl: React.FC = () => {
       )}
 
       {/* Modal C: Thêm Nhà cung cấp mới */}
+      {showEditSupplierModal && editingSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => {
+                setShowEditSupplierModal(false);
+                setEditingSupplier(null);
+              }}
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X size={20} />
+            </button>
+            <h3 className="font-extrabold text-lg text-slate-800 mb-6">Sửa Nhà cung cấp</h3>
+            <form onSubmit={handleUpdateSupplier} className="flex flex-col gap-4 text-xs">
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Tên nhà cung cấp</label>
+                <input
+                  required
+                  type="text"
+                  value={editingSupplier.name}
+                  onChange={(e) => setEditingSupplier({ ...editingSupplier, name: e.target.value })}
+                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Người liên hệ</label>
+                <input
+                  type="text"
+                  value={editingSupplier.contact || ""}
+                  onChange={(e) => setEditingSupplier({ ...editingSupplier, contact: e.target.value })}
+                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Số điện thoại</label>
+                <input
+                  type="text"
+                  value={editingSupplier.phone || ""}
+                  onChange={(e) => setEditingSupplier({ ...editingSupplier, phone: e.target.value })}
+                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Địa chỉ</label>
+                <input
+                  type="text"
+                  value={editingSupplier.address || ""}
+                  onChange={(e) => setEditingSupplier({ ...editingSupplier, address: e.target.value })}
+                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Nguyên liệu cung cấp (cách nhau dấu phẩy)</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Thịt bò Mỹ, Sườn heo"
+                  value={editingSupplier.mainIngredients || ""}
+                  onChange={(e) => setEditingSupplier({ ...editingSupplier, mainIngredients: e.target.value })}
+                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditSupplierModal(false);
+                    setEditingSupplier(null);
+                  }}
+                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md shadow-blue-600/20 cursor-pointer"
+                >
+                  Lưu thay đổi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showAddSupplierModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
             <button
               onClick={() => setShowAddSupplierModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -1871,7 +1989,7 @@ export const InventoryControl: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
             <button
               onClick={() => setShowAddCategoryModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>

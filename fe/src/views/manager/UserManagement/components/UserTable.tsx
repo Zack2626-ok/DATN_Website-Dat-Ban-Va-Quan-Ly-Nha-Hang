@@ -84,22 +84,28 @@ export const UserTable: React.FC<UserTableProps> = ({
                 </span>
               </td>
               <td className="px-4 py-4">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => onEdit(user)}
-                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Sửa"
-                  >
-                    <Edit size={16} />
-                  </button>
-                  <button
-                    onClick={() => onDelete(user)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Xóa"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                {user.role?.name === "admin" ? (
+                  <span className="text-xs text-slate-400 italic font-semibold flex items-center gap-1 select-none">
+                    🔒 Hệ thống
+                  </span>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onEdit(user)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                      title="Sửa"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(user)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                      title="Xóa"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
               </td>
             </tr>
           ))}

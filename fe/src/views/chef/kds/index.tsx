@@ -14,7 +14,6 @@ import {
   KdsItem
 } from "../../../store/kdsSlice";
 import {
-  Clock,
   Check,
   CheckCheck,
   Play,
@@ -136,7 +135,7 @@ export const ChefKitchenQueue: React.FC = () => {
       const elapsedMs = now - new Date(item.createdAt).getTime();
       const elapsedMins = Math.floor(elapsedMs / 60000);
 
-      if (elapsedMins >= 120) { // 2 giờ
+      if (elapsedMins >= 30) { // 30 phút
         if (!remindedItemIds.current.has(item.id)) {
           remindedItemIds.current.add(item.id);
           hasNewDelay = true;
@@ -158,7 +157,7 @@ export const ChefKitchenQueue: React.FC = () => {
                       <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
                     </p>
                     <p className="mt-1 text-[11px] font-semibold text-slate-600 leading-relaxed">
-                      Món <strong className="text-red-600 font-black">"{item.name}"</strong> của Bàn <strong className="text-slate-800 font-extrabold">{item.tableName || "Mang về"}</strong> đã chờ hơn 2 giờ!
+                      Món <strong className="text-red-600 font-black">"{item.name}"</strong> của Bàn <strong className="text-slate-800 font-extrabold">{item.tableName || "Mang về"}</strong> đã chờ hơn 30 phút!
                     </p>
                   </div>
                 </div>
@@ -321,7 +320,7 @@ export const ChefKitchenQueue: React.FC = () => {
     const elapsedMins = Math.floor(elapsedMs / 60000);
     const elapsedSecs = Math.floor((elapsedMs % 60000) / 1000);
     const timeStr = `${elapsedMins}:${elapsedSecs < 10 ? "0" : ""}${elapsedSecs}`;
-    const isDelayed = elapsedMins >= 120; // 2 giờ = 120 phút
+    const isDelayed = elapsedMins >= 30; // 30 phút
     return { timeStr, isDelayed, elapsedMins };
   };
 
@@ -331,6 +330,12 @@ export const ChefKitchenQueue: React.FC = () => {
     const interval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleManualRefresh = () => {
+    dispatch(fetchKdsItems(stationFilter === "all" ? undefined : stationFilter));
+    dispatch(fetchKdsVoidAlerts());
+    toast.success("Làm mới dữ liệu thành công");
+  };
 
   // Station Label mapper
   const getStationLabel = (station: string) => {
@@ -364,6 +369,17 @@ export const ChefKitchenQueue: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          {/* Nút Làm mới */}
+          <button
+            onClick={handleManualRefresh}
+            disabled={loading}
+            className="px-3 py-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all bg-white border-slate-300 text-slate-755 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-50"
+            title="Làm mới dữ liệu"
+          >
+            <RefreshCcw size={15} className={`${loading ? "animate-spin" : ""}`} />
+            <span>Làm mới</span>
+          </button>
+
           {/* Sound Toggle */}
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
@@ -565,7 +581,7 @@ export const ChefKitchenQueue: React.FC = () => {
                     const currentMs = new Date(current.createdAt).getTime();
                     return currentMs < earliest ? currentMs : earliest;
                   }, Date.now());
-                  const { timeStr, isDelayed } = getTimerInfo(new Date(earliestCreatedAt).toISOString());
+                  const { isDelayed } = getTimerInfo(new Date(earliestCreatedAt).toISOString());
 
                   return (
                     <div
@@ -681,7 +697,7 @@ export const ChefKitchenQueue: React.FC = () => {
                     const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
                     return currentMs < earliest ? currentMs : earliest;
                   }, Date.now());
-                  const { timeStr, isDelayed } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
+                  const { isDelayed } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
 
                   return (
                     <div
@@ -793,17 +809,6 @@ export const ChefKitchenQueue: React.FC = () => {
                 </div>
               ) : (
                 groupedDone.map((group) => {
-                  const earliestUpdatedAt = group.items.reduce((earliest, current) => {
-                    const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
-                    return currentMs < earliest ? currentMs : earliest;
-                  }, Date.now());
-                  const doneTimeStr = new Date(earliestUpdatedAt).toLocaleTimeString("vi-VN", {
-                    timeZone: "Asia/Ho_Chi_Minh",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  });
-
                   return (
                     <div
                       key={group.tableName}
@@ -879,12 +884,6 @@ export const ChefKitchenQueue: React.FC = () => {
                 </div>
               ) : (
                 groupedVoided.map((group) => {
-                  const earliestVoidedAt = group.items.reduce((earliest, current) => {
-                    const currentMs = current.voidedAt ? new Date(current.voidedAt).getTime() : new Date(current.createdAt).getTime();
-                    return currentMs < earliest ? currentMs : earliest;
-                  }, Date.now());
-                  const timeStr = new Date(earliestVoidedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-
                   return (
                     <div
                       key={group.tableName}

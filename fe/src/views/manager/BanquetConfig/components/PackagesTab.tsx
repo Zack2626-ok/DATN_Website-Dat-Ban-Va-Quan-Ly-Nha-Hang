@@ -96,7 +96,7 @@ export const PackagesTab: React.FC<PackagesTabProps> = ({ isDrawerOpen, onDrawer
                   {pkg.name}
                 </td>
                 <td className="px-6 py-4 text-sm font-semibold text-sky-600">
-                  {pkg.price_per_person.toLocaleString("vi-VN")}₫
+                  {Number(pkg.price_per_person).toLocaleString("vi-VN")}₫
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-500">
                   {pkg.description}

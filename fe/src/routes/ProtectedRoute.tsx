@@ -44,3 +44,4 @@ export default function ProtectedRoute({ children, allowedRoles, requireCheckIn 
 
   return <>{children}</>;
 }
+
