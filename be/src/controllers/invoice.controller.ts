@@ -134,16 +134,6 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     // Kiểm tra cọc tiền đặt bàn
     let depositAmount = Number(order.depositAmount || 0);
     let linkedBookingId: number | null = null;
-    if (order.tableId || order.table_id) {
-      const activeBookings = await db.query(
-        `SELECT id, deposit_amount FROM bookings WHERE table_id = ? AND deposit_status IN ('paid', 'completed') ORDER BY created_at DESC LIMIT 1`,
-        [Number(order.tableId || order.table_id)]
-      );
-      if (activeBookings.length > 0) {
-        depositAmount = Number(activeBookings[0].deposit_amount || depositAmount);
-        linkedBookingId = activeBookings[0].id;
-      }
-    }
 
     const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
     const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
@@ -235,15 +225,16 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     await db.updateOrderStatus(id, "completed");
 
-    // Cập nhật trạng thái cọc tiền đặt bàn đã hoàn thành
-    if (linkedBookingId) {
-      await db.query(
-        `UPDATE bookings SET deposit_status = 'completed' WHERE id = ?`,
-        [linkedBookingId]
-      );
-      console.log(`✅ Marked booking ${linkedBookingId} deposit status as completed`);
+    if (voucherCode) {
+      try {
+        await db.query(
+          "UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?",
+          [voucherCode]
+        );
+      } catch (err) {
+        console.error("Error updating voucher used_count:", err);
+      }
     }
-
     if (order.table_id) {
       await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
     }

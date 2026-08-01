@@ -157,8 +157,27 @@ export const CashierPaymentPage: React.FC = () => {
         ).unwrap();
         setPaymentOpen(false);
         showSuccess("Thanh toán thành công!");
+        
+        const subtotal = selectedInvoice.subtotal !== undefined ? selectedInvoice.subtotal : selectedInvoice.totalAmount;
+        const vat = Math.round(subtotal * ((data.vatRate || 10) / 100));
+        const depositAmount = selectedInvoice.depositAmount || 0;
+        const voucherDiscount = data.voucherAmount || 0;
+        const pointsDiscount = data.pointsUsed ? data.pointsUsed * 100 : 0;
+        const finalDiscount = voucherDiscount + pointsDiscount;
+        const tipAmount = data.tipAmount || 0;
+        const finalAmount = Math.max(0, subtotal + vat + tipAmount - depositAmount - finalDiscount);
+
         printCashierInvoice(
-          { ...selectedInvoice, paymentMethod: data.paymentMethod },
+          { 
+            ...selectedInvoice, 
+            paymentMethod: data.paymentMethod,
+            discount: finalDiscount,
+            voucherDiscount: voucherDiscount,
+            pointsDiscount: pointsDiscount,
+            tax: vat,
+            vatRate: data.vatRate || 10,
+            totalAmount: finalAmount
+          },
           restaurantInfo?.name,
           restaurantInfo
         );

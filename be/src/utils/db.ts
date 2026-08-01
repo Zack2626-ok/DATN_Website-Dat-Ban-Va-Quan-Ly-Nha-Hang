@@ -1283,7 +1283,7 @@ export const createPayment = async (payment: Omit<Payment, "id" | "createdAt">):
     }
     const subVal = Number(notesData.subtotal !== undefined ? notesData.subtotal : payment.amount || 0);
     const taxVal = Number(notesData.vat !== undefined ? notesData.vat : 0);
-    const discVal = Number(notesData.voucher !== undefined ? notesData.voucher : payment.discountAmount || 0);
+    const discVal = (Number(notesData.voucher || 0) + Number(notesData.pointsDiscount || 0)) || Number(payment.discountAmount || 0);
     const totVal = Number(notesData.finalAmount !== undefined ? notesData.finalAmount : payment.amount || 0);
 
     const invRows = await query<any[]>("SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1", [payment.orderId]);
@@ -2334,7 +2334,9 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
           }
         } catch {}
         order.tax = Number(notesData.vat !== undefined ? notesData.vat : pRow.tax || 0);
-        order.discount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
+        order.voucherDiscount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
+        order.pointsDiscount = Number(notesData.pointsDiscount || 0);
+        order.discount = order.voucherDiscount + order.pointsDiscount;
         order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : 10));
         if (notesData.depositAmount !== undefined) {
           order.depositAmount = Number(notesData.depositAmount || 0);
@@ -2470,13 +2472,14 @@ export const getResmanagerPayments = async (): Promise<any[]> => {
            p.paid_at AS createdAt,
            p.paid_at AS completedAt,
            t.name AS table_name,
-           o.guest_name,
-           o.guest_phone,
+           COALESCE(c.name, o.guest_name) AS guest_name,
+           COALESCE(c.phone, o.guest_phone) AS guest_phone,
            o.order_type
     FROM payments p
     LEFT JOIN invoices i ON p.invoice_id = i.id
     LEFT JOIN orders o ON i.order_id = o.id
     LEFT JOIN tables t ON o.table_id = t.id
+    LEFT JOIN customers c ON o.customer_id = c.id
     ORDER BY p.paid_at DESC
   `);
   return rows.map((row) => ({

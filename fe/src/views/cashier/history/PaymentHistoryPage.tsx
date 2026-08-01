@@ -13,6 +13,7 @@ import {
   Printer,
 } from "lucide-react";
 import { getPaymentHistoryApi, getInvoiceByIdApi } from "../../../services/invoiceService";
+import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 import { printCashierInvoice } from "../../../utils/printBill";
 
 interface PaymentRecord {
@@ -65,12 +66,17 @@ export const PaymentHistoryPage: React.FC = () => {
   const ITEMS_PER_PAGE = 10;
 
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+
+  useEffect(() => {
+    getRestaurantInfo().then(setRestaurantInfo).catch(console.error);
+  }, []);
 
   const handlePrint = async (orderId: string) => {
     try {
       setPrintingId(orderId);
       const invoice = await getInvoiceByIdApi(orderId);
-      printCashierInvoice(invoice);
+      printCashierInvoice(invoice, restaurantInfo?.name, restaurantInfo);
     } catch (error) {
       console.error("Failed to print invoice:", error);
       alert("Không thể tải chi tiết hóa đơn để in.");
