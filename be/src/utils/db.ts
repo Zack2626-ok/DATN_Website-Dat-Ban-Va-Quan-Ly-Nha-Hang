@@ -3106,6 +3106,59 @@ export const getCustomerEventContracts = async (customerId: number | string): Pr
 };
 
 // ===== ATTENDANCE OPERATIONS =====
+interface AttendanceRecordRow {
+  id: number;
+  employee_id: number;
+  clock_in: string;
+  clock_out: string | null;
+  employee_name?: string;
+  employee_role?: string;
+}
+
+/** Gets attendance records with the staff member information required by managers. */
+export const getAllAttendance = async (): Promise<AttendanceRecordRow[]> => {
+  if (!dbAvailable) {
+    const mockAttendance = ((globalThis as typeof globalThis & { __MOCK_ATTENDANCE?: AttendanceRecordRow[] }).__MOCK_ATTENDANCE ?? []);
+    return mockAttendance
+      .filter((record) => record.employee_role !== "sales_event")
+      .sort((first, second) => (second.clock_out ?? second.clock_in).localeCompare(first.clock_out ?? first.clock_in));
+  }
+
+  return query<AttendanceRecordRow[]>(`
+    SELECT
+      a.id,
+      a.employee_id,
+      a.clock_in,
+      a.clock_out,
+      u.full_name AS employee_name,
+      COALESCE(r.name, 'staff') AS employee_role
+    FROM attendance a
+    INNER JOIN users u ON u.id = a.employee_id
+    LEFT JOIN roles r ON r.id = u.role_id
+    WHERE COALESCE(r.name, '') <> 'sales_event'
+    ORDER BY COALESCE(a.clock_out, a.clock_in) DESC
+  `);
+};
+
+/** Gets staff members available for manager attendance actions. */
+export const getAttendanceEmployees = async (): Promise<Array<{ id: number; full_name: string; role_name: string }>> => {
+  if (!dbAvailable) {
+    return MOCK_USERS
+      .filter((user) => user.role_name !== "sales_event")
+      .map((user) => ({ id: Number(user.id), full_name: user.full_name, role_name: user.role_name }));
+  }
+
+  return query<Array<{ id: number; full_name: string; role_name: string }>>(`
+    SELECT u.id, u.full_name, COALESCE(r.name, 'staff') AS role_name
+    FROM users u
+    LEFT JOIN roles r ON r.id = u.role_id
+    WHERE u.is_deleted = 0
+      AND u.status = 'active'
+      AND COALESCE(r.name, '') <> 'sales_event'
+    ORDER BY u.full_name ASC
+  `);
+};
+
 export const getTodayAttendance = async (employeeId: number): Promise<any | null> => {
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];

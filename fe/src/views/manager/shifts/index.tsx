@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
-import { Calendar, UserCheck } from "lucide-react";
+import { Calendar, CalendarDays, UserCheck } from "lucide-react";
 import type { Shift, Attendance, ShiftEmployee } from "../../../interfaces/shift.interface";
 import * as shiftService from "../../../services/shiftService";
 import { ShiftTab } from "./components/ShiftTab";
 import { AttendanceTab } from "./components/AttendanceTab";
+import { AttendanceHistoryTab } from "./components/AttendanceHistoryTab";
 import { OpenShiftModal, CloseShiftModal } from "./components/ShiftModals";
 
 export const ShiftManagement: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"shifts" | "attendance">("shifts");
+  const [activeTab, setActiveTab] = useState<"shifts" | "attendance" | "attendance-history">("shifts");
 
   // States dữ liệu
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -44,8 +45,26 @@ export const ShiftManagement: React.FC = () => {
     }
   };
 
+  /** Refreshes attendance data in the background while staff are clocked in or out. */
+  const refreshAttendance = async () => {
+    try {
+      const [attendanceData, employeesData] = await Promise.all([
+        shiftService.getAttendance(),
+        shiftService.getEmployees(),
+      ]);
+      setAttendance(attendanceData);
+      setEmployees(employeesData);
+    } catch (error) {
+      console.error("Unable to refresh attendance data:", error);
+    }
+  };
+
   useEffect(() => {
-    fetchData();
+    void fetchData();
+    const pollId = window.setInterval(() => {
+      void refreshAttendance();
+    }, 5000);
+    return () => window.clearInterval(pollId);
   }, []);
 
   // Handler: Mở ca làm mới
@@ -146,6 +165,19 @@ export const ShiftManagement: React.FC = () => {
           }`}
         >
           <UserCheck size={15} />
+          Chấm công
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("attendance-history")}
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === "attendance-history"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
+          }`}
+        >
+          <CalendarDays size={15} />
+          Lịch sử làm việc
         </button>
       </div>
 
@@ -161,7 +193,7 @@ export const ShiftManagement: React.FC = () => {
               setIsCloseShiftOpen(true);
             }}
           />
-        ) : (
+        ) : activeTab === "attendance" ? (
           <AttendanceTab
             attendance={attendance}
             employees={employees}
@@ -170,6 +202,8 @@ export const ShiftManagement: React.FC = () => {
             onClockOut={handleClockOut}
             actionLoading={actionLoading}
           />
+        ) : (
+          <AttendanceHistoryTab attendance={attendance} loading={loading} />
         )}
       </div>
 

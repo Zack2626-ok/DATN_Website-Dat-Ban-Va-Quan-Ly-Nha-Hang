@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone } from "lucide-react";
+import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone, Timer } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
@@ -526,6 +526,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             )}
 
             {/* Profile Pill Card */}
+            <button
+              type="button"
+              onClick={() => navigate("/checkin")}
+              title="Chấm công vào hoặc ra"
+              className="hidden sm:flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              <Timer size={14} />
+              Chấm công
+            </button>
             <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md border border-white/80 rounded-full pl-3 pr-1.5 py-1.5 shadow-xs">
               <div className="hidden text-right sm:block pl-1">
                 <p className="text-xs font-bold text-[#1A1A1A] flex items-center justify-end gap-1.5">
