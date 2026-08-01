@@ -20,6 +20,7 @@ import paymentRoutes from "./routes/payment.routes";
 import promotionRoutes from "./routes/promotion.routes";
 import { initDb } from "./utils/db";
 import { startBookingReminderScheduler } from "./utils/bookingReminder";
+import { startCustomerTelegramBot } from "./utils/customerTelegramBot";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
  
 import bookingRoutes from "./routes/booking.routes";
@@ -93,6 +94,7 @@ initDb()
   .then(() => {
     console.log("✅ Database mode: MySQL");
     startBookingReminderScheduler();
+    startCustomerTelegramBot();
     startServer(startPort);
   })
   .catch((err) => {

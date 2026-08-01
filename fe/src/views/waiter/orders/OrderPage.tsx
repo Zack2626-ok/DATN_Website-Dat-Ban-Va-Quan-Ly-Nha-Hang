@@ -19,6 +19,7 @@ import {
   type WaiterCategory,
 } from "../../../services/waiterService";
 import { getTablesV1, updateTableStatus } from "../../../services/tableService";
+import { getComboConstituents } from "../../../utils/comboHelper";
 
 interface DisplayOrderItem {
   id: number;
@@ -648,7 +649,9 @@ export const OrderPage: React.FC = () => {
             ) : orderItems.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-10 italic">Chưa có món trong order</p>
             ) : (
-              orderItems.map((item) => (
+              orderItems.map((item) => {
+                const constituents = getComboConstituents(item.name);
+                return (
                 <div
                   key={item.id}
                   className={`p-4 rounded-xl border border-sky-50 ${item.status === "voided" ? "opacity-60" : ""}`}
@@ -657,6 +660,19 @@ export const OrderPage: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-base text-slate-700">{item.name}</p>
                       <p className="text-sm text-slate-400 mt-0.5">×{item.quantity}</p>
+                      {constituents && (
+                        <div className="mt-1.5 bg-blue-50/60 rounded-lg px-2.5 py-2 border border-blue-100/60">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 block mb-1">Gồm có:</span>
+                          <div className="flex flex-col gap-1">
+                            {constituents.map((sub, idx) => (
+                              <div key={idx} className="text-xs text-slate-600 font-semibold flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0"></span>
+                                {sub}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {item.kitchenNote && (
                         <p className="text-xs text-amber-600 mt-1">📝 {item.kitchenNote}</p>
                       )}
@@ -712,7 +728,8 @@ export const OrderPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
 

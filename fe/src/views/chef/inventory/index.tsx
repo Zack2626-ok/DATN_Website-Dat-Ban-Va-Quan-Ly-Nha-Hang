@@ -1273,6 +1273,7 @@ export const InventoryControl: React.FC = () => {
         {/* Tab 4: Kiểm kê */}
         {activeTab === "stocktake" && (
           <div className="flex flex-col gap-4">
+            {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
                 <ClipboardCheck size={14} className="text-admin-primary" /> Thao tác Kiểm kê kho
@@ -1398,6 +1399,7 @@ export const InventoryControl: React.FC = () => {
         {/* Tab 5: Hạn sử dụng */}
         {activeTab === "expiry" && (
           <div className="flex flex-col gap-4">
+            {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
                 <CalendarRange size={14} className="text-admin-primary" /> Thao tác Quản lý hạn sử dụng

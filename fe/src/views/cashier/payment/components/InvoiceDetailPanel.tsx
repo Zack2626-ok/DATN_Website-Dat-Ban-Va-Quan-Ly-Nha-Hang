@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
+import { getComboConstituents } from "../../../../utils/comboHelper";
 
 interface Props {
   invoice: Invoice | null;
@@ -126,20 +127,40 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
           Chi tiết món ({invoice.items.length})
         </h4>
         <div className="space-y-2">
-          {invoice.items.map((item, idx) => (
-            <div
-              key={idx}
-              className="flex justify-between items-center py-2.5 px-3.5 bg-slate-50 rounded-xl border border-slate-100"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
-                  {item.quantity}x
-                </span>
-                <span className="text-xs font-bold text-slate-800">{item.name}</span>
+          {invoice.items.map((item, idx) => {
+            const constituents = getComboConstituents(item.name);
+            return (
+              <div
+                key={idx}
+                className="flex flex-col py-2.5 px-3.5 bg-slate-50 rounded-xl border border-slate-100 gap-2"
+              >
+                <div className="flex justify-between items-center w-full">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
+                      {item.quantity}x
+                    </span>
+                    <span className="text-xs font-bold text-slate-800">{item.name}</span>
+                  </div>
+                  <span className="text-xs font-black text-slate-900">{formatVnd(item.price * item.quantity)} vnđ</span>
+                </div>
+                {constituents && (
+                  <div className="pl-9 flex flex-col gap-1 border-t border-slate-200/50 pt-1.5 w-full">
+                    <span className="text-[9px] uppercase tracking-wider font-extrabold text-blue-600 block">
+                      Chi tiết món trong combo:
+                    </span>
+                    <div className="grid grid-cols-1 gap-1 pl-1">
+                      {constituents.map((sub, sIdx) => (
+                        <div key={sIdx} className="text-[10px] text-slate-500 font-bold flex items-center gap-1.5">
+                          <span className="h-1 w-1 rounded-full bg-blue-400"></span>
+                          {sub}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <span className="text-xs font-black text-slate-900">{formatVnd(item.price * item.quantity)} vnđ</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
 

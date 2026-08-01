@@ -1,3 +1,5 @@
+import { getComboConstituents } from "./comboHelper";
+
 export const printCashierInvoice = (
   invoice: any,
   restaurantName: string = "NHÀ HÀNG RESMANAGER",
@@ -136,16 +138,26 @@ export const printCashierInvoice = (
         ${guestPhone ? `<div class="row"><span>SĐT:</span><span>${guestPhone}</span></div>` : ""}
         ` : ""}
         <div class="divider"></div>
-        ${validItems.map((item: any) => `
-          <div class="item-block">
-            <div class="bold" style="font-size: 11px;">${item.item_name || item.name || item.menu_item_name || "—"}</div>
-            <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
-              <span>${item.quantity} x ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
-              <span class="bold">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
+        ${validItems.map((item: any) => {
+          const itemName = item.item_name || item.name || item.menu_item_name || "—";
+          const constituents = getComboConstituents(itemName);
+          const subItemsHtml = constituents 
+            ? `<div style="font-size: 9px; color: #555; padding-left: 12px; margin-top: 2px; line-height: 1.2;">
+                ${constituents.map(sub => `<div>• ${sub}</div>`).join("")}
+               </div>`
+            : "";
+          return `
+            <div class="item-block">
+              <div class="bold" style="font-size: 11px;">${itemName}</div>
+              <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
+                <span>${item.quantity} x ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
+                <span class="bold">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
+              </div>
+              ${subItemsHtml}
+              ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
             </div>
-            ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
-          </div>
-        `).join("")}
+          `;
+        }).join("")}
         <div class="divider"></div>
         <div class="row">
           <span>Tạm tính:</span>

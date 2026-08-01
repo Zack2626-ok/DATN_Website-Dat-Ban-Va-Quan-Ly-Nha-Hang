@@ -7,6 +7,8 @@ import {
   changeCustomerPassword,
   getCustomerLoyalty,
   getVouchers,
+  redeemCustomerVoucher,
+  getMyUnusedVouchers,
   getMyBookings,
   createEventContract,
   getMyEventContracts,
@@ -26,6 +28,8 @@ router.patch("/me", authCustomer, updateCustomerMe);
 router.patch("/me/change-password", authCustomer, changeCustomerPassword);
 router.get("/loyalty", authCustomer, getCustomerLoyalty);
 router.get("/vouchers", authCustomer, getVouchers);
+router.post("/vouchers/redeem", authCustomer, redeemCustomerVoucher);
+router.get("/my-unused-vouchers", authCustomer, getMyUnusedVouchers);
 router.get("/bookings/my", authCustomer, getMyBookings);
 router.patch("/bookings/:id/cancel", authCustomer, cancelMyBooking);
 router.post("/contracts", authCustomer, createEventContract);

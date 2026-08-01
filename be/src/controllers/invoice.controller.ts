@@ -137,7 +137,62 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
     const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
-    const voucher = voucherAmount || 0;
+    
+    // Validate and calculate voucher discount dynamically
+    let calculatedVoucherAmount = Number(voucherAmount || 0);
+    let dbVoucherId: number | null = null;
+    let customerVoucherRecordId: number | null = null;
+
+    if (voucherCode) {
+      const vRows = await db.query(
+        "SELECT * FROM vouchers WHERE code = ? AND is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())",
+        [voucherCode]
+      );
+      if (!vRows || vRows.length === 0) {
+        sendError(res, "Mã voucher không hợp lệ hoặc đã hết hạn.", 400);
+        return;
+      }
+      const voucherRecord = vRows[0];
+      dbVoucherId = voucherRecord.id;
+
+      // Check max uses
+      if (voucherRecord.max_uses !== null && voucherRecord.used_count >= voucherRecord.max_uses) {
+        sendError(res, "Mã voucher đã hết lượt sử dụng.", 400);
+        return;
+      }
+
+      // Check min order subtotal
+      if (subtotal < Number(voucherRecord.min_order)) {
+        sendError(res, `Đơn hàng chưa đạt giá trị tối thiểu để áp dụng voucher này (Tối thiểu: ${Number(voucherRecord.min_order).toLocaleString("vi-VN")}đ).`, 400);
+        return;
+      }
+
+      // Check points cost ownership
+      if (Number(voucherRecord.points_cost || 0) > 0) {
+        if (!order.customer_id) {
+          sendError(res, "Voucher này yêu cầu thông tin thành viên đã đổi điểm.", 400);
+          return;
+        }
+        const cvRows = await db.query(
+          "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? AND is_used = 0 LIMIT 1",
+          [order.customer_id, voucherRecord.id]
+        );
+        if (!cvRows || cvRows.length === 0) {
+          sendError(res, "Mã voucher này chưa được đổi bằng điểm hoặc đã được sử dụng.", 400);
+          return;
+        }
+        customerVoucherRecordId = cvRows[0].id;
+      }
+
+      // Re-calculate / verify voucher amount based on voucher type
+      if (voucherRecord.type === "percent") {
+        calculatedVoucherAmount = Math.round(subtotal * (Number(voucherRecord.value) / 100));
+      } else {
+        calculatedVoucherAmount = Number(voucherRecord.value);
+      }
+    }
+
+    const voucher = calculatedVoucherAmount;
     const tip = tipAmount || 0;
     const pointsToUse = pointsUsed || 0;
     const pointsDiscount = pointsToUse * 100; // 1 point = 100 VND
@@ -202,6 +257,19 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
             await db.query(
               "INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note) VALUES (?, ?, 'redeem', ?, ?)",
               [order.customer_id, pointsToUse, invoiceId, `Quy đổi ${pointsToUse} điểm để giảm ${pointsDiscount}đ cho đơn #${invoiceId}`]
+            );
+          }
+          // Đánh dấu voucher đã sử dụng nếu có
+          if (customerVoucherRecordId) {
+            await db.query(
+              "UPDATE customer_vouchers SET is_used = 1, used_at = NOW() WHERE id = ?",
+              [customerVoucherRecordId]
+            );
+          }
+          if (dbVoucherId) {
+            await db.query(
+              "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
+              [dbVoucherId]
             );
           }
           // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)
