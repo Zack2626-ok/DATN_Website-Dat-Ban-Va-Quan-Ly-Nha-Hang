@@ -78,6 +78,10 @@ export const crmService = {
     const res = await api.get(`/v1/crm/customers/${id}/loyalty`);
     return res.data.data || [];
   },
+  getCustomerUnusedVouchers: async (id: number): Promise<Voucher[]> => {
+    const res = await api.get(`/v1/crm/customers/${id}/vouchers`);
+    return res.data.data || [];
+  },
 
   // Vouchers API
   getVouchers: async (): Promise<Voucher[]> => {

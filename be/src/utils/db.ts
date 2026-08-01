@@ -516,9 +516,45 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: created booking_menu_items table");
     }
+
     // Migration: đảm bảo order_type trong bảng orders và status trong bảng order_items là VARCHAR(50) để hỗ trợ 'pre_order'
     await query("ALTER TABLE orders MODIFY COLUMN order_type VARCHAR(50) NOT NULL DEFAULT 'dine_in'").catch(() => {});
     await query("ALTER TABLE order_items MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'pending'").catch(() => {});
+
+    const voucherCostCol = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vouchers' AND COLUMN_NAME = 'points_cost'`,
+    );
+    if (voucherCostCol.length === 0) {
+      await query(`ALTER TABLE vouchers ADD COLUMN points_cost INT NOT NULL DEFAULT 0 AFTER value`);
+      await query(`UPDATE vouchers SET points_cost = 100 WHERE code = 'SAVE10'`);
+      await query(`UPDATE vouchers SET points_cost = 300 WHERE code = 'FIXED50'`);
+      await query(`UPDATE vouchers SET points_cost = 200 WHERE code = 'NEW20'`);
+      await query(`UPDATE vouchers SET points_cost = 150 WHERE code = 'SILVER15'`);
+      await query(`UPDATE vouchers SET points_cost = 250 WHERE code = 'GOLD25'`);
+      await query(`UPDATE vouchers SET points_cost = 400 WHERE code = 'VIP30'`);
+      console.log("✅ Migration: added points_cost column to vouchers table");
+    }
+
+    const customerVouchersTable = await query<any[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_vouchers'`,
+    );
+    if (customerVouchersTable.length === 0) {
+      await query(`
+        CREATE TABLE customer_vouchers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT NOT NULL,
+            voucher_id INT NOT NULL,
+            is_used TINYINT(1) NOT NULL DEFAULT 0,
+            redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            used_at TIMESTAMP NULL DEFAULT NULL,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+            FOREIGN KEY (voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      console.log("✅ Migration: created customer_vouchers table");
+    }
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }

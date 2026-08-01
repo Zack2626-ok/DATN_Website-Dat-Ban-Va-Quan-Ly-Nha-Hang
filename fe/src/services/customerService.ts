@@ -123,6 +123,16 @@ export const getCustomerVouchers = async (): Promise<any[]> => {
   return response.data.data || [];
 };
 
+export const redeemVoucher = async (voucherId: number): Promise<any> => {
+  const response = await customerApi.post("/v1/customer/vouchers/redeem", { voucherId });
+  return response.data.data;
+};
+
+export const getMyUnusedVouchers = async (): Promise<any[]> => {
+  const response = await customerApi.get("/v1/customer/my-unused-vouchers");
+  return response.data.data || [];
+};
+
 // 3. BOOKING API CALLS
 export const getMyBookings = async (): Promise<any[]> => {
   const response = await customerApi.get("/v1/customer/bookings/my");

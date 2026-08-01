@@ -8,7 +8,8 @@ import {
 import { 
   getCustomerProfile, updateCustomerProfile, changeCustomerPassword, 
   getMyBookings, cancelBooking, getCustomerLoyalty, getCustomerVouchers, 
-  getPublicHalls, getPublicEventPackages, createEventContract, getMyEventContracts
+  getPublicHalls, getPublicEventPackages, createEventContract, getMyEventContracts,
+  redeemVoucher, getMyUnusedVouchers
 } from "../../services/customerService";
 
 export const AccountPage: React.FC = () => {
@@ -46,6 +47,12 @@ export const AccountPage: React.FC = () => {
   const { data: vouchers = [] } = useQuery({
     queryKey: ["customer-vouchers"],
     queryFn: getCustomerVouchers,
+    enabled: !!token && activeTab === "loyalty",
+  });
+
+  const { data: myVouchers = [], isLoading: loadingMyVouchers } = useQuery({
+    queryKey: ["customer-my-unused-vouchers"],
+    queryFn: getMyUnusedVouchers,
     enabled: !!token && activeTab === "loyalty",
   });
 
@@ -99,6 +106,19 @@ export const AccountPage: React.FC = () => {
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Không thể hủy đặt bàn.");
+    }
+  });
+
+  const redeemVoucherMutation = useMutation({
+    mutationFn: redeemVoucher,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-loyalty"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-my-unused-vouchers"] });
+      toast.success("Đổi voucher thành công!");
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Đổi voucher thất bại.");
     }
   });
 
@@ -554,35 +574,100 @@ export const AccountPage: React.FC = () => {
                   </div>
 
                   {/* Vouchers lists */}
-                  <div className="bg-white rounded-3xl border border-client-accent p-6 shadow-sm">
-                    <h3 className="text-base font-bold text-client-text font-display mb-4">Vouchers ưu đãi dành cho bạn</h3>
-                    
-                    {vouchers.length === 0 ? (
-                      <p className="text-xs text-client-muted text-center py-8">Hiện tại không có voucher khuyến mãi nào.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {vouchers.map((v: any) => (
-                          <div key={v.id} className="border border-dashed border-client-secondary rounded-xl p-3 bg-client-bg flex justify-between items-center">
-                            <div>
-                              <span className="bg-client-primary/10 text-client-primary text-[10px] font-extrabold px-2 py-0.5 rounded-full">{v.code}</span>
-                              <p className="text-xs text-client-text font-bold mt-1.5">
-                                Giảm {v.type === "percent" ? `${Number(v.value)}%` : `${Number(v.value).toLocaleString("vi-VN")}đ`}
-                              </p>
-                              <span className="text-[10px] text-client-muted block mt-0.5">HSD: {new Date(v.expired_at).toLocaleDateString("vi-VN")}</span>
+                  <div className="bg-white rounded-3xl border border-client-accent p-6 shadow-sm flex flex-col gap-6">
+                    {/* Section A: Vouchers đã đổi */}
+                    <div>
+                      <h3 className="text-base font-bold text-client-text font-display mb-3 flex items-center gap-1.5">
+                        <Award size={16} className="text-client-primary" />
+                        Vouchers đã đổi của bạn
+                      </h3>
+                      
+                      {loadingMyVouchers ? (
+                        <div className="flex justify-center items-center py-4">
+                          <Loader2 size={18} className="animate-spin text-client-primary" />
+                        </div>
+                      ) : myVouchers.length === 0 ? (
+                        <p className="text-xs text-client-muted italic text-center py-4 bg-client-bg rounded-xl border border-dashed border-client-accent">
+                          Bạn chưa đổi voucher nào. Hãy dùng điểm tích lũy để đổi bên dưới!
+                        </p>
+                      ) : (
+                        <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
+                          {myVouchers.map((v: any) => (
+                            <div key={v.customer_voucher_id} className="border border-dashed border-client-secondary rounded-xl p-3 bg-client-bg flex justify-between items-center">
+                              <div>
+                                <span className="bg-client-primary/10 text-client-primary text-[10px] font-extrabold px-2 py-0.5 rounded-full">{v.code}</span>
+                                <p className="text-xs text-client-text font-bold mt-1.5">
+                                  Giảm {v.type === "percent" ? `${Number(v.value)}%` : `${Number(v.value).toLocaleString("vi-VN")}đ`}
+                                </p>
+                                <span className="text-[9px] text-client-muted block mt-0.5">HSD: {new Date(v.expired_at).toLocaleDateString("vi-VN")}</span>
+                                <span className="text-[9px] text-slate-500 block">Đơn tối thiểu: {Number(v.min_order).toLocaleString("vi-VN")}đ</span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(v.code);
+                                  toast.success("Đã sao chép mã voucher!");
+                                }}
+                                className="px-3 py-1 bg-white hover:bg-client-accent border border-client-accent text-client-primary rounded-lg text-[10px] font-bold cursor-pointer"
+                              >
+                                Sao chép
+                              </button>
                             </div>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(v.code);
-                                toast.success("Đã sao chép mã voucher!");
-                              }}
-                              className="px-3 py-1 bg-white hover:bg-client-accent border border-client-accent text-client-primary rounded-lg text-[10px] font-bold cursor-pointer"
-                            >
-                              Sao chép
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section B: Đổi điểm lấy voucher */}
+                    <div className="border-t border-slate-100 pt-5">
+                      <h3 className="text-base font-bold text-client-text font-display mb-3 flex items-center gap-1.5">
+                        <Sparkles size={16} className="text-amber-500" />
+                        Đổi voucher bằng điểm thưởng
+                      </h3>
+                      
+                      {vouchers.length === 0 ? (
+                        <p className="text-xs text-client-muted text-center py-4">Hiện tại không có voucher khuyến mãi nào.</p>
+                      ) : (
+                        <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                          {vouchers.map((v: any) => {
+                            const cost = Number(v.points_cost || 0);
+                            const canRedeem = (profile?.loyalty_points || 0) >= cost;
+                            return (
+                              <div key={v.id} className="border border-dashed border-slate-200 rounded-xl p-3 bg-white hover:bg-slate-50/50 transition-all flex justify-between items-center">
+                                <div>
+                                  <span className="bg-slate-100 text-slate-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">{v.code}</span>
+                                  <p className="text-xs text-client-text font-bold mt-1.5">
+                                    Giảm {v.type === "percent" ? `${Number(v.value)}%` : `${Number(v.value).toLocaleString("vi-VN")}đ`}
+                                  </p>
+                                  <p className="text-[10px] text-client-muted mt-0.5">
+                                    Đơn tối thiểu: <span className="font-semibold text-slate-700">{Number(v.min_order).toLocaleString("vi-VN")}đ</span>
+                                  </p>
+                                  <span className="text-[9px] text-client-muted block mt-0.5">Yêu cầu: <strong className="text-amber-600 font-bold">{cost} điểm</strong></span>
+                                </div>
+                                <button
+                                  disabled={redeemVoucherMutation.isPending}
+                                  onClick={() => {
+                                    if (!canRedeem) {
+                                      toast.error(`Bạn không đủ điểm để đổi voucher này (Cần ${cost} điểm, hiện có ${profile?.loyalty_points || 0} điểm).`);
+                                      return;
+                                    }
+                                    if (window.confirm(`Đổi ${cost} điểm tích lũy lấy voucher ${v.code}?`)) {
+                                      redeemVoucherMutation.mutate(v.id);
+                                    }
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                    canRedeem 
+                                      ? "bg-client-primary text-white hover:bg-client-primary-dark" 
+                                      : "bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200"
+                                  }`}
+                                >
+                                  {redeemVoucherMutation.isPending ? "Đang xử lý..." : `Đổi (${cost} điểm)`}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                 </div>
