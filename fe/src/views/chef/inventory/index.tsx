@@ -2,9 +2,12 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi } from "../../../services/api";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
+import { ImportGoods } from "./ImportGoods";
+import { ReturnGoods } from "./ReturnGoods";
+import { InventoryCheck } from "./InventoryCheck";
 import {
   AlertTriangle,
   Plus,
@@ -12,6 +15,7 @@ import {
   Search,
   Trash2,
   Layers,
+  Eye,
   Truck,
   History,
   ClipboardCheck,
@@ -26,7 +30,10 @@ import {
   Info,
   UploadCloud,
   FileText,
-  Pencil
+  Pencil,
+  PackageMinus,
+  CheckCircle,
+  Save
 } from "lucide-react";
 
 // Types for local interactive states
@@ -56,6 +63,8 @@ interface StockTransaction {
   unit: string;
   reasonOrSupplier: string;
   timestamp: string;
+  batchNo?: string;
+  expiryDate?: string;
 }
 
 export const InventoryControl: React.FC = () => {
@@ -72,6 +81,8 @@ export const InventoryControl: React.FC = () => {
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<"ingredients" | "categories_suppliers" | "import_export" | "stocktake" | "expiry" | "reports">("ingredients");
+  const [currentView, setCurrentView] = useState<"main" | "importGoods" | "returnGoods" | "inventoryCheck">("main");
+  const [selectedDraft, setSelectedDraft] = useState<any>(null);
 
   // Local Search & Category filters for Ingredient Tab
   const [ingSearch, setIngSearch] = useState("");
@@ -113,8 +124,45 @@ export const InventoryControl: React.FC = () => {
   // Modals / Input States
   const [showAddIngModal, setShowAddIngModal] = useState(false);
   const [newIngForm, setNewIngForm] = useState({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
+  const [showBatchesModal, setShowBatchesModal] = useState(false);
+  const [selectedIngredientNameForBatches, setSelectedIngredientNameForBatches] = useState("");
+  const [ingredientBatches, setIngredientBatches] = useState<any[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [batchData, setBatchData] = useState<Record<string, any[]>>({});
+  const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
 
   const [showImportExportModal, setShowImportExportModal] = useState(false);
+
+  // Debt Payment State
+  const [showPayDebtModal, setShowPayDebtModal] = useState(false);
+  const [payingSupplier, setPayingSupplier] = useState<any>(null);
+  const [debtAmount, setDebtAmount] = useState<number | "">("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+
+  const handlePayDebt = async () => {
+    if (!payingSupplier || !debtAmount || Number(debtAmount) <= 0) {
+      toast.error("Vui lòng nhập số tiền thanh toán hợp lệ!");
+      return;
+    }
+    try {
+      await paySupplierDebtApi(payingSupplier.id, {
+        amount: Number(debtAmount),
+        note: paymentNote,
+        paymentMethod: paymentMethod
+      });
+      toast.success(`Thanh toán thành công ${Number(debtAmount).toLocaleString()} ₫ cho ${payingSupplier.name}`);
+      setShowPayDebtModal(false);
+      setPayingSupplier(null);
+      setDebtAmount("");
+      setPaymentNote("");
+      // Refresh suppliers
+      const data = await getSuppliersApi();
+      setSuppliers(data);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Lỗi khi thanh toán công nợ");
+    }
+  };
 
   // Unified Import File Modal State
   const [showImportFileModal, setShowImportFileModal] = useState(false);
@@ -434,6 +482,54 @@ export const InventoryControl: React.FC = () => {
     setImportFile(null);
   };
 
+
+  const handleToggleRow = async (ing: any) => {
+    const isExpanded = expandedRows[ing.id];
+    if (isExpanded) {
+      setExpandedRows(prev => ({ ...prev, [ing.id]: false }));
+    } else {
+      setExpandedRows(prev => ({ ...prev, [ing.id]: true }));
+      if (!batchData[ing.id]) {
+        try {
+          const data = await getIngredientBatchesApi(ing.id);
+          setBatchData(prev => ({ ...prev, [ing.id]: data }));
+        } catch (e: any) {
+          toast.error("Không thể tải danh sách lô hàng");
+        }
+      }
+    }
+  };
+
+  const handleToggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedIngredients(filteredIngredients.map(ing => ing.id));
+    } else {
+      setSelectedIngredients([]);
+    }
+  };
+
+  const handleToggleSelectIngredient = (id: string) => {
+    setSelectedIngredients(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleWasteExpiredBatches = async () => {
+    if (!window.confirm("Bạn có chắc chắn muốn hủy TOÀN BỘ các lô hàng đã hết hạn trong kho? Hành động này không thể hoàn tác.")) return;
+    try {
+      const res = await wasteExpiredBatchesApi();
+      if (res && res.count > 0) {
+        toast.success(`Đã hủy thành công ${res.count} lô hàng hết hạn!`);
+        getIngredientsApi().then(data => setReduxIngredients(data));
+        getInventoryTransactionsApi().then(data => setTransactions(data));
+      } else {
+        toast.success("Không có lô hàng nào hết hạn cần hủy.");
+      }
+    } catch (e: any) {
+      toast.error("Lỗi khi hủy hàng hết hạn");
+    }
+  };
+
   // Shared Export to Excel Helper
   const handleExportExcelShared = (title: string, headers: string[], rows: string[][], filename: string) => {
     toast.success("Đang xuất dữ liệu Excel...");
@@ -700,6 +796,18 @@ export const InventoryControl: React.FC = () => {
     };
   }, [transactions]);
 
+  if (currentView === "importGoods") {
+    return <ImportGoods onBack={() => setCurrentView("main")} />;
+  }
+  
+  if (currentView === "returnGoods") {
+    return <ReturnGoods onBack={() => setCurrentView("main")} />;
+  }
+
+  if (currentView === "inventoryCheck") {
+    return <InventoryCheck onBack={() => setCurrentView("main")} draftData={selectedDraft} />;
+  }
+
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800">
 
@@ -784,6 +892,12 @@ export const InventoryControl: React.FC = () => {
                   className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
                   <Plus size={12} /> Nhập bằng tay
+                </button>
+                <button
+                  onClick={handleWasteExpiredBatches}
+                  className="px-3 py-1.5 bg-linear-to-r from-rose-600 to-red-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Trash2 size={12} /> Hủy hàng hết hạn
                 </button>
                 <button
                   onClick={() => {
@@ -871,10 +985,62 @@ export const InventoryControl: React.FC = () => {
             </div>
 
             {/* Ingredients Table */}
-            <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner">
+            <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner relative">
+              {selectedIngredients.length > 0 && (
+                <div className="absolute top-0 left-0 right-0 z-10 bg-blue-600 px-4 py-2 flex items-center justify-between text-white shadow-md animate-in slide-in-from-top-2">
+                  <div className="text-xs font-bold">
+                    Đã chọn {selectedIngredients.length} mặt hàng
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setCurrentView("importGoods");
+                        setSelectedIngredients([]);
+                      }}
+                      className="px-3 py-1 bg-white text-blue-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      Nhập hàng
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentView("returnGoods");
+                        setSelectedIngredients([]);
+                      }}
+                      className="px-3 py-1 bg-white text-rose-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      Trả hàng
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedDraft(null);
+                        setCurrentView("inventoryCheck");
+                        setSelectedIngredients([]);
+                      }}
+                      className="px-3 py-1 bg-white text-blue-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      Kiểm kê
+                    </button>
+                    <button
+                      onClick={() => setSelectedIngredients([])}
+                      className="p-1 hover:bg-blue-700 rounded cursor-pointer"
+                      title="Bỏ chọn"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-wider">
                   <tr>
+                    <th scope="col" className="px-4 py-3 text-left w-10">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        checked={filteredIngredients.length > 0 && selectedIngredients.length === filteredIngredients.length}
+                        onChange={handleToggleSelectAll}
+                      />
+                    </th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-left">Danh mục</th>
                     <th scope="col" className="px-5 py-3 text-center">Tồn kho hiện tại</th>
@@ -893,70 +1059,129 @@ export const InventoryControl: React.FC = () => {
                     filteredIngredients.map((ing) => {
                       const isLow = Number(ing.stock) <= Number(ing.threshold);
                       const percentage = Math.min(100, Math.max(0, (Number(ing.stock) / (Number(ing.threshold) * 3)) * 100));
+                      const isExpanded = expandedRows[ing.id];
+                      const batches = batchData[ing.id] || [];
 
                       return (
-                        <tr key={ing.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-5 py-4">
-                            <span className="font-extrabold text-slate-900">{ing.name}</span>
-                            <div className="text-[10px] text-slate-600 font-medium mt-0.5">Mã số: {ing.id}</div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className="px-2 py-0.5 bg-slate-100 border border-slate-200/60 rounded-md text-[9px] font-extrabold text-slate-600">
-                              {getIngredientCategory(ing.name)}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="flex flex-col gap-1 w-32 mx-auto md:mx-0">
-                              <span className={`font-black text-center md:text-left ${isLow ? "text-rose-600" : "text-admin-primary"}`}>
-                                {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                        <React.Fragment key={ing.id}>
+                          <tr className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? "bg-slate-50/50" : ""} ${selectedIngredients.includes(ing.id) ? "bg-blue-50/30" : ""}`}>
+                            <td className="px-4 py-4">
+                              <input 
+                                type="checkbox" 
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                checked={selectedIngredients.includes(ing.id)}
+                                onChange={() => handleToggleSelectIngredient(ing.id)}
+                              />
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="font-extrabold text-slate-900">{ing.name}</span>
+                              <div className="text-[10px] text-slate-600 font-medium mt-0.5">Mã số: {ing.id}</div>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="px-2 py-0.5 bg-slate-100 border border-slate-200/60 rounded-md text-[9px] font-extrabold text-slate-600">
+                                {getIngredientCategory(ing.name)}
                               </span>
-                              {/* Progress bar */}
-                              <div className="w-full bg-slate-100 rounded-full h-1.5 border border-slate-200/50">
-                                <div
-                                  className={`h-full rounded-full ${isLow ? "bg-rose-500" : "bg-blue-600"}`}
-                                  style={{ width: `${percentage}%` }}
-                                />
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex flex-col gap-1 w-32 mx-auto md:mx-0">
+                                <span className={`font-black text-center md:text-left ${isLow ? "text-rose-600" : "text-admin-primary"}`}>
+                                  {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                </span>
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 border border-slate-200/50">
+                                  <div
+                                    className={`h-full rounded-full ${isLow ? "bg-rose-500" : "bg-blue-600"}`}
+                                    style={{ width: `${percentage}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4 text-center">
-                            {isLow ? (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
-                                <AlertTriangle size={10} /> TỒN THẤP (Dưới {ing.threshold} {ing.unit})
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
-                                <Check size={10} /> AN TOÀN
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, ing.stock - (ing.unit === "kg" ? 0.5 : 50))}
-                                disabled={ing.stock <= 0}
-                                className="p-1 rounded bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                                title="Giảm kho"
-                              >
-                                <Minus size={11} />
-                              </button>
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, ing.stock + (ing.unit === "kg" ? 0.5 : 50))}
-                                className="p-1 rounded bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 cursor-pointer transition-colors"
-                                title="Tăng kho"
-                              >
-                                <Plus size={11} />
-                              </button>
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, 0)}
-                                className="px-2 py-1 rounded bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 text-[10px] font-extrabold cursor-pointer transition-colors"
-                                title="Giả lập hết hàng"
-                              >
-                                Hết hàng
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              {isLow ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
+                                  <AlertTriangle size={10} /> TỒN THẤP (Dưới {ing.threshold} {ing.unit})
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
+                                  <Check size={10} /> AN TOÀN
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                               <div className="flex justify-end gap-1.5 items-center">
+                                <button
+                                  onClick={() => handleToggleRow(ing)}
+                                  className={`px-2 py-1 rounded border text-[10px] font-extrabold cursor-pointer transition-colors flex items-center gap-1 ${isExpanded ? "bg-slate-200 border-slate-300 text-slate-700" : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"}`}
+                                  title={isExpanded ? "Đóng danh sách lô" : "Xem chi tiết lô"}
+                                >
+                                  {isExpanded ? <Minus size={10} /> : <Eye size={10} />}
+                                  {isExpanded ? "Đóng Lô" : "Xem Lô"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <td colSpan={6} className="p-0">
+                                <div className="p-4 bg-white/50 border-y border-slate-200/60 shadow-inner">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Layers size={14} className="text-blue-600" />
+                                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                      Danh sách Lô hàng: {ing.name}
+                                    </span>
+                                  </div>
+                                  
+                                  {batches.length > 0 ? (
+                                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                      <table className="min-w-full divide-y divide-slate-200">
+                                        <thead className="bg-slate-100/80">
+                                          <tr>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Số Lô</th>
+                                            <th className="px-4 py-2 text-center text-[10px] font-bold text-slate-600 uppercase">Tồn lô</th>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Hạn sử dụng</th>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Trạng thái</th>
+                                            <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-600 uppercase">Ngày nhập</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                          {batches.map((b: any) => {
+                                            const label = getExpiryLabel(b.expiry_date);
+                                            return (
+                                              <tr key={b.id} className="hover:bg-slate-50">
+                                                <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">{b.batch_code}</td>
+                                                <td className="px-4 py-2 text-center font-bold text-admin-primary text-[11px]">
+                                                  {Number(b.remaining_quantity).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                                </td>
+                                                <td className="px-4 py-2 text-[11px] text-slate-700">
+                                                  {b.expiry_date ? new Date(b.expiry_date).toLocaleDateString("vi-VN") : "N/A"}
+                                                </td>
+                                                <td className="px-4 py-2 text-[11px]">
+                                                  {label.status === "expired" ? (
+                                                    <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">{label.text}</span>
+                                                  ) : label.status === "near" ? (
+                                                    <span className="text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">{label.text}</span>
+                                                  ) : (
+                                                    <span className="text-emerald-600 font-bold">{label.text}</span>
+                                                  )}
+                                                </td>
+                                                <td className="px-4 py-2 text-right text-[11px] text-slate-500">
+                                                  {new Date(b.created_at).toLocaleDateString("vi-VN")}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-4 text-xs font-semibold text-slate-500">
+                                      Nguyên liệu này chưa có lô hàng nào.
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -969,7 +1194,7 @@ export const InventoryControl: React.FC = () => {
               <div>
                 <p className="font-extrabold text-blue-900">Liên kết thực tế Menu / Bàn ăn</p>
                 <p className="text-[11px] text-blue-700 font-medium mt-0.5 leading-relaxed">
-                  Hệ thống kiểm soát tồn kho được liên kết chặt chẽ với Thực đơn bán hàng. Ví dụ, khi bạn điều chỉnh lượng tồn kho của <strong>Cá hồi</strong> hoặc <strong>Trứng cá tầm</strong> về 0 (hoặc nhấn nút "Hết hàng"), hệ thống sẽ tự động cập nhật và ẩn/báo "Hết hàng" đối với các món <em>Cá hồi sốt chanh</em> hay <em>Gỏi hải sản</em> ngoài trang Gọi món của Nhân viên và Khách hàng ngay lập tức.
+                  Hệ thống kiểm soát tồn kho được liên kết chặt chẽ với Thực đơn bán hàng. Ví dụ, khi lượng tồn kho của <strong>Cá hồi</strong> hoặc <strong>Trứng cá tầm</strong> về 0, hệ thống sẽ tự động cập nhật và ẩn/báo "Hết hàng" đối với các món <em>Cá hồi sốt chanh</em> hay <em>Gỏi hải sản</em> ngoài trang Gọi món của Nhân viên và Khách hàng ngay lập tức.
                 </p>
               </div>
             </div>
@@ -1100,8 +1325,26 @@ export const InventoryControl: React.FC = () => {
                           <div className="text-[11px] text-slate-600 font-bold mt-0.5">
                             Địa chỉ: {s.address || "N/A"}
                           </div>
+                          {Number(s.total_debt) > 0 && (
+                            <div className="text-[11px] font-bold mt-2">
+                              Công nợ: <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">{Number(s.total_debt).toLocaleString()} ₫</span>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1">
+                          {Number(s.total_debt) > 0 && (
+                            <button
+                              onClick={() => {
+                                setPayingSupplier(s);
+                                setDebtAmount(Number(s.total_debt));
+                                setShowPayDebtModal(true);
+                              }}
+                              className="p-1 hover:bg-emerald-50 rounded text-slate-600 hover:text-emerald-600 cursor-pointer text-[10px] font-bold flex items-center gap-1 border border-transparent hover:border-emerald-200"
+                              title="Thanh toán công nợ"
+                            >
+                              Trả nợ
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setEditingSupplier(s);
@@ -1175,14 +1418,16 @@ export const InventoryControl: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ["Thoi gian", "Loai", "Nguyen lieu", "So luong", "Don vi", "Chi tiet / NCC"];
-                    const colX = [15, 50, 75, 110, 130, 145];
+                    const headers = ["Thoi gian", "Loai", "Nguyen lieu", "So luong", "Don vi", "Ma lo", "Han su dung", "Chi tiet / NCC"];
+                    const colX = [15, 45, 65, 95, 110, 125, 145, 165];
                     const rows = transactions.map(t => [
                       t.timestamp,
                       t.type === "import" ? "NHAP KHO" : t.type === "export" ? "XUAT KHO" : "DIEU CHINH",
                       t.ingredientName,
                       t.quantity.toString(),
                       t.unit,
+                      t.batchNo || "-",
+                      t.expiryDate || "-",
                       t.reasonOrSupplier
                     ]);
                     handleExportPdfShared("LICH SU GIAO DICH NHAP XUAT KHO", headers, colX, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
@@ -1193,13 +1438,15 @@ export const InventoryControl: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Chi tiết / Nhà cung cấp"];
+                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Mã lô", "Hạn sử dụng", "Chi tiết / Nhà cung cấp"];
                     const rows = transactions.map(t => [
                       t.timestamp,
                       t.type === "import" ? "NHẬP KHO" : t.type === "export" ? "XUẤT KHO" : "ĐIỀU CHỈNH",
                       t.ingredientName,
                       t.quantity.toString(),
                       t.unit,
+                      t.batchNo || "-",
+                      t.expiryDate || "-",
                       t.reasonOrSupplier
                     ]);
                     handleExportExcelShared("LỊCH SỬ GIAO DỊCH NHẬP XUẤT KHO", headers, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
@@ -1219,6 +1466,8 @@ export const InventoryControl: React.FC = () => {
                     <th scope="col" className="px-5 py-3 text-center">Loại</th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-center">Số lượng</th>
+                    <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
+                    <th scope="col" className="px-5 py-3 text-left">Hạn sử dụng</th>
                     <th scope="col" className="px-5 py-3 text-left">Chi tiết / Nhà cung cấp</th>
                   </tr>
                 </thead>
@@ -1260,6 +1509,12 @@ export const InventoryControl: React.FC = () => {
                             {isImport ? "+" : isExport ? "-" : ""}{tx.quantity} {tx.unit}
                           </span>
                         </td>
+                        <td className="px-5 py-3 font-semibold text-slate-700">
+                          {tx.batchNo || "-"}
+                        </td>
+                        <td className="px-5 py-3 font-semibold text-slate-700">
+                          {tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"}
+                        </td>
                         <td className="px-5 py-3 text-slate-700">{tx.reasonOrSupplier}</td>
                       </tr>
                     );
@@ -1276,122 +1531,108 @@ export const InventoryControl: React.FC = () => {
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <ClipboardCheck size={14} className="text-admin-primary" /> Thao tác Kiểm kê kho
+                <ClipboardCheck size={14} className="text-admin-primary" /> Quản lý Phiếu Kiểm kê
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={handleApplyStocktake}
-                  className="px-3 py-1.5 bg-linear-to-r from-emerald-500 to-green-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
-                >
-                  <ClipboardCheck size={12} /> Áp dụng cân đối tồn kho
-                </button>
-                <button
                   onClick={() => {
-                    setImportFileTarget("stocktake");
-                    setImportFile(null);
-                    setImportFileError(null);
-                    setShowImportFileModal(true);
+                    setSelectedDraft(null);
+                    setCurrentView("inventoryCheck");
                   }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
-                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
-                </button>
-                <button
-                  onClick={() => {
-                    const headers = ["Ten nguyen lieu", "Ton he thong", "Thuc te kiem dem", "Don vi", "Chenh lech"];
-                    const colX = [15, 60, 100, 135, 150];
-                    const rows = reduxIngredients.map((ing) => {
-                      const actualStr = stocktakeValues[ing.id];
-                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
-                      const diff = actualQty - ing.stock;
-                      const diffText = diff === 0 ? "Khop kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
-                      return [ing.name, ing.stock.toString(), actualQty.toString(), ing.unit, diffText];
-                    });
-                    handleExportPdfShared("PHIEU KIEM KE CAN DOI TON KHO", headers, colX, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileText size={12} className="text-red-500" /> Xuất PDF
-                </button>
-                <button
-                  onClick={() => {
-                    const headers = ["Tên nguyên liệu", "Tồn hệ thống", "Thực tế kiểm đếm", "Đơn vị", "Chênh lệch"];
-                    const rows = reduxIngredients.map((ing) => {
-                      const actualStr = stocktakeValues[ing.id];
-                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
-                      const diff = actualQty - ing.stock;
-                      const diffText = diff === 0 ? "Khớp kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
-                      return [ing.name, ing.stock.toString(), actualQty.toString(), ing.unit, diffText];
-                    });
-                    handleExportExcelShared("PHIẾU KIỂM KÊ CÂN ĐỐI TỒN KHO", headers, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
+                  <Plus size={12} /> Tạo phiếu kiểm kê mới
                 </button>
               </div>
             </div>
 
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <div>
-                <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
-                <p className="text-[10px] text-slate-600 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                  <tr>
-                    <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
-                    <th scope="col" className="px-5 py-3 text-center">Hệ thống ghi nhận (A)</th>
-                    <th scope="col" className="px-5 py-3 text-center">Thực tế kiểm đếm (B)</th>
-                    <th scope="col" className="px-5 py-3 text-center">Chênh lệch (B - A)</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                  {reduxIngredients.map((ing) => {
-                    const actualStr = stocktakeValues[ing.id];
-                    const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
-                    const diff = actualQty - ing.stock;
-
-                    return (
-                      <tr key={ing.id} className="hover:bg-slate-50/50">
-                        <td className="px-5 py-4 font-extrabold text-slate-900">{ing.name}</td>
-                        <td className="px-5 py-4 text-center font-bold text-slate-700">
-                          {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
-                        </td>
-                        <td className="px-5 py-4 text-center">
-                          <div className="flex items-center justify-center gap-1 w-32 mx-auto">
-                            <input
-                              type="number"
-                              step={ing.unit === "kg" ? "0.1" : "1"}
-                              placeholder={Number(ing.stock).toFixed(0)}
-                              value={stocktakeValues[ing.id] || ""}
-                              onChange={(e) => setStocktakeValues({ ...stocktakeValues, [ing.id]: e.target.value })}
-                              className="w-20 px-2 py-1 text-center font-black border border-slate-250 rounded bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                            />
-                            <span className="text-[10px] font-extrabold text-slate-600">{ing.unit}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Drafts Section */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-xs font-black uppercase text-amber-600 tracking-wider flex items-center gap-1.5">
+                    <Save size={14} /> Đang kiểm (Bản nháp)
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {JSON.parse(localStorage.getItem("inventory_drafts") || "[]").length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-xs font-medium italic bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                      Không có phiếu nào đang kiểm dở
+                    </div>
+                  ) : (
+                    JSON.parse(localStorage.getItem("inventory_drafts") || "[]").map((draft: any) => (
+                      <div key={draft.id} className="bg-white border border-amber-200 p-4 rounded-xl shadow-xs hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-amber-400"></div>
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-black text-slate-800 text-sm">{draft.ticketName}</h4>
+                            <p className="text-[10px] text-slate-500 font-bold">{new Date(draft.date).toLocaleString('vi-VN')}</p>
                           </div>
-                        </td>
-                        <td className="px-5 py-4 text-center">
-                          {diff === 0 ? (
-                            <span className="text-slate-600 font-bold">Khớp kho (0)</span>
-                          ) : diff > 0 ? (
-                            <span className="text-emerald-600 font-extrabold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
-                              Thừa +{diff.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
-                            </span>
-                          ) : (
-                            <span className="text-rose-600 font-extrabold bg-rose-50 px-2 py-0.5 rounded border border-rose-250">
-                              Hụt {diff.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          <span className="bg-amber-100 text-amber-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-200 uppercase">
+                            Đang kiểm
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium mb-3 line-clamp-1">{draft.note || "Không có ghi chú"}</p>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setSelectedDraft(draft);
+                              setCurrentView("inventoryCheck");
+                            }}
+                            className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded hover:bg-blue-100 transition-colors"
+                          >
+                            Tiếp tục kiểm kê
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if(window.confirm("Xóa bản nháp này?")) {
+                                const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d:any) => d.id !== draft.id)));
+                                window.dispatchEvent(new Event('storage')); // trigger re-render hack
+                              }
+                            }}
+                            className="text-[10px] font-bold text-rose-600 bg-rose-50 px-3 py-1 rounded hover:bg-rose-100 transition-colors"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Completed Section */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-xs font-black uppercase text-emerald-600 tracking-wider flex items-center gap-1.5">
+                    <CheckCircle size={14} /> Đã cân bằng (Lịch sử)
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {JSON.parse(localStorage.getItem("inventory_history") || "[]").length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-xs font-medium italic bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                      Chưa có lịch sử kiểm kê
+                    </div>
+                  ) : (
+                    JSON.parse(localStorage.getItem("inventory_history") || "[]").map((completed: any) => (
+                      <div key={completed.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl shadow-2xs opacity-80">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-bold text-slate-700 text-sm line-through decoration-slate-300">{completed.ticketName}</h4>
+                            <p className="text-[10px] text-slate-500 font-bold">{new Date(completed.date).toLocaleString('vi-VN')}</p>
+                          </div>
+                          <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-200 uppercase">
+                            Đã cân bằng
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium">{completed.note || "Không có ghi chú"}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1855,6 +2096,81 @@ export const InventoryControl: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal: Xem chi tiết Lô hàng */}
+      {
+        showBatchesModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowBatchesModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="flex items-center gap-2.5 mb-5">
+                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">Chi tiết các lô hàng</h3>
+                  <p className="text-slate-500 text-[10px] font-semibold mt-0.5">Nguyên liệu: <span className="font-bold text-blue-600">{selectedIngredientNameForBatches}</span></p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner max-h-[60vh] overflow-y-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-wider sticky top-0 z-10">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-left">Mã lô</th>
+                      <th scope="col" className="px-4 py-3 text-right">Còn lại</th>
+                      <th scope="col" className="px-4 py-3 text-center">Hạn sử dụng</th>
+                      <th scope="col" className="px-4 py-3 text-left">Nhà cung cấp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200 text-[11px] font-semibold text-slate-700">
+                    {ingredientBatches.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-8 text-center text-slate-500 italic">Đang tải hoặc nguyên liệu này chưa có lô hàng nào...</td>
+                      </tr>
+                    ) : (
+                      ingredientBatches.map(b => {
+                        const isExpired = b.expiry_date && new Date(b.expiry_date) < new Date();
+                        return (
+                          <tr key={b.id} className={`hover:bg-slate-50 transition-colors ${isExpired ? 'bg-rose-50/30' : ''}`}>
+                            <td className="px-4 py-3 font-mono text-slate-600">{b.batch_code}</td>
+                            <td className="px-4 py-3 text-right font-black text-admin-primary">{b.remaining_quantity}</td>
+                            <td className="px-4 py-3 text-center">
+                              {b.expiry_date ? (
+                                <span className={isExpired ? "text-rose-600 font-bold" : "text-emerald-600"}>
+                                  {new Date(b.expiry_date).toLocaleDateString('vi-VN')}
+                                  {isExpired && <span className="ml-1 text-[9px] bg-rose-100 text-rose-700 px-1 py-0.5 rounded">HẾT HẠN</span>}
+                                </span>
+                              ) : <span className="text-slate-400 italic">Không có</span>}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]">{b.supplierName || 'N/A'}</td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end mt-5 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchesModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         )
@@ -2748,6 +3064,72 @@ export const InventoryControl: React.FC = () => {
         )
       }
 
+      {/* Modal Thanh toán Công nợ NCC */}
+      {showPayDebtModal && payingSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowPayDebtModal(false)}></div>
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100">
+              <h3 className="font-black text-slate-800 text-lg">Thanh toán công nợ</h3>
+              <button onClick={() => setShowPayDebtModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                <p className="text-[11px] text-amber-700 font-bold mb-1">Nhà cung cấp:</p>
+                <p className="text-sm font-black text-amber-900">{payingSupplier.name}</p>
+                <p className="text-[11px] text-amber-700 font-bold mt-2">Tổng nợ hiện tại:</p>
+                <p className="text-lg font-black text-rose-600">{Number(payingSupplier.total_debt).toLocaleString()} ₫</p>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Số tiền thanh toán</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={debtAmount}
+                    onChange={(e) => setDebtAmount(e.target.value ? Number(e.target.value) : "")}
+                    className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none font-black text-lg text-admin-primary pr-8"
+                  />
+                  <span className="absolute right-3 top-2.5 font-bold text-slate-400">₫</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Phương thức thanh toán</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm font-semibold cursor-pointer"
+                >
+                  <option value="cash">Tiền mặt</option>
+                  <option value="bank_transfer">Chuyển khoản</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Ghi chú</label>
+                <textarea
+                  rows={2}
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm"
+                  placeholder="Nhập ghi chú thanh toán..."
+                ></textarea>
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <button onClick={() => setShowPayDebtModal(false)} className="px-4 py-2 text-slate-600 font-bold rounded-lg hover:bg-slate-100 text-sm cursor-pointer">
+                  Hủy
+                </button>
+                <button onClick={handlePayDebt} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+                  <CheckCircle size={16} /> Xác nhận thanh toán
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div >
   );
 };
+
+export default InventoryControl;
