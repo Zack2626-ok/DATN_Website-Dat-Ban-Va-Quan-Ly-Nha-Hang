@@ -35,7 +35,7 @@ router.get("/suppliers", getSuppliers);
 router.post("/suppliers", addSupplier);
 router.put("/suppliers/:id", updateSupplier);
 router.delete("/suppliers/:id", deleteSupplier);
-router.post("/upload-excel", upload.single("file"), uploadExcel);
+router.post("/upload-excel", upload.single("file") as any, uploadExcel);
 router.get("/low-stock", getLowStockItems);
 router.post("/", createInventoryItem);
 router.get("/:id", getInventoryById);

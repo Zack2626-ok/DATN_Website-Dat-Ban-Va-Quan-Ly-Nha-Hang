@@ -54,34 +54,33 @@ export const LossDebtReport: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 border-b border-sky-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-sky-500">
-            Kiểm soát kho & công nợ
-          </p>
-          <h1 className="font-playfair text-2xl font-bold text-sky-800">
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
             Báo cáo hao hụt & công nợ NCC
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
             Chênh lệch kiểm kê kho và công nợ nhà cung cấp — Admin & Bếp trưởng
           </p>
         </div>
-        <div className="flex gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <button
+            type="button"
             onClick={() => setCheckModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-sky-700"
+            className="px-5 py-2.5 bg-[#FFFFFF] border border-slate-200 text-[#1A1A1A] hover:bg-slate-50 text-xs font-bold rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95"
           >
-            <ClipboardCheck size={16} />
+            <ClipboardCheck size={16} className="text-[#3E2016]" />
             Kiểm kê kho hôm nay
           </button>
           <button
+            type="button"
             onClick={fetchData}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-sky-100 bg-white px-3 py-2 text-sm font-medium text-sky-700 shadow-sm transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 disabled:opacity-50"
           >
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            Làm mới
           </button>
         </div>
       </div>

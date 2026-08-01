@@ -49,7 +49,7 @@ export const ShiftTab: React.FC<ShiftTabProps> = ({
 
         <button
           onClick={onOpenShiftClick}
-          className="flex items-center justify-center gap-2 rounded-lg bg-sky-500 hover:bg-[#e04f53] px-4 py-2 text-xs font-bold text-white transition-all cursor-pointer shadow-sm"
+          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
         >
           <Plus size={14} />
           Mở ca làm việc mới

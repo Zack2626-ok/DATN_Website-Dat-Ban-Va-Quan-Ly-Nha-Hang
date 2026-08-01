@@ -447,7 +447,6 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   // Thêm món trực tiếp từ sơ đồ bàn
   const handleAddDish = async (item: any, quantity: number, note?: string) => {
     if (!selectedTableId) return;
-    const userId = getCurrentUserId();
     let orderId = activeOrder?.id;
     if (!orderId) {
       const currentUserId = getCurrentUserId();
@@ -598,7 +597,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setIsAddTableOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-sky-600 transition-all shadow-md cursor-pointer"
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
           >
             <Plus size={15} />
             Thêm bàn ăn
