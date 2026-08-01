@@ -19,7 +19,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({ label, value, icon: Icon, colo
   const c = COLOR_MAP[color];
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-sky-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
-      <span className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${c.bar}`} />
+      <span className={`absolute inset-x-0 top-0 h-1 bg-linear-to-r ${c.bar}`} />
       <div className="flex items-start justify-between">
         <p className="text-sm font-medium text-slate-500">{label}</p>
         <span className={`rounded-xl p-2.5 ring-4 ${c.iconBg} ${c.ring}`}>

@@ -4,8 +4,8 @@ import { formatCurrency } from "../../../utils/formatCurrency";
 import api from "../../../services/axiosInstance";
 import { toast } from "react-hot-toast";
 import { KpiCard } from "./kpicard";
-import { PayDebtModal } from "./PayDebtModal";
-import { StockCheckModal } from "./StockCheckModal";
+import { PayDebtModal } from "./paydebtmodal";
+import { StockCheckModal } from "./stockcheckmodal";
 
 export const LossDebtReport: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -222,22 +222,22 @@ export const LossDebtReport: React.FC = () => {
                     <td className="px-5 py-3">
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${row.status === "Đã thanh toán"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : row.status === "Quá hạn"
-                              ? "bg-rose-50 text-rose-700"
-                              : row.status === "Sắp đến hạn"
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-slate-100 text-slate-600"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : row.status === "Quá hạn"
+                            ? "bg-rose-50 text-rose-700"
+                            : row.status === "Sắp đến hạn"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-slate-100 text-slate-600"
                           }`}
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${row.status === "Đã thanh toán"
-                              ? "bg-emerald-500"
-                              : row.status === "Quá hạn"
-                                ? "bg-rose-500"
-                                : row.status === "Sắp đến hạn"
-                                  ? "bg-amber-500"
-                                  : "bg-slate-400"
+                            ? "bg-emerald-500"
+                            : row.status === "Quá hạn"
+                              ? "bg-rose-500"
+                              : row.status === "Sắp đến hạn"
+                                ? "bg-amber-500"
+                                : "bg-slate-400"
                             }`}
                         />
                         {row.status === "Đã thanh toán" ? "Đã thanh toán" : "Còn thiếu"}
