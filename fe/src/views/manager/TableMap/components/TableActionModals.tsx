@@ -478,6 +478,16 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
   const [errorMsg, setErrorMsg] = useState("");
   const [duplicateTable, setDuplicateTable] = useState<ResmanagerTable | null>(null);
 
+  const isCapacityDisabled = !!(
+    table &&
+    (table.status === "serving" ||
+      table.status === "pending_payment" ||
+      table.status === "reserved" ||
+      table.active_order_id ||
+      table.booking_id ||
+      (table.guest_name && table.guest_name.trim() !== ""))
+  );
+
   useEffect(() => {
     if (isOpen) {
       setErrorMsg("");
@@ -620,8 +630,18 @@ export const TableFormModal: React.FC<TableFormModalProps> = ({
                 required
                 value={capacity}
                 onChange={(e) => setCapacity(Number(e.target.value))}
-                className="w-full rounded-lg border border-sky-100 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
+                disabled={isCapacityDisabled}
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none transition-colors ${
+                  isCapacityDisabled
+                    ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+                    : "border-sky-100 focus:border-sky-500"
+                }`}
               />
+              {isCapacityDisabled && (
+                <p className="text-[10px] text-red-500 font-semibold mt-1">
+                  ⚠️ Bàn đang có khách hoặc có lịch đặt, không thể sửa sức chứa.
+                </p>
+              )}
             </div>
           </div>
 

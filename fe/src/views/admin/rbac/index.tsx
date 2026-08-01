@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ToggleLeft, ToggleRight, Info, Save } from "lucide-react";
+import { ToggleLeft, ToggleRight, Save } from "lucide-react";
 
 type RoleKey = "admin" | "manager" | "cashier" | "chef" | "waiter";
 
@@ -68,7 +68,6 @@ const INITIAL_PERMISSIONS: PermissionRow[] = [
 ];
 
 export const AdminRbac: React.FC = () => {
-  const [activeTab] = useState<"rbac">("rbac");
   const [permissions, setPermissions] = useState<PermissionRow[]>(INITIAL_PERMISSIONS);
   const [savedMessage, setSavedMessage] = useState<boolean>(false);
 

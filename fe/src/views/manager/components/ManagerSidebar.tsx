@@ -15,7 +15,7 @@ import {
   TrendingDown,
   BadgeCheck,
   Building2,
-    CircleDollarSign,
+  CircleDollarSign,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { ROLE_LABELS } from "../../../constants/roles";
