@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   FileText,
   User,
@@ -12,6 +12,7 @@ import {
   UserCheck,
   Hourglass,
 } from "lucide-react";
+import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
 import { getComboConstituents } from "../../../../utils/comboHelper";
 
@@ -34,6 +35,10 @@ const formatTime = (dateStr: string) => {
 
 export const InvoiceDetailPanel: React.FC<Props> = (props) => {
   const { invoice, onPay, onPrint, loading } = props;
+
+  useEffect(() => {
+    getRestaurantInfo().catch(() => { });
+  }, []);
 
   if (!invoice) {
     return (

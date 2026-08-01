@@ -17,6 +17,14 @@ import {
   deleteSupplier,
 } from "../controllers/inventory.controller";
 
+import {
+  // ...các import cũ giữ nguyên...
+  submitStockCheck,
+  getTodayCheckList,
+  paySupplierDebt,
+  getDebtHistory,
+} from "../controllers/inventory.controller";
+
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -34,5 +42,9 @@ router.get("/:id", getInventoryById);
 router.patch("/:id", updateInventoryItem);
 router.patch("/:id/quantity", updateInventoryQuantity);
 router.delete("/:id", deleteInventoryItem);
+router.get("/stock-check/today", getTodayCheckList);
+router.post("/stock-check", submitStockCheck);
+router.patch("/suppliers/:id/pay", paySupplierDebt);
+router.get("/suppliers/:id/debt-history", getDebtHistory);
 
 export default router;
