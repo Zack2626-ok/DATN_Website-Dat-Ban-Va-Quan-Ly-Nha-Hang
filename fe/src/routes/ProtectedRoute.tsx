@@ -20,17 +20,17 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   }
 
   // Chưa đăng nhập → về trang đăng nhập nhân viên
-  if (!user) {
-    return <Navigate to="/auth/login" replace />;
-  }
+  // if (!user) {
+  //   return <Navigate to="/auth/login" replace />;
+  // }
 
-  // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
-  if (allowedRoles) {
-    const role = user.role ? (user.role.toLowerCase() as UserRole) : ("" as UserRole);
-    if (!allowedRoles.map(r => r.toLowerCase()).includes(role)) {
-      return <Navigate to="/403" replace />;
-    }
-  }
+  // // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
+  // if (allowedRoles) {
+  //   const role = user.role ? (user.role.toLowerCase() as UserRole) : ("" as UserRole);
+  //   if (!allowedRoles.map(r => r.toLowerCase()).includes(role)) {
+  //     return <Navigate to="/403" replace />;
+  //   }
+  // }
 
   return <>{children}</>;
 }
