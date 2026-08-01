@@ -3,6 +3,8 @@ import multer from "multer";
 import {
   getAllInventory,
   getInventoryById,
+  getIngredientBatches,
+  wasteExpiredBatches,
   createInventoryItem,
   updateInventoryItem,
   deleteInventoryItem,
@@ -38,7 +40,9 @@ router.delete("/suppliers/:id", deleteSupplier);
 router.post("/upload-excel", upload.single("file") as any, uploadExcel);
 router.get("/low-stock", getLowStockItems);
 router.post("/", createInventoryItem);
+router.post("/waste-expired", wasteExpiredBatches);
 router.get("/:id", getInventoryById);
+router.get("/:id/batches", getIngredientBatches);
 router.patch("/:id", updateInventoryItem);
 router.patch("/:id/quantity", updateInventoryQuantity);
 router.delete("/:id", deleteInventoryItem);

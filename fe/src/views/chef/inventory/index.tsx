@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi } from "../../../services/api";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
 import {
@@ -12,6 +12,7 @@ import {
   Search,
   Trash2,
   Layers,
+  Eye,
   Truck,
   History,
   ClipboardCheck,
@@ -115,6 +116,9 @@ export const InventoryControl: React.FC = () => {
   // Modals / Input States
   const [showAddIngModal, setShowAddIngModal] = useState(false);
   const [newIngForm, setNewIngForm] = useState({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
+  const [showBatchesModal, setShowBatchesModal] = useState(false);
+  const [ingredientBatches, setIngredientBatches] = useState<any[]>([]);
+  const [selectedIngredientNameForBatches, setSelectedIngredientNameForBatches] = useState<string>("");
 
   const [showImportExportModal, setShowImportExportModal] = useState(false);
 
@@ -434,6 +438,35 @@ export const InventoryControl: React.FC = () => {
 
     setShowImportFileModal(false);
     setImportFile(null);
+  };
+
+
+  const handleViewBatches = async (ing: any) => {
+    try {
+      setSelectedIngredientNameForBatches(ing.name);
+      setShowBatchesModal(true);
+      setIngredientBatches([]); // clear old data
+      const data = await getIngredientBatchesApi(ing.id);
+      setIngredientBatches(data);
+    } catch (e: any) {
+      toast.error("Không thể tải danh sách lô hàng");
+    }
+  };
+
+  const handleWasteExpiredBatches = async () => {
+    if (!window.confirm("Bạn có chắc chắn muốn hủy TOÀN BỘ các lô hàng đã hết hạn trong kho? Hành động này không thể hoàn tác.")) return;
+    try {
+      const res = await wasteExpiredBatchesApi();
+      if (res && res.count > 0) {
+        toast.success(`Đã hủy thành công ${res.count} lô hàng hết hạn!`);
+        getIngredientsApi().then(data => setReduxIngredients(data));
+        getInventoryTransactionsApi().then(data => setTransactions(data));
+      } else {
+        toast.success("Không có lô hàng nào hết hạn cần hủy.");
+      }
+    } catch (e: any) {
+      toast.error("Lỗi khi hủy hàng hết hạn");
+    }
   };
 
   // Shared Export to Excel Helper
@@ -788,6 +821,12 @@ export const InventoryControl: React.FC = () => {
                   <Plus size={12} /> Nhập bằng tay
                 </button>
                 <button
+                  onClick={handleWasteExpiredBatches}
+                  className="px-3 py-1.5 bg-linear-to-r from-rose-600 to-red-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Trash2 size={12} /> Hủy hàng hết hạn
+                </button>
+                <button
                   onClick={() => {
                     setImportFileTarget("ingredients");
                     setImportFile(null);
@@ -933,28 +972,13 @@ export const InventoryControl: React.FC = () => {
                             )}
                           </td>
                           <td className="px-5 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
+                             <div className="flex justify-end gap-1.5 items-center">
                               <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, ing.stock - (ing.unit === "kg" ? 0.5 : 50))}
-                                disabled={ing.stock <= 0}
-                                className="p-1 rounded bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                                title="Giảm kho"
+                                onClick={() => handleViewBatches(ing)}
+                                className="px-2 py-1 rounded bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 text-[10px] font-extrabold cursor-pointer transition-colors flex items-center gap-1"
+                                title="Chi tiết Lô hàng"
                               >
-                                <Minus size={11} />
-                              </button>
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, ing.stock + (ing.unit === "kg" ? 0.5 : 50))}
-                                className="p-1 rounded bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 cursor-pointer transition-colors"
-                                title="Tăng kho"
-                              >
-                                <Plus size={11} />
-                              </button>
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, 0)}
-                                className="px-2 py-1 rounded bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 text-[10px] font-extrabold cursor-pointer transition-colors"
-                                title="Giả lập hết hàng"
-                              >
-                                Hết hàng
+                                <Eye size={10} /> Xem Lô
                               </button>
                             </div>
                           </td>
@@ -971,7 +995,7 @@ export const InventoryControl: React.FC = () => {
               <div>
                 <p className="font-extrabold text-blue-900">Liên kết thực tế Menu / Bàn ăn</p>
                 <p className="text-[11px] text-blue-700 font-medium mt-0.5 leading-relaxed">
-                  Hệ thống kiểm soát tồn kho được liên kết chặt chẽ với Thực đơn bán hàng. Ví dụ, khi bạn điều chỉnh lượng tồn kho của <strong>Cá hồi</strong> hoặc <strong>Trứng cá tầm</strong> về 0 (hoặc nhấn nút "Hết hàng"), hệ thống sẽ tự động cập nhật và ẩn/báo "Hết hàng" đối với các món <em>Cá hồi sốt chanh</em> hay <em>Gỏi hải sản</em> ngoài trang Gọi món của Nhân viên và Khách hàng ngay lập tức.
+                  Hệ thống kiểm soát tồn kho được liên kết chặt chẽ với Thực đơn bán hàng. Ví dụ, khi lượng tồn kho của <strong>Cá hồi</strong> hoặc <strong>Trứng cá tầm</strong> về 0, hệ thống sẽ tự động cập nhật và ẩn/báo "Hết hàng" đối với các món <em>Cá hồi sốt chanh</em> hay <em>Gỏi hải sản</em> ngoài trang Gọi món của Nhân viên và Khách hàng ngay lập tức.
                 </p>
               </div>
             </div>
@@ -1869,6 +1893,81 @@ export const InventoryControl: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal: Xem chi tiết Lô hàng */}
+      {
+        showBatchesModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowBatchesModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="flex items-center gap-2.5 mb-5">
+                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">Chi tiết các lô hàng</h3>
+                  <p className="text-slate-500 text-[10px] font-semibold mt-0.5">Nguyên liệu: <span className="font-bold text-blue-600">{selectedIngredientNameForBatches}</span></p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner max-h-[60vh] overflow-y-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-wider sticky top-0 z-10">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-left">Mã lô</th>
+                      <th scope="col" className="px-4 py-3 text-right">Còn lại</th>
+                      <th scope="col" className="px-4 py-3 text-center">Hạn sử dụng</th>
+                      <th scope="col" className="px-4 py-3 text-left">Nhà cung cấp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200 text-[11px] font-semibold text-slate-700">
+                    {ingredientBatches.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-8 text-center text-slate-500 italic">Đang tải hoặc nguyên liệu này chưa có lô hàng nào...</td>
+                      </tr>
+                    ) : (
+                      ingredientBatches.map(b => {
+                        const isExpired = b.expiry_date && new Date(b.expiry_date) < new Date();
+                        return (
+                          <tr key={b.id} className={`hover:bg-slate-50 transition-colors ${isExpired ? 'bg-rose-50/30' : ''}`}>
+                            <td className="px-4 py-3 font-mono text-slate-600">{b.batch_code}</td>
+                            <td className="px-4 py-3 text-right font-black text-admin-primary">{b.remaining_quantity}</td>
+                            <td className="px-4 py-3 text-center">
+                              {b.expiry_date ? (
+                                <span className={isExpired ? "text-rose-600 font-bold" : "text-emerald-600"}>
+                                  {new Date(b.expiry_date).toLocaleDateString('vi-VN')}
+                                  {isExpired && <span className="ml-1 text-[9px] bg-rose-100 text-rose-700 px-1 py-0.5 rounded">HẾT HẠN</span>}
+                                </span>
+                              ) : <span className="text-slate-400 italic">Không có</span>}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]">{b.supplierName || 'N/A'}</td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end mt-5 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchesModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         )

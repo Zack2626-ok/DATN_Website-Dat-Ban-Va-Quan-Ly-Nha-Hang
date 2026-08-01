@@ -483,6 +483,61 @@ async function seedDishes() {
     console.log(`║  🔄 Safely Updated: ${String(updatedCount).padStart(4)} dishes                        ║`);
     console.log("╚══════════════════════════════════════════════════════════╝");
     
+    // --- 3. SEED INVENTORY TEST CASES ---
+    console.log("\n🧪 Injecting Inventory Test Cases (FEFO & Batches)...");
+
+    // Case 1: Thêm Saffron (Nguyên liệu mới) nếu chưa có
+    let saffronId;
+    const saffronCheck = await query<any[]>("SELECT id FROM ingredients WHERE name = 'Saffron (Nhụy hoa nghệ tây)'");
+    if (saffronCheck.length === 0) {
+      const safRes = await query<any>(`
+        INSERT INTO ingredients (name, unit, min_stock, current_stock)
+        VALUES ('Saffron (Nhụy hoa nghệ tây)', 'g', 10, 0)
+      `);
+      saffronId = safRes.insertId;
+      console.log("   ➕ Created new ingredient: Saffron");
+    } else {
+      saffronId = saffronCheck[0].id;
+    }
+
+    // Xóa các lô test cũ để tránh lặp nếu chạy seed nhiều lần
+    await query("DELETE FROM stock_in WHERE batch_code LIKE 'TEST-%'");
+
+    // Case 1: Nhập Saffron (Mới)
+    await query(`
+      INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by)
+      VALUES (?, 'TEST-SAFFRON-01', 50, 50, 200000, 1, '2028-12-31', 'Test nhập lô nguyên liệu hoàn toàn mới', 1)
+    `, [saffronId]);
+    await query("UPDATE ingredients SET current_stock = current_stock + 50 WHERE id = ?", [saffronId]);
+
+    // Case 2: Nhập bồi Thịt bò (Đã có lô cũ)
+    // Thịt bò ID = 1 (trong SQLQuery1)
+    await query(`
+      INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by)
+      VALUES (1, 'TEST-THITBO-NEW', 30, 30, 270000, 1, '2026-10-15', 'Test nhập bồi lô mới cho nguyên liệu cũ', 1)
+    `);
+    await query("UPDATE ingredients SET current_stock = current_stock + 30 WHERE id = 1");
+
+    // Case 3: Nhập Gia vị không có NCC
+    let spiceId;
+    const spiceCheck = await query<any[]>("SELECT id FROM ingredients WHERE name = 'Gia vị tổng hợp test'");
+    if (spiceCheck.length === 0) {
+      const spiceRes = await query<any>(`
+        INSERT INTO ingredients (name, unit, min_stock, current_stock)
+        VALUES ('Gia vị tổng hợp test', 'gói', 5, 0)
+      `);
+      spiceId = spiceRes.insertId;
+    } else {
+      spiceId = spiceCheck[0].id;
+    }
+    await query(`
+      INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by)
+      VALUES (?, 'TEST-SPICE-NONCC', 100, 100, 5000, NULL, NULL, 'Test khuyết nhà cung cấp và khuyết HSD', 1)
+    `, [spiceId]);
+    await query("UPDATE ingredients SET current_stock = current_stock + 100 WHERE id = ?", [spiceId]);
+
+    console.log("   ✅ Seeded Inventory Test Cases.");
+
     process.exit(0);
   } catch (err: any) {
     console.error("❌ ERROR SEEDING DISHES IN DB:", err.message);

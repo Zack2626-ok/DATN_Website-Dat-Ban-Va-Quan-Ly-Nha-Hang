@@ -2435,6 +2435,7 @@ export const deductInventoryForItem = async (orderItemId: string | number): Prom
       const batches = await query<any[]>(
         `SELECT id, remaining_quantity FROM stock_in 
          WHERE ingredient_id = ? AND remaining_quantity > 0 
+           AND (expiry_date >= CURDATE() OR expiry_date IS NULL)
          ORDER BY expiry_date ASC, created_at ASC`,
         [recipe.ingredient_id]
       );

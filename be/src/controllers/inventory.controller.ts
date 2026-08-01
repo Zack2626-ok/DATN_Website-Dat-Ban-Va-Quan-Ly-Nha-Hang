@@ -87,6 +87,32 @@ export const getInventoryById = async (req: Request, res: Response): Promise<voi
   }
 };
 
+export const getIngredientBatches = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const batches = await db.query(
+      `SELECT 
+         si.id, 
+         si.batch_code, 
+         si.quantity, 
+         si.remaining_quantity, 
+         si.expiry_date, 
+         si.unit_cost, 
+         s.name as supplierName,
+         si.note,
+         si.created_at
+       FROM stock_in si
+       LEFT JOIN suppliers s ON si.supplier_id = s.id
+       WHERE si.ingredient_id = ? AND si.remaining_quantity > 0
+       ORDER BY si.expiry_date ASC, si.created_at ASC`,
+      [id]
+    );
+    sendSuccess(res, batches, "Lấy danh sách lô thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
 export const createInventoryItem = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, stock, unit, threshold } = req.body;
@@ -136,6 +162,40 @@ export const deleteInventoryItem = async (req: Request, res: Response): Promise<
   }
 };
 
+export const wasteExpiredBatches = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Tìm các lô đã hết hạn và còn số lượng
+    const expiredBatches = await db.query<any[]>(
+      `SELECT id, ingredient_id, batch_code, remaining_quantity 
+       FROM stock_in 
+       WHERE expiry_date < CURDATE() AND remaining_quantity > 0`
+    );
+
+    if (expiredBatches.length === 0) {
+      sendSuccess(res, null, "Không có hàng hóa nào hết hạn cần hủy.");
+      return;
+    }
+
+    // Tiến hành hủy
+    for (const batch of expiredBatches) {
+      // 1. Ghi nhận vào stock_out
+      await db.query(
+        `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_by) 
+         VALUES (?, ?, ?, 'expired', ?, 1)`,
+        [batch.ingredient_id, batch.id, batch.remaining_quantity, `Hủy tự động lô hết hạn: ${batch.batch_code}`]
+      );
+      // 2. Trừ remaining_quantity của lô về 0
+      await db.query(`UPDATE stock_in SET remaining_quantity = 0 WHERE id = ?`, [batch.id]);
+      // 3. Trừ tổng tồn của nguyên liệu
+      await db.query(`UPDATE ingredients SET current_stock = current_stock - ? WHERE id = ?`, [batch.remaining_quantity, batch.ingredient_id]);
+    }
+
+    sendSuccess(res, { count: expiredBatches.length }, `Đã hủy thành công ${expiredBatches.length} lô hàng hết hạn.`);
+  } catch (error) {
+    console.error("Error wasting expired batches:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
 // ================================================================
 // TASK 5 tích hợp ở đây: khi nhập hàng (type === "import") và
 // req.body có isCredit=true + supplierId → tự cộng thẳng vào
@@ -145,14 +205,17 @@ export const deleteInventoryItem = async (req: Request, res: Response): Promise<
 export const updateInventoryQuantity = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost } = req.body; // type: import | export | adjust
+    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate } = req.body; // type: import | export | adjust
 
     const qty = Number(quantity);
     if (type === "import") {
       await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, id]);
+      
+      const parsedExpiryDate = expiryDate ? new Date(expiryDate).toISOString().split('T')[0] : null;
+
       await db.query(
-        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, `LOT-${id}-${Date.now()}`, qty, qty, Number(unitCost) || 0, supplierId || null, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
+        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, `LOT-${id}-${Date.now()}`, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
       );
 
       // TASK 5: Nhập hàng CHỊU (mua chịu) + có chọn NCC → cộng nợ cho NCC đó
@@ -172,6 +235,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       const batches = await db.query<any[]>(
         `SELECT id, remaining_quantity FROM stock_in 
          WHERE ingredient_id = ? AND remaining_quantity > 0 
+           AND (expiry_date >= CURDATE() OR expiry_date IS NULL)
          ORDER BY expiry_date ASC, created_at ASC`,
         [id]
       );
