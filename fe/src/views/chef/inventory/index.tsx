@@ -27,12 +27,9 @@ import {
   Info,
   UploadCloud,
   FileText,
-<<<<<<< HEAD
   BarChart3,
-  Printer
-=======
+  Printer,
   Pencil
->>>>>>> 02754ae707ee8d36514eaa72ea6f2faa04350b12
 } from "lucide-react";
 
 // Types for local interactive states
@@ -335,7 +332,6 @@ export const InventoryControl: React.FC = () => {
     setNewCategoryForm({ name: "", code: "", description: "" });
   };
 
-<<<<<<< HEAD
   const handlePostExpiryBatch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExpiryForm.ingredientName || !newExpiryForm.batchNo || !newExpiryForm.expiryDate) return;
@@ -559,10 +555,7 @@ export const InventoryControl: React.FC = () => {
   };
 
   // Perform Stocktake adjustment
-  const handleApplyStocktake = () => {
-=======
   const handleApplyStocktake = async () => {
->>>>>>> 02754ae707ee8d36514eaa72ea6f2faa04350b12
     let changed = false;
 
     for (const ing of reduxIngredients) {
@@ -1284,7 +1277,6 @@ export const InventoryControl: React.FC = () => {
         {/* Tab 4: Kiểm kê */}
         {activeTab === "stocktake" && (
           <div className="flex flex-col gap-4">
-<<<<<<< HEAD
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
@@ -1353,12 +1345,13 @@ export const InventoryControl: React.FC = () => {
                 >
                   <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
                 </button>
-=======
+              </div>
+            </div>
+
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <div>
                 <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
                 <p className="text-[10px] text-slate-600 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
->>>>>>> 02754ae707ee8d36514eaa72ea6f2faa04350b12
               </div>
             </div>
 
@@ -1422,7 +1415,6 @@ export const InventoryControl: React.FC = () => {
         {/* Tab 5: Hạn sử dụng */}
         {activeTab === "expiry" && (
           <div className="flex flex-col gap-4">
-<<<<<<< HEAD
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
@@ -1491,11 +1483,11 @@ export const InventoryControl: React.FC = () => {
                   <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
                 </button>
               </div>
-=======
+            </div>
+
             <div className="pb-2 border-b border-slate-100">
               <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh sách Lô hàng & Theo dõi Hạn sử dụng</span>
               <p className="text-[10px] text-slate-600 font-semibold mt-1">Cảnh báo nguyên liệu đã hết hạn hoặc sắp hết hạn cần ưu tiên tiêu thụ.</p>
->>>>>>> 02754ae707ee8d36514eaa72ea6f2faa04350b12
             </div>
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
