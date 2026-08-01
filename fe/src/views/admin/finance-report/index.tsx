@@ -88,7 +88,7 @@ export const FinanceReport: React.FC = () => {
             className="group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] p-5 shadow-xs transition-shadow hover:shadow-md"
           >
             <span
-              className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${item.accent}`}
+              className={`absolute inset-x-0 top-0 h-1 bg-linear-to-r ${item.accent}`}
             />
             <div className="flex items-start justify-between">
               <p className="text-xs font-bold text-[#8A8A8A]">{item.label}</p>
@@ -150,9 +150,8 @@ export const FinanceReport: React.FC = () => {
                 data.recentTransactions.map((row: any, idx: number) => (
                   <tr
                     key={`${row.id}-${row.date}`}
-                    className={`border-t border-sky-50 transition-colors hover:bg-sky-50/50 ${
-                      idx % 2 === 1 ? "bg-slate-50/40" : ""
-                    }`}
+                    className={`border-t border-sky-50 transition-colors hover:bg-sky-50/50 ${idx % 2 === 1 ? "bg-slate-50/40" : ""
+                      }`}
                   >
                     <td className="px-5 py-3 text-slate-600">
                       {new Date(row.date).toLocaleString("vi-VN")}
@@ -160,25 +159,22 @@ export const FinanceReport: React.FC = () => {
                     <td className="px-5 py-3 font-mono text-xs text-slate-500">{row.id}</td>
                     <td className="px-5 py-3">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          row.type === "income"
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${row.type === "income"
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-rose-50 text-rose-700"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            row.type === "income" ? "bg-emerald-500" : "bg-rose-500"
-                          }`}
+                          className={`h-1.5 w-1.5 rounded-full ${row.type === "income" ? "bg-emerald-500" : "bg-rose-500"
+                            }`}
                         />
                         {row.type === "income" ? "Thu" : "Chi"}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-slate-700">{row.description}</td>
                     <td
-                      className={`px-5 py-3 text-right font-semibold tabular-nums ${
-                        row.type === "income" ? "text-emerald-700" : "text-rose-700"
-                      }`}
+                      className={`px-5 py-3 text-right font-semibold tabular-nums ${row.type === "income" ? "text-emerald-700" : "text-rose-700"
+                        }`}
                     >
                       {row.type === "income" ? "+" : "-"}
                       {formatCurrency(Number(row.amount))}

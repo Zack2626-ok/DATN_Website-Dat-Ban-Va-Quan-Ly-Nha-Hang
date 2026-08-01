@@ -98,6 +98,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
           const eligible = customerVouchers.filter(v => {
             if (v.is_active !== 1) return false;
             if (v.expired_at && new Date(v.expired_at) < new Date()) return false;
+            if (v.max_uses !== null && v.max_uses !== undefined && v.used_count >= v.max_uses) return false;
             if (subtotal < v.min_order) return false;
             return true;
           });
