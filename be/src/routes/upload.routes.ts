@@ -4,6 +4,6 @@ import { upload } from "../middlewares/upload.middleware";
 
 const router = Router();
 
-router.post("/", upload.single("image"), uploadImage);
+router.post("/", upload.single("image") as any, uploadImage);
 
 export default router;
