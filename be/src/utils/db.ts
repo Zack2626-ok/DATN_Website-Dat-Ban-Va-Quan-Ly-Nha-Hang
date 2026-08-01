@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
+import { BOOKING_STATUS } from "../constants/booking";
+import { TABLE_STATUS } from "../constants/table";
 
 
 
@@ -1550,6 +1552,55 @@ export const hasActiveBookingsForTable = async (tableId: number): Promise<boolea
 //  RESMANAGER SCHEMA — Bookings
 // ============================================================================
 
+export interface AvailableBookingTable {
+  id: number;
+  name: string;
+  capacity: number;
+  area_name: string | null;
+}
+
+/**
+ * Returns tables that can accommodate a party and have no overlapping active booking.
+ * This is the single availability source used by both web booking and Telegram.
+ */
+export const getAvailableBookingTables = async (
+  partySize: number,
+  startTime: string,
+  endTime: string,
+): Promise<AvailableBookingTable[]> => {
+  const rows = await query<AvailableBookingTable[]>(
+    `SELECT t.id, t.name, t.capacity, a.name AS area_name
+     FROM tables t
+     LEFT JOIN table_areas a ON a.id = t.area_id
+     WHERE t.is_deleted = 0
+       AND t.status = ?
+       AND t.capacity >= ?
+       AND NOT EXISTS (
+         SELECT 1
+         FROM bookings b
+         WHERE b.table_id = t.id
+           AND b.status IN (?, ?)
+           AND b.start_time < ?
+           AND b.end_time > ?
+       )
+     ORDER BY t.capacity ASC, t.name ASC`,
+    [
+      TABLE_STATUS.EMPTY,
+      partySize,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      endTime,
+      startTime,
+    ],
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    capacity: Number(row.capacity),
+  }));
+};
+
 export const getBookings = async (status?: string): Promise<any[]> => {
   const rows = status
     ? await query<any[]>(
@@ -1618,13 +1669,32 @@ export const getBookingById = async (id: number): Promise<any | null> => {
 };
 
 export const createBooking = async (data: any): Promise<any> => {
+  const requestedPartySize = Number(data.party_size);
+  const availableTables = await getAvailableBookingTables(
+    requestedPartySize,
+    data.start_time,
+    data.end_time,
+  );
+  const selectedTableIsAvailable = availableTables.some(
+    (table) => table.id === Number(data.table_id),
+  );
+  if (!selectedTableIsAvailable) {
+    throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
+  }
+
   // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
   const overlaps = await query<any[]>(`
     SELECT id FROM bookings
-    WHERE table_id = ? AND status IN ('pending', 'confirmed')
+    WHERE table_id = ? AND status IN (?, ?)
       AND start_time < ? AND end_time > ?
     LIMIT 1
-  `, [data.table_id, data.end_time, data.start_time]);
+  `, [
+    data.table_id,
+    BOOKING_STATUS.PENDING,
+    BOOKING_STATUS.CONFIRMED,
+    data.end_time,
+    data.start_time,
+  ]);
 
   if (overlaps.length > 0) {
     throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");

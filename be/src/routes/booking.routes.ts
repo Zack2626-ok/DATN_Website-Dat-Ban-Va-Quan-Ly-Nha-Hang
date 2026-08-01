@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getAllBookings,
+  getAvailableTablesHandler,
   getBookingByIdHandler,
   createBookingHandler,
   updateBookingStatusHandler,
@@ -11,6 +12,7 @@ import {
 const router = Router();
 
 router.get("/", getAllBookings);
+router.get("/available-tables", getAvailableTablesHandler);
 router.post("/", createBookingHandler);
 router.get("/:id", getBookingByIdHandler);
 router.patch("/:id/status", updateBookingStatusHandler);
