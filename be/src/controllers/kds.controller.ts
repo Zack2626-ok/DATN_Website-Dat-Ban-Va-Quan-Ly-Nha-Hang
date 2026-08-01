@@ -5,6 +5,7 @@ import {
   updateKdsItemStatusInDb,
   recallKdsItemStatusInDb,
   getKdsVoidAlertsFromDb,
+  getKdsHistoryFromDb,
 } from "../utils/kdsDb";
 
 /**
@@ -113,5 +114,20 @@ export const getKdsVoidAlertsHandler = async (_req: Request, res: Response): Pro
   } catch (err) {
     console.error("Error in getKdsVoidAlertsHandler:", err);
     sendError(res, `Lỗi tải danh sách cảnh báo hủy món: ${(err as Error).message}`, 500);
+  }
+};
+
+/**
+ * GET /api/kds/history
+ * Fetch historical/completed and voided KDS items for a specific date
+ */
+export const getKdsHistoryHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { date } = req.query;
+    const history = await getKdsHistoryFromDb(date as string);
+    sendSuccess(res, history, "Tải lịch sử nấu ăn KDS thành công!");
+  } catch (err) {
+    console.error("Error in getKdsHistoryHandler:", err);
+    sendError(res, `Lỗi tải lịch sử nấu ăn KDS: ${(err as Error).message}`, 500);
   }
 };

@@ -85,7 +85,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
 export const addOrderItemHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { orderId } = req.params;
-    const { menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note } = req.body;
+    const { menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, created_by } = req.body;
 
     if (!menu_item_id || !quantity || unit_price === undefined) {
       sendError(res, "menu_item_id, quantity, unit_price là bắt buộc", 400);
@@ -100,6 +100,7 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
       seat_number: seat_number ? Number(seat_number) : null,
       course_number: course_number ? Number(course_number) : 1,
       kitchen_note,
+      created_by: created_by ? Number(created_by) : null,
     });
 
     // Báo Socket.IO có món mới thêm

@@ -32,6 +32,7 @@ import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
 import notificationRoutes from "./routes/notification.routes";
 import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
+import attendanceRoutes from "./routes/attendance.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import crmRoutes from "./routes/crm.routes";
  
@@ -142,6 +143,9 @@ app.use("/api/v1/crm", crmRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
+app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
+app.use("/api/restaurant-info", restaurantInfoRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

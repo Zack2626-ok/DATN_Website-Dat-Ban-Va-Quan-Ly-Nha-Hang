@@ -262,11 +262,25 @@ export const updateResmanagerTableHandler = async (req: Request, res: Response):
     const id = Number(req.params.id);
     const { area_id, name, capacity, row_pos, col_pos } = req.body;
 
-    // Lấy thông tin tọa độ hiện tại trong DB
-    const currentTable = await db.getResmanagerTableCoordinates(id);
+    // Lấy thông tin bàn hiện tại trong DB
+    const currentTable = await db.getResmanagerTableById(id);
     if (!currentTable) {
       sendError(res, "Không tìm thấy bàn cần cập nhật", 404);
       return;
+    }
+
+    // Chặn thay đổi sức chứa khi có khách đang ngồi hoặc có lịch đặt bàn
+    if (capacity !== undefined && Number(capacity) !== Number(currentTable.capacity)) {
+      const hasActiveOrders = await db.hasActiveOrdersForTable(id);
+      const hasActiveBookings = await db.hasActiveBookingsForTable(id);
+      if (hasActiveOrders || hasActiveBookings) {
+        sendError(
+          res,
+          "Không thể thay đổi sức chứa của bàn khi đang có khách ngồi hoặc có lịch đặt bàn!",
+          400
+        );
+        return;
+      }
     }
 
     const data: any = {};

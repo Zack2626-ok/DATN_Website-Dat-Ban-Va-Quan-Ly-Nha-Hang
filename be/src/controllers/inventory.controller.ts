@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+const xlsx = require("xlsx");
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 
@@ -35,6 +36,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           so.quantity as quantity,
           i.unit as unit,
           so.reason as reasonOrSupplier,
+          0 as unit_cost,
+          so.note as note,
           so.created_at as timestamp
         FROM stock_out so
         JOIN ingredients i ON so.ingredient_id = i.id
@@ -48,6 +51,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           si.quantity as quantity,
           i.unit as unit,
           COALESCE(s.name, si.note) as reasonOrSupplier,
+          si.unit_cost as unit_cost,
+          si.note as note,
           si.created_at as timestamp
         FROM stock_in si
         JOIN ingredients i ON si.ingredient_id = i.id
@@ -87,7 +92,7 @@ export const createInventoryItem = async (req: Request, res: Response): Promise<
       `INSERT INTO ingredients (name, unit, current_stock, min_stock) VALUES (?, ?, ?, ?)`,
       [name, unit, Number(stock), Number(threshold)]
     );
-    
+
     // Log import if stock > 0
     if (Number(stock) > 0) {
       await db.query(
@@ -95,7 +100,7 @@ export const createInventoryItem = async (req: Request, res: Response): Promise<
         [result.insertId, Number(stock), 0, 'Nhập kho ban đầu', 1]
       );
     }
-    
+
     sendSuccess(res, { id: result.insertId, name, stock, unit, threshold }, "Thêm nguyên liệu thành công", 201);
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -126,18 +131,35 @@ export const deleteInventoryItem = async (req: Request, res: Response): Promise<
   }
 };
 
+// ================================================================
+// TASK 5 tích hợp ở đây: khi nhập hàng (type === "import") và
+// req.body có isCredit=true + supplierId → tự cộng thẳng vào
+// suppliers.total_debt. Cần FE gửi thêm 3 field này khi tick
+// "Mua chịu" trong form nhập kho (isCredit, supplierId, unitCost).
+// ================================================================
 export const updateInventoryQuantity = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { quantity, type, reasonOrSupplier } = req.body; // type: import | export | adjust
+    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost } = req.body; // type: import | export | adjust
 
     const qty = Number(quantity);
     if (type === "import") {
       await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, id]);
       await db.query(
-        `INSERT INTO stock_in (ingredient_id, quantity, unit_cost, note, created_by) VALUES (?, ?, ?, ?, ?)`,
-        [id, qty, 0, reasonOrSupplier || 'Nhập kho thủ công', 1]
+        `INSERT INTO stock_in (ingredient_id, quantity, unit_cost, supplier_id, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, qty, Number(unitCost) || 0, supplierId || null, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
       );
+
+      // TASK 5: Nhập hàng CHỊU (mua chịu) + có chọn NCC → cộng nợ cho NCC đó
+      if (isCredit && supplierId) {
+        const cost = qty * (Number(unitCost) || 0);
+        if (cost > 0) {
+          await db.query(
+            `UPDATE suppliers SET total_debt = total_debt + ? WHERE id = ?`,
+            [cost, supplierId]
+          );
+        }
+      }
     } else if (type === "export" || type === "adjust") {
       await db.query(`UPDATE ingredients SET current_stock = current_stock - ? WHERE id = ?`, [qty, id]);
       await db.query(
@@ -145,7 +167,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
         [id, qty, 'other', reasonOrSupplier || 'Xuất/Điều chỉnh kho thủ công', 1]
       );
     }
-    
+
     const updated = await db.query(`SELECT current_stock as stock FROM ingredients WHERE id = ?`, [id]);
     sendSuccess(res, updated[0], "Cập nhật số lượng thành công");
   } catch (error) {
@@ -165,42 +187,43 @@ export const getLowStockItems = async (_req: Request, res: Response): Promise<vo
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
 export const submitStockCheck = async (req: Request, res: Response): Promise<void> => {
   try {
     const { records } = req.body; // array
     const userId = (req as any).user?.id ?? 1;
- 
+
     if (!Array.isArray(records) || records.length === 0) {
       sendError(res, "Dữ liệu kiểm kê không hợp lệ", 400);
       return;
     }
- 
+
     for (const rec of records) {
       const { ingredient_id, actual_stock } = rec;
- 
+
       // Lấy current_stock hiện tại làm system_stock
       const rows = await db.query(
         `SELECT current_stock FROM ingredients WHERE id = ?`,
         [ingredient_id]
       );
       if (rows.length === 0) continue;
- 
+
       const system_stock = Number(rows[0].current_stock);
       const actual = Number(actual_stock);
- 
+
       // Lưu bản ghi kiểm kê
       await db.query(
         `INSERT INTO stock_inventory (ingredient_id, actual_stock, system_stock, noted_at, created_by)
          VALUES (?, ?, ?, CURDATE(), ?)`,
         [ingredient_id, actual, system_stock, userId]
       );
- 
+
       // Cân bằng sổ sách: cập nhật current_stock về actual
       await db.query(
         `UPDATE ingredients SET current_stock = ? WHERE id = ?`,
         [actual, ingredient_id]
       );
- 
+
       // Nếu actual < system → ghi stock_out waste để cân bằng
       const diff = actual - system_stock;
       if (diff < 0) {
@@ -211,13 +234,13 @@ export const submitStockCheck = async (req: Request, res: Response): Promise<voi
         );
       }
     }
- 
+
     sendSuccess(res, { count: records.length }, "Lưu kiểm kê thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
- 
+
 // GET /v1/inventory/stock-check/today
 // Trả về danh sách nguyên liệu + current_stock để bếp trưởng điền actual
 export const getTodayCheckList = async (_req: Request, res: Response): Promise<void> => {
@@ -246,22 +269,18 @@ export const getTodayCheckList = async (_req: Request, res: Response): Promise<v
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
- 
-// ---------------- TASK 4: Trả nợ NCC ----------------
- 
-// PATCH /v1/inventory/suppliers/:id/pay
-// Body: { amount, method, note }
+
 export const paySupplierDebt = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { amount, method = "cash", note } = req.body;
     const userId = (req as any).user?.id ?? 1;
- 
+
     if (!amount || Number(amount) <= 0) {
       sendError(res, "Số tiền không hợp lệ", 400);
       return;
     }
- 
+
     // Kiểm tra NCC tồn tại
     const suppliers = await db.query(
       `SELECT id, name, total_debt FROM suppliers WHERE id = ?`,
@@ -271,26 +290,26 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
       sendError(res, "Không tìm thấy nhà cung cấp", 404);
       return;
     }
- 
+
     const supplier = suppliers[0];
     const payAmount = Math.min(Number(amount), Number(supplier.total_debt));
- 
+
     // Trừ nợ
     await db.query(
       `UPDATE suppliers SET total_debt = GREATEST(0, total_debt - ?) WHERE id = ?`,
       [payAmount, id]
     );
- 
+
     // Ghi lịch sử
     await db.query(
       `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by)
        VALUES (?, ?, ?, ?, ?)`,
       [id, payAmount, method, note || null, userId]
     );
- 
+
     // Lấy nợ còn lại
     const updated = await db.query(`SELECT total_debt FROM suppliers WHERE id = ?`, [id]);
- 
+
     sendSuccess(
       res,
       {
@@ -304,7 +323,7 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
- 
+
 // GET /v1/inventory/suppliers/:id/debt-history
 export const getDebtHistory = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -324,5 +343,123 @@ export const getDebtHistory = async (req: Request, res: Response): Promise<void>
     sendSuccess(res, rows, "Lịch sử thanh toán nợ");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const uploadExcel = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      sendError(res, "Không tìm thấy file tải lên", 400);
+      return;
+    }
+
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data = xlsx.utils.sheet_to_json(sheet);
+
+    if (!data || data.length === 0) {
+      sendError(res, "File Excel trống hoặc sai định dạng", 400);
+      return;
+    }
+
+    const createdBy = 1;
+
+    for (const row of data) {
+      const ingredientId = row["Mã nguyên liệu"] || row["Mã NL"] || row["ingredient_id"];
+      const quantity = parseFloat(row["Số lượng nhập"] || row["quantity"] || 0);
+      const unitCost = parseFloat(row["Đơn giá"] || row["unit_cost"] || 0);
+      const supplierName = row["Nhà cung cấp"] || row["supplier"] || "";
+      const note = row["Ghi chú"] || row["note"] || "Nhập từ file Excel";
+
+      if (!ingredientId || isNaN(quantity) || quantity <= 0) {
+        continue;
+      }
+
+      let supplierId = null;
+      if (supplierName && typeof supplierName === 'string' && supplierName.trim() !== '') {
+        const existingSupplier = await db.query(
+          "SELECT id FROM suppliers WHERE name = ?",
+          [supplierName.trim()]
+        );
+
+        if (existingSupplier && existingSupplier.length > 0) {
+          supplierId = existingSupplier[0].id;
+        } else {
+          const newSupplier = await db.query(
+            "INSERT INTO suppliers (name, total_debt) VALUES (?, 0)",
+            [supplierName.trim()]
+          );
+          supplierId = newSupplier.insertId;
+        }
+      }
+
+      await db.query(
+        "INSERT INTO stock_in (ingredient_id, quantity, unit_cost, supplier_id, note, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+        [ingredientId, quantity, unitCost, supplierId, note, createdBy]
+      );
+
+      await db.query(
+        "UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?",
+        [quantity, ingredientId]
+      );
+    }
+
+    sendSuccess(res, null, "Tải file Excel và cập nhật kho thành công");
+  } catch (error) {
+    console.error("Error processing Excel file:", error);
+    sendError(res, `Lỗi xử lý file Excel: ${(error as Error).message}`, 500);
+  }
+};
+
+export const getSuppliers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const suppliers = await db.query(
+      "SELECT id, name, contact, phone, address, main_ingredients as mainIngredients, total_debt FROM suppliers"
+    );
+    sendSuccess(res, suppliers, "Lấy danh sách nhà cung cấp thành công");
+  } catch (error) {
+    console.error("Error fetching suppliers:", error);
+    sendError(res, "Lỗi: " + (error as Error).message, 500);
+  }
+};
+
+export const addSupplier = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, contact, phone, address, mainIngredients } = req.body;
+    const result = await db.query(
+      "INSERT INTO suppliers (name, contact, phone, address, main_ingredients) VALUES (?, ?, ?, ?, ?)",
+      [name, contact, phone, address, mainIngredients]
+    );
+    sendSuccess(res, { id: result.insertId, ...req.body }, "Thêm nhà cung cấp thành công", 201);
+  } catch (error) {
+    console.error("Error adding supplier:", error);
+    sendError(res, "Lỗi: " + (error as Error).message, 500);
+  }
+};
+
+export const updateSupplier = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { name, contact, phone, address, mainIngredients } = req.body;
+    await db.query(
+      "UPDATE suppliers SET name = ?, contact = ?, phone = ?, address = ?, main_ingredients = ? WHERE id = ?",
+      [name, contact, phone, address, mainIngredients, id]
+    );
+    sendSuccess(res, { id, ...req.body }, "Cập nhật nhà cung cấp thành công");
+  } catch (error) {
+    console.error("Error updating supplier:", error);
+    sendError(res, "Lỗi: " + (error as Error).message, 500);
+  }
+};
+
+export const deleteSupplier = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    await db.query("DELETE FROM suppliers WHERE id = ?", [id]);
+    sendSuccess(res, { id }, "Xóa nhà cung cấp thành công");
+  } catch (error) {
+    console.error("Error deleting supplier:", error);
+    sendError(res, "Lỗi: " + (error as Error).message, 500);
   }
 };

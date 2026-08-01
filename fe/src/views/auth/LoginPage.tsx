@@ -16,22 +16,14 @@ export default function LoginPage() {
 
   const [form, setForm] = useState<LoginPayload>({ email: "", password: "" });
 
-  /** Đã đăng nhập → redirect về đúng khu vực của role */
+  /** Đã đăng nhập → nhân viên đi vào trang chấm công trước, admin vào khu vực quản trị */
   useEffect(() => {
     if (user) {
-      const roleRoutes: Record<string, string> = {
-        admin: "/admin",
-        manager: "/manager",
-        waiter: "/waiter",
-        cashier: "/cashier",
-        chef: "/chef",
-        sales_event: "/sales",
-      };
-      let fallbackPath = roleRoutes[user.role] || "/";
-      if (user.email === "hvu572766@gmail.com") {
-        fallbackPath = "/manager";
+      if (user.role === "admin") {
+        navigate("/admin", { replace: true });
+      } else {
+        navigate("/checkin", { replace: true });
       }
-      navigate(fallbackPath, { replace: true });
     }
   }, [user, navigate]);
 
