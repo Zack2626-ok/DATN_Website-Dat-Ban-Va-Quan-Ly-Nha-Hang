@@ -23,6 +23,14 @@ import {
   Promotion,
 } from "../../../services/crmService";
 
+/** Derives the visible membership tier from the customer's accumulated points. */
+const getMemberLevelFromPoints = (points: number): Customer["member_level"] => {
+  if (points >= 20000) return "vip";
+  if (points >= 8000) return "gold";
+  if (points >= 2000) return "silver";
+  return "bronze";
+};
+
 export const CRMManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"customers" | "vouchers" | "promotions">("customers");
   const [loading, setLoading] = useState<boolean>(true);
@@ -448,107 +456,109 @@ export const CRMManagement: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-6 animate-fade-in bg-gray-50/50 min-h-screen">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
+      {/* Top Header Card */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 font-display flex items-center gap-2">
-            <Users className="text-admin-primary" size={28} />
-            Khách hàng & Marketing
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
+            Chăm sóc khách hàng & CRM
           </h1>
-          <p className="text-sm text-admin-text-sub mt-0.5">
-            Quản lý quan hệ khách hàng (CRM), thẻ điểm thành viên (Loyalty), vouchers và các ưu đãi sự kiện.
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
+            Quản lý quan hệ khách hàng (CRM), thẻ điểm thành viên (Loyalty), vouchers và các ưu đãi sự kiện
           </p>
         </div>
 
         {/* Action Button */}
         {activeTab === "customers" && (
           <button
+            type="button"
             onClick={() => handleOpenCustomerModal("create")}
-            className="px-5 py-2.5 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
           >
-            <Plus size={16} /> Thêm khách hàng
+            <Plus size={18} /> Thêm khách hàng
           </button>
         )}
         {activeTab === "vouchers" && (
           <button
+            type="button"
             onClick={() => handleOpenVoucherModal("create")}
-            className="px-5 py-2.5 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
           >
-            <Plus size={16} /> Thêm Voucher
+            <Plus size={18} /> Thêm Voucher
           </button>
         )}
         {activeTab === "promotions" && (
           <button
+            type="button"
             onClick={() => handleOpenPromoModal("create")}
-            className="px-5 py-2.5 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
           >
-            <Plus size={16} /> Thêm Khuyến mãi
+            <Plus size={18} /> Thêm Khuyến mãi
           </button>
         )}
       </div>
 
       {/* Tabs list */}
-      <div className="flex border-b border-admin-border gap-6">
+      <div className="bg-[#FFFFFF] p-3 rounded-3xl border border-slate-200/70 shadow-xs flex flex-wrap items-center gap-2">
         <button
+          type="button"
           onClick={() => {
             startTransition(() => {
               setActiveTab("customers");
               setSearchTerm("");
             });
           }}
-          className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-            activeTab === "customers" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === "customers"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
           }`}
         >
-          <Users size={16} />
+          <Users size={15} />
           Thành viên & CRM
-          {activeTab === "customers" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
-          )}
         </button>
 
         <button
+          type="button"
           onClick={() => {
             startTransition(() => {
               setActiveTab("vouchers");
               setSearchTerm("");
             });
           }}
-          className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-            activeTab === "vouchers" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === "vouchers"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
           }`}
         >
-          <Ticket size={16} />
+          <Ticket size={15} />
           Mã ưu đãi (Vouchers)
-          {activeTab === "vouchers" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
-          )}
         </button>
 
         <button
+          type="button"
           onClick={() => {
             startTransition(() => {
               setActiveTab("promotions");
               setSearchTerm("");
             });
           }}
-          className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-            activeTab === "promotions" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeTab === "promotions"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
           }`}
         >
-          <Percent size={16} />
+          <Percent size={15} />
           Chương trình khuyến mãi
-          {activeTab === "promotions" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
-          )}
         </button>
       </div>
 
       {/* Search Toolbar */}
-      <div className="bg-admin-card rounded-2xl border border-admin-border p-4 flex gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-text-sub" size={15} />
+      <div className="bg-[#FFFFFF] p-3.5 rounded-3xl border border-slate-200/70 shadow-xs flex flex-col md:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8A8A8A]" size={17} />
           <input
             placeholder={
               activeTab === "customers"
@@ -559,7 +569,7 @@ export const CRMManagement: React.FC = () => {
             }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-lg text-sm outline-none border border-admin-border focus:ring-2 focus:ring-admin-primary/20"
+            className="w-full pl-11 pr-4 py-2 bg-[#F8F6F2] rounded-full text-xs font-bold text-[#1A1A1A] placeholder-[#8A8A8A] focus:outline-none focus:ring-2 focus:ring-[#3E2016]/30 transition-all border-0"
           />
         </div>
       </div>
@@ -598,7 +608,7 @@ export const CRMManagement: React.FC = () => {
                         <td className="px-6 py-4 font-bold text-admin-text-main">{c.name}</td>
                         <td className="px-6 py-4 text-admin-text-sub font-mono">{c.phone || "—"}</td>
                         <td className="px-6 py-4 text-admin-text-sub">{c.email || "—"}</td>
-                        <td className="px-6 py-4">{renderTierBadge(c.member_level)}</td>
+                        <td className="px-6 py-4">{renderTierBadge(getMemberLevelFromPoints(c.loyalty_points))}</td>
                         <td className="px-6 py-4 font-bold text-admin-primary font-mono">
                           {c.loyalty_points.toLocaleString("vi-VN")} pts
                         </td>

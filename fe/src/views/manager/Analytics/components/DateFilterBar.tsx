@@ -98,17 +98,17 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-sky-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-4 rounded-3xl border border-slate-200/70 bg-[#FFFFFF] p-3.5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
       {/* Cụm bộ lọc thời gian */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg bg-sky-100 p-0.5">
+        <div className="flex rounded-full bg-slate-100 p-1 gap-1">
           <button
             type="button"
             onClick={() => handleTypeChange("today")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`rounded-full px-4 py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
               filter.type === "today"
-                ? "bg-white text-slate-700 shadow-sm"
-                : "text-slate-400 hover:text-slate-700"
+                ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+                : "text-[#8A8A8A] hover:text-[#1A1A1A]"
             }`}
           >
             Hôm nay
@@ -116,10 +116,10 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
           <button
             type="button"
             onClick={() => handleTypeChange("week")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`rounded-full px-4 py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
               filter.type === "week"
-                ? "bg-white text-slate-700 shadow-sm"
-                : "text-slate-400 hover:text-slate-700"
+                ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+                : "text-[#8A8A8A] hover:text-[#1A1A1A]"
             }`}
           >
             7 ngày qua
@@ -127,10 +127,10 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
           <button
             type="button"
             onClick={() => handleTypeChange("month")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`rounded-full px-4 py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
               filter.type === "month"
-                ? "bg-white text-slate-700 shadow-sm"
-                : "text-slate-400 hover:text-slate-700"
+                ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+                : "text-[#8A8A8A] hover:text-[#1A1A1A]"
             }`}
           >
             30 ngày qua
@@ -138,10 +138,10 @@ export const DateFilterBar: React.FC<DateFilterBarProps> = ({
           <button
             type="button"
             onClick={() => handleTypeChange("custom")}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`rounded-full px-4 py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
               filter.type === "custom"
-                ? "bg-white text-slate-700 shadow-sm"
-                : "text-slate-400 hover:text-slate-700"
+                ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+                : "text-[#8A8A8A] hover:text-[#1A1A1A]"
             }`}
           >
             Tùy chỉnh

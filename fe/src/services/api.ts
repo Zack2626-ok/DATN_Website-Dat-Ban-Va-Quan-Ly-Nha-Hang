@@ -127,6 +127,21 @@ export const updateInventoryQuantityApi = async (id: string | number, quantity: 
   return response.data.data;
 };
 
+export const getIngredientBatchesApi = async (id: string | number): Promise<any[]> => {
+  const response = await api.get(`/inventory/${id}/batches`);
+  return response.data.data;
+};
+
+export const wasteExpiredBatchesApi = async (): Promise<any> => {
+  const response = await api.post(`/inventory/waste-expired`);
+  return response.data.data;
+};
+
+export const paySupplierDebtApi = async (id: string, data: { amount: number; note: string; paymentMethod: string }): Promise<any> => {
+  const response = await api.patch(`/inventory/suppliers/${id}/pay`, data);
+  return response.data.data;
+};
+
 /**
  * Fetch real inventory transactions from backend
  */

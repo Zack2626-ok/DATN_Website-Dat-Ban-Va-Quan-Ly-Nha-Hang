@@ -2,9 +2,12 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi } from "../../../services/api";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
+import { ImportGoods } from "./ImportGoods";
+import { ReturnGoods } from "./ReturnGoods";
+import { InventoryCheck } from "./InventoryCheck";
 import {
   AlertTriangle,
   Plus,
@@ -12,6 +15,7 @@ import {
   Search,
   Trash2,
   Layers,
+  Eye,
   Truck,
   History,
   ClipboardCheck,
@@ -19,7 +23,6 @@ import {
   PieChart,
   ArrowDownLeft,
   ArrowUpRight,
-  PlusCircle,
   FileSpreadsheet,
   X,
   Check,
@@ -27,9 +30,16 @@ import {
   Info,
   UploadCloud,
   FileText,
+<<<<<<< HEAD
   BarChart3,
   Printer,
   Pencil
+=======
+  Pencil,
+  PackageMinus,
+  CheckCircle,
+  Save
+>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
 } from "lucide-react";
 
 // Types for local interactive states
@@ -59,6 +69,8 @@ interface StockTransaction {
   unit: string;
   reasonOrSupplier: string;
   timestamp: string;
+  batchNo?: string;
+  expiryDate?: string;
 }
 
 export const InventoryControl: React.FC = () => {
@@ -75,6 +87,8 @@ export const InventoryControl: React.FC = () => {
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<"ingredients" | "categories_suppliers" | "import_export" | "stocktake" | "expiry" | "reports">("ingredients");
+  const [currentView, setCurrentView] = useState<"main" | "importGoods" | "returnGoods" | "inventoryCheck">("main");
+  const [selectedDraft, setSelectedDraft] = useState<any>(null);
 
   // Local Search & Category filters for Ingredient Tab
   const [ingSearch, setIngSearch] = useState("");
@@ -107,7 +121,7 @@ export const InventoryControl: React.FC = () => {
     getInventoryTransactionsApi()
       .then((data) => setTransactions(data))
       .catch((err) => console.error("Failed to load transactions", err));
-      
+
     getSuppliersApi()
       .then((data) => setSuppliers(data))
       .catch((err) => console.error("Failed to load suppliers", err));
@@ -116,8 +130,45 @@ export const InventoryControl: React.FC = () => {
   // Modals / Input States
   const [showAddIngModal, setShowAddIngModal] = useState(false);
   const [newIngForm, setNewIngForm] = useState({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
+  const [showBatchesModal, setShowBatchesModal] = useState(false);
+  const [selectedIngredientNameForBatches, setSelectedIngredientNameForBatches] = useState("");
+  const [ingredientBatches, setIngredientBatches] = useState<any[]>([]);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [batchData, setBatchData] = useState<Record<string, any[]>>({});
+  const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
 
   const [showImportExportModal, setShowImportExportModal] = useState(false);
+
+  // Debt Payment State
+  const [showPayDebtModal, setShowPayDebtModal] = useState(false);
+  const [payingSupplier, setPayingSupplier] = useState<any>(null);
+  const [debtAmount, setDebtAmount] = useState<number | "">("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+
+  const handlePayDebt = async () => {
+    if (!payingSupplier || !debtAmount || Number(debtAmount) <= 0) {
+      toast.error("Vui lòng nhập số tiền thanh toán hợp lệ!");
+      return;
+    }
+    try {
+      await paySupplierDebtApi(payingSupplier.id, {
+        amount: Number(debtAmount),
+        note: paymentNote,
+        paymentMethod: paymentMethod
+      });
+      toast.success(`Thanh toán thành công ${Number(debtAmount).toLocaleString()} ₫ cho ${payingSupplier.name}`);
+      setShowPayDebtModal(false);
+      setPayingSupplier(null);
+      setDebtAmount("");
+      setPaymentNote("");
+      // Refresh suppliers
+      const data = await getSuppliersApi();
+      setSuppliers(data);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || "Lỗi khi thanh toán công nợ");
+    }
+  };
 
   // Unified Import File Modal State
   const [showImportFileModal, setShowImportFileModal] = useState(false);
@@ -127,12 +178,12 @@ export const InventoryControl: React.FC = () => {
 
   // New Expiry Batch manual modal state
   const [showAddExpiryModal, setShowAddExpiryModal] = useState(false);
-  const [newExpiryForm, setNewExpiryForm] = useState({ 
-    ingredientName: reduxIngredients[0]?.name || "Trứng cá tầm", 
-    quantity: 10, 
-    unit: "kg", 
-    batchNo: "", 
-    expiryDate: "" 
+  const [newExpiryForm, setNewExpiryForm] = useState({
+    ingredientName: reduxIngredients[0]?.name || "Trứng cá tầm",
+    quantity: 10,
+    unit: "kg",
+    batchNo: "",
+    expiryDate: ""
   });
   const [transactionForm, setTransactionForm] = useState({
     type: "import" as "import" | "export",
@@ -229,7 +280,7 @@ export const InventoryControl: React.FC = () => {
       toast.success("Thêm nguyên liệu thành công");
       getIngredientsApi().then((data) => setReduxIngredients(data));
       getInventoryTransactionsApi().then(data => setTransactions(data));
-      
+
       // triggerInventoryMenuSync();
       setShowAddIngModal(false);
       setNewIngForm({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
@@ -254,7 +305,7 @@ export const InventoryControl: React.FC = () => {
       toast.success("Cập nhật kho thành công");
       getIngredientsApi().then((data) => setReduxIngredients(data));
       getInventoryTransactionsApi().then(data => setTransactions(data));
-      
+
       setShowImportExportModal(false);
       setTransactionForm({
         type: "import",
@@ -280,7 +331,7 @@ export const InventoryControl: React.FC = () => {
   const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupplierForm.name) return;
-    
+
     try {
       await addSupplierApi(newSupplierForm);
       toast.success("Thêm nhà cung cấp thành công!");
@@ -295,7 +346,7 @@ export const InventoryControl: React.FC = () => {
   const handleUpdateSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSupplier || !editingSupplier.name) return;
-    
+
     try {
       await updateSupplierApi(editingSupplier.id, editingSupplier);
       toast.success("Cập nhật nhà cung cấp thành công!");
@@ -335,7 +386,7 @@ export const InventoryControl: React.FC = () => {
   const handlePostExpiryBatch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newExpiryForm.ingredientName || !newExpiryForm.batchNo || !newExpiryForm.expiryDate) return;
-    
+
     setExpiryBatches([
       ...expiryBatches,
       {
@@ -378,7 +429,7 @@ export const InventoryControl: React.FC = () => {
 
     // Simulate import based on target
     const fileName = importFile.name;
-    
+
     switch (importFileTarget) {
       case "ingredients":
         // Mock import 2 ingredients
@@ -435,6 +486,54 @@ export const InventoryControl: React.FC = () => {
 
     setShowImportFileModal(false);
     setImportFile(null);
+  };
+
+
+  const handleToggleRow = async (ing: any) => {
+    const isExpanded = expandedRows[ing.id];
+    if (isExpanded) {
+      setExpandedRows(prev => ({ ...prev, [ing.id]: false }));
+    } else {
+      setExpandedRows(prev => ({ ...prev, [ing.id]: true }));
+      if (!batchData[ing.id]) {
+        try {
+          const data = await getIngredientBatchesApi(ing.id);
+          setBatchData(prev => ({ ...prev, [ing.id]: data }));
+        } catch (e: any) {
+          toast.error("Không thể tải danh sách lô hàng");
+        }
+      }
+    }
+  };
+
+  const handleToggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedIngredients(filteredIngredients.map(ing => ing.id));
+    } else {
+      setSelectedIngredients([]);
+    }
+  };
+
+  const handleToggleSelectIngredient = (id: string) => {
+    setSelectedIngredients(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleWasteExpiredBatches = async () => {
+    if (!window.confirm("Bạn có chắc chắn muốn hủy TOÀN BỘ các lô hàng đã hết hạn trong kho? Hành động này không thể hoàn tác.")) return;
+    try {
+      const res = await wasteExpiredBatchesApi();
+      if (res && res.count > 0) {
+        toast.success(`Đã hủy thành công ${res.count} lô hàng hết hạn!`);
+        getIngredientsApi().then(data => setReduxIngredients(data));
+        getInventoryTransactionsApi().then(data => setTransactions(data));
+      } else {
+        toast.success("Không có lô hàng nào hết hạn cần hủy.");
+      }
+    } catch (e: any) {
+      toast.error("Lỗi khi hủy hàng hết hạn");
+    }
   };
 
   // Shared Export to Excel Helper
@@ -538,7 +637,7 @@ export const InventoryControl: React.FC = () => {
 
         doc.setFont("helvetica", "normal");
         doc.setTextColor(71, 85, 105);
-        
+
         row.forEach((cell, cidx) => {
           doc.text(removeVietnameseAccents(cell), colX[cidx], y);
         });
@@ -594,7 +693,7 @@ export const InventoryControl: React.FC = () => {
   const getExpiryLabel = (expiryDateStr: string) => {
     const diffTime = new Date(expiryDateStr).getTime() - new Date().getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays < 0) {
       return { text: `Đã hết hạn (${Math.abs(diffDays)} ngày)`, status: "expired" };
     }
@@ -611,7 +710,7 @@ export const InventoryControl: React.FC = () => {
   const reportsStats = useMemo(() => {
     const totalIngredients = reduxIngredients.length;
     const lowStockCount = reduxIngredients.filter((i) => i.stock <= i.threshold).length;
-    
+
     let expiredCount = 0;
     let nearExpiryCount = 0;
     expiryBatches.forEach((b) => {
@@ -638,7 +737,7 @@ export const InventoryControl: React.FC = () => {
       }
     });
     const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
-    
+
     let currentOffset = 0;
     const circumference = 2 * Math.PI * 40; // ~251.3
 
@@ -703,14 +802,26 @@ export const InventoryControl: React.FC = () => {
     };
   }, [transactions]);
 
+  if (currentView === "importGoods") {
+    return <ImportGoods onBack={() => setCurrentView("main")} />;
+  }
+  
+  if (currentView === "returnGoods") {
+    return <ReturnGoods onBack={() => setCurrentView("main")} />;
+  }
+
+  if (currentView === "inventoryCheck") {
+    return <InventoryCheck onBack={() => setCurrentView("main")} draftData={selectedDraft} />;
+  }
+
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800">
-      
+
       {/* 1. Header Area */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-5 border-b border-slate-200 gap-4 print-hide">
         <div>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-            <Layers className="text-[#0f62fe]" size={24} />
+            <Layers className="text-admin-primary" size={24} />
             Hệ thống Quản lý Kho Nguyên liệu
           </h2>
           <p className="text-xs text-slate-700 font-medium mt-1">
@@ -759,11 +870,10 @@ export const InventoryControl: React.FC = () => {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all duration-200 ${
-              activeTab === tab.id
-                ? "bg-white text-blue-700 shadow-sm border border-slate-200/50"
-                : "text-slate-700 hover:text-slate-800 hover:bg-white/40"
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-extrabold cursor-pointer transition-all duration-200 ${activeTab === tab.id
+              ? "bg-white text-blue-700 shadow-sm border border-slate-200/50"
+              : "text-slate-700 hover:text-slate-800 hover:bg-white/40"
+              }`}
           >
             {tab.icon}
             {tab.label}
@@ -772,7 +882,7 @@ export const InventoryControl: React.FC = () => {
       </div>
 
       {/* 4. Tab Contents */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-5 min-h-[450px]">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-5 min-h-112.5">
 
         {/* Tab 1: Nguyên liệu */}
         {activeTab === "ingredients" && (
@@ -780,14 +890,20 @@ export const InventoryControl: React.FC = () => {
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <Layers size={14} className="text-[#0f62fe]" /> Thao tác dữ liệu nguyên liệu
+                <Layers size={14} className="text-admin-primary" /> Thao tác dữ liệu nguyên liệu
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setShowAddIngModal(true)}
-                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
                   <Plus size={12} /> Nhập bằng tay
+                </button>
+                <button
+                  onClick={handleWasteExpiredBatches}
+                  className="px-3 py-1.5 bg-linear-to-r from-rose-600 to-red-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Trash2 size={12} /> Hủy hàng hết hạn
                 </button>
                 <button
                   onClick={() => {
@@ -875,10 +991,62 @@ export const InventoryControl: React.FC = () => {
             </div>
 
             {/* Ingredients Table */}
-            <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner">
+            <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner relative">
+              {selectedIngredients.length > 0 && (
+                <div className="absolute top-0 left-0 right-0 z-10 bg-blue-600 px-4 py-2 flex items-center justify-between text-white shadow-md animate-in slide-in-from-top-2">
+                  <div className="text-xs font-bold">
+                    Đã chọn {selectedIngredients.length} mặt hàng
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setCurrentView("importGoods");
+                        setSelectedIngredients([]);
+                      }}
+                      className="px-3 py-1 bg-white text-blue-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      Nhập hàng
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentView("returnGoods");
+                        setSelectedIngredients([]);
+                      }}
+                      className="px-3 py-1 bg-white text-rose-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      Trả hàng
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedDraft(null);
+                        setCurrentView("inventoryCheck");
+                        setSelectedIngredients([]);
+                      }}
+                      className="px-3 py-1 bg-white text-blue-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      Kiểm kê
+                    </button>
+                    <button
+                      onClick={() => setSelectedIngredients([])}
+                      className="p-1 hover:bg-blue-700 rounded cursor-pointer"
+                      title="Bỏ chọn"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-wider">
                   <tr>
+                    <th scope="col" className="px-4 py-3 text-left w-10">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        checked={filteredIngredients.length > 0 && selectedIngredients.length === filteredIngredients.length}
+                        onChange={handleToggleSelectAll}
+                      />
+                    </th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-left">Danh mục</th>
                     <th scope="col" className="px-5 py-3 text-center">Tồn kho hiện tại</th>
@@ -897,70 +1065,129 @@ export const InventoryControl: React.FC = () => {
                     filteredIngredients.map((ing) => {
                       const isLow = Number(ing.stock) <= Number(ing.threshold);
                       const percentage = Math.min(100, Math.max(0, (Number(ing.stock) / (Number(ing.threshold) * 3)) * 100));
+                      const isExpanded = expandedRows[ing.id];
+                      const batches = batchData[ing.id] || [];
 
                       return (
-                        <tr key={ing.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-5 py-4">
-                            <span className="font-extrabold text-slate-900">{ing.name}</span>
-                            <div className="text-[10px] text-slate-600 font-medium mt-0.5">Mã số: {ing.id}</div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className="px-2 py-0.5 bg-slate-100 border border-slate-200/60 rounded-md text-[9px] font-extrabold text-slate-600">
-                              {getIngredientCategory(ing.name)}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="flex flex-col gap-1 w-32 mx-auto md:mx-0">
-                              <span className={`font-black text-center md:text-left ${isLow ? "text-rose-600" : "text-[#0f62fe]"}`}>
-                                {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                        <React.Fragment key={ing.id}>
+                          <tr className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? "bg-slate-50/50" : ""} ${selectedIngredients.includes(ing.id) ? "bg-blue-50/30" : ""}`}>
+                            <td className="px-4 py-4">
+                              <input 
+                                type="checkbox" 
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                checked={selectedIngredients.includes(ing.id)}
+                                onChange={() => handleToggleSelectIngredient(ing.id)}
+                              />
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="font-extrabold text-slate-900">{ing.name}</span>
+                              <div className="text-[10px] text-slate-600 font-medium mt-0.5">Mã số: {ing.id}</div>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="px-2 py-0.5 bg-slate-100 border border-slate-200/60 rounded-md text-[9px] font-extrabold text-slate-600">
+                                {getIngredientCategory(ing.name)}
                               </span>
-                              {/* Progress bar */}
-                              <div className="w-full bg-slate-100 rounded-full h-1.5 border border-slate-200/50">
-                                <div
-                                  className={`h-full rounded-full ${isLow ? "bg-rose-500" : "bg-blue-600"}`}
-                                  style={{ width: `${percentage}%` }}
-                                />
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex flex-col gap-1 w-32 mx-auto md:mx-0">
+                                <span className={`font-black text-center md:text-left ${isLow ? "text-rose-600" : "text-admin-primary"}`}>
+                                  {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                </span>
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 border border-slate-200/50">
+                                  <div
+                                    className={`h-full rounded-full ${isLow ? "bg-rose-500" : "bg-blue-600"}`}
+                                    style={{ width: `${percentage}%` }}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4 text-center">
-                            {isLow ? (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
-                                <AlertTriangle size={10} /> TỒN THẤP (Dưới {ing.threshold} {ing.unit})
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
-                                <Check size={10} /> AN TOÀN
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, ing.stock - (ing.unit === "kg" ? 0.5 : 50))}
-                                disabled={ing.stock <= 0}
-                                className="p-1 rounded bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                                title="Giảm kho"
-                              >
-                                <Minus size={11} />
-                              </button>
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, ing.stock + (ing.unit === "kg" ? 0.5 : 50))}
-                                className="p-1 rounded bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 cursor-pointer transition-colors"
-                                title="Tăng kho"
-                              >
-                                <Plus size={11} />
-                              </button>
-                              <button
-                                onClick={() => handleModifyStockDirect(ing.id as string, 0)}
-                                className="px-2 py-1 rounded bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 text-[10px] font-extrabold cursor-pointer transition-colors"
-                                title="Giả lập hết hàng"
-                              >
-                                Hết hàng
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              {isLow ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
+                                  <AlertTriangle size={10} /> TỒN THẤP (Dưới {ing.threshold} {ing.unit})
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
+                                  <Check size={10} /> AN TOÀN
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                               <div className="flex justify-end gap-1.5 items-center">
+                                <button
+                                  onClick={() => handleToggleRow(ing)}
+                                  className={`px-2 py-1 rounded border text-[10px] font-extrabold cursor-pointer transition-colors flex items-center gap-1 ${isExpanded ? "bg-slate-200 border-slate-300 text-slate-700" : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"}`}
+                                  title={isExpanded ? "Đóng danh sách lô" : "Xem chi tiết lô"}
+                                >
+                                  {isExpanded ? <Minus size={10} /> : <Eye size={10} />}
+                                  {isExpanded ? "Đóng Lô" : "Xem Lô"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <td colSpan={6} className="p-0">
+                                <div className="p-4 bg-white/50 border-y border-slate-200/60 shadow-inner">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Layers size={14} className="text-blue-600" />
+                                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                      Danh sách Lô hàng: {ing.name}
+                                    </span>
+                                  </div>
+                                  
+                                  {batches.length > 0 ? (
+                                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                      <table className="min-w-full divide-y divide-slate-200">
+                                        <thead className="bg-slate-100/80">
+                                          <tr>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Số Lô</th>
+                                            <th className="px-4 py-2 text-center text-[10px] font-bold text-slate-600 uppercase">Tồn lô</th>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Hạn sử dụng</th>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Trạng thái</th>
+                                            <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-600 uppercase">Ngày nhập</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                          {batches.map((b: any) => {
+                                            const label = getExpiryLabel(b.expiry_date);
+                                            return (
+                                              <tr key={b.id} className="hover:bg-slate-50">
+                                                <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">{b.batch_code}</td>
+                                                <td className="px-4 py-2 text-center font-bold text-admin-primary text-[11px]">
+                                                  {Number(b.remaining_quantity).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                                </td>
+                                                <td className="px-4 py-2 text-[11px] text-slate-700">
+                                                  {b.expiry_date ? new Date(b.expiry_date).toLocaleDateString("vi-VN") : "N/A"}
+                                                </td>
+                                                <td className="px-4 py-2 text-[11px]">
+                                                  {label.status === "expired" ? (
+                                                    <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">{label.text}</span>
+                                                  ) : label.status === "near" ? (
+                                                    <span className="text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">{label.text}</span>
+                                                  ) : (
+                                                    <span className="text-emerald-600 font-bold">{label.text}</span>
+                                                  )}
+                                                </td>
+                                                <td className="px-4 py-2 text-right text-[11px] text-slate-500">
+                                                  {new Date(b.created_at).toLocaleDateString("vi-VN")}
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  ) : (
+                                    <div className="text-center py-4 text-xs font-semibold text-slate-500">
+                                      Nguyên liệu này chưa có lô hàng nào.
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -973,7 +1200,7 @@ export const InventoryControl: React.FC = () => {
               <div>
                 <p className="font-extrabold text-blue-900">Liên kết thực tế Menu / Bàn ăn</p>
                 <p className="text-[11px] text-blue-700 font-medium mt-0.5 leading-relaxed">
-                  Hệ thống kiểm soát tồn kho được liên kết chặt chẽ với Thực đơn bán hàng. Ví dụ, khi bạn điều chỉnh lượng tồn kho của <strong>Cá hồi</strong> hoặc <strong>Trứng cá tầm</strong> về 0 (hoặc nhấn nút "Hết hàng"), hệ thống sẽ tự động cập nhật và ẩn/báo "Hết hàng" đối với các món <em>Cá hồi sốt chanh</em> hay <em>Gỏi hải sản</em> ngoài trang Gọi món của Nhân viên và Khách hàng ngay lập tức.
+                  Hệ thống kiểm soát tồn kho được liên kết chặt chẽ với Thực đơn bán hàng. Ví dụ, khi lượng tồn kho của <strong>Cá hồi</strong> hoặc <strong>Trứng cá tầm</strong> về 0, hệ thống sẽ tự động cập nhật và ẩn/báo "Hết hàng" đối với các món <em>Cá hồi sốt chanh</em> hay <em>Gỏi hải sản</em> ngoài trang Gọi món của Nhân viên và Khách hàng ngay lập tức.
                 </p>
               </div>
             </div>
@@ -986,12 +1213,12 @@ export const InventoryControl: React.FC = () => {
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <Truck size={14} className="text-[#0f62fe]" /> Thao tác danh mục & Nhà cung cấp
+                <Truck size={14} className="text-admin-primary" /> Thao tác danh mục & Nhà cung cấp
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setShowAddSupplierModal(true)}
-                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-655 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-655 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
                   <Plus size={12} /> Thêm nhà cung cấp
                 </button>
@@ -1043,108 +1270,126 @@ export const InventoryControl: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Left Box: Danh mục nguyên liệu */}
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh mục nguyên liệu</span>
-                <button
-                  onClick={() => setShowAddCategoryModal(true)}
-                  className="px-2 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-blue-700 hover:text-blue-850 rounded-lg text-[10px] font-black tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer"
-                >
-                  <Plus size={10} /> Thêm danh mục
-                </button>
-              </div>
 
-              <div className="flex flex-col gap-2.5">
-                {categories.map((c) => (
-                  <div key={c.id} className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex justify-between items-center">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-xs text-slate-800">{c.name}</span>
-                        <span className="text-[9px] font-bold bg-slate-200/70 text-slate-600 px-1.5 py-0.2 rounded uppercase">
-                          {c.code}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-600 font-medium mt-1 leading-snug">{c.description}</p>
-                    </div>
-                    <button
-                      onClick={() => setCategories(categories.filter((cat) => cat.id !== c.id))}
-                      className="p-1 hover:bg-rose-50 rounded text-slate-600 hover:text-rose-600 cursor-pointer"
-                      title="Xóa danh mục"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
+              {/* Left Box: Danh mục nguyên liệu */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh mục nguyên liệu</span>
+                  <button
+                    onClick={() => setShowAddCategoryModal(true)}
+                    className="px-2 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-blue-700 hover:text-blue-850 rounded-lg text-[10px] font-black tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <Plus size={10} /> Thêm danh mục
+                  </button>
+                </div>
 
-            {/* Right Box: Nhà cung cấp */}
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh sách Nhà cung cấp</span>
-                <button
-                  onClick={() => setShowAddSupplierModal(true)}
-                  className="px-2 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-blue-700 hover:text-blue-850 rounded-lg text-[10px] font-black tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer"
-                >
-                  <Plus size={10} /> Thêm nhà cung cấp
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-2.5">
-                {suppliers.map((s) => (
-                  <div key={s.id} className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl hover:shadow-xs transition-shadow">
-                    <div className="flex justify-between items-start">
+                <div className="flex flex-col gap-2.5">
+                  {categories.map((c) => (
+                    <div key={c.id} className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex justify-between items-center">
                       <div>
-                        <span className="font-extrabold text-[13px] text-slate-900">{s.name}</span>
-                        <div className="text-[11px] text-slate-700 font-bold mt-1">
-                          Liên hệ: {s.contact || "N/A"} | SĐT: {s.phone || "N/A"}
-                        </div>
-                        <div className="text-[11px] text-slate-600 font-bold mt-0.5">
-                          Địa chỉ: {s.address || "N/A"}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            setEditingSupplier(s);
-                            setShowEditSupplierModal(true);
-                          }}
-                          className="p-1 hover:bg-blue-50 rounded text-slate-600 hover:text-blue-600 cursor-pointer"
-                          title="Sửa nhà cung cấp"
-                        >
-                          <Pencil size={11} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSupplier(s.id)}
-                          className="p-1 hover:bg-rose-50 rounded text-slate-600 hover:text-rose-600 cursor-pointer"
-                          title="Xóa nhà cung cấp"
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 pt-2 border-t border-slate-200/50 flex flex-wrap gap-1 items-center">
-                      <span className="text-[10px] font-extrabold text-slate-600">Nguyên liệu chính:</span>
-                      {(s.mainIngredients || "").split(",").map((ing: string, index: number) => {
-                        if (!ing.trim()) return null;
-                        return (
-                          <span key={index} className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/40">
-                            {ing.trim()}
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-xs text-slate-800">{c.name}</span>
+                          <span className="text-[9px] font-bold bg-slate-200/70 text-slate-600 px-1.5 py-0.2 rounded uppercase">
+                            {c.code}
                           </span>
-                        );
-                      })}
+                        </div>
+                        <p className="text-[10px] text-slate-600 font-medium mt-1 leading-snug">{c.description}</p>
+                      </div>
+                      <button
+                        onClick={() => setCategories(categories.filter((cat) => cat.id !== c.id))}
+                        className="p-1 hover:bg-rose-50 rounded text-slate-600 hover:text-rose-600 cursor-pointer"
+                        title="Xóa danh mục"
+                      >
+                        <Trash2 size={11} />
+                      </button>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
 
+              {/* Right Box: Nhà cung cấp */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh sách Nhà cung cấp</span>
+                  <button
+                    onClick={() => setShowAddSupplierModal(true)}
+                    className="px-2 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-blue-700 hover:text-blue-850 rounded-lg text-[10px] font-black tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <Plus size={10} /> Thêm nhà cung cấp
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2.5">
+                  {suppliers.map((s) => (
+                    <div key={s.id} className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl hover:shadow-xs transition-shadow">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="font-extrabold text-[13px] text-slate-900">{s.name}</span>
+                          <div className="text-[11px] text-slate-700 font-bold mt-1">
+                            Liên hệ: {s.contact || "N/A"} | SĐT: {s.phone || "N/A"}
+                          </div>
+                          <div className="text-[11px] text-slate-600 font-bold mt-0.5">
+                            Địa chỉ: {s.address || "N/A"}
+                          </div>
+                          {Number(s.total_debt) > 0 && (
+                            <div className="text-[11px] font-bold mt-2">
+                              Công nợ: <span className="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">{Number(s.total_debt).toLocaleString()} ₫</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {Number(s.total_debt) > 0 && (
+                            <button
+                              onClick={() => {
+                                setPayingSupplier(s);
+                                setDebtAmount(Number(s.total_debt));
+                                setShowPayDebtModal(true);
+                              }}
+                              className="p-1 hover:bg-emerald-50 rounded text-slate-600 hover:text-emerald-600 cursor-pointer text-[10px] font-bold flex items-center gap-1 border border-transparent hover:border-emerald-200"
+                              title="Thanh toán công nợ"
+                            >
+                              Trả nợ
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setEditingSupplier(s);
+                              setShowEditSupplierModal(true);
+                            }}
+                            className="p-1 hover:bg-blue-50 rounded text-slate-600 hover:text-blue-600 cursor-pointer"
+                            title="Sửa nhà cung cấp"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSupplier(s.id)}
+                            className="p-1 hover:bg-rose-50 rounded text-slate-600 hover:text-rose-600 cursor-pointer"
+                            title="Xóa nhà cung cấp"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 pt-2 border-t border-slate-200/50 flex flex-wrap gap-1 items-center">
+                        <span className="text-[10px] font-extrabold text-slate-600">Nguyên liệu chính:</span>
+                        {(s.mainIngredients || "").split(",").map((ing: string, index: number) => {
+                          if (!ing.trim()) return null;
+                          return (
+                            <span key={index} className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/40">
+                              {ing.trim()}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
         {/* Tab 3: Nhập / Xuất kho & Lịch sử */}
         {activeTab === "import_export" && (
@@ -1152,7 +1397,7 @@ export const InventoryControl: React.FC = () => {
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <History size={14} className="text-[#0f62fe]" /> Thao tác Nhập / Xuất kho
+                <History size={14} className="text-admin-primary" /> Thao tác Nhập / Xuất kho
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1162,7 +1407,7 @@ export const InventoryControl: React.FC = () => {
                     setSelectedFile(null);
                     setShowImportExportModal(true);
                   }}
-                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
                   <Plus size={12} /> Thực hiện Nhập/Xuất mới
                 </button>
@@ -1179,14 +1424,16 @@ export const InventoryControl: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ["Thoi gian", "Loai", "Nguyen lieu", "So luong", "Don vi", "Chi tiet / NCC"];
-                    const colX = [15, 50, 75, 110, 130, 145];
+                    const headers = ["Thoi gian", "Loai", "Nguyen lieu", "So luong", "Don vi", "Ma lo", "Han su dung", "Chi tiet / NCC"];
+                    const colX = [15, 45, 65, 95, 110, 125, 145, 165];
                     const rows = transactions.map(t => [
                       t.timestamp,
                       t.type === "import" ? "NHAP KHO" : t.type === "export" ? "XUAT KHO" : "DIEU CHINH",
                       t.ingredientName,
                       t.quantity.toString(),
                       t.unit,
+                      t.batchNo || "-",
+                      t.expiryDate || "-",
                       t.reasonOrSupplier
                     ]);
                     handleExportPdfShared("LICH SU GIAO DICH NHAP XUAT KHO", headers, colX, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
@@ -1197,13 +1444,15 @@ export const InventoryControl: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Chi tiết / Nhà cung cấp"];
+                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Mã lô", "Hạn sử dụng", "Chi tiết / Nhà cung cấp"];
                     const rows = transactions.map(t => [
                       t.timestamp,
                       t.type === "import" ? "NHẬP KHO" : t.type === "export" ? "XUẤT KHO" : "ĐIỀU CHỈNH",
                       t.ingredientName,
                       t.quantity.toString(),
                       t.unit,
+                      t.batchNo || "-",
+                      t.expiryDate || "-",
                       t.reasonOrSupplier
                     ]);
                     handleExportExcelShared("LỊCH SỬ GIAO DỊCH NHẬP XUẤT KHO", headers, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
@@ -1223,6 +1472,8 @@ export const InventoryControl: React.FC = () => {
                     <th scope="col" className="px-5 py-3 text-center">Loại</th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-center">Số lượng</th>
+                    <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
+                    <th scope="col" className="px-5 py-3 text-left">Hạn sử dụng</th>
                     <th scope="col" className="px-5 py-3 text-left">Chi tiết / Nhà cung cấp</th>
                   </tr>
                 </thead>
@@ -1264,6 +1515,12 @@ export const InventoryControl: React.FC = () => {
                             {isImport ? "+" : isExport ? "-" : ""}{tx.quantity} {tx.unit}
                           </span>
                         </td>
+                        <td className="px-5 py-3 font-semibold text-slate-700">
+                          {tx.batchNo || "-"}
+                        </td>
+                        <td className="px-5 py-3 font-semibold text-slate-700">
+                          {tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"}
+                        </td>
                         <td className="px-5 py-3 text-slate-700">{tx.reasonOrSupplier}</td>
                       </tr>
                     );
@@ -1280,26 +1537,19 @@ export const InventoryControl: React.FC = () => {
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <ClipboardCheck size={14} className="text-[#0f62fe]" /> Thao tác Kiểm kê kho
+                <ClipboardCheck size={14} className="text-admin-primary" /> Quản lý Phiếu Kiểm kê
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={handleApplyStocktake}
-                  className="px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
-                >
-                  <ClipboardCheck size={12} /> Áp dụng cân đối tồn kho
-                </button>
-                <button
                   onClick={() => {
-                    setImportFileTarget("stocktake");
-                    setImportFile(null);
-                    setImportFileError(null);
-                    setShowImportFileModal(true);
+                    setSelectedDraft(null);
+                    setCurrentView("inventoryCheck");
                   }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
-                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
+                  <Plus size={12} /> Tạo phiếu kiểm kê mới
                 </button>
+<<<<<<< HEAD
                 <button
                   onClick={() => {
                     const headers = ["Ten nguyen lieu", "Ton he thong", "Thuc te kiem dem", "Don vi", "Chenh lech"];
@@ -1352,62 +1602,98 @@ export const InventoryControl: React.FC = () => {
               <div>
                 <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
                 <p className="text-[10px] text-slate-600 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
+=======
+>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                  <tr>
-                    <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
-                    <th scope="col" className="px-5 py-3 text-center">Hệ thống ghi nhận (A)</th>
-                    <th scope="col" className="px-5 py-3 text-center">Thực tế kiểm đếm (B)</th>
-                    <th scope="col" className="px-5 py-3 text-center">Chênh lệch (B - A)</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                  {reduxIngredients.map((ing) => {
-                    const actualStr = stocktakeValues[ing.id];
-                    const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
-                    const diff = actualQty - ing.stock;
-
-                    return (
-                      <tr key={ing.id} className="hover:bg-slate-50/50">
-                        <td className="px-5 py-4 font-extrabold text-slate-900">{ing.name}</td>
-                        <td className="px-5 py-4 text-center font-bold text-slate-700">
-                          {Number(ing.stock).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
-                        </td>
-                        <td className="px-5 py-4 text-center">
-                          <div className="flex items-center justify-center gap-1 w-32 mx-auto">
-                            <input
-                              type="number"
-                              step={ing.unit === "kg" ? "0.1" : "1"}
-                              placeholder={Number(ing.stock).toFixed(0)}
-                              value={stocktakeValues[ing.id] || ""}
-                              onChange={(e) => setStocktakeValues({ ...stocktakeValues, [ing.id]: e.target.value })}
-                              className="w-20 px-2 py-1 text-center font-black border border-slate-250 rounded bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                            />
-                            <span className="text-[10px] font-extrabold text-slate-600">{ing.unit}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Drafts Section */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-xs font-black uppercase text-amber-600 tracking-wider flex items-center gap-1.5">
+                    <Save size={14} /> Đang kiểm (Bản nháp)
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {JSON.parse(localStorage.getItem("inventory_drafts") || "[]").length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-xs font-medium italic bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                      Không có phiếu nào đang kiểm dở
+                    </div>
+                  ) : (
+                    JSON.parse(localStorage.getItem("inventory_drafts") || "[]").map((draft: any) => (
+                      <div key={draft.id} className="bg-white border border-amber-200 p-4 rounded-xl shadow-xs hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-amber-400"></div>
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-black text-slate-800 text-sm">{draft.ticketName}</h4>
+                            <p className="text-[10px] text-slate-500 font-bold">{new Date(draft.date).toLocaleString('vi-VN')}</p>
                           </div>
-                        </td>
-                        <td className="px-5 py-4 text-center">
-                          {diff === 0 ? (
-                            <span className="text-slate-600 font-bold">Khớp kho (0)</span>
-                          ) : diff > 0 ? (
-                            <span className="text-emerald-600 font-extrabold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
-                              Thừa +{diff.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
-                            </span>
-                          ) : (
-                            <span className="text-rose-600 font-extrabold bg-rose-50 px-2 py-0.5 rounded border border-rose-250">
-                              Hụt {diff.toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          <span className="bg-amber-100 text-amber-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-200 uppercase">
+                            Đang kiểm
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium mb-3 line-clamp-1">{draft.note || "Không có ghi chú"}</p>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setSelectedDraft(draft);
+                              setCurrentView("inventoryCheck");
+                            }}
+                            className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded hover:bg-blue-100 transition-colors"
+                          >
+                            Tiếp tục kiểm kê
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if(window.confirm("Xóa bản nháp này?")) {
+                                const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d:any) => d.id !== draft.id)));
+                                window.dispatchEvent(new Event('storage')); // trigger re-render hack
+                              }
+                            }}
+                            className="text-[10px] font-bold text-rose-600 bg-rose-50 px-3 py-1 rounded hover:bg-rose-100 transition-colors"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Completed Section */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <span className="text-xs font-black uppercase text-emerald-600 tracking-wider flex items-center gap-1.5">
+                    <CheckCircle size={14} /> Đã cân bằng (Lịch sử)
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {JSON.parse(localStorage.getItem("inventory_history") || "[]").length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-xs font-medium italic bg-slate-50 border border-slate-200 border-dashed rounded-xl">
+                      Chưa có lịch sử kiểm kê
+                    </div>
+                  ) : (
+                    JSON.parse(localStorage.getItem("inventory_history") || "[]").map((completed: any) => (
+                      <div key={completed.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl shadow-2xs opacity-80">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-bold text-slate-700 text-sm line-through decoration-slate-300">{completed.ticketName}</h4>
+                            <p className="text-[10px] text-slate-500 font-bold">{new Date(completed.date).toLocaleString('vi-VN')}</p>
+                          </div>
+                          <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-200 uppercase">
+                            Đã cân bằng
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 font-medium">{completed.note || "Không có ghi chú"}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1418,7 +1704,7 @@ export const InventoryControl: React.FC = () => {
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <CalendarRange size={14} className="text-[#0f62fe]" /> Thao tác Quản lý hạn sử dụng
+                <CalendarRange size={14} className="text-admin-primary" /> Thao tác Quản lý hạn sử dụng
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1432,7 +1718,7 @@ export const InventoryControl: React.FC = () => {
                     });
                     setShowAddExpiryModal(true);
                   }}
-                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
                   <Plus size={12} /> Thêm lô hàng mới
                 </button>
@@ -1451,7 +1737,7 @@ export const InventoryControl: React.FC = () => {
                   onClick={() => {
                     const headers = ["So lo (Batch No)", "Ten nguyen lieu", "So luong", "Don vi", "Ngay het han", "Tinh trang"];
                     const colX = [15, 60, 105, 125, 140, 170];
-                    const rows = expiryBatches.map(b => [
+                    const rows = expiryBatches.map((b) => [
                       b.batchNo,
                       b.ingredientName,
                       b.quantity.toString(),
@@ -1468,7 +1754,7 @@ export const InventoryControl: React.FC = () => {
                 <button
                   onClick={() => {
                     const headers = ["Số lô (Batch No)", "Tên nguyên liệu", "Số lượng", "Đơn vị", "Ngày hết hạn", "Tình trạng hạn"];
-                    const rows = expiryBatches.map(b => [
+                    const rows = expiryBatches.map((b) => [
                       b.batchNo,
                       b.ingredientName,
                       b.quantity.toString(),
@@ -1567,515 +1853,290 @@ export const InventoryControl: React.FC = () => {
         )}
 
         {/* Tab 6: Báo cáo */}
-        {activeTab === "reports" && (
-          <div className="flex flex-col gap-5">
-            {/* Header chuyên nghiệp khi in ấn */}
-            <div className="print-only text-center pb-6 border-b-2 border-slate-800 mb-6">
-              <h1 className="text-2xl font-black uppercase tracking-wide text-slate-900">Báo Cáo Phân Tích Tồn Kho</h1>
-              <p className="text-xs text-slate-700 mt-1.5 font-bold">Hệ thống Quản lý ResManager Bistro</p>
-              <p className="text-[10px] text-slate-600 mt-0.5">Ngày lập báo cáo: {new Date().toLocaleDateString("vi-VN")} | Thời gian: {new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</p>
-            </div>
+        {
+          activeTab === "reports" && (
+            <div className="flex flex-col gap-5">
+              {/* Header chuyên nghiệp khi in ấn */}
+              <div className="print-only text-center pb-6 border-b-2 border-slate-800 mb-6">
+                <h1 className="text-2xl font-black uppercase tracking-wide text-slate-900">Báo Cáo Phân Tích Tồn Kho</h1>
+                <p className="text-xs text-slate-700 mt-1.5 font-bold">Hệ thống Quản lý ResManager Bistro</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">Ngày lập báo cáo: {new Date().toLocaleDateString("vi-VN")} | Thời gian: {new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</p>
+              </div>
 
-            <div className="pb-2 border-b border-slate-100 flex justify-between items-center print-hide">
-              <div>
-                <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Báo cáo phân tích tồn kho nhanh</span>
-                <p className="text-[10px] text-slate-600 font-semibold mt-1">Tổng quan về số lượng nguyên liệu, tỷ lệ cảnh báo và cơ cấu chủng loại.</p>
+              <div className="pb-2 border-b border-slate-100 flex justify-between items-center print-hide">
+                <div>
+                  <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Báo cáo phân tích tồn kho nhanh</span>
+                  <p className="text-[10px] text-slate-600 font-semibold mt-1">Tổng quan về số lượng nguyên liệu, tỷ lệ cảnh báo và cơ cấu chủng loại.</p>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-lg text-[10px] font-extrabold tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer print-hide"
+                >
+                  <FileSpreadsheet size={12} /> Xuất Báo cáo (Print)
+                </button>
               </div>
-              <button
-                onClick={() => window.print()}
-                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-lg text-[10px] font-extrabold tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer print-hide"
-              >
-                <FileSpreadsheet size={12} /> Xuất Báo cáo (Print)
-              </button>
-            </div>
 
-            {/* Quick stats grids */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print-avoid-break">
-              <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
-                <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">Tổng số mặt hàng</span>
-                <span className="text-2xl font-black text-slate-800 block mt-1">{reportsStats.totalIngredients}</span>
-                <span className="text-[10px] text-slate-600 font-semibold mt-0.5 block">Nguyên liệu trong danh mục</span>
+              {/* Quick stats grids */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print-avoid-break">
+                <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
+                  <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">Tổng số mặt hàng</span>
+                  <span className="text-2xl font-black text-slate-800 block mt-1">{reportsStats.totalIngredients}</span>
+                  <span className="text-[10px] text-slate-600 font-semibold mt-0.5 block">Nguyên liệu trong danh mục</span>
+                </div>
+                <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-2xl">
+                  <span className="text-[9px] font-black text-rose-500 uppercase tracking-wider block">Nguyên liệu tồn thấp</span>
+                  <span className="text-2xl font-black text-rose-600 block mt-1">{reportsStats.lowStockCount}</span>
+                  <span className="text-[10px] text-rose-400 font-semibold mt-0.5 block">Dưới ngưỡng an toàn</span>
+                </div>
+                <div className="bg-amber-50/50 border border-amber-250 p-4 rounded-2xl">
+                  <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider block">Lô hàng cận hạn</span>
+                  <span className="text-2xl font-black text-amber-700 block mt-1">{reportsStats.nearExpiryCount}</span>
+                  <span className="text-[10px] text-amber-400 font-semibold mt-0.5 block">Hạn dưới 3 ngày</span>
+                </div>
+                <div className="bg-rose-50/70 border border-rose-200 p-4 rounded-2xl">
+                  <span className="text-[9px] font-black text-rose-650 uppercase tracking-wider block">Lô hàng hết hạn</span>
+                  <span className="text-2xl font-black text-rose-700 block mt-1">{reportsStats.expiredCount}</span>
+                  <span className="text-[10px] text-rose-400 font-semibold mt-0.5 block">Cần tiêu hủy gấp</span>
+                </div>
               </div>
-              <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-2xl">
-                <span className="text-[9px] font-black text-rose-500 uppercase tracking-wider block">Nguyên liệu tồn thấp</span>
-                <span className="text-2xl font-black text-rose-600 block mt-1">{reportsStats.lowStockCount}</span>
-                <span className="text-[10px] text-rose-400 font-semibold mt-0.5 block">Dưới ngưỡng an toàn</span>
-              </div>
-              <div className="bg-amber-50/50 border border-amber-250 p-4 rounded-2xl">
-                <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider block">Lô hàng cận hạn</span>
-                <span className="text-2xl font-black text-amber-700 block mt-1">{reportsStats.nearExpiryCount}</span>
-                <span className="text-[10px] text-amber-400 font-semibold mt-0.5 block">Hạn dưới 3 ngày</span>
-              </div>
-              <div className="bg-rose-50/70 border border-rose-200 p-4 rounded-2xl">
-                <span className="text-[9px] font-black text-rose-650 uppercase tracking-wider block">Lô hàng hết hạn</span>
-                <span className="text-2xl font-black text-rose-700 block mt-1">{reportsStats.expiredCount}</span>
-                <span className="text-[10px] text-rose-400 font-semibold mt-0.5 block">Cần tiêu hủy gấp</span>
-              </div>
-            </div>
 
-            {/* Chart visualizations */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2 print-avoid-break">
-              
-              {/* Category distribution chart */}
-              <div className="border border-slate-200 p-5 rounded-2xl flex flex-col gap-4">
-                <span className="text-xs font-black uppercase text-slate-700 tracking-wider">Cơ cấu chủng loại nguyên liệu</span>
-                <div className="flex flex-col sm:flex-row items-center justify-around gap-4 h-full">
-                  {/* Mock SVG Pie/Donut Chart */}
-                  <svg className="w-36 h-36 transform -rotate-90" viewBox="0 0 100 100">
-                    {categoryDistribution.map((item, idx) => (
-                      <circle
-                        key={idx}
-                        cx="50"
-                        cy="50"
-                        r="40"
-                        fill="transparent"
-                        stroke={item.color}
-                        strokeWidth="20"
-                        strokeDasharray={item.strokeDasharray}
-                        strokeDashoffset={item.strokeDashoffset}
-                      />
-                    ))}
-                    <circle cx="50" cy="50" r="22" fill="white" />
-                  </svg>
+              {/* Chart visualizations */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2 print-avoid-break">
 
-                  <div className="flex flex-col gap-2.5 text-[11px] font-bold text-slate-600">
-                    {categoryDistribution.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-md" style={{ backgroundColor: item.color }} />
-                        <span>{item.name} ({item.percentage}%)</span>
+                {/* Category distribution chart */}
+                <div className="border border-slate-200 p-5 rounded-2xl flex flex-col gap-4">
+                  <span className="text-xs font-black uppercase text-slate-700 tracking-wider">Cơ cấu chủng loại nguyên liệu</span>
+                  <div className="flex flex-col sm:flex-row items-center justify-around gap-4 h-full">
+                    {/* Mock SVG Pie/Donut Chart */}
+                    <svg className="w-36 h-36 transform -rotate-90" viewBox="0 0 100 100">
+                      {categoryDistribution.map((item, idx) => (
+                        <circle
+                          key={idx}
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          fill="transparent"
+                          stroke={item.color}
+                          strokeWidth="20"
+                          strokeDasharray={item.strokeDasharray}
+                          strokeDashoffset={item.strokeDashoffset}
+                        />
+                      ))}
+                      <circle cx="50" cy="50" r="22" fill="white" />
+                    </svg>
+
+                    <div className="flex flex-col gap-2.5 text-[11px] font-bold text-slate-600">
+                      {categoryDistribution.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-md" style={{ backgroundColor: item.color }} />
+                          <span>{item.name} ({item.percentage}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transactions trend report */}
+                <div className="border border-slate-200 p-5 rounded-2xl flex flex-col gap-4">
+                  <span className="text-xs font-black uppercase text-slate-700 tracking-wider">Hao hụt & Biến động tuần qua</span>
+                  <div className="flex flex-col justify-between gap-3 h-full">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-450 font-bold">Hao hụt kiểm định</span>
+                        <span className="font-extrabold text-rose-600">-{dynamicMovementStats.adjustedPercent}%</span>
                       </div>
-                    ))}
+                      <div className="w-full bg-slate-100 rounded-full h-2">
+                        <div className="bg-rose-500 h-full rounded-full" style={{ width: `${dynamicMovementStats.adjustedPercent}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-450 font-bold">Lượng nguyên liệu chế biến</span>
+                        <span className="font-extrabold text-blue-600">{dynamicMovementStats.processedPercent}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2">
+                        <div className="bg-blue-600 h-full rounded-full" style={{ width: `${dynamicMovementStats.processedPercent}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-450 font-bold">Lượng nguyên liệu hủy (quá hạn)</span>
+                        <span className="font-extrabold text-amber-600">{dynamicMovementStats.destroyedPercent}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2">
+                        <div className="bg-amber-500 h-full rounded-full" style={{ width: `${dynamicMovementStats.destroyedPercent}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl text-[10px] text-slate-600 font-semibold leading-relaxed">
+                      💡 Báo cáo trên được trích xuất dữ liệu tổng hợp dựa trên nhật ký nhập, xuất sử dụng từ khu vực bếp và ghi nhận hao hụt thực tế từ các lần cân đối tồn kho.
+                    </div>
                   </div>
                 </div>
+
               </div>
-
-              {/* Transactions trend report */}
-              <div className="border border-slate-200 p-5 rounded-2xl flex flex-col gap-4">
-                <span className="text-xs font-black uppercase text-slate-700 tracking-wider">Hao hụt & Biến động tuần qua</span>
-                <div className="flex flex-col justify-between gap-3 h-full">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-450 font-bold">Hao hụt kiểm định</span>
-                      <span className="font-extrabold text-rose-600">-{dynamicMovementStats.adjustedPercent}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-2">
-                      <div className="bg-rose-500 h-full rounded-full" style={{ width: `${dynamicMovementStats.adjustedPercent}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-450 font-bold">Lượng nguyên liệu chế biến</span>
-                      <span className="font-extrabold text-blue-600">{dynamicMovementStats.processedPercent}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-2">
-                      <div className="bg-blue-600 h-full rounded-full" style={{ width: `${dynamicMovementStats.processedPercent}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-450 font-bold">Lượng nguyên liệu hủy (quá hạn)</span>
-                      <span className="font-extrabold text-amber-600">{dynamicMovementStats.destroyedPercent}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-2">
-                      <div className="bg-amber-500 h-full rounded-full" style={{ width: `${dynamicMovementStats.destroyedPercent}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl text-[10px] text-slate-600 font-semibold leading-relaxed">
-                    💡 Báo cáo trên được trích xuất dữ liệu tổng hợp dựa trên nhật ký nhập, xuất sử dụng từ khu vực bếp và ghi nhận hao hụt thực tế từ các lần cân đối tồn kho.
-                  </div>
-                </div>
-              </div>
-
             </div>
-          </div>
-        )}
+          )
+        }
 
-      </div>
+      </div >
 
       {/* MODALS */}
 
       {/* Modal E: Nhập từ File chung (Import File Modal) */}
-      {showImportFileModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowImportFileModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">
-              Nhập dữ liệu bằng File (Excel / PDF)
-            </h3>
-            <form onSubmit={handlePostImportFile} className="flex flex-col gap-4 text-xs">
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] font-semibold text-blue-700 leading-relaxed">
-                ℹ️ Bạn đang tải dữ liệu lên danh mục: <strong className="uppercase">{
-                  importFileTarget === "ingredients" ? "Nguyên liệu" :
-                  importFileTarget === "categories" ? "Danh mục" :
-                  importFileTarget === "suppliers" ? "Nhà cung cấp" :
-                  importFileTarget === "transactions" ? "Lịch sử Nhập/Xuất" :
-                  importFileTarget === "stocktake" ? "Dữ liệu kiểm kê" : "Theo dõi hạn dùng"
-                }</strong>.
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100/50 hover:border-slate-400 cursor-pointer transition-all gap-1.5 text-center">
-                  <UploadCloud size={24} className="text-slate-400" />
-                  <span className="font-extrabold text-slate-700">
-                    {importFile ? importFile.name : "Chọn file tài liệu từ thiết bị"}
-                  </span>
-                  <span className="text-[9px] text-slate-450 font-semibold">Chấp nhận .pdf, .xlsx, .xls</span>
-                  <input
-                    type="file"
-                    accept=".pdf,.xlsx,.xls"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const ext = file.name.split('.').pop()?.toLowerCase();
-                        if (!ext || !["pdf", "xlsx", "xls"].includes(ext)) {
-                          setImportFileError("Định dạng file không hợp lệ! Vui lòng chọn file .pdf hoặc excel (.xlsx, .xls)");
-                          setImportFile(null);
-                        } else {
-                          setImportFileError(null);
-                          setImportFile(file);
-                        }
-                      }
-                    }}
-                  />
-                </label>
-              </div>
-
-              {importFileError && (
-                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-600 font-extrabold rounded-xl flex items-center gap-1.5">
-                  <span>⚠️ Lỗi:</span>
-                  <span>{importFileError}</span>
+      {
+        showImportFileModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowImportFileModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+              <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">
+                Nhập dữ liệu bằng File (Excel / PDF)
+              </h3>
+              <form onSubmit={handlePostImportFile} className="flex flex-col gap-4 text-xs">
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] font-semibold text-blue-700 leading-relaxed">
+                  ℹ️ Bạn đang tải dữ liệu lên danh mục: <strong className="uppercase">{
+                    importFileTarget === "ingredients" ? "Nguyên liệu" :
+                      importFileTarget === "categories" ? "Danh mục" :
+                        importFileTarget === "suppliers" ? "Nhà cung cấp" :
+                          importFileTarget === "transactions" ? "Lịch sử Nhập/Xuất" :
+                            importFileTarget === "stocktake" ? "Dữ liệu kiểm kê" : "Theo dõi hạn dùng"
+                  }</strong>.
                 </div>
-              )}
 
-              <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowImportFileModal(false)}
-                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={!importFile || !!importFileError}
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Tiến hành Nhập kho
-                </button>
-              </div>
-            </form>
+                <div className="flex flex-col gap-2">
+                  <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100/50 hover:border-slate-400 cursor-pointer transition-all gap-1.5 text-center">
+                    <UploadCloud size={24} className="text-slate-400" />
+                    <span className="font-extrabold text-slate-700">
+                      {importFile ? importFile.name : "Chọn file tài liệu từ thiết bị"}
+                    </span>
+                    <span className="text-[9px] text-slate-450 font-semibold">Chấp nhận .pdf, .xlsx, .xls</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.xlsx,.xls"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const ext = file.name.split('.').pop()?.toLowerCase();
+                          if (!ext || !["pdf", "xlsx", "xls"].includes(ext)) {
+                            setImportFileError("Định dạng file không hợp lệ! Vui lòng chọn file .pdf hoặc excel (.xlsx, .xls)");
+                            setImportFile(null);
+                          } else {
+                            setImportFileError(null);
+                            setImportFile(file);
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {importFileError && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-600 font-extrabold rounded-xl flex items-center gap-1.5">
+                    <span>⚠️ Lỗi:</span>
+                    <span>{importFileError}</span>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowImportFileModal(false)}
+                    className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!importFile || !!importFileError}
+                    className="px-4 py-2 bg-linear-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Tiến hành Nhập kho
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Modal F: Thêm Lô hàng mới (Add Expiry Batch Modal) */}
-      {showAddExpiryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowAddExpiryModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm Lô hàng Hạn sử dụng mới</h3>
-            <form onSubmit={handlePostExpiryBatch} className="flex flex-col gap-4 text-xs">
-              
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Tên nguyên liệu</label>
-                <select
-                  value={newExpiryForm.ingredientName}
-                  onChange={(e) => {
-                    const ing = reduxIngredients.find(i => i.name === e.target.value);
-                    setNewExpiryForm({
-                      ...newExpiryForm,
-                      ingredientName: e.target.value,
-                      unit: ing?.unit || "kg"
-                    });
-                  }}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
-                >
-                  {reduxIngredients.map((i) => (
-                    <option key={i.id} value={i.name}>{i.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Mã Lô hàng (Batch No)</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: LOT-RAU-01"
-                    value={newExpiryForm.batchNo}
-                    onChange={(e) => setNewExpiryForm({ ...newExpiryForm, batchNo: e.target.value.toUpperCase() })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Số lượng nhập</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      required
-                      value={newExpiryForm.quantity}
-                      onChange={(e) => setNewExpiryForm({ ...newExpiryForm, quantity: Number(e.target.value) })}
-                      className="px-3 py-2 w-full border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                    />
-                    <span className="text-[10px] font-black text-slate-400">{newExpiryForm.unit}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Ngày hết hạn</label>
-                <input
-                  type="date"
-                  required
-                  value={newExpiryForm.expiryDate}
-                  onChange={(e) => setNewExpiryForm({ ...newExpiryForm, expiryDate: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAddExpiryModal(false)}
-                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Xác nhận
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal A: Thêm nguyên liệu mới */}
-      {showAddIngModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowAddIngModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm nguyên liệu mới</h3>
-            <form onSubmit={handleAddIngredient} className="flex flex-col gap-4 text-xs">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Tên nguyên liệu</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Thịt gà ta, Hành tây..."
-                  value={newIngForm.name}
-                  onChange={(e) => setNewIngForm({ ...newIngForm, name: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Danh mục</label>
-                  <select
-                    value={newIngForm.category}
-                    onChange={(e) => setNewIngForm({ ...newIngForm, category: e.target.value })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Đơn vị tính</label>
-                  <select
-                    value={newIngForm.unit}
-                    onChange={(e) => setNewIngForm({ ...newIngForm, unit: e.target.value })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
-                  >
-                    <option value="kg">kg (Kilôgam)</option>
-                    <option value="g">g (Gam)</option>
-                    <option value="l">l (Lít)</option>
-                    <option value="chai">chai (Chai)</option>
-                    <option value="hộp">hộp (Hộp)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Tồn kho ban đầu</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    required
-                    value={newIngForm.stock}
-                    onChange={(e) => setNewIngForm({ ...newIngForm, stock: Number(e.target.value) })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Tồn kho tối thiểu</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    required
-                    value={newIngForm.threshold}
-                    onChange={(e) => setNewIngForm({ ...newIngForm, threshold: Number(e.target.value) })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAddIngModal(false)}
-                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Xác nhận
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal B: Nhập / Xuất kho nhanh */}
-      {showImportExportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowImportExportModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Ghi nhận Nhập / Xuất kho mới</h3>
-            
-            {/* Tab Header inside Modal */}
-            <div className="flex border-b border-slate-200 mb-4 text-xs font-black">
+      {
+        showAddExpiryModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
               <button
-                type="button"
-                onClick={() => setImportExportMode("manual")}
-                className={`flex-1 pb-2 text-center border-b-2 cursor-pointer transition-all ${
-                  importExportMode === "manual"
-                    ? "text-[#0f62fe] border-[#0f62fe]"
-                    : "text-slate-600 border-transparent hover:text-slate-600"
-                }`}
+                onClick={() => setShowAddExpiryModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
-                Ghi nhận thủ công
+                <X size={16} />
               </button>
-              <button
-                type="button"
-                onClick={() => setImportExportMode("file")}
-                className={`flex-1 pb-2 text-center border-b-2 cursor-pointer transition-all ${
-                  importExportMode === "file"
-                    ? "text-[#0f62fe] border-[#0f62fe]"
-                    : "text-slate-600 border-transparent hover:text-slate-600"
-                }`}
-              >
-                Nhập / Xuất bằng File
-              </button>
-            </div>
-
-            {importExportMode === "manual" ? (
-              <form onSubmit={handlePostTransaction} className="flex flex-col gap-4 text-xs">
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Loại giao dịch</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setTransactionForm({ ...transactionForm, type: "import" })}
-                      className={`py-2 rounded-xl font-extrabold text-center cursor-pointer transition-all border ${
-                        transactionForm.type === "import"
-                          ? "bg-blue-50 text-blue-700 border-blue-400 shadow-2xs"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      Nhập kho
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTransactionForm({ ...transactionForm, type: "export" })}
-                      className={`py-2 rounded-xl font-extrabold text-center cursor-pointer transition-all border ${
-                        transactionForm.type === "export"
-                          ? "bg-amber-50 text-amber-700 border-amber-400 shadow-2xs"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      Xuất kho
-                    </button>
-                  </div>
-                </div>
+              <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm Lô hàng Hạn sử dụng mới</h3>
+              <form onSubmit={handlePostExpiryBatch} className="flex flex-col gap-4 text-xs">
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Chọn nguyên liệu</label>
+                  <label className="font-extrabold text-slate-700">Tên nguyên liệu</label>
                   <select
-                    value={transactionForm.ingredientId}
-                    onChange={(e) => setTransactionForm({ ...transactionForm, ingredientId: e.target.value })}
+                    value={newExpiryForm.ingredientName}
+                    onChange={(e) => {
+                      const ing = reduxIngredients.find(i => i.name === e.target.value);
+                      setNewExpiryForm({
+                        ...newExpiryForm,
+                        ingredientName: e.target.value,
+                        unit: ing?.unit || "kg"
+                      });
+                    }}
                     className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
                   >
                     {reduxIngredients.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name} (Tồn hiện tại: {i.stock} {i.unit})
-                      </option>
+                      <option key={i.id} value={i.name}>{i.name}</option>
                     ))}
                   </select>
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Số lượng</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    required
-                    value={transactionForm.quantity}
-                    onChange={(e) => setTransactionForm({ ...transactionForm, quantity: Number(e.target.value) })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Mã Lô hàng (Batch No)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ví dụ: LOT-RAU-01"
+                      value={newExpiryForm.batchNo}
+                      onChange={(e) => setNewExpiryForm({ ...newExpiryForm, batchNo: e.target.value.toUpperCase() })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Số lượng nhập</label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        required
+                        value={newExpiryForm.quantity}
+                        onChange={(e) => setNewExpiryForm({ ...newExpiryForm, quantity: Number(e.target.value) })}
+                        className="px-3 py-2 w-full border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                      />
+                      <span className="text-[10px] font-black text-slate-400">{newExpiryForm.unit}</span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">
-                    {transactionForm.type === "import" ? "Nhà cung cấp hàng" : "Lý do xuất kho"}
-                  </label>
+                  <label className="font-extrabold text-slate-700">Ngày hết hạn</label>
                   <input
-                    type="text"
+                    type="date"
                     required
-                    placeholder={transactionForm.type === "import" ? "Ví dụ: NCC Hải Sản Đại Dương" : "Ví dụ: Chế biến món chiên xào"}
-                    value={transactionForm.reasonOrSupplier}
-                    onChange={(e) => setTransactionForm({ ...transactionForm, reasonOrSupplier: e.target.value })}
+                    value={newExpiryForm.expiryDate}
+                    onChange={(e) => setNewExpiryForm({ ...newExpiryForm, expiryDate: e.target.value })}
                     className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
                   />
                 </div>
@@ -2083,296 +2144,601 @@ export const InventoryControl: React.FC = () => {
                 <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
                   <button
                     type="button"
-                    onClick={() => setShowImportExportModal(false)}
+                    onClick={() => setShowAddExpiryModal(false)}
                     className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
                   >
                     Hủy
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                    className="px-4 py-2 bg-linear-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
                   >
-                    Ghi nhận
+                    Xác nhận
                   </button>
                 </div>
               </form>
-            ) : (
-              <div className="flex flex-col gap-5 text-xs">
-                {/* PHẦN NHẬP KHO QUA FILE */}
-                <div className="flex flex-col gap-2.5 p-4 bg-slate-55/20 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                  <span className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider block">Nhập kho bằng file (.pdf, excel)</span>
-                  <p className="text-[10px] text-slate-450 leading-relaxed font-semibold">Tải lên phiếu nhập kho định dạng PDF hoặc Excel (.xlsx, .xls) để hệ thống tự động cập nhật số lượng.</p>
-                  
-                  <div className="mt-1">
-                    <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100/50 hover:border-slate-400 cursor-pointer transition-all gap-1.5 text-center">
-                      <UploadCloud size={20} className="text-slate-600" />
-                      <span className="font-extrabold text-slate-700">
-                        {selectedFile ? selectedFile.name : "Chọn file tài liệu từ thiết bị"}
-                      </span>
-                      <span className="text-[9px] text-slate-450 font-semibold">Chấp nhận .pdf, .xlsx, .xls</span>
-                      <input
-                        type="file"
-                        accept=".pdf,.xlsx,.xls"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const ext = file.name.split('.').pop()?.toLowerCase();
-                            if (!ext || !["pdf", "xlsx", "xls"].includes(ext)) {
-                              setFileError("Định dạng file không hợp lệ! Vui lòng chọn file .pdf hoặc excel (.xlsx, .xls)");
-                              setSelectedFile(null);
-                            } else {
-                              setFileError(null);
-                              setSelectedFile(file);
-                              
-                              if (ext === "xlsx" || ext === "xls") {
-                                const loadingToast = toast.loading("Đang xử lý file Excel...");
-                                try {
-                                  await uploadInventoryExcelApi(file);
-                                  toast.success("Tải file và cập nhật kho thành công!", { id: loadingToast });
-                                  
-                                  // Reload data
-                                  getIngredientsApi()
-                                    .then((data) => setReduxIngredients(data))
-                                    .catch((err) => console.error("Failed to load ingredients", err));
-                                  getInventoryTransactionsApi()
-                                    .then((data) => setTransactions(data))
-                                    .catch((err) => console.error("Failed to load transactions", err));
-                                    
-                                  getSuppliersApi()
-                                    .then((data) => setSuppliers(data))
-                                    .catch((err) => console.error("Failed to load suppliers", err));
-                                    
-                                  setShowImportExportModal(false);
-                                  setSelectedFile(null);
-                                  setImportExportMode("manual");
-                                } catch (error: any) {
-                                  toast.error(error.response?.data?.message || "Có lỗi xảy ra khi tải file", { id: loadingToast });
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal: Xem chi tiết Lô hàng */}
+      {
+        showBatchesModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowBatchesModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="flex items-center gap-2.5 mb-5">
+                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">Chi tiết các lô hàng</h3>
+                  <p className="text-slate-500 text-[10px] font-semibold mt-0.5">Nguyên liệu: <span className="font-bold text-blue-600">{selectedIngredientNameForBatches}</span></p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner max-h-[60vh] overflow-y-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-wider sticky top-0 z-10">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-left">Mã lô</th>
+                      <th scope="col" className="px-4 py-3 text-right">Còn lại</th>
+                      <th scope="col" className="px-4 py-3 text-center">Hạn sử dụng</th>
+                      <th scope="col" className="px-4 py-3 text-left">Nhà cung cấp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200 text-[11px] font-semibold text-slate-700">
+                    {ingredientBatches.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-8 text-center text-slate-500 italic">Đang tải hoặc nguyên liệu này chưa có lô hàng nào...</td>
+                      </tr>
+                    ) : (
+                      ingredientBatches.map(b => {
+                        const isExpired = b.expiry_date && new Date(b.expiry_date) < new Date();
+                        return (
+                          <tr key={b.id} className={`hover:bg-slate-50 transition-colors ${isExpired ? 'bg-rose-50/30' : ''}`}>
+                            <td className="px-4 py-3 font-mono text-slate-600">{b.batch_code}</td>
+                            <td className="px-4 py-3 text-right font-black text-admin-primary">{b.remaining_quantity}</td>
+                            <td className="px-4 py-3 text-center">
+                              {b.expiry_date ? (
+                                <span className={isExpired ? "text-rose-600 font-bold" : "text-emerald-600"}>
+                                  {new Date(b.expiry_date).toLocaleDateString('vi-VN')}
+                                  {isExpired && <span className="ml-1 text-[9px] bg-rose-100 text-rose-700 px-1 py-0.5 rounded">HẾT HẠN</span>}
+                                </span>
+                              ) : <span className="text-slate-400 italic">Không có</span>}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]">{b.supplierName || 'N/A'}</td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end mt-5 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchesModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal A: Thêm nguyên liệu mới */}
+      {
+        showAddIngModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowAddIngModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+              <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm nguyên liệu mới</h3>
+              <form onSubmit={handleAddIngredient} className="flex flex-col gap-4 text-xs">
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Tên nguyên liệu</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ví dụ: Thịt gà ta, Hành tây..."
+                    value={newIngForm.name}
+                    onChange={(e) => setNewIngForm({ ...newIngForm, name: e.target.value })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Danh mục</label>
+                    <select
+                      value={newIngForm.category}
+                      onChange={(e) => setNewIngForm({ ...newIngForm, category: e.target.value })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Đơn vị tính</label>
+                    <select
+                      value={newIngForm.unit}
+                      onChange={(e) => setNewIngForm({ ...newIngForm, unit: e.target.value })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
+                    >
+                      <option value="kg">kg (Kilôgam)</option>
+                      <option value="g">g (Gam)</option>
+                      <option value="l">l (Lít)</option>
+                      <option value="chai">chai (Chai)</option>
+                      <option value="hộp">hộp (Hộp)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Tồn kho ban đầu</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      required
+                      value={newIngForm.stock}
+                      onChange={(e) => setNewIngForm({ ...newIngForm, stock: Number(e.target.value) })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Tồn kho tối thiểu</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      required
+                      value={newIngForm.threshold}
+                      onChange={(e) => setNewIngForm({ ...newIngForm, threshold: Number(e.target.value) })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddIngModal(false)}
+                    className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-linear-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Xác nhận
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal B: Nhập / Xuất kho nhanh */}
+      {
+        showImportExportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowImportExportModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+              <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Ghi nhận Nhập / Xuất kho mới</h3>
+
+              {/* Tab Header inside Modal */}
+              <div className="flex border-b border-slate-200 mb-4 text-xs font-black">
+                <button
+                  type="button"
+                  onClick={() => setImportExportMode("manual")}
+                  className={`flex-1 pb-2 text-center border-b-2 cursor-pointer transition-all ${importExportMode === "manual"
+                    ? "text-admin-primary border-admin-primary"
+                    : "text-slate-600 border-transparent hover:text-slate-600"
+                    }`}
+                >
+                  Ghi nhận thủ công
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportExportMode("file")}
+                  className={`flex-1 pb-2 text-center border-b-2 cursor-pointer transition-all ${importExportMode === "file"
+                    ? "text-admin-primary border-admin-primary"
+                    : "text-slate-600 border-transparent hover:text-slate-600"
+                    }`}
+                >
+                  Nhập / Xuất bằng File
+                </button>
+              </div>
+
+              {importExportMode === "manual" ? (
+                <form onSubmit={handlePostTransaction} className="flex flex-col gap-4 text-xs">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Loại giao dịch</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTransactionForm({ ...transactionForm, type: "import" })}
+                        className={`py-2 rounded-xl font-extrabold text-center cursor-pointer transition-all border ${transactionForm.type === "import"
+                          ? "bg-blue-50 text-blue-700 border-blue-400 shadow-2xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                      >
+                        Nhập kho
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTransactionForm({ ...transactionForm, type: "export" })}
+                        className={`py-2 rounded-xl font-extrabold text-center cursor-pointer transition-all border ${transactionForm.type === "export"
+                          ? "bg-amber-50 text-amber-700 border-amber-400 shadow-2xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                      >
+                        Xuất kho
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Chọn nguyên liệu</label>
+                    <select
+                      value={transactionForm.ingredientId}
+                      onChange={(e) => setTransactionForm({ ...transactionForm, ingredientId: e.target.value })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
+                    >
+                      {reduxIngredients.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name} (Tồn hiện tại: {i.stock} {i.unit})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Số lượng</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      required
+                      value={transactionForm.quantity}
+                      onChange={(e) => setTransactionForm({ ...transactionForm, quantity: Number(e.target.value) })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">
+                      {transactionForm.type === "import" ? "Nhà cung cấp hàng" : "Lý do xuất kho"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder={transactionForm.type === "import" ? "Ví dụ: NCC Hải Sản Đại Dương" : "Ví dụ: Chế biến món chiên xào"}
+                      value={transactionForm.reasonOrSupplier}
+                      onChange={(e) => setTransactionForm({ ...transactionForm, reasonOrSupplier: e.target.value })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowImportExportModal(false)}
+                      className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-linear-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                    >
+                      Ghi nhận
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex flex-col gap-5 text-xs">
+                  {/* PHẦN NHẬP KHO QUA FILE */}
+                  <div className="flex flex-col gap-2.5 p-4 bg-slate-55/20 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                    <span className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider block">Nhập kho bằng file (.pdf, excel)</span>
+                    <p className="text-[10px] text-slate-450 leading-relaxed font-semibold">Tải lên phiếu nhập kho định dạng PDF hoặc Excel (.xlsx, .xls) để hệ thống tự động cập nhật số lượng.</p>
+
+                    <div className="mt-1">
+                      <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-slate-300 rounded-xl hover:bg-slate-100/50 hover:border-slate-400 cursor-pointer transition-all gap-1.5 text-center">
+                        <UploadCloud size={20} className="text-slate-600" />
+                        <span className="font-extrabold text-slate-700">
+                          {selectedFile ? selectedFile.name : "Chọn file tài liệu từ thiết bị"}
+                        </span>
+                        <span className="text-[9px] text-slate-450 font-semibold">Chấp nhận .pdf, .xlsx, .xls</span>
+                        <input
+                          type="file"
+                          accept=".pdf,.xlsx,.xls"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const ext = file.name.split('.').pop()?.toLowerCase();
+                              if (!ext || !["pdf", "xlsx", "xls"].includes(ext)) {
+                                setFileError("Định dạng file không hợp lệ! Vui lòng chọn file .pdf hoặc excel (.xlsx, .xls)");
+                                setSelectedFile(null);
+                              } else {
+                                setFileError(null);
+                                setSelectedFile(file);
+
+                                if (ext === "xlsx" || ext === "xls") {
+                                  const loadingToast = toast.loading("Đang xử lý file Excel...");
+                                  try {
+                                    await uploadInventoryExcelApi(file);
+                                    toast.success("Tải file và cập nhật kho thành công!", { id: loadingToast });
+
+                                    // Reload data
+                                    getIngredientsApi()
+                                      .then((data) => setReduxIngredients(data))
+                                      .catch((err) => console.error("Failed to load ingredients", err));
+                                    getInventoryTransactionsApi()
+                                      .then((data) => setTransactions(data))
+                                      .catch((err) => console.error("Failed to load transactions", err));
+
+                                    getSuppliersApi()
+                                      .then((data) => setSuppliers(data))
+                                      .catch((err) => console.error("Failed to load suppliers", err));
+
+                                    setShowImportExportModal(false);
+                                    setSelectedFile(null);
+                                    setImportExportMode("manual");
+                                  } catch (error: any) {
+                                    toast.error(error.response?.data?.message || "Có lỗi xảy ra khi tải file", { id: loadingToast });
+                                  }
                                 }
                               }
                             }
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {fileError && (
+                      <div className="mt-1.5 p-3 bg-red-50 border border-red-200 text-red-600 font-extrabold rounded-xl flex items-center gap-1.5 shadow-2xs">
+                        <span>⚠️ Lỗi định dạng:</span>
+                        <span>{fileError}</span>
+                      </div>
+                    )}
+
+                    {selectedFile && !fileError && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toast.success(`Nhập kho thành công từ file: ${selectedFile.name}`);
+                          if (reduxIngredients.length > 0) {
+                            const ing = reduxIngredients[0];
+                            handleModifyStockDirect(ing.id as string, ing.stock + 100);
+                            setTransactions([
+                              {
+                                id: `t_${Date.now()}`,
+                                type: "import",
+                                ingredientName: ing.name,
+                                quantity: 100,
+                                unit: ing.unit,
+                                reasonOrSupplier: `Nhập tự động từ file ${selectedFile.name}`,
+                                timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
+                              },
+                              ...transactions
+                            ]);
                           }
+                          setShowImportExportModal(false);
                         }}
-                      />
-                    </label>
+                        className="mt-1.5 w-full py-2 bg-linear-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold rounded-xl text-center active:scale-95 shadow-sm transition-all cursor-pointer"
+                      >
+                        Tiến hành Nhập kho
+                      </button>
+                    )}
                   </div>
 
-                  {fileError && (
-                    <div className="mt-1.5 p-3 bg-red-50 border border-red-200 text-red-600 font-extrabold rounded-xl flex items-center gap-1.5 shadow-2xs">
-                      <span>⚠️ Lỗi định dạng:</span>
-                      <span>{fileError}</span>
-                    </div>
-                  )}
+                  {/* PHẦN XUẤT KHO QUA FILE */}
+                  <div className="flex flex-col gap-2.5 p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
+                    <span className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider block">Xuất dữ liệu kho hàng (.pdf, excel)</span>
+                    <p className="text-[10px] text-slate-450 leading-relaxed font-semibold">Tải xuống báo cáo tồn kho hiện tại hoặc phiếu xuất kho chi tiết dưới định dạng PDF hoặc Excel.</p>
 
-                  {selectedFile && !fileError && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toast.success(`Nhập kho thành công từ file: ${selectedFile.name}`);
-                        if (reduxIngredients.length > 0) {
-                          const ing = reduxIngredients[0];
-                          handleModifyStockDirect(ing.id as string, ing.stock + 100);
-                          setTransactions([
-                            {
-                              id: `t_${Date.now()}`,
-                              type: "import",
-                              ingredientName: ing.name,
-                              quantity: 100,
-                              unit: ing.unit,
-                              reasonOrSupplier: `Nhập tự động từ file ${selectedFile.name}`,
-                              timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-                            },
-                            ...transactions
-                          ]);
-                        }
-                        setShowImportExportModal(false);
-                      }}
-                      className="mt-1.5 w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold rounded-xl text-center active:scale-95 shadow-sm transition-all cursor-pointer"
-                    >
-                      Tiến hành Nhập kho
-                    </button>
-                  )}
-                </div>
+                    <div className="grid grid-cols-2 gap-3 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toast.success("Đang xuất dữ liệu PDF...");
+                          try {
+                            const doc = new jsPDF();
 
-                {/* PHẦN XUẤT KHO QUA FILE */}
-                <div className="flex flex-col gap-2.5 p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                  <span className="font-extrabold text-slate-800 text-[11px] uppercase tracking-wider block">Xuất dữ liệu kho hàng (.pdf, excel)</span>
-                  <p className="text-[10px] text-slate-450 leading-relaxed font-semibold">Tải xuống báo cáo tồn kho hiện tại hoặc phiếu xuất kho chi tiết dưới định dạng PDF hoặc Excel.</p>
-                  
-                  <div className="grid grid-cols-2 gap-3 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toast.success("Đang xuất dữ liệu PDF...");
-                        try {
-                          const doc = new jsPDF();
-                          
-                          // Set document properties
-                          doc.setProperties({
-                            title: "Bao Cao Ton Kho",
-                            subject: "ResManager Bistro Inventory Report",
-                            author: "ResManager Bistro"
-                          });
+                            // Set document properties
+                            doc.setProperties({
+                              title: "Bao Cao Ton Kho",
+                              subject: "ResManager Bistro Inventory Report",
+                              author: "ResManager Bistro"
+                            });
 
-                          // Header Title
-                          doc.setFont("helvetica", "bold");
-                          doc.setFontSize(18);
-                          doc.text("BAO CAO PHAN TICH TON KHO NGUYEN LIEU", 105, 20, { align: "center" });
-
-                          // Sub-header
-                          doc.setFont("helvetica", "normal");
-                          doc.setFontSize(10);
-                          doc.text(`Nha hang: ResManager Bistro  |  Ngay lap: ${new Date().toLocaleDateString("vi-VN")} ${new Date().toLocaleTimeString("vi-VN")}`, 105, 28, { align: "center" });
-                          
-                          // Divider line
-                          doc.setDrawColor(200, 200, 200);
-                          doc.line(15, 32, 195, 32);
-
-                          // Section 1: Overview
-                          doc.setFont("helvetica", "bold");
-                          doc.setFontSize(12);
-                          doc.text("1. CHI SO TONG QUAN", 15, 42);
-
-                          // Quick Stats
-                          const stats = [
-                            { label: "Tong mat hang", val: reportsStats.totalIngredients.toString() },
-                            { label: "Ton kho thap", val: reportsStats.lowStockCount.toString() },
-                            { label: "Lo can han", val: reportsStats.nearExpiryCount.toString() },
-                            { label: "Lo het han", val: reportsStats.expiredCount.toString() }
-                          ];
-                          
-                          stats.forEach((s, idx) => {
-                            const x = 15 + idx * 45;
-                            // Box border & fill
-                            doc.setDrawColor(226, 232, 240); // border-slate-200
-                            doc.setFillColor(248, 250, 252); // bg-slate-50
-                            doc.rect(x, 47, 40, 20, "FD");
-
-                            // Stat label
+                            // Header Title
                             doc.setFont("helvetica", "bold");
-                            doc.setFontSize(8);
-                            doc.setTextColor(71, 85, 105); // text-slate-700
-                            doc.text(removeVietnameseAccents(s.label), x + 3, 53);
+                            doc.setFontSize(18);
+                            doc.text("BAO CAO PHAN TICH TON KHO NGUYEN LIEU", 105, 20, { align: "center" });
 
-                            // Stat value
-                            doc.setFontSize(16);
-                            if (idx === 1 || idx === 3) {
-                              doc.setTextColor(220, 38, 38); // text-rose-600 (warnings)
-                            } else {
-                              doc.setTextColor(15, 98, 254); // text-blue-600 (totals)
-                            }
-                            doc.text(s.val, x + 3, 63);
-                          });
+                            // Sub-header
+                            doc.setFont("helvetica", "normal");
+                            doc.setFontSize(10);
+                            doc.text(`Nha hang: ResManager Bistro  |  Ngay lap: ${new Date().toLocaleDateString("vi-VN")} ${new Date().toLocaleTimeString("vi-VN")}`, 105, 28, { align: "center" });
 
-                          // Section 2: Table List
-                          doc.setTextColor(15, 23, 42); // text-slate-900
-                          doc.setFont("helvetica", "bold");
-                          doc.setFontSize(12);
-                          doc.text("2. DANH SACH CHI TIET NGUYEN LIEU KHO", 15, 78);
+                            // Divider line
+                            doc.setDrawColor(200, 200, 200);
+                            doc.line(15, 32, 195, 32);
 
-                          // Table Headers
-                          const headers = ["Ma so", "Ten nguyen lieu", "Danh muc", "Ton kho", "Don vi", "Nguong an toan", "Tinh trang"];
-                          const colX = [15, 30, 85, 120, 140, 155, 180];
+                            // Section 1: Overview
+                            doc.setFont("helvetica", "bold");
+                            doc.setFontSize(12);
+                            doc.text("1. CHI SO TONG QUAN", 15, 42);
 
-                          doc.setFillColor(30, 58, 138); // background-color: #1e3a8a
-                          doc.rect(15, 83, 180, 8, "F");
+                            // Quick Stats
+                            const stats = [
+                              { label: "Tong mat hang", val: reportsStats.totalIngredients.toString() },
+                              { label: "Ton kho thap", val: reportsStats.lowStockCount.toString() },
+                              { label: "Lo can han", val: reportsStats.nearExpiryCount.toString() },
+                              { label: "Lo het han", val: reportsStats.expiredCount.toString() }
+                            ];
 
-                          doc.setFontSize(8);
-                          doc.setTextColor(255, 255, 255);
-                          headers.forEach((h, idx) => {
-                            doc.text(h, colX[idx], 88);
-                          });
+                            stats.forEach((s, idx) => {
+                              const x = 15 + idx * 45;
+                              // Box border & fill
+                              doc.setDrawColor(226, 232, 240); // border-slate-200
+                              doc.setFillColor(248, 250, 252); // bg-slate-50
+                              doc.rect(x, 47, 40, 20, "FD");
 
-                          // Table Rows
-                          doc.setTextColor(15, 23, 42);
-                          let y = 96;
-                          reduxIngredients.forEach((i, idx) => {
-                            // Check for page break (A4 is 297mm high)
-                            if (y > 275) {
-                              doc.addPage();
-                              // Redraw headers on new page
-                              doc.setFillColor(30, 58, 138);
-                              doc.rect(15, 15, 180, 8, "F");
+                              // Stat label
+                              doc.setFont("helvetica", "bold");
                               doc.setFontSize(8);
-                              doc.setTextColor(255, 255, 255);
-                              headers.forEach((h, hidx) => {
-                                doc.text(h, colX[hidx], 20);
-                              });
-                              y = 28;
-                            }
+                              doc.setTextColor(71, 85, 105); // text-slate-700
+                              doc.text(removeVietnameseAccents(s.label), x + 3, 53);
 
-                            // Alternating zebra striping
-                            if (idx % 2 === 1) {
-                              doc.setFillColor(248, 250, 252);
-                              doc.rect(15, y - 4, 180, 6, "F");
-                            }
+                              // Stat value
+                              doc.setFontSize(16);
+                              if (idx === 1 || idx === 3) {
+                                doc.setTextColor(220, 38, 38); // text-rose-600 (warnings)
+                              } else {
+                                doc.setTextColor(15, 98, 254); // text-blue-600 (totals)
+                              }
+                              doc.text(s.val, x + 3, 63);
+                            });
 
-                            // Row divider line
-                            doc.setDrawColor(241, 245, 249);
-                            doc.line(15, y + 2, 195, y + 2);
-
-                            const isLow = i.stock <= i.threshold;
-                            const statusText = isLow ? "TON THAP" : "AN TOAN";
-                            const categoryText = getIngredientCategory(i.name);
-
-                            // Draw cells
-                            doc.setFont("helvetica", "normal");
-                            doc.setTextColor(71, 85, 105);
-                            doc.text(i.id, colX[0], y);
-                            
+                            // Section 2: Table List
+                            doc.setTextColor(15, 23, 42); // text-slate-900
                             doc.setFont("helvetica", "bold");
+                            doc.setFontSize(12);
+                            doc.text("2. DANH SACH CHI TIET NGUYEN LIEU KHO", 15, 78);
+
+                            // Table Headers
+                            const headers = ["Ma so", "Ten nguyen lieu", "Danh muc", "Ton kho", "Don vi", "Nguong an toan", "Tinh trang"];
+                            const colX = [15, 30, 85, 120, 140, 155, 180];
+
+                            doc.setFillColor(30, 58, 138); // background-color: #1e3a8a
+                            doc.rect(15, 83, 180, 8, "F");
+
+                            doc.setFontSize(8);
+                            doc.setTextColor(255, 255, 255);
+                            headers.forEach((h, idx) => {
+                              doc.text(h, colX[idx], 88);
+                            });
+
+                            // Table Rows
                             doc.setTextColor(15, 23, 42);
-                            doc.text(removeVietnameseAccents(i.name), colX[1], y);
-                            
-                            doc.setFont("helvetica", "normal");
-                            doc.setTextColor(71, 85, 105);
-                            doc.text(removeVietnameseAccents(categoryText), colX[2], y);
-                            
-                            // Align right for numeric columns
-                            doc.setFont("helvetica", "bold");
-                            if (isLow) {
-                              doc.setTextColor(220, 38, 38); // red
-                            } else {
-                              doc.setTextColor(15, 98, 254); // blue
-                            }
-                            doc.text(i.stock.toString(), colX[3] + 10, y, { align: "right" });
-                            
-                            doc.setFont("helvetica", "normal");
-                            doc.setTextColor(71, 85, 105);
-                            doc.text(removeVietnameseAccents(i.unit), colX[4], y);
-                            doc.text(i.threshold.toString(), colX[5] + 10, y, { align: "right" });
+                            let y = 96;
+                            reduxIngredients.forEach((i, idx) => {
+                              // Check for page break (A4 is 297mm high)
+                              if (y > 275) {
+                                doc.addPage();
+                                // Redraw headers on new page
+                                doc.setFillColor(30, 58, 138);
+                                doc.rect(15, 15, 180, 8, "F");
+                                doc.setFontSize(8);
+                                doc.setTextColor(255, 255, 255);
+                                headers.forEach((h, hidx) => {
+                                  doc.text(h, colX[hidx], 20);
+                                });
+                                y = 28;
+                              }
 
-                            // Draw status text
-                            if (isLow) {
-                              doc.setTextColor(220, 38, 38);
+                              // Alternating zebra striping
+                              if (idx % 2 === 1) {
+                                doc.setFillColor(248, 250, 252);
+                                doc.rect(15, y - 4, 180, 6, "F");
+                              }
+
+                              // Row divider line
+                              doc.setDrawColor(241, 245, 249);
+                              doc.line(15, y + 2, 195, y + 2);
+
+                              const isLow = i.stock <= i.threshold;
+                              const statusText = isLow ? "TON THAP" : "AN TOAN";
+                              const categoryText = getIngredientCategory(i.name);
+
+                              // Draw cells
+                              doc.setFont("helvetica", "normal");
+                              doc.setTextColor(71, 85, 105);
+                              doc.text(i.id, colX[0], y);
+
                               doc.setFont("helvetica", "bold");
-                            } else {
-                              doc.setTextColor(22, 163, 74); // green
+                              doc.setTextColor(15, 23, 42);
+                              doc.text(removeVietnameseAccents(i.name), colX[1], y);
+
+                              doc.setFont("helvetica", "normal");
+                              doc.setTextColor(71, 85, 105);
+                              doc.text(removeVietnameseAccents(categoryText), colX[2], y);
+
+                              // Align right for numeric columns
                               doc.setFont("helvetica", "bold");
-                            }
-                            doc.text(statusText, colX[6], y);
+                              if (isLow) {
+                                doc.setTextColor(220, 38, 38); // red
+                              } else {
+                                doc.setTextColor(15, 98, 254); // blue
+                              }
+                              doc.text(i.stock.toString(), colX[3] + 10, y, { align: "right" });
 
-                            y += 8;
-                          });
+                              doc.setFont("helvetica", "normal");
+                              doc.setTextColor(71, 85, 105);
+                              doc.text(removeVietnameseAccents(i.unit), colX[4], y);
+                              doc.text(i.threshold.toString(), colX[5] + 10, y, { align: "right" });
 
-                          // Save PDF file
-                          doc.save(`Bao_Cao_Ton_Kho_${Date.now()}.pdf`);
-                          toast.success("Tải file PDF thành công!");
-                          setShowImportExportModal(false);
-                        } catch (err) {
-                          console.error("PDF generation failed: ", err);
-                          toast.error("Có lỗi xảy ra khi tạo file PDF!");
-                        }
-                      }}
-                      className="py-2 bg-white hover:bg-red-50 border border-red-200 text-red-600 rounded-xl font-bold tracking-wide flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer text-[10px]"
-                    >
-                      <FileText size={12} /> Xuất file .PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toast.success("Đang xuất dữ liệu...");
-                        const htmlContent = `
+                              // Draw status text
+                              if (isLow) {
+                                doc.setTextColor(220, 38, 38);
+                                doc.setFont("helvetica", "bold");
+                              } else {
+                                doc.setTextColor(22, 163, 74); // green
+                                doc.setFont("helvetica", "bold");
+                              }
+                              doc.text(statusText, colX[6], y);
+
+                              y += 8;
+                            });
+
+                            // Save PDF file
+                            doc.save(`Bao_Cao_Ton_Kho_${Date.now()}.pdf`);
+                            toast.success("Tải file PDF thành công!");
+                            setShowImportExportModal(false);
+                          } catch (err) {
+                            console.error("PDF generation failed: ", err);
+                            toast.error("Có lỗi xảy ra khi tạo file PDF!");
+                          }
+                        }}
+                        className="py-2 bg-white hover:bg-red-50 border border-red-200 text-red-600 rounded-xl font-bold tracking-wide flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer text-[10px]"
+                      >
+                        <FileText size={12} /> Xuất file .PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toast.success("Đang xuất dữ liệu...");
+                          const htmlContent = `
                           <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
                           <head>
                             <meta charset="utf-8"/>
@@ -2452,12 +2818,12 @@ export const InventoryControl: React.FC = () => {
                               </thead>
                               <tbody>
                                 ${reduxIngredients.map((i, idx) => {
-                                  const isLow = i.stock <= i.threshold;
-                                  const rowClass = idx % 2 === 0 ? "" : "row-even";
-                                  const statusClass = isLow ? "status-warning" : "status-safe";
-                                  const statusText = isLow ? "TỒN THẤP" : "AN TOÀN";
-                                  const categoryText = getIngredientCategory(i.name);
-                                  return `
+                            const isLow = i.stock <= i.threshold;
+                            const rowClass = idx % 2 === 0 ? "" : "row-even";
+                            const statusClass = isLow ? "status-warning" : "status-safe";
+                            const statusText = isLow ? "TỒN THẤP" : "AN TOÀN";
+                            const categoryText = getIngredientCategory(i.name);
+                            return `
                                     <tr class="${rowClass}">
                                       <td style="font-weight: bold; color: #64748b;">${i.id}</td>
                                       <td style="font-weight: bold; color: #0f172a;">${i.name}</td>
@@ -2468,162 +2834,78 @@ export const InventoryControl: React.FC = () => {
                                       <td class="${statusClass}" style="text-align: center;">${statusText}</td>
                                     </tr>
                                   `;
-                                }).join("")}
+                          }).join("")}
                               </tbody>
                             </table>
                           </body>
                           </html>
                         `;
-                        const blob = new Blob([htmlContent], { type: "application/vnd.ms-excel" });
-                        const url = URL.createObjectURL(blob);
-                        const link = document.createElement("a");
-                        link.href = url;
-                        link.setAttribute("download", `Bao_Cao_Ton_Kho_${Date.now()}.xls`);
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        URL.revokeObjectURL(url);
-                        toast.success("Tải file Excel (.xls) thành công!");
-                      }}
-                      className="py-2 bg-white hover:bg-emerald-50 border border-emerald-250 text-emerald-600 rounded-xl font-bold tracking-wide flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer text-[10px]"
+                          const blob = new Blob([htmlContent], { type: "application/vnd.ms-excel" });
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.setAttribute("download", `Bao_Cao_Ton_Kho_${Date.now()}.xls`);
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          URL.revokeObjectURL(url);
+                          toast.success("Tải file Excel (.xls) thành công!");
+                        }}
+                        className="py-2 bg-white hover:bg-emerald-50 border border-emerald-250 text-emerald-600 rounded-xl font-bold tracking-wide flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer text-[10px]"
+                      >
+                        <FileSpreadsheet size={12} /> Xuất file Excel
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowImportExportModal(false)}
+                      className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
                     >
-                      <FileSpreadsheet size={12} /> Xuất file Excel
+                      Đóng
                     </button>
                   </div>
                 </div>
-
-                <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowImportExportModal(false)}
-                    className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                  >
-                    Đóng
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Modal C: Thêm Nhà cung cấp mới */}
-      {showEditSupplierModal && editingSupplier && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => {
-                setShowEditSupplierModal(false);
-                setEditingSupplier(null);
-              }}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={20} />
-            </button>
-            <h3 className="font-extrabold text-lg text-slate-800 mb-6">Sửa Nhà cung cấp</h3>
-            <form onSubmit={handleUpdateSupplier} className="flex flex-col gap-4 text-xs">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Tên nhà cung cấp</label>
-                <input
-                  required
-                  type="text"
-                  value={editingSupplier.name}
-                  onChange={(e) => setEditingSupplier({ ...editingSupplier, name: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Người liên hệ</label>
-                <input
-                  type="text"
-                  value={editingSupplier.contact || ""}
-                  onChange={(e) => setEditingSupplier({ ...editingSupplier, contact: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Số điện thoại</label>
-                <input
-                  type="text"
-                  value={editingSupplier.phone || ""}
-                  onChange={(e) => setEditingSupplier({ ...editingSupplier, phone: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Địa chỉ</label>
-                <input
-                  type="text"
-                  value={editingSupplier.address || ""}
-                  onChange={(e) => setEditingSupplier({ ...editingSupplier, address: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Nguyên liệu cung cấp (cách nhau dấu phẩy)</label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: Thịt bò Mỹ, Sườn heo"
-                  value={editingSupplier.mainIngredients || ""}
-                  onChange={(e) => setEditingSupplier({ ...editingSupplier, mainIngredients: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-              <div className="flex justify-end gap-3 mt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditSupplierModal(false);
-                    setEditingSupplier(null);
-                  }}
-                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md shadow-blue-600/20 cursor-pointer"
-                >
-                  Lưu thay đổi
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showAddSupplierModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowAddSupplierModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm Nhà cung cấp mới</h3>
-            <form onSubmit={handleSaveSupplier} className="flex flex-col gap-4 text-xs">
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Tên nhà cung cấp</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Công ty Nông sản sạch..."
-                  value={newSupplierForm.name}
-                  onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+      {
+        showEditSupplierModal && editingSupplier && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => {
+                  setShowEditSupplierModal(false);
+                  setEditingSupplier(null);
+                }}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+              <h3 className="font-extrabold text-lg text-slate-800 mb-6">Sửa Nhà cung cấp</h3>
+              <form onSubmit={handleUpdateSupplier} className="flex flex-col gap-4 text-xs">
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Tên nhà cung cấp</label>
+                  <input
+                    required
+                    type="text"
+                    value={editingSupplier.name}
+                    onChange={(e) => setEditingSupplier({ ...editingSupplier, name: e.target.value })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="font-extrabold text-slate-700">Người liên hệ</label>
                   <input
                     type="text"
-                    required
-                    placeholder="Ví dụ: A. Bình"
-                    value={newSupplierForm.contact}
-                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, contact: e.target.value })}
+                    value={editingSupplier.contact || ""}
+                    onChange={(e) => setEditingSupplier({ ...editingSupplier, contact: e.target.value })}
                     className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
                   />
                 </div>
@@ -2631,127 +2913,284 @@ export const InventoryControl: React.FC = () => {
                   <label className="font-extrabold text-slate-700">Số điện thoại</label>
                   <input
                     type="text"
-                    required
-                    placeholder="SĐT liên hệ"
-                    value={newSupplierForm.phone}
-                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, phone: e.target.value })}
+                    value={editingSupplier.phone || ""}
+                    onChange={(e) => setEditingSupplier({ ...editingSupplier, phone: e.target.value })}
                     className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
                   />
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Địa chỉ</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Địa chỉ văn phòng / kho bãi"
-                  value={newSupplierForm.address}
-                  onChange={(e) => setNewSupplierForm({ ...newSupplierForm, address: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Nguyên liệu chính cung cấp</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Rau củ, Nấm tươi (phân cách bằng dấu phẩy)"
-                  value={newSupplierForm.mainIngredients}
-                  onChange={(e) => setNewSupplierForm({ ...newSupplierForm, mainIngredients: e.target.value })}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAddSupplierModal(false)}
-                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Xác nhận
-                </button>
-              </div>
-            </form>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Địa chỉ</label>
+                  <input
+                    type="text"
+                    value={editingSupplier.address || ""}
+                    onChange={(e) => setEditingSupplier({ ...editingSupplier, address: e.target.value })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Nguyên liệu cung cấp (cách nhau dấu phẩy)</label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Thịt bò Mỹ, Sườn heo"
+                    value={editingSupplier.mainIngredients || ""}
+                    onChange={(e) => setEditingSupplier({ ...editingSupplier, mainIngredients: e.target.value })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
+                <div className="flex justify-end gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditSupplierModal(false);
+                      setEditingSupplier(null);
+                    }}
+                    className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md shadow-blue-600/20 cursor-pointer"
+                  >
+                    Lưu thay đổi
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
+
+      {
+        showAddSupplierModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowAddSupplierModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+              <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm Nhà cung cấp mới</h3>
+              <form onSubmit={handleSaveSupplier} className="flex flex-col gap-4 text-xs">
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Tên nhà cung cấp</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ví dụ: Công ty Nông sản sạch..."
+                    value={newSupplierForm.name}
+                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Người liên hệ</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ví dụ: A. Bình"
+                      value={newSupplierForm.contact}
+                      onChange={(e) => setNewSupplierForm({ ...newSupplierForm, contact: e.target.value })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Số điện thoại</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="SĐT liên hệ"
+                      value={newSupplierForm.phone}
+                      onChange={(e) => setNewSupplierForm({ ...newSupplierForm, phone: e.target.value })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Địa chỉ</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Địa chỉ văn phòng / kho bãi"
+                    value={newSupplierForm.address}
+                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, address: e.target.value })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-extrabold text-slate-700">Nguyên liệu chính cung cấp</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ví dụ: Rau củ, Nấm tươi (phân cách bằng dấu phẩy)"
+                    value={newSupplierForm.mainIngredients}
+                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, mainIngredients: e.target.value })}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSupplierModal(false)}
+                    className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-linear-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Xác nhận
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
 
       {/* Modal D: Thêm Danh mục mới */}
-      {showAddCategoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setShowAddCategoryModal(false)}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-            <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm Danh mục mới</h3>
-            <form onSubmit={handleSaveCategory} className="flex flex-col gap-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+      {
+        showAddCategoryModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+              <button
+                onClick={() => setShowAddCategoryModal(false)}
+                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+              <h3 className="text-base font-black text-slate-800 border-b border-slate-100 pb-3 mb-4">Thêm Danh mục mới</h3>
+              <form onSubmit={handleSaveCategory} className="flex flex-col gap-4 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Tên danh mục</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ví dụ: Đồ uống đóng chai"
+                      value={newCategoryForm.name}
+                      onChange={(e) => setNewCategoryForm({ ...newCategoryForm, name: e.target.value })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Mã danh mục</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ví dụ: DOUONG"
+                      value={newCategoryForm.code}
+                      onChange={(e) => setNewCategoryForm({ ...newCategoryForm, code: e.target.value.toUpperCase() })}
+                      className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Tên danh mục</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: Đồ uống đóng chai"
-                    value={newCategoryForm.name}
-                    onChange={(e) => setNewCategoryForm({ ...newCategoryForm, name: e.target.value })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                  <label className="font-extrabold text-slate-700">Mô tả chi tiết</label>
+                  <textarea
+                    placeholder="Mô tả nhóm nguyên liệu..."
+                    value={newCategoryForm.description}
+                    onChange={(e) => setNewCategoryForm({ ...newCategoryForm, description: e.target.value })}
+                    rows={3}
+                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
                   />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-extrabold text-slate-700">Mã danh mục</label>
+
+                <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCategoryModal(false)}
+                    className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-linear-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    Xác nhận
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Modal Thanh toán Công nợ NCC */}
+      {showPayDebtModal && payingSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowPayDebtModal(false)}></div>
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100">
+              <h3 className="font-black text-slate-800 text-lg">Thanh toán công nợ</h3>
+              <button onClick={() => setShowPayDebtModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                <p className="text-[11px] text-amber-700 font-bold mb-1">Nhà cung cấp:</p>
+                <p className="text-sm font-black text-amber-900">{payingSupplier.name}</p>
+                <p className="text-[11px] text-amber-700 font-bold mt-2">Tổng nợ hiện tại:</p>
+                <p className="text-lg font-black text-rose-600">{Number(payingSupplier.total_debt).toLocaleString()} ₫</p>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Số tiền thanh toán</label>
+                <div className="relative">
                   <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: DOUONG"
-                    value={newCategoryForm.code}
-                    onChange={(e) => setNewCategoryForm({ ...newCategoryForm, code: e.target.value.toUpperCase() })}
-                    className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold"
+                    type="number"
+                    value={debtAmount}
+                    onChange={(e) => setDebtAmount(e.target.value ? Number(e.target.value) : "")}
+                    className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none font-black text-lg text-admin-primary pr-8"
                   />
+                  <span className="absolute right-3 top-2.5 font-bold text-slate-400">₫</span>
                 </div>
               </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="font-extrabold text-slate-700">Mô tả chi tiết</label>
-                <textarea
-                  placeholder="Mô tả nhóm nguyên liệu..."
-                  value={newCategoryForm.description}
-                  onChange={(e) => setNewCategoryForm({ ...newCategoryForm, description: e.target.value })}
-                  rows={3}
-                  className="px-3 py-2 border border-slate-250 rounded-xl focus:outline-none focus:border-blue-500 font-semibold bg-white"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAddCategoryModal(false)}
-                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Phương thức thanh toán</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm font-semibold cursor-pointer"
                 >
+                  <option value="cash">Tiền mặt</option>
+                  <option value="bank_transfer">Chuyển khoản</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Ghi chú</label>
+                <textarea
+                  rows={2}
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm"
+                  placeholder="Nhập ghi chú thanh toán..."
+                ></textarea>
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <button onClick={() => setShowPayDebtModal(false)} className="px-4 py-2 text-slate-600 font-bold rounded-lg hover:bg-slate-100 text-sm cursor-pointer">
                   Hủy
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Xác nhận
+                <button onClick={handlePayDebt} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+                  <CheckCircle size={16} /> Xác nhận thanh toán
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
 
-    </div>
+    </div >
   );
 };
+
+export default InventoryControl;

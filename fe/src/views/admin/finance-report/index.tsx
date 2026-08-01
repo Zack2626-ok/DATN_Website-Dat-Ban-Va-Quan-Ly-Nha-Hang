@@ -58,26 +58,24 @@ export const FinanceReport: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
       {/* Header */}
-      <div className="flex flex-col gap-4 border-b border-sky-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-sky-500">
-            Tổng quan tài chính
-          </p>
-          <h1 className="font-playfair text-2xl font-bold text-sky-800">
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
             Báo cáo tài chính thu / chi
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
             Tổng hợp dòng tiền thực tế (Thu từ Hóa đơn, Chi từ Nhập kho)
           </p>
         </div>
         <button
+          type="button"
           onClick={fetchData}
           disabled={loading}
-          className="inline-flex items-center gap-2 self-start rounded-lg border border-sky-100 bg-white px-4 py-2 text-sm font-medium text-sky-700 shadow-sm transition-colors hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
+          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 disabled:opacity-50"
         >
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
           Làm mới
         </button>
       </div>
@@ -87,18 +85,18 @@ export const FinanceReport: React.FC = () => {
         {SUMMARY.map((item) => (
           <div
             key={item.label}
-            className="group relative overflow-hidden rounded-2xl border border-sky-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+            className="group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] p-5 shadow-xs transition-shadow hover:shadow-md"
           >
             <span
-              className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${item.accent}`}
+              className={`absolute inset-x-0 top-0 h-1 bg-linear-to-r ${item.accent}`}
             />
             <div className="flex items-start justify-between">
-              <p className="text-sm font-medium text-slate-500">{item.label}</p>
-              <span className={`rounded-xl p-2.5 ring-4 ${item.iconBg} ${item.ring}`}>
+              <p className="text-xs font-bold text-[#8A8A8A]">{item.label}</p>
+              <span className={`rounded-full p-2.5 ${item.iconBg}`}>
                 <item.icon size={18} />
               </span>
             </div>
-            <p className="mt-4 font-playfair text-2xl font-bold tabular-nums text-sky-800">
+            <p className="mt-4 text-2xl font-black tabular-nums text-[#1A1A1A]">
               {formatCurrency(item.value)}
             </p>
           </div>
@@ -106,8 +104,8 @@ export const FinanceReport: React.FC = () => {
       </div>
 
       {/* Transactions table */}
-      <div className="overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-sky-100 px-5 py-4">
+      <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="font-playfair text-base font-semibold text-sky-800">
             Chi tiết giao dịch gần đây
           </h2>
@@ -152,9 +150,8 @@ export const FinanceReport: React.FC = () => {
                 data.recentTransactions.map((row: any, idx: number) => (
                   <tr
                     key={`${row.id}-${row.date}`}
-                    className={`border-t border-sky-50 transition-colors hover:bg-sky-50/50 ${
-                      idx % 2 === 1 ? "bg-slate-50/40" : ""
-                    }`}
+                    className={`border-t border-sky-50 transition-colors hover:bg-sky-50/50 ${idx % 2 === 1 ? "bg-slate-50/40" : ""
+                      }`}
                   >
                     <td className="px-5 py-3 text-slate-600">
                       {new Date(row.date).toLocaleString("vi-VN")}
@@ -162,25 +159,22 @@ export const FinanceReport: React.FC = () => {
                     <td className="px-5 py-3 font-mono text-xs text-slate-500">{row.id}</td>
                     <td className="px-5 py-3">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          row.type === "income"
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${row.type === "income"
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-rose-50 text-rose-700"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            row.type === "income" ? "bg-emerald-500" : "bg-rose-500"
-                          }`}
+                          className={`h-1.5 w-1.5 rounded-full ${row.type === "income" ? "bg-emerald-500" : "bg-rose-500"
+                            }`}
                         />
                         {row.type === "income" ? "Thu" : "Chi"}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-slate-700">{row.description}</td>
                     <td
-                      className={`px-5 py-3 text-right font-semibold tabular-nums ${
-                        row.type === "income" ? "text-emerald-700" : "text-rose-700"
-                      }`}
+                      className={`px-5 py-3 text-right font-semibold tabular-nums ${row.type === "income" ? "text-emerald-700" : "text-rose-700"
+                        }`}
                     >
                       {row.type === "income" ? "+" : "-"}
                       {formatCurrency(Number(row.amount))}

@@ -1,3 +1,5 @@
+import { getComboConstituents } from "./comboHelper";
+
 export const printCashierInvoice = (
   invoice: any,
   restaurantName: string = "NHÀ HÀNG RESMANAGER",
@@ -21,15 +23,17 @@ export const printCashierInvoice = (
     const printDate = now.toLocaleDateString("vi-VN");
     const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
-    const tableName = invoice.tableName || "Khách lẻ";
+    const tableName = invoice.tableName || invoice.table_name || "Khách lẻ";
     const invId = invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A";
-    const guestName = invoice.customerName || invoice.guestName || "";
-    const guestPhone = invoice.customerPhone || invoice.guestPhone || "";
+    const guestName = invoice.customerName || invoice.customer_name || invoice.guestName || invoice.guest_name || "";
+    const guestPhone = invoice.customerPhone || invoice.customer_phone || invoice.guestPhone || invoice.guest_phone || "";
     const validItems = (invoice.items || []).filter((item: any) => item.status !== "voided" && item.status !== "cancelled");
 
     const subtotal = invoice.subtotal !== undefined ? Number(invoice.subtotal) : Number(invoice.totalAmount || 0);
     const tax = Number(invoice.tax || 0);
     const vatRate = Number(invoice.vatRate || (tax > 0 && subtotal > 0 ? Math.round((tax / subtotal) * 100) : 10));
+    const voucherDiscount = invoice.voucherDiscount !== undefined ? Number(invoice.voucherDiscount) : (invoice.pointsDiscount !== undefined ? 0 : Number(invoice.discount || 0));
+    const pointsDiscount = Number(invoice.pointsDiscount || 0);
     const discount = Number(invoice.discount || 0);
     const depositAmount = Number(invoice.depositAmount || 0);
     const finalAmount = Number(invoice.totalAmount !== undefined ? invoice.totalAmount : Math.max(0, subtotal + tax - depositAmount - discount));
@@ -134,16 +138,26 @@ export const printCashierInvoice = (
         ${guestPhone ? `<div class="row"><span>SĐT:</span><span>${guestPhone}</span></div>` : ""}
         ` : ""}
         <div class="divider"></div>
-        ${validItems.map((item: any) => `
-          <div class="item-block">
-            <div class="bold" style="font-size: 11px;">${item.item_name || item.name || item.menu_item_name || "—"}</div>
-            <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
-              <span>${item.quantity} x ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
-              <span class="bold">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
+        ${validItems.map((item: any) => {
+          const itemName = item.item_name || item.name || item.menu_item_name || "—";
+          const constituents = getComboConstituents(itemName);
+          const subItemsHtml = constituents 
+            ? `<div style="font-size: 9px; color: #555; padding-left: 12px; margin-top: 2px; line-height: 1.2;">
+                ${constituents.map(sub => `<div>• ${sub}</div>`).join("")}
+               </div>`
+            : "";
+          return `
+            <div class="item-block">
+              <div class="bold" style="font-size: 11px;">${itemName}</div>
+              <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
+                <span>${item.quantity} x ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
+                <span class="bold">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
+              </div>
+              ${subItemsHtml}
+              ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
             </div>
-            ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
-          </div>
-        `).join("")}
+          `;
+        }).join("")}
         <div class="divider"></div>
         <div class="row">
           <span>Tạm tính:</span>
@@ -155,7 +169,19 @@ export const printCashierInvoice = (
           <span>+${tax.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
-        ${discount > 0 ? `
+        ${voucherDiscount > 0 ? `
+        <div class="row">
+          <span>Voucher/Giảm giá:</span>
+          <span>-${voucherDiscount.toLocaleString("vi-VN")} đ</span>
+        </div>
+        ` : ""}
+        ${pointsDiscount > 0 ? `
+        <div class="row">
+          <span>Khấu trừ điểm:</span>
+          <span>-${pointsDiscount.toLocaleString("vi-VN")} đ</span>
+        </div>
+        ` : ""}
+        ${(discount > 0 && voucherDiscount === 0 && pointsDiscount === 0) ? `
         <div class="row">
           <span>Voucher/Giảm giá:</span>
           <span>-${discount.toLocaleString("vi-VN")} đ</span>

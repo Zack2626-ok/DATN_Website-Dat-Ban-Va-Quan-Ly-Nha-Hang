@@ -20,6 +20,7 @@ import paymentRoutes from "./routes/payment.routes";
 import promotionRoutes from "./routes/promotion.routes";
 import { initDb } from "./utils/db";
 import { startBookingReminderScheduler } from "./utils/bookingReminder";
+import { startCustomerTelegramBot } from "./utils/customerTelegramBot";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.middleware";
  
 import bookingRoutes from "./routes/booking.routes";
@@ -93,6 +94,7 @@ initDb()
   .then(() => {
     console.log("✅ Database mode: MySQL");
     startBookingReminderScheduler();
+    startCustomerTelegramBot();
     startServer(startPort);
   })
   .catch((err) => {
@@ -132,6 +134,8 @@ app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
+// Must stay before the legacy /api table fallback below.
+app.use("/api/attendance", attendanceRoutes);
 
 app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
@@ -145,7 +149,6 @@ app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
 app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
 app.use("/api/restaurant-info", restaurantInfoRoutes);
-app.use("/api/attendance", attendanceRoutes);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../../store/hooks";
 import { logoutAction } from "../../store/authSlice";
-import { clockInApi, getAttendanceStatus } from "../../services/attendanceService";
+import { clockInApi, clockOutApi, getAttendanceStatus } from "../../services/attendanceService";
 import { Clock, CheckCircle2, LogOut, Timer } from "lucide-react";
 
 const roleRoutes: Record<string, string> = {
@@ -40,7 +40,9 @@ export default function CheckInPage() {
 
   useEffect(() => {
     intervalRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(intervalRef.current);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
   const redirectToWork = (delay = 800) => {
@@ -63,7 +65,6 @@ export default function CheckInPage() {
           setClockOutTime(status.attendance.clock_out);
           const today = new Date().toISOString().slice(0, 10);
           localStorage.setItem("checkedInToday", today);
-          redirectToWork(700);
         }
       } catch {
         // not checked in yet
@@ -82,7 +83,6 @@ export default function CheckInPage() {
       setClockInTime(record.clock_in);
       const today = new Date().toISOString().slice(0, 10);
       localStorage.setItem("checkedInToday", today);
-      redirectToWork(1000);
     } catch {
       // handle error silently
     } finally {
@@ -92,6 +92,21 @@ export default function CheckInPage() {
 
   const handleGoToWork = () => {
     redirectToWork(0);
+  };
+
+  /** Records the current staff member's end of work time. */
+  const handleClockOut = async () => {
+    setLoading(true);
+    try {
+      const record = await clockOutApi();
+      setClockOutTime(record.clock_out);
+      setCheckedIn(false);
+      localStorage.removeItem("checkedInToday");
+    } catch {
+      // The status request will show the current state again if checkout fails.
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = () => {
@@ -196,6 +211,15 @@ export default function CheckInPage() {
                   >
                     Vào làm việc
                   </button>
+                  {!clockOutTime && (
+                    <button
+                      onClick={handleClockOut}
+                      disabled={loading}
+                      className="w-full py-3 rounded-xl border border-rose-300 bg-rose-500/20 text-rose-100 font-bold hover:bg-rose-500/35 transition disabled:opacity-50"
+                    >
+                      {loading ? "Đang chấm công ra..." : "Chấm công ra"}
+                    </button>
+                  )}
                 </div>
               )}
             </>

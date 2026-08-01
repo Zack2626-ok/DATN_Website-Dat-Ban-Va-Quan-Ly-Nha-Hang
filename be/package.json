@@ -7,7 +7,9 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "ts-node-dev --transpile-only src/seed.ts"
+    "seed": "ts-node-dev --transpile-only src/seed-dishes.ts",
+    "seed:full": "ts-node-dev --transpile-only src/seed.ts",
+    "reset": "cd .. && reset_db.bat"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

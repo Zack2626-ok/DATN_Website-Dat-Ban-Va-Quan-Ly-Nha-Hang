@@ -3,10 +3,12 @@ import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 
 // Helper to calculate tier level based on accumulated points
+// Bronze: 0 - 1,999 pts  | Silver: 2,000 - 7,999 pts
+// Gold: 8,000 - 19,999 pts | VIP: 20,000+ pts
 const getTierLevel = (points: number): "bronze" | "silver" | "gold" | "vip" => {
-  if (points >= 500) return "vip";
-  if (points >= 300) return "gold";
-  if (points >= 100) return "silver";
+  if (points >= 20000) return "vip";
+  if (points >= 8000) return "gold";
+  if (points >= 2000) return "silver";
   return "bronze";
 };
 
@@ -172,6 +174,23 @@ export const getCustomerLoyaltyHistory = async (req: Request, res: Response): Pr
     sendSuccess(res, history, "Lấy lịch sử giao dịch điểm thành công");
   } catch (error) {
     console.error("Error in getCustomerLoyaltyHistory:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const getCustomerUnusedVouchers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const vouchers = await db.query(
+      `SELECT cv.id as customer_voucher_id, v.*, cv.redeemed_at, cv.is_used 
+       FROM customer_vouchers cv
+       JOIN vouchers v ON cv.voucher_id = v.id
+       WHERE cv.customer_id = ? AND cv.is_used = 0 AND v.is_active = 1 AND (v.expired_at IS NULL OR v.expired_at > NOW())`,
+      [Number(id)]
+    );
+    sendSuccess(res, vouchers, "Lấy danh sách vouchers chưa dùng của khách hàng thành công");
+  } catch (error) {
+    console.error("Error in getCustomerUnusedVouchers:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };

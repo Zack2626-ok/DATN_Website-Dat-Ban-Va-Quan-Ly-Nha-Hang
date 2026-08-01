@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Phone, X, MessageCircle, Send } from "lucide-react";
+import { Phone, X, Send } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
 
 export const HotlineButton: React.FC = () => {
@@ -45,17 +45,7 @@ export const HotlineButton: React.FC = () => {
               </a>
               
               <a
-                href={`https://zalo.me/${hotlineDigits}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-xl bg-sky-50 px-4 py-2.5 text-sky-700 font-bold hover:bg-sky-100 transition-colors text-xs"
-              >
-                <MessageCircle size={14} />
-                Nhắn tin Zalo
-              </a>
-              
-              <a
-                href={`https://t.me/resmanager_bistro`}
+                href={`https://t.me/resmanager_customer_bot`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-indigo-700 font-bold hover:bg-indigo-100 transition-colors text-xs"

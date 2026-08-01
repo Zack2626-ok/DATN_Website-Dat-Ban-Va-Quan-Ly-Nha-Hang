@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
+import { BOOKING_STATUS } from "../constants/booking";
+import { TABLE_STATUS } from "../constants/table";
 
 
 
@@ -524,9 +526,90 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: created booking_menu_items table");
     }
+
     // Migration: đảm bảo order_type trong bảng orders và status trong bảng order_items là VARCHAR(50) để hỗ trợ 'pre_order'
     await query("ALTER TABLE orders MODIFY COLUMN order_type VARCHAR(50) NOT NULL DEFAULT 'dine_in'").catch(() => {});
     await query("ALTER TABLE order_items MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'pending'").catch(() => {});
+
+    const voucherCostCol = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vouchers' AND COLUMN_NAME = 'points_cost'`,
+    );
+    if (voucherCostCol.length === 0) {
+      await query(`ALTER TABLE vouchers ADD COLUMN points_cost INT NOT NULL DEFAULT 0 AFTER value`);
+      await query(`UPDATE vouchers SET points_cost = 100 WHERE code = 'SAVE10'`);
+      await query(`UPDATE vouchers SET points_cost = 300 WHERE code = 'FIXED50'`);
+      await query(`UPDATE vouchers SET points_cost = 200 WHERE code = 'NEW20'`);
+      await query(`UPDATE vouchers SET points_cost = 150 WHERE code = 'SILVER15'`);
+      await query(`UPDATE vouchers SET points_cost = 250 WHERE code = 'GOLD25'`);
+      await query(`UPDATE vouchers SET points_cost = 400 WHERE code = 'VIP30'`);
+      console.log("✅ Migration: added points_cost column to vouchers table");
+    }
+
+    const customerVouchersTable = await query<any[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_vouchers'`,
+    );
+    if (customerVouchersTable.length === 0) {
+      await query(`
+        CREATE TABLE customer_vouchers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT NOT NULL,
+            voucher_id INT NOT NULL,
+            is_used TINYINT(1) NOT NULL DEFAULT 0,
+            redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            used_at TIMESTAMP NULL DEFAULT NULL,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+            FOREIGN KEY (voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      console.log("✅ Migration: created customer_vouchers table");
+    }
+    // Migration: recalculate member_level for all customers based on new tier thresholds
+    // Bronze: 0-1999 | Silver: 2000-7999 | Gold: 8000-19999 | VIP: 20000+
+    await query(`
+      UPDATE customers
+      SET member_level = CASE
+        WHEN loyalty_points >= 20000 THEN 'vip'
+        WHEN loyalty_points >= 8000  THEN 'gold'
+        WHEN loyalty_points >= 2000  THEN 'silver'
+        ELSE 'bronze'
+      END
+    `);
+    console.log("✅ Migration: recalculated all customer member_level with new tier thresholds");
+
+    // Migration: Add batch_code, expiry_date, remaining_quantity, is_credit, due_date to stock_in
+    const stockInCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_in' AND COLUMN_NAME = 'batch_code'`
+    );
+    if (stockInCols.length === 0) {
+      await query(`
+        ALTER TABLE stock_in 
+        ADD COLUMN batch_code VARCHAR(50) NOT NULL DEFAULT 'LOT-OLD' AFTER ingredient_id,
+        ADD COLUMN remaining_quantity DECIMAL(10,3) NOT NULL DEFAULT 0 AFTER quantity,
+        ADD COLUMN expiry_date DATE DEFAULT NULL AFTER supplier_id,
+        ADD COLUMN is_credit TINYINT(1) NOT NULL DEFAULT 0,
+        ADD COLUMN due_date DATE DEFAULT NULL
+      `);
+      await query(`UPDATE stock_in SET remaining_quantity = quantity WHERE remaining_quantity = 0`);
+      console.log("✅ Migration: added batch_code, expiry_date, remaining_quantity to stock_in table");
+    }
+
+    // Migration: Add stock_in_id and update reason ENUM in stock_out
+    const stockOutCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_out' AND COLUMN_NAME = 'stock_in_id'`
+    );
+    if (stockOutCols.length === 0) {
+      await query(`
+        ALTER TABLE stock_out 
+        ADD COLUMN stock_in_id INT DEFAULT NULL AFTER ingredient_id,
+        MODIFY COLUMN reason ENUM('waste','internal_use','expired','sale_deduction','return_to_supplier','other') NOT NULL DEFAULT 'other'
+      `);
+      console.log("✅ Migration: added stock_in_id to stock_out table");
+    }
+
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -1232,7 +1315,7 @@ export const createPayment = async (payment: Omit<Payment, "id" | "createdAt">):
     }
     const subVal = Number(notesData.subtotal !== undefined ? notesData.subtotal : payment.amount || 0);
     const taxVal = Number(notesData.vat !== undefined ? notesData.vat : 0);
-    const discVal = Number(notesData.voucher !== undefined ? notesData.voucher : payment.discountAmount || 0);
+    const discVal = (Number(notesData.voucher || 0) + Number(notesData.pointsDiscount || 0)) || Number(payment.discountAmount || 0);
     const totVal = Number(notesData.finalAmount !== undefined ? notesData.finalAmount : payment.amount || 0);
 
     const invRows = await query<any[]>("SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1", [payment.orderId]);
@@ -1560,6 +1643,55 @@ export const hasActiveBookingsForTable = async (tableId: number): Promise<boolea
 //  RESMANAGER SCHEMA — Bookings
 // ============================================================================
 
+export interface AvailableBookingTable {
+  id: number;
+  name: string;
+  capacity: number;
+  area_name: string | null;
+}
+
+/**
+ * Returns tables that can accommodate a party and have no overlapping active booking.
+ * This is the single availability source used by both web booking and Telegram.
+ */
+export const getAvailableBookingTables = async (
+  partySize: number,
+  startTime: string,
+  endTime: string,
+): Promise<AvailableBookingTable[]> => {
+  const rows = await query<AvailableBookingTable[]>(
+    `SELECT t.id, t.name, t.capacity, a.name AS area_name
+     FROM tables t
+     LEFT JOIN table_areas a ON a.id = t.area_id
+     WHERE t.is_deleted = 0
+       AND t.status = ?
+       AND t.capacity >= ?
+       AND NOT EXISTS (
+         SELECT 1
+         FROM bookings b
+         WHERE b.table_id = t.id
+           AND b.status IN (?, ?)
+           AND b.start_time < ?
+           AND b.end_time > ?
+       )
+     ORDER BY t.capacity ASC, t.name ASC`,
+    [
+      TABLE_STATUS.EMPTY,
+      partySize,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      endTime,
+      startTime,
+    ],
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    capacity: Number(row.capacity),
+  }));
+};
+
 export const getBookings = async (status?: string): Promise<any[]> => {
   const rows = status
     ? await query<any[]>(
@@ -1628,13 +1760,32 @@ export const getBookingById = async (id: number): Promise<any | null> => {
 };
 
 export const createBooking = async (data: any): Promise<any> => {
+  const requestedPartySize = Number(data.party_size);
+  const availableTables = await getAvailableBookingTables(
+    requestedPartySize,
+    data.start_time,
+    data.end_time,
+  );
+  const selectedTableIsAvailable = availableTables.some(
+    (table) => table.id === Number(data.table_id),
+  );
+  if (!selectedTableIsAvailable) {
+    throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
+  }
+
   // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
   const overlaps = await query<any[]>(`
     SELECT id FROM bookings
-    WHERE table_id = ? AND status IN ('pending', 'confirmed')
+    WHERE table_id = ? AND status IN (?, ?)
       AND start_time < ? AND end_time > ?
     LIMIT 1
-  `, [data.table_id, data.end_time, data.start_time]);
+  `, [
+    data.table_id,
+    BOOKING_STATUS.PENDING,
+    BOOKING_STATUS.CONFIRMED,
+    data.end_time,
+    data.start_time,
+  ]);
 
   if (overlaps.length > 0) {
     throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
@@ -2215,7 +2366,9 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
           }
         } catch {}
         order.tax = Number(notesData.vat !== undefined ? notesData.vat : pRow.tax || 0);
-        order.discount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
+        order.voucherDiscount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
+        order.pointsDiscount = Number(notesData.pointsDiscount || 0);
+        order.discount = order.voucherDiscount + order.pointsDiscount;
         order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : 10));
         if (notesData.depositAmount !== undefined) {
           order.depositAmount = Number(notesData.depositAmount || 0);
@@ -2277,12 +2430,42 @@ export const deductInventoryForItem = async (orderItemId: string | number): Prom
         [totalUsed, recipe.ingredient_id]
       );
 
-      // 4. Update stock_out
-      await query(
-        `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
-         VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động khi bếp nấu xong', NOW())`,
-        [recipe.ingredient_id, totalUsed]
+      // 4. FEFO Deduction logic
+      let remainingToDeduct = totalUsed;
+      const batches = await query<any[]>(
+        `SELECT id, remaining_quantity FROM stock_in 
+         WHERE ingredient_id = ? AND remaining_quantity > 0 
+           AND (expiry_date >= CURDATE() OR expiry_date IS NULL)
+         ORDER BY expiry_date ASC, created_at ASC`,
+        [recipe.ingredient_id]
       );
+
+      for (const batch of batches) {
+        if (remainingToDeduct <= 0) break;
+        const deductQty = Math.min(batch.remaining_quantity, remainingToDeduct);
+        
+        await query(
+          `UPDATE stock_in SET remaining_quantity = remaining_quantity - ? WHERE id = ?`,
+          [deductQty, batch.id]
+        );
+
+        await query(
+          `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_at)
+           VALUES (?, ?, ?, 'sale_deduction', 'Trừ kho tự động theo FEFO (nấu món)', NOW())`,
+          [recipe.ingredient_id, batch.id, deductQty]
+        );
+
+        remainingToDeduct -= deductQty;
+      }
+
+      // If still remaining (negative stock theoretically), just record generic stock out
+      if (remainingToDeduct > 0) {
+        await query(
+          `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
+           VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động (âm kho/không rõ lô)', NOW())`,
+          [recipe.ingredient_id, remainingToDeduct]
+        );
+      }
     }
   } catch (error: any) {
     console.error(`❌ Error deducting inventory for item ${orderItemId}:`, error.message);
@@ -2351,13 +2534,14 @@ export const getResmanagerPayments = async (): Promise<any[]> => {
            p.paid_at AS createdAt,
            p.paid_at AS completedAt,
            t.name AS table_name,
-           o.guest_name,
-           o.guest_phone,
+           COALESCE(c.name, o.guest_name) AS guest_name,
+           COALESCE(c.phone, o.guest_phone) AS guest_phone,
            o.order_type
     FROM payments p
     LEFT JOIN invoices i ON p.invoice_id = i.id
     LEFT JOIN orders o ON i.order_id = o.id
     LEFT JOIN tables t ON o.table_id = t.id
+    LEFT JOIN customers c ON o.customer_id = c.id
     ORDER BY p.paid_at DESC
   `);
   return rows.map((row) => ({
@@ -2984,6 +3168,59 @@ export const getCustomerEventContracts = async (customerId: number | string): Pr
 };
 
 // ===== ATTENDANCE OPERATIONS =====
+interface AttendanceRecordRow {
+  id: number;
+  employee_id: number;
+  clock_in: string;
+  clock_out: string | null;
+  employee_name?: string;
+  employee_role?: string;
+}
+
+/** Gets attendance records with the staff member information required by managers. */
+export const getAllAttendance = async (): Promise<AttendanceRecordRow[]> => {
+  if (!dbAvailable) {
+    const mockAttendance = ((globalThis as typeof globalThis & { __MOCK_ATTENDANCE?: AttendanceRecordRow[] }).__MOCK_ATTENDANCE ?? []);
+    return mockAttendance
+      .filter((record) => record.employee_role !== "sales_event")
+      .sort((first, second) => (second.clock_out ?? second.clock_in).localeCompare(first.clock_out ?? first.clock_in));
+  }
+
+  return query<AttendanceRecordRow[]>(`
+    SELECT
+      a.id,
+      a.employee_id,
+      a.clock_in,
+      a.clock_out,
+      u.full_name AS employee_name,
+      COALESCE(r.name, 'staff') AS employee_role
+    FROM attendance a
+    INNER JOIN users u ON u.id = a.employee_id
+    LEFT JOIN roles r ON r.id = u.role_id
+    WHERE COALESCE(r.name, '') <> 'sales_event'
+    ORDER BY COALESCE(a.clock_out, a.clock_in) DESC
+  `);
+};
+
+/** Gets staff members available for manager attendance actions. */
+export const getAttendanceEmployees = async (): Promise<Array<{ id: number; full_name: string; role_name: string }>> => {
+  if (!dbAvailable) {
+    return MOCK_USERS
+      .filter((user) => user.role_name !== "sales_event")
+      .map((user) => ({ id: Number(user.id), full_name: user.full_name, role_name: user.role_name }));
+  }
+
+  return query<Array<{ id: number; full_name: string; role_name: string }>>(`
+    SELECT u.id, u.full_name, COALESCE(r.name, 'staff') AS role_name
+    FROM users u
+    LEFT JOIN roles r ON r.id = u.role_id
+    WHERE u.is_deleted = 0
+      AND u.status = 'active'
+      AND COALESCE(r.name, '') <> 'sales_event'
+    ORDER BY u.full_name ASC
+  `);
+};
+
 export const getTodayAttendance = async (employeeId: number): Promise<any | null> => {
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];

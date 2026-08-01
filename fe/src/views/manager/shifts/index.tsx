@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
-import { Calendar, UserCheck } from "lucide-react";
+import { Calendar, CalendarDays, UserCheck } from "lucide-react";
 import type { Shift, Attendance, ShiftEmployee } from "../../../interfaces/shift.interface";
 import * as shiftService from "../../../services/shiftService";
 import { ShiftTab } from "./components/ShiftTab";
 import { AttendanceTab } from "./components/AttendanceTab";
+import { AttendanceHistoryTab } from "./components/AttendanceHistoryTab";
 import { OpenShiftModal, CloseShiftModal } from "./components/ShiftModals";
 
 export const ShiftManagement: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"shifts" | "attendance">("shifts");
+  const [activeTab, setActiveTab] = useState<"shifts" | "attendance" | "attendance-history">("shifts");
 
   // States dữ liệu
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -44,8 +45,26 @@ export const ShiftManagement: React.FC = () => {
     }
   };
 
+  /** Refreshes attendance data in the background while staff are clocked in or out. */
+  const refreshAttendance = async () => {
+    try {
+      const [attendanceData, employeesData] = await Promise.all([
+        shiftService.getAttendance(),
+        shiftService.getEmployees(),
+      ]);
+      setAttendance(attendanceData);
+      setEmployees(employeesData);
+    } catch (error) {
+      console.error("Unable to refresh attendance data:", error);
+    }
+  };
+
   useEffect(() => {
-    fetchData();
+    void fetchData();
+    const pollId = window.setInterval(() => {
+      void refreshAttendance();
+    }, 5000);
+    return () => window.clearInterval(pollId);
   }, []);
 
   // Handler: Mở ca làm mới
@@ -109,36 +128,56 @@ export const ShiftManagement: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
       {/* Header trang */}
-      <div className="border-b border-gray-150 pb-4">
-        <h1 className="text-xl font-bold text-slate-700">📊 Quản lý Ca & Chấm công</h1>
-        <p className="mt-1 text-xs text-slate-400">
-          Theo dõi, mở ca dự phòng tiền mặt, đóng ca kết toán sổ quỹ và quản lý chấm công thời gian thực của nhân sự.
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
+        <div>
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
+            Quản lý Ca & Chấm công
+          </h1>
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
+            Theo dõi, mở ca dự phòng tiền mặt, đóng ca kết toán sổ quỹ và quản lý chấm công thời gian thực
+          </p>
+        </div>
       </div>
 
       {/* Tabs chuyển đổi giữa Ca làm và Chấm công */}
-      <div className="flex border-b border-sky-100 gap-6">
+      <div className="bg-[#FFFFFF] p-3 rounded-3xl border border-slate-200/70 shadow-xs flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setActiveTab("shifts")}
-          className={`flex items-center gap-1.5 pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-            activeTab === "shifts" ? "text-sky-600" : "text-slate-400 hover:text-slate-600"
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === "shifts"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
           }`}
         >
-          <Calendar size={14} />
+          <Calendar size={15} />
           Quản lý Ca làm (Shifts)
-          {activeTab === "shifts" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-500 rounded-full" />}
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("attendance")}
-          className={`flex items-center gap-1.5 pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-            activeTab === "attendance" ? "text-sky-600" : "text-slate-400 hover:text-slate-600"
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === "attendance"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
           }`}
         >
-          <UserCheck size={14} />
-          Chấm công (Attendance)
-          {activeTab === "attendance" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-500 rounded-full" />}
+          <UserCheck size={15} />
+          Chấm công
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("attendance-history")}
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === "attendance-history"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
+          }`}
+        >
+          <CalendarDays size={15} />
+          Lịch sử làm việc
         </button>
       </div>
 
@@ -154,7 +193,7 @@ export const ShiftManagement: React.FC = () => {
               setIsCloseShiftOpen(true);
             }}
           />
-        ) : (
+        ) : activeTab === "attendance" ? (
           <AttendanceTab
             attendance={attendance}
             employees={employees}
@@ -163,6 +202,8 @@ export const ShiftManagement: React.FC = () => {
             onClockOut={handleClockOut}
             actionLoading={actionLoading}
           />
+        ) : (
+          <AttendanceHistoryTab attendance={attendance} loading={loading} />
         )}
       </div>
 
