@@ -91,7 +91,6 @@ export const clearNotificationsApi = async (role?: string): Promise<any> => {
   return response.data.data;
 };
 
-<<<<<<< HEAD
 /**
  * Fetch KDS history of completed and returned items
  */
@@ -99,8 +98,6 @@ export const getKdsHistoryApi = async (date?: string): Promise<any[]> => {
   const response = await api.get("/kds/history", { params: { date } });
   return response.data.data;
 };
-
-=======
 
 /**
  * Fetch all real ingredients from backend
@@ -168,4 +165,3 @@ export const deleteSupplierApi = async (id: string | number): Promise<any> => {
   const response = await api.delete(`/inventory/suppliers/${id}`);
   return response.data.data;
 };
->>>>>>> 02754ae707ee8d36514eaa72ea6f2faa04350b12

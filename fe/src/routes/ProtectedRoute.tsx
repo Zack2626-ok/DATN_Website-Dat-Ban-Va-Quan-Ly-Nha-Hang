@@ -8,7 +8,7 @@ interface Props {
   requireCheckIn?: boolean;
 }
 
-export default function ProtectedRoute({ children, allowedRoles, requireCheckIn = true }: Props) {
+export default function ProtectedRoute({ children, allowedRoles }: Props) {
   const { user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
@@ -21,26 +21,17 @@ export default function ProtectedRoute({ children, allowedRoles, requireCheckIn 
   }
 
   // Chưa đăng nhập → về trang đăng nhập nhân viên
-  if (!user) {
-    return <Navigate to="/auth/login" replace />;
-  }
+  // if (!user) {
+  //   return <Navigate to="/auth/login" replace />;
+  // }
 
-  // Admin không cần chấm công
-  if (requireCheckIn && user.role !== "admin") {
-    const checkedIn = localStorage.getItem("checkedInToday");
-    const today = new Date().toISOString().slice(0, 10);
-    if (checkedIn !== today) {
-      return <Navigate to="/checkin" replace />;
-    }
-  }
-
-  // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
-  if (allowedRoles) {
-    const role = user.role ? (user.role.toLowerCase() as UserRole) : ("" as UserRole);
-    if (!allowedRoles.map(r => r.toLowerCase()).includes(role)) {
-      return <Navigate to="/403" replace />;
-    }
-  }
+  // // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
+  // if (allowedRoles) {
+  //   const role = user.role ? (user.role.toLowerCase() as UserRole) : ("" as UserRole);
+  //   if (!allowedRoles.map(r => r.toLowerCase()).includes(role)) {
+  //     return <Navigate to="/403" replace />;
+  //   }
+  // }
 
   return <>{children}</>;
 }

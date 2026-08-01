@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-  Calendar, 
-  Clock, 
-  Utensils, 
-  Trash2, 
-  Inbox, 
-  RefreshCcw, 
-  CheckCircle2, 
+import {
+  Calendar,
+  Clock,
+  Trash2,
+  Inbox,
+  RefreshCcw,
+  CheckCircle2,
   AlertTriangle,
-  Flame,
-  Coffee,
   BookmarkCheck
 } from "lucide-react";
 import { getKdsHistoryApi } from "../../../services/api";
@@ -126,7 +123,7 @@ export const ChefCookingHistory: React.FC = () => {
 
       if (isCompleted) {
         completedCount += item.quantity;
-        
+
         const hour = new Date(item.createdAt).getHours();
         const hourLabel = `${String(hour).padStart(2, "0")}:00 - ${String(hour).padStart(2, "0")}:59`;
         hourlyCompleted[hourLabel] = (hourlyCompleted[hourLabel] || 0) + item.quantity;
@@ -178,12 +175,12 @@ export const ChefCookingHistory: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-50 text-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-6 select-none min-h-[700px] transition-all">
+    <div className="bg-slate-50 text-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-6 select-none min-h-175 transition-all">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-5 gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <BookmarkCheck size={28} className="text-[#0f62fe]" />
+            <BookmarkCheck size={28} className="text-admin-primary" />
             <h3 className="text-2xl font-black tracking-tight text-slate-800 font-display">
               Lịch Sử
             </h3>
@@ -244,14 +241,14 @@ export const ChefCookingHistory: React.FC = () => {
               >
                 {/* Hour Header */}
                 <div className="bg-slate-100/70 border-b border-slate-200 px-5 py-3.5 flex items-center gap-2">
-                  <Clock size={16} className="text-[#0f62fe]" />
+                  <Clock size={16} className="text-admin-primary" />
                   <span className="text-sm font-black text-slate-800 tracking-tight">
                     Khung giờ lên đơn: {hourGroup.hourSlot}
                   </span>
                 </div>
 
                 {/* Dishes List */}
-                <div className="p-5 flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-2 scrollbar">
+                <div className="p-5 flex flex-col gap-3 max-h-120 overflow-y-auto pr-2 scrollbar">
                   {hourGroup.items.map((item) => {
                     const isDone = ["done", "served", "delivered"].includes(item.status);
                     return (
@@ -261,7 +258,7 @@ export const ChefCookingHistory: React.FC = () => {
                       >
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-black text-[#0f62fe] bg-blue-50/80 px-2.5 py-0.5 rounded-md border border-blue-200/60">
+                            <span className="text-[10px] font-black text-admin-primary bg-blue-50/80 px-2.5 py-0.5 rounded-md border border-blue-200/60">
                               Bàn: {item.tableName || "Mang về"}
                             </span>
                             <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
@@ -336,7 +333,7 @@ export const ChefCookingHistory: React.FC = () => {
             <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider">
               Tổng quan ngày này
             </h4>
-            
+
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-emerald-50 border border-emerald-150 rounded-xl p-3.5 flex flex-col gap-1 shadow-inner">
                 <span className="text-[10px] font-bold text-emerald-700 uppercase">Hoàn thành</span>
@@ -359,12 +356,12 @@ export const ChefCookingHistory: React.FC = () => {
               <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider">
                 Món xong theo giờ
               </h4>
-              <span className="bg-blue-50 text-[#0f62fe] text-[10px] font-black px-2 py-0.5 rounded border border-blue-200">
+              <span className="bg-blue-50 text-admin-primary text-[10px] font-black px-2 py-0.5 rounded border border-blue-200">
                 Tổng: {stats.completedCount}
               </span>
             </div>
 
-            <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-2 max-h-100 overflow-y-auto pr-1 scrollbar">
               {stats.hourlyStats.length === 0 ? (
                 <p className="text-[11px] text-slate-400 italic text-center py-8">
                   Chưa có số liệu tổng hợp
@@ -376,10 +373,10 @@ export const ChefCookingHistory: React.FC = () => {
                     className="flex justify-between items-center text-xs font-bold text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-150 hover:bg-slate-100/60 transition-colors"
                   >
                     <span className="flex items-center gap-1.5 text-slate-650">
-                      <Clock size={12} className="text-[#0f62fe]" />
+                      <Clock size={12} className="text-admin-primary" />
                       {stat.hour}
                     </span>
-                    <span className="bg-[#0f62fe]/10 text-[#0f62fe] px-2 py-0.5 rounded-md font-black min-w-[32px] text-center border border-blue-100">
+                    <span className="bg-admin-primary/10 text-admin-primary px-2 py-0.5 rounded-md font-black min-w-8 text-center border border-blue-100">
                       {stat.count} món
                     </span>
                   </div>

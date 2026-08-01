@@ -146,7 +146,7 @@ export const ChefKitchenQueue: React.FC = () => {
                   } max-w-sm w-full bg-white/95 backdrop-blur-md shadow-2xl rounded-2xl pointer-events-auto flex border border-red-200/80 p-4 transition-all duration-300 transform scale-100 hover:scale-[1.02]`}
               >
                 <div className="flex-1 w-0 flex items-start gap-3">
-                  <div className="flex-shrink-0 pt-0.5">
+                  <div className="shrink-0 pt-0.5">
                     <div className="bg-red-500 text-white p-2 rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center animate-bounce" style={{ animationDuration: '3s' }}>
                       <AlertCircle size={18} className="stroke-[2.5]" />
                     </div>
@@ -357,13 +357,13 @@ export const ChefKitchenQueue: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-50 text-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-6 select-none min-h-[700px] transition-all">
+    <div className="bg-slate-50 text-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-6 select-none min-h-175 transition-all">
 
       {/* 1. KDS Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-5 gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <ChefHat size={28} className="text-[#0f62fe]" />
+            <ChefHat size={28} className="text-admin-primary" />
             <h3 className="text-2xl font-black tracking-tight text-slate-800 font-display">
               Hệ Thống Hiển Thị Bếp (KDS)
             </h3>
@@ -403,7 +403,7 @@ export const ChefKitchenQueue: React.FC = () => {
             <button
               onClick={() => setActiveTab("kanban")}
               className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer transition-all ${activeTab === "kanban"
-                ? "bg-[#0f62fe] text-white shadow-md"
+                ? "bg-admin-primary text-white shadow-md"
                 : "text-slate-600 hover:text-slate-850"
                 }`}
             >
@@ -413,7 +413,7 @@ export const ChefKitchenQueue: React.FC = () => {
             <button
               onClick={() => setActiveTab("batch")}
               className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer transition-all ${activeTab === "batch"
-                ? "bg-[#0f62fe] text-white shadow-md"
+                ? "bg-admin-primary text-white shadow-md"
                 : "text-slate-600 hover:text-slate-850"
                 }`}
             >
@@ -532,7 +532,7 @@ export const ChefKitchenQueue: React.FC = () => {
       {/* 3. KDS Station Filters */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 text-xs text-slate-500 font-bold">
-          <Filter size={13} className="text-[#0f62fe]" />
+          <Filter size={13} className="text-admin-primary" />
           Bộ lọc trạm bếp:
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -541,7 +541,7 @@ export const ChefKitchenQueue: React.FC = () => {
               key={station}
               onClick={() => dispatch(setStationFilter(station))}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${stationFilter === station
-                ? "bg-[#0f62fe] text-white border border-[#0f62fe]"
+                ? "bg-admin-primary text-white border border-admin-primary"
                 : "bg-slate-100 hover:bg-slate-200 text-slate-650 border border-slate-250"
                 }`}
             >
@@ -560,7 +560,7 @@ export const ChefKitchenQueue: React.FC = () => {
         /* 4. Kanban View */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {/* Cột 1: Chờ nấu */}
-          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+          <div className="flex flex-col gap-4 bg-admin-bg p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <span className="text-xs font-black uppercase text-blue-700 tracking-wider flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
@@ -574,7 +574,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedPending.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -650,7 +650,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             {/* Nút nấu món lẻ */}
                             <button
                               onClick={() => handleUpdateStatus(item.id, "cooking")}
-                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              className="mt-2 w-full py-1.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
                             >
                               <Play size={9} className="fill-white" /> Bắt đầu nấu
                             </button>
@@ -669,7 +669,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "cooking" })));
                               });
                           }}
-                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
+                          className="mt-1 w-full py-2 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
                         >
                           <Play size={10} className="fill-white" /> Bắt đầu cả bàn ({group.items.length})
                         </button>
@@ -682,7 +682,7 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {/* Cột 2: Đang nấu */}
-          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+          <div className="flex flex-col gap-4 bg-admin-bg p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <span className="text-xs font-black uppercase text-amber-700 tracking-wider flex items-center gap-2">
                 <Flame size={14} className="text-amber-500 animate-pulse" />
@@ -693,7 +693,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedCooking.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -769,7 +769,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
                             <button
                               onClick={() => handleUpdateStatus(item.id, "done")}
-                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              className="mt-2 w-full py-1.5 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
                             >
                               <Check size={9} /> Hoàn thành
                             </button>
@@ -788,7 +788,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "done" })));
                               });
                           }}
-                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
+                          className="mt-1 w-full py-2 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
                         >
                           <Check size={10} className="animate-pulse" /> Hoàn thành cả bàn ({group.items.length})
                         </button>
@@ -801,7 +801,7 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {/* Cột 3: Sẵn sàng */}
-          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+          <div className="flex flex-col gap-4 bg-admin-bg p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <span className="text-xs font-black uppercase text-emerald-700 tracking-wider flex items-center gap-2">
                 <CheckCheck size={14} className="text-emerald-500" />
@@ -812,7 +812,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedDone.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -890,7 +890,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedVoided.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -951,7 +951,7 @@ export const ChefKitchenQueue: React.FC = () => {
                             {/* Nút đã xem */}
                             <button
                               onClick={() => handleUpdateStatus(item.id, "dismissed" as any)}
-                              className="mt-2.5 w-full py-1.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200 shadow-sm hover:shadow"
+                              className="mt-2.5 w-full py-1.5 bg-linear-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200 shadow-sm hover:shadow"
                             >
                               <X size={9} /> Đã xem & xác nhận
                             </button>
@@ -970,7 +970,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "dismissed" as any })));
                               });
                           }}
-                          className="mt-1 w-full py-2 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-rose-500/20 active:scale-95"
+                          className="mt-1 w-full py-2 bg-linear-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-rose-500/20 active:scale-95"
                         >
                           <CheckCheck size={10} /> Xác nhận cả bàn ({group.items.length})
                         </button>
@@ -1013,7 +1013,7 @@ export const ChefKitchenQueue: React.FC = () => {
                     <div>
                       {/* Station and name */}
                       <div className="flex justify-between items-center">
-                        <span className="bg-blue-50 border border-blue-200 text-[#0f62fe] text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                        <span className="bg-blue-50 border border-blue-200 text-admin-primary text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
                           {getStationLabel(group.kitchenStation)}
                         </span>
                         <span className="text-xs text-slate-500 font-semibold">
@@ -1042,8 +1042,8 @@ export const ChefKitchenQueue: React.FC = () => {
                                   <span>x{item.quantity}</span>
                                   <span
                                     className={`text-[10px] px-1 rounded font-bold ${item.status === "pending" || item.status === "waiting_kitchen"
-                                        ? "bg-slate-100 text-slate-500 border border-slate-200"
-                                        : "bg-amber-50 text-amber-600 border border-amber-200"
+                                      ? "bg-slate-100 text-slate-500 border border-slate-200"
+                                      : "bg-amber-50 text-amber-600 border border-amber-200"
                                       }`}
                                   >
                                     {item.status === "pending" || item.status === "waiting_kitchen" ? "Chờ" : "Nấu"}
@@ -1066,7 +1066,7 @@ export const ChefKitchenQueue: React.FC = () => {
                       {totalPendingQty > 0 && (
                         <button
                           onClick={() => handleBatchStartCooking(group.items)}
-                          className="flex-1 py-2 bg-[#0f62fe] hover:bg-blue-600 active:scale-95 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all"
+                          className="flex-1 py-2 bg-admin-primary hover:bg-blue-600 active:scale-95 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all"
                         >
                           <Play size={11} />
                           Nấu mẻ chờ (x{totalPendingQty})
