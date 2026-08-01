@@ -404,87 +404,110 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
       <title>Xác Nhận Đặt Bàn L'Ambroisie</title>
     </head>
     <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #130e0a; color: #f2ebd9; margin: 0; padding: 30px 15px;">
-      <div style="max-width: 580px; margin: 0 auto; background-color: #18110b; border: 2px solid #bda06a; border-radius: 4px; padding: 45px 35px; box-shadow: 0 15px 40px rgba(0,0,0,0.8); position: relative;">
-        
-        <!-- Header -->
-        <div style="text-align: center; margin-bottom: 25px;">
-          <div style="color: #dcb36c; font-size: 14px; margin-bottom: 15px; letter-spacing: 6px;">✦ ✦ ✦</div>
-          <div style="font-family: 'Playfair Display', 'Georgia', serif; font-size: 26px; font-weight: bold; letter-spacing: 3px; color: #dcb36c; margin-bottom: 6px; text-transform: uppercase;">L'AMBROISIE</div>
-          <div style="font-size: 10px; color: #a48c68; letter-spacing: 2px; text-transform: uppercase; font-weight: 700;">Nhà Hàng Fine Dining & Thưởng Thức Ẩm Thực</div>
-          <div style="color: #bda06a; font-size: 16px; margin: 15px 0;">◆</div>
-          <div style="font-size: 18px; font-weight: 800; color: #f2ebd9; letter-spacing: 1px; margin-top: 15px;">🎉 XÁC NHẬN ĐẶT BÀN THÀNH CÔNG</div>
-          <div style="font-size: 12px; color: #a48c68; letter-spacing: 1px; margin-top: 6px; text-transform: uppercase; font-weight: 700;">
-            MÃ ĐẶT BÀN: #${booking.confirmation_code || booking.id}
+      
+      <!-- Outer Border / Inset Border Container -->
+      <div style="max-width: 580px; margin: 0 auto; background-color: #18110b; border: 2px solid #bda06a; padding: 12px; border-radius: 4px; box-shadow: 0 15px 40px rgba(0,0,0,0.8);">
+        <div style="border: 1px solid rgba(189, 160, 106, 0.45); padding: 35px 25px;">
+          
+          <!-- Header -->
+          <div style="text-align: center; margin-bottom: 25px;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+              <tr>
+                <td style="width: 30%; text-align: left; vertical-align: middle;">
+                  <img src="https://cdn-icons-png.flaticon.com/512/1083/1083416.png" style="width: 50px; opacity: 0.85; filter: sepia(100%) saturate(150%) hue-rotate(5deg);" alt="Golden Crane" />
+                </td>
+                <td style="width: 40%; text-align: center; vertical-align: middle;">
+                  <div style="color: #dcb36c; font-size: 14px; letter-spacing: 6px;">✦ ✦ ✦</div>
+                </td>
+                <td style="width: 30%; text-align: right; vertical-align: middle;">
+                  <img src="https://cdn-icons-png.flaticon.com/512/1083/1083416.png" style="width: 50px; opacity: 0.85; filter: sepia(100%) saturate(150%) hue-rotate(5deg); transform: scaleX(-1);" alt="Golden Crane" />
+                </td>
+              </tr>
+            </table>
+            
+            <div style="font-family: 'Playfair Display', 'Georgia', serif; font-size: 26px; font-weight: bold; letter-spacing: 3px; color: #dcb36c; margin-bottom: 6px; text-transform: uppercase;">L'AMBROISIE</div>
+            <div style="font-size: 10px; color: #a48c68; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; margin-bottom: 15px;">Nhà Hàng Fine Dining & Thưởng Thức Ẩm Thực</div>
+            
+            <div style="text-align: center; margin: 15px 0;">
+              <img src="https://cdn-icons-png.flaticon.com/512/2723/2723639.png" style="width: 40px; opacity: 0.85; filter: sepia(100%) saturate(150%) hue-rotate(5deg);" alt="Golden Dragon" />
+            </div>
+            
+            <div style="font-size: 18px; font-weight: 800; color: #f2ebd9; letter-spacing: 1px; margin-top: 15px;">🎉 XÁC NHẬN ĐẶT BÀN THÀNH CÔNG</div>
+            <div style="font-size: 12px; color: #a48c68; letter-spacing: 1px; margin-top: 6px; text-transform: uppercase; font-weight: 700;">
+              MÃ ĐẶT BÀN: #${booking.confirmation_code || booking.id}
+            </div>
           </div>
-        </div>
 
-        <hr style="border: 0; border-top: 1px solid rgba(189, 160, 106, 0.25); margin: 25px 0;" />
+          <hr style="border: 0; border-top: 1px solid rgba(189, 160, 106, 0.25); margin: 25px 0;" />
 
-        <!-- Greeting -->
-        <div style="text-align: center; margin-bottom: 25px;">
-          <p style="font-family: 'Playfair Display', 'Georgia', serif; font-style: italic; font-size: 18px; color: #dcb36c; margin-top: 0; margin-bottom: 12px;">
-            Xin chào ${booking.guest_name},
-          </p>
-          <p style="font-size: 13px; color: #d0c4b2; line-height: 1.7; margin-top: 0; max-width: 480px; margin-left: auto; margin-right: auto;">
-            Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ tại nhà hàng <strong>L'Ambroisie</strong>. Yêu cầu đặt bàn của bạn đã được ghi nhận thành công với các thông tin chi tiết dưới đây:
-          </p>
-        </div>
-
-        <!-- Information Cards Grid -->
-        <table style="width: 100%; border-collapse: collapse; margin-top: 30px; border-top: 1px solid rgba(189, 160, 106, 0.25); border-bottom: 1px solid rgba(189, 160, 106, 0.25); padding: 15px 0;">
-          <tr>
-            <td style="width: 50%; vertical-align: top; padding: 15px 10px; border-bottom: 1px solid rgba(189, 160, 106, 0.15);">
-              <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">THỜI GIAN NHẬN BÀN</div>
-              <div style="font-size: 15px; font-weight: 700; color: #f2ebd9;">${formattedDate}</div>
-            </td>
-            <td style="width: 50%; vertical-align: top; padding: 15px 10px; border-bottom: 1px solid rgba(189, 160, 106, 0.15);">
-              <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">SỐ LƯỢNG KHÁCH</div>
-              <div style="font-size: 15px; font-weight: 700; color: #f2ebd9;">${booking.party_size} người</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="width: 50%; vertical-align: top; padding: 15px 10px;">
-              <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">BÀN ĂN CHỌN</div>
-              <div style="font-size: 15px; font-weight: 700; color: #dcb36c;">${booking.table_name || "Bàn tự động"} ${booking.area_name ? `(${booking.area_name})` : ""}</div>
-            </td>
-            <td style="width: 50%; vertical-align: top; padding: 15px 10px;">
-              <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">SỐ ĐIỆN THOẠI</div>
-              <div style="font-size: 15px; font-weight: 700; color: #f2ebd9;">${booking.guest_phone}</div>
-            </td>
-          </tr>
-        </table>
-
-        ${booking.guest_note ? `
-          <div style="margin-top: 25px; border-left: 2px solid #bda06a; padding-left: 15px; text-align: left;">
-            <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px;">Ghi chú từ khách hàng:</div>
-            <div style="font-size: 13px; color: #d0c4b2; font-style: italic; font-family: 'Playfair Display', 'Georgia', serif;">"${booking.guest_note}"</div>
+          <!-- Greeting -->
+          <div style="text-align: center; margin-bottom: 25px;">
+            <p style="font-family: 'Playfair Display', 'Georgia', serif; font-style: italic; font-size: 18px; color: #dcb36c; margin-top: 0; margin-bottom: 12px;">
+              Xin chào ${booking.guest_name},
+            </p>
+            <p style="font-size: 13px; color: #d0c4b2; line-height: 1.7; margin-top: 0; max-width: 480px; margin-left: auto; margin-right: auto;">
+              Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ tại nhà hàng <strong>L'Ambroisie</strong>. Yêu cầu đặt bàn của bạn đã được ghi nhận thành công với các thông tin chi tiết dưới đây:
+            </p>
           </div>
-        ` : ""}
 
-        ${itemRowsHtml}
-        ${depositHtml}
+          <!-- Information Cards Grid -->
+          <table style="width: 100%; border-collapse: collapse; margin-top: 30px; border-top: 1px solid rgba(189, 160, 106, 0.25); border-bottom: 1px solid rgba(189, 160, 106, 0.25); padding: 15px 0;">
+            <tr>
+              <td style="width: 50%; vertical-align: top; padding: 15px 10px; border-bottom: 1px solid rgba(189, 160, 106, 0.15);">
+                <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">THỜI GIAN NHẬN BÀN</div>
+                <div style="font-size: 15px; font-weight: 700; color: #f2ebd9;">${formattedDate}</div>
+              </td>
+              <td style="width: 50%; vertical-align: top; padding: 15px 10px; border-bottom: 1px solid rgba(189, 160, 106, 0.15);">
+                <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">SỐ LƯỢNG KHÁCH</div>
+                <div style="font-size: 15px; font-weight: 700; color: #f2ebd9;">${booking.party_size} người</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="width: 50%; vertical-align: top; padding: 15px 10px;">
+                <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">BÀN ĂN CHỌN</div>
+                <div style="font-size: 15px; font-weight: 700; color: #dcb36c;">${booking.table_name || "Bàn tự động"} ${booking.area_name ? `(${booking.area_name})` : ""}</div>
+              </td>
+              <td style="width: 50%; vertical-align: top; padding: 15px 10px;">
+                <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">SỐ ĐIỆN THOẠI</div>
+                <div style="font-size: 15px; font-weight: 700; color: #f2ebd9;">${booking.guest_phone}</div>
+              </td>
+            </tr>
+          </table>
 
-        <!-- Notice Box -->
-        <div style="margin-top: 30px; text-align: left; font-size: 13px; color: #d0c4b2; line-height: 1.8;">
-          <div style="font-weight: 700; color: #dcb36c; margin-bottom: 8px;">
-            📌 Lưu ý từ nhà hàng:
+          ${booking.guest_note ? `
+            <div style="margin-top: 25px; border-left: 2px solid #bda06a; padding-left: 15px; text-align: left;">
+              <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px;">Ghi chú từ khách hàng:</div>
+              <div style="font-size: 13px; color: #d0c4b2; font-style: italic; font-family: 'Playfair Display', 'Georgia', serif;">"${booking.guest_note}"</div>
+            </div>
+          ` : ""}
+
+          ${itemRowsHtml}
+          ${depositHtml}
+
+          <!-- Notice Box -->
+          <div style="margin-top: 30px; text-align: left; font-size: 13px; color: #d0c4b2; line-height: 1.8;">
+            <div style="font-weight: 700; color: #dcb36c; margin-bottom: 8px;">
+              📌 Lưu ý từ nhà hàng:
+            </div>
+            <div style="margin-bottom: 6px;">• Vui lòng có mặt đúng giờ đã hẹn để nhà hàng phục vụ tốt nhất.</div>
+            <div style="margin-bottom: 6px;">• Nếu quý khách đến trễ quá 15 phút mà không thông báo trước, bàn có thể được nhường cho khách hàng tiếp theo.</div>
+            <div>• Mọi thay đổi hoặc yêu cầu hỗ trợ, vui lòng gọi Hotline: <strong style="color: #dcb36c;">+84 28 3829 4000</strong>.</div>
           </div>
-          <div style="margin-bottom: 6px;">• Vui lòng có mặt đúng giờ đã hẹn để nhà hàng phục vụ tốt nhất.</div>
-          <div style="margin-bottom: 6px;">• Nếu quý khách đến trễ quá 15 phút mà không thông báo trước, bàn có thể được nhường cho khách hàng tiếp theo.</div>
-          <div>• Mọi thay đổi hoặc yêu cầu hỗ trợ, vui lòng gọi Hotline: <strong style="color: #dcb36c;">+84 28 3829 4000</strong>.</div>
-        </div>
 
-        <div style="text-align: center; color: #bda06a; font-size: 16px; margin: 25px 0;">◆</div>
-
-        <!-- Footer -->
-        <div style="text-align: center; font-size: 12px; color: #a48c68; line-height: 1.8;">
-          Cảm ơn bạn đã tin tưởng dịch vụ của L'Ambroisie.<br>
-          <span style="font-family: 'Playfair Display', 'Georgia', serif; font-style: italic; font-weight: 700; color: #dcb36c; font-size: 14px;">Rất hân hạnh được đón tiếp quý khách!</span><br>
-          <div style="color: #a48c68; font-size: 10px; font-weight: 700; letter-spacing: 1px; display: inline-block; margin-top: 15px; text-transform: uppercase;">
-            ResManager System — Restaurant & Booking Management
+          <div style="text-align: center; margin: 25px 0;">
+            <img src="https://cdn-icons-png.flaticon.com/512/3790/3790695.png" style="width: 35px; opacity: 0.8; filter: sepia(100%) saturate(150%) hue-rotate(5deg);" alt="Golden Cloud" />
           </div>
-        </div>
 
+          <!-- Footer -->
+          <div style="text-align: center; font-size: 12px; color: #a48c68; line-height: 1.8;">
+            Cảm ơn bạn đã tin tưởng dịch vụ của L'Ambroisie.<br>
+            <span style="font-family: 'Playfair Display', 'Georgia', serif; font-style: italic; font-weight: 700; color: #dcb36c; font-size: 14px;">Rất hân hạnh được đón tiếp quý khách!</span><br>
+            <div style="color: #a48c68; font-size: 10px; font-weight: 700; letter-spacing: 1px; display: inline-block; margin-top: 15px; text-transform: uppercase;">
+              ResManager System — Restaurant & Booking Management
+            </div>
+          </div>
+
+        </div>
       </div>
     </body>
     </html>
