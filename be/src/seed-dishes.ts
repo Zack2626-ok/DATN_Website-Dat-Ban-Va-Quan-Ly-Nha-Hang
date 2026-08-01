@@ -380,7 +380,7 @@ const DISHES_DATA: DishSeedData[] = [
     name: "Chè hạt sen long nhãn Huế",
     description: "Hạt sen bùi dẻo bọc trong nhãn lồng cùi dày ngọt lịm.",
     price: 45000,
-    image_url: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80",
+    image_url: "https://quahueonline.com/wp-content/uploads/2021/06/che-hat-sen-long-nhan.jpg",
     kitchen_station: "cold_kitchen",
     is_featured: 1
   },
@@ -389,7 +389,7 @@ const DISHES_DATA: DishSeedData[] = [
     name: "Sữa chua hoa quả đác hạt dẻo",
     description: "Sữa chua lên men tự nhiên trộn cùng dâu tây, kiwi và hạt đác rim mật.",
     price: 50000,
-    image_url: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&auto=format&fit=crop&q=80",
+    image_url: "https://cdn2.fptshop.com.vn/unsafe/Uploads/images/tin-tuc/173331/Originals/sua-chua-hat-dac-6.jpg",
     kitchen_station: "cold_kitchen",
     is_featured: 0
   },
@@ -398,7 +398,7 @@ const DISHES_DATA: DishSeedData[] = [
     name: "Chè trôi nước ngũ sắc trân châu",
     description: "Bánh trôi nước năm màu dẻo dai nhân đậu xanh chan nước cốt dừa béo.",
     price: 40000,
-    image_url: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80",
+    image_url: "https://www.lorca.vn/wp-content/uploads/2023/08/6-31.jpg",
     kitchen_station: "cold_kitchen",
     is_featured: 0
   }

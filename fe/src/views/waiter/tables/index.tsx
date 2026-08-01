@@ -364,6 +364,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             quantity: data.guestCount,
             unit_price: wetTissue.price,
             kitchen_note: "Mặc định theo số khách",
+            created_by: userId,
           });
         }
       } catch (err) {
@@ -446,9 +447,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   // Thêm món trực tiếp từ sơ đồ bàn
   const handleAddDish = async (item: any, quantity: number, note?: string) => {
     if (!selectedTableId) return;
+    const userId = getCurrentUserId();
     let orderId = activeOrder?.id;
     if (!orderId) {
-      const userId = getCurrentUserId();
       const newOrder = await createOrder({
         table_id: Number(selectedTableId),
         created_by: userId,
@@ -461,6 +462,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       quantity,
       unit_price: item.price,
       kitchen_note: note,
+      created_by: userId,
     });
     toast.success(`✅ Đã thêm ${quantity} x ${item.name}`);
     setIsAddDishOpen(false);
@@ -930,6 +932,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                                       quantity: selectedTable.guest_count,
                                       unit_price: wetTissue.price,
                                       kitchen_note: "Mặc định theo số khách",
+                                      created_by: userId,
                                     });
                                   }
                                 }

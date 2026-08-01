@@ -226,10 +226,15 @@ export const ChefKitchenQueue: React.FC = () => {
 
   // Group kitchen items into 4 columns: Chờ nấu (pending), Đang nấu (cooking), Sẵn sàng (done), Hủy/Trả món (voided)
   const columns = useMemo(() => {
+    const now = Date.now();
     return {
       pending: filteredItems.filter((item) => item.status === "pending" || item.status === "waiting_kitchen"),
       cooking: filteredItems.filter((item) => item.status === "cooking"),
-      done: filteredItems.filter((item) => item.status === "done"),
+      done: filteredItems.filter((item) => {
+        if (item.status !== "done") return false;
+        const updatedTime = item.updatedAt ? new Date(item.updatedAt).getTime() : new Date(item.createdAt).getTime();
+        return now - updatedTime < 3 * 60 * 1000;
+      }),
       voided: filteredItems.filter((item) => (item.status === "voided" || item.status === "cancelled") && item.chefDismissed !== 1),
     };
   }, [filteredItems]);
@@ -626,6 +631,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                 <span className="text-blue-650 font-bold bg-blue-50/60 border border-blue-150 border-blue-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
                                   🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                                 </span>
+                                <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🤵 {item.waiterName || "Phục vụ"}
+                                </span>
                               </div>
 
                               {/* Món đặt trước badge */}
@@ -759,6 +767,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                 <span className="text-amber-700 font-bold bg-amber-50/60 border border-amber-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
                                   🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                                 </span>
+                                <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🤵 {item.waiterName || "Phục vụ"}
+                                </span>
                               </div>
 
                               {/* Món đặt trước badge */}
@@ -883,6 +894,9 @@ export const ChefKitchenQueue: React.FC = () => {
                                 <span className="text-emerald-700 font-bold bg-emerald-50/80 border border-emerald-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
                                   🕒 {new Date(item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                                 </span>
+                                <span className="text-slate-600 font-extrabold bg-slate-50 border border-slate-200 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🤵 {item.waiterName || "Phục vụ"}
+                                </span>
                               </div>
 
                               {/* Món đặt trước badge */}
@@ -972,6 +986,9 @@ export const ChefKitchenQueue: React.FC = () => {
                               )}
                               <span className="text-rose-700 font-bold bg-rose-50/60 border border-rose-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
                                 🕒 {new Date(item.voidedAt || item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </span>
+                              <span className="text-slate-600 font-extrabold bg-slate-50 border border-slate-200 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                🤵 {item.waiterName || "Phục vụ"}
                               </span>
                             </div>
 
@@ -1071,7 +1088,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                     className={`w-1.5 h-1.5 rounded-full ${item.status === "pending" || item.status === "waiting_kitchen" ? "bg-slate-350" : "bg-amber-500"
                                       }`}
                                   />
-                                  Bàn {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}:
+                                  Bàn {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""} ({item.waiterName || "Phục vụ"}):
                                 </span>
                                 <span className="font-bold flex gap-2">
                                   <span>x{item.quantity}</span>
