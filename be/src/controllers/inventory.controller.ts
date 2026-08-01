@@ -205,17 +205,18 @@ export const wasteExpiredBatches = async (req: Request, res: Response): Promise<
 export const updateInventoryQuantity = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate } = req.body; // type: import | export | adjust
+    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate, batchNo } = req.body; // type: import | export | adjust
 
     const qty = Number(quantity);
     if (type === "import") {
       await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, id]);
       
       const parsedExpiryDate = expiryDate ? new Date(expiryDate).toISOString().split('T')[0] : null;
+      const finalBatchCode = batchNo ? batchNo : `LOT-${id}-${Date.now()}`;
 
       await db.query(
         `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, `LOT-${id}-${Date.now()}`, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
+        [id, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
       );
 
       // TASK 5: Nhập hàng CHỊU (mua chịu) + có chọn NCC → cộng nợ cho NCC đó

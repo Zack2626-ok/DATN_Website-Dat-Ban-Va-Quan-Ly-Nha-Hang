@@ -137,6 +137,11 @@ export const wasteExpiredBatchesApi = async (): Promise<any> => {
   return response.data.data;
 };
 
+export const paySupplierDebtApi = async (id: string, data: { amount: number; note: string; paymentMethod: string }): Promise<any> => {
+  const response = await api.patch(`/inventory/suppliers/${id}/pay`, data);
+  return response.data.data;
+};
+
 /**
  * Fetch real inventory transactions from backend
  */
