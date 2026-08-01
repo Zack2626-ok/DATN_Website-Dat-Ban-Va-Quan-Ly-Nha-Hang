@@ -664,15 +664,16 @@ export const ChefKitchenQueue: React.FC = () => {
                                 </div>
                               )}
 
-                            {/* Nút nấu món lẻ */}
-                            <button
-                              onClick={() => handleUpdateStatus(item.id, "cooking")}
-                              className="mt-2 w-full py-1.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
-                            >
-                              <Play size={9} className="fill-white" /> Bắt đầu nấu
-                            </button>
-                          </div>
-                        ))}
+                              {/* Nút nấu món lẻ */}
+                              <button
+                                onClick={() => handleUpdateStatus(item.id, "cooking")}
+                                className="mt-2 w-full py-1.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              >
+                                <Play size={9} className="fill-white" /> Bắt đầu nấu
+                              </button>
+                            </div>
+                          )
+                        })}
                       </div>
 
                       {/* Hành động cả bàn (nếu có > 1 món) */}
@@ -799,15 +800,16 @@ export const ChefKitchenQueue: React.FC = () => {
                                 </div>
                               )}
 
-                            {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
-                            <button
-                              onClick={() => handleUpdateStatus(item.id, "done")}
-                              className="mt-2 w-full py-1.5 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
-                            >
-                              <Check size={9} /> Hoàn thành
-                            </button>
-                          </div>
-                        ))}
+                              {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
+                              <button
+                                onClick={() => handleUpdateStatus(item.id, "done")}
+                                className="mt-2 w-full py-1.5 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              >
+                                <Check size={9} /> Hoàn thành
+                              </button>
+                            </div>
+                          )
+                        })}
                       </div>
 
                       {/* Hành động cả bàn (nếu có > 1 món) */}
