@@ -56,6 +56,8 @@ interface StockTransaction {
   unit: string;
   reasonOrSupplier: string;
   timestamp: string;
+  batchNo?: string;
+  expiryDate?: string;
 }
 
 export const InventoryControl: React.FC = () => {
@@ -1175,14 +1177,16 @@ export const InventoryControl: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ["Thoi gian", "Loai", "Nguyen lieu", "So luong", "Don vi", "Chi tiet / NCC"];
-                    const colX = [15, 50, 75, 110, 130, 145];
+                    const headers = ["Thoi gian", "Loai", "Nguyen lieu", "So luong", "Don vi", "Ma lo", "Han su dung", "Chi tiet / NCC"];
+                    const colX = [15, 45, 65, 95, 110, 125, 145, 165];
                     const rows = transactions.map(t => [
                       t.timestamp,
                       t.type === "import" ? "NHAP KHO" : t.type === "export" ? "XUAT KHO" : "DIEU CHINH",
                       t.ingredientName,
                       t.quantity.toString(),
                       t.unit,
+                      t.batchNo || "-",
+                      t.expiryDate || "-",
                       t.reasonOrSupplier
                     ]);
                     handleExportPdfShared("LICH SU GIAO DICH NHAP XUAT KHO", headers, colX, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
@@ -1193,13 +1197,15 @@ export const InventoryControl: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Chi tiết / Nhà cung cấp"];
+                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Mã lô", "Hạn sử dụng", "Chi tiết / Nhà cung cấp"];
                     const rows = transactions.map(t => [
                       t.timestamp,
                       t.type === "import" ? "NHẬP KHO" : t.type === "export" ? "XUẤT KHO" : "ĐIỀU CHỈNH",
                       t.ingredientName,
                       t.quantity.toString(),
                       t.unit,
+                      t.batchNo || "-",
+                      t.expiryDate || "-",
                       t.reasonOrSupplier
                     ]);
                     handleExportExcelShared("LỊCH SỬ GIAO DỊCH NHẬP XUẤT KHO", headers, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
@@ -1219,6 +1225,8 @@ export const InventoryControl: React.FC = () => {
                     <th scope="col" className="px-5 py-3 text-center">Loại</th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-center">Số lượng</th>
+                    <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
+                    <th scope="col" className="px-5 py-3 text-left">Hạn sử dụng</th>
                     <th scope="col" className="px-5 py-3 text-left">Chi tiết / Nhà cung cấp</th>
                   </tr>
                 </thead>
@@ -1259,6 +1267,12 @@ export const InventoryControl: React.FC = () => {
                           <span className={`font-black ${isImport ? "text-blue-600" : isExport ? "text-amber-600" : "text-slate-650"}`}>
                             {isImport ? "+" : isExport ? "-" : ""}{tx.quantity} {tx.unit}
                           </span>
+                        </td>
+                        <td className="px-5 py-3 font-semibold text-slate-700">
+                          {tx.batchNo || "-"}
+                        </td>
+                        <td className="px-5 py-3 font-semibold text-slate-700">
+                          {tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"}
                         </td>
                         <td className="px-5 py-3 text-slate-700">{tx.reasonOrSupplier}</td>
                       </tr>

@@ -38,9 +38,12 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           so.reason as reasonOrSupplier,
           0 as unit_cost,
           so.note as note,
-          so.created_at as timestamp
+          so.created_at as timestamp,
+          si.batch_code as batchNo,
+          si.expiry_date as expiryDate
         FROM stock_out so
         JOIN ingredients i ON so.ingredient_id = i.id
+        LEFT JOIN stock_in si ON so.stock_in_id = si.id
       )
       UNION ALL
       (
@@ -53,7 +56,9 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           COALESCE(s.name, si.note) as reasonOrSupplier,
           si.unit_cost as unit_cost,
           si.note as note,
-          si.created_at as timestamp
+          si.created_at as timestamp,
+          si.batch_code as batchNo,
+          si.expiry_date as expiryDate
         FROM stock_in si
         JOIN ingredients i ON si.ingredient_id = i.id
         LEFT JOIN suppliers s ON si.supplier_id = s.id
@@ -96,8 +101,8 @@ export const createInventoryItem = async (req: Request, res: Response): Promise<
     // Log import if stock > 0
     if (Number(stock) > 0) {
       await db.query(
-        `INSERT INTO stock_in (ingredient_id, quantity, unit_cost, note, created_by) VALUES (?, ?, ?, ?, ?)`,
-        [result.insertId, Number(stock), 0, 'Nhập kho ban đầu', 1]
+        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [result.insertId, `LOT-INIT-${Date.now()}`, Number(stock), Number(stock), 0, 'Nhập kho ban đầu', 1]
       );
     }
 
@@ -146,8 +151,8 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
     if (type === "import") {
       await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, id]);
       await db.query(
-        `INSERT INTO stock_in (ingredient_id, quantity, unit_cost, supplier_id, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [id, qty, Number(unitCost) || 0, supplierId || null, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
+        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, `LOT-${id}-${Date.now()}`, qty, qty, Number(unitCost) || 0, supplierId || null, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
       );
 
       // TASK 5: Nhập hàng CHỊU (mua chịu) + có chọn NCC → cộng nợ cho NCC đó
@@ -162,10 +167,38 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       }
     } else if (type === "export" || type === "adjust") {
       await db.query(`UPDATE ingredients SET current_stock = current_stock - ? WHERE id = ?`, [qty, id]);
-      await db.query(
-        `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?)`,
-        [id, qty, 'other', reasonOrSupplier || 'Xuất/Điều chỉnh kho thủ công', 1]
+
+      let remainingToDeduct = qty;
+      const batches = await db.query<any[]>(
+        `SELECT id, remaining_quantity FROM stock_in 
+         WHERE ingredient_id = ? AND remaining_quantity > 0 
+         ORDER BY expiry_date ASC, created_at ASC`,
+        [id]
       );
+
+      for (const batch of batches) {
+        if (remainingToDeduct <= 0) break;
+        const deductQty = Math.min(batch.remaining_quantity, remainingToDeduct);
+        
+        await db.query(
+          `UPDATE stock_in SET remaining_quantity = remaining_quantity - ? WHERE id = ?`,
+          [deductQty, batch.id]
+        );
+
+        await db.query(
+          `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
+          [id, batch.id, deductQty, 'other', reasonOrSupplier || 'Xuất/Điều chỉnh kho thủ công', 1]
+        );
+
+        remainingToDeduct -= deductQty;
+      }
+
+      if (remainingToDeduct > 0) {
+        await db.query(
+          `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?)`,
+          [id, remainingToDeduct, 'other', reasonOrSupplier || 'Xuất/Điều chỉnh kho (âm/không rõ lô)', 1]
+        );
+      }
     }
 
     const updated = await db.query(`SELECT current_stock as stock FROM ingredients WHERE id = ?`, [id]);
@@ -371,6 +404,16 @@ export const uploadExcel = async (req: Request, res: Response): Promise<void> =>
       const unitCost = parseFloat(row["Đơn giá"] || row["unit_cost"] || 0);
       const supplierName = row["Nhà cung cấp"] || row["supplier"] || "";
       const note = row["Ghi chú"] || row["note"] || "Nhập từ file Excel";
+      let expiryDate = row["Hạn sử dụng"] || row["expiry_date"] || null;
+      if (expiryDate && typeof expiryDate === "number") {
+          // Xử lý ngày từ excel (nếu là số)
+          const date = new Date((expiryDate - (25567 + 2)) * 86400 * 1000);
+          expiryDate = date.toISOString().split('T')[0];
+      } else if (expiryDate && typeof expiryDate === "string") {
+          // Nếu định dạng dd/mm/yyyy
+          const parts = expiryDate.split("/");
+          if (parts.length === 3) expiryDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
 
       if (!ingredientId || isNaN(quantity) || quantity <= 0) {
         continue;
@@ -395,8 +438,8 @@ export const uploadExcel = async (req: Request, res: Response): Promise<void> =>
       }
 
       await db.query(
-        "INSERT INTO stock_in (ingredient_id, quantity, unit_cost, supplier_id, note, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-        [ingredientId, quantity, unitCost, supplierId, note, createdBy]
+        "INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [ingredientId, `LOT-EXCEL-${Date.now()}-${Math.floor(Math.random()*1000)}`, quantity, quantity, unitCost, supplierId, expiryDate || null, note, createdBy]
       );
 
       await db.query(

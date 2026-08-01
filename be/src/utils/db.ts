@@ -578,6 +578,38 @@ const runSchemaMigrations = async (): Promise<void> => {
     `);
     console.log("✅ Migration: recalculated all customer member_level with new tier thresholds");
 
+    // Migration: Add batch_code, expiry_date, remaining_quantity, is_credit, due_date to stock_in
+    const stockInCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_in' AND COLUMN_NAME = 'batch_code'`
+    );
+    if (stockInCols.length === 0) {
+      await query(`
+        ALTER TABLE stock_in 
+        ADD COLUMN batch_code VARCHAR(50) NOT NULL DEFAULT 'LOT-OLD' AFTER ingredient_id,
+        ADD COLUMN remaining_quantity DECIMAL(10,3) NOT NULL DEFAULT 0 AFTER quantity,
+        ADD COLUMN expiry_date DATE DEFAULT NULL AFTER supplier_id,
+        ADD COLUMN is_credit TINYINT(1) NOT NULL DEFAULT 0,
+        ADD COLUMN due_date DATE DEFAULT NULL
+      `);
+      await query(`UPDATE stock_in SET remaining_quantity = quantity WHERE remaining_quantity = 0`);
+      console.log("✅ Migration: added batch_code, expiry_date, remaining_quantity to stock_in table");
+    }
+
+    // Migration: Add stock_in_id and update reason ENUM in stock_out
+    const stockOutCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_out' AND COLUMN_NAME = 'stock_in_id'`
+    );
+    if (stockOutCols.length === 0) {
+      await query(`
+        ALTER TABLE stock_out 
+        ADD COLUMN stock_in_id INT DEFAULT NULL AFTER ingredient_id,
+        MODIFY COLUMN reason ENUM('waste','internal_use','expired','sale_deduction','return_to_supplier','other') NOT NULL DEFAULT 'other'
+      `);
+      console.log("✅ Migration: added stock_in_id to stock_out table");
+    }
+
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -2398,12 +2430,41 @@ export const deductInventoryForItem = async (orderItemId: string | number): Prom
         [totalUsed, recipe.ingredient_id]
       );
 
-      // 4. Update stock_out
-      await query(
-        `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
-         VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động khi bếp nấu xong', NOW())`,
-        [recipe.ingredient_id, totalUsed]
+      // 4. FEFO Deduction logic
+      let remainingToDeduct = totalUsed;
+      const batches = await query<any[]>(
+        `SELECT id, remaining_quantity FROM stock_in 
+         WHERE ingredient_id = ? AND remaining_quantity > 0 
+         ORDER BY expiry_date ASC, created_at ASC`,
+        [recipe.ingredient_id]
       );
+
+      for (const batch of batches) {
+        if (remainingToDeduct <= 0) break;
+        const deductQty = Math.min(batch.remaining_quantity, remainingToDeduct);
+        
+        await query(
+          `UPDATE stock_in SET remaining_quantity = remaining_quantity - ? WHERE id = ?`,
+          [deductQty, batch.id]
+        );
+
+        await query(
+          `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_at)
+           VALUES (?, ?, ?, 'sale_deduction', 'Trừ kho tự động theo FEFO (nấu món)', NOW())`,
+          [recipe.ingredient_id, batch.id, deductQty]
+        );
+
+        remainingToDeduct -= deductQty;
+      }
+
+      // If still remaining (negative stock theoretically), just record generic stock out
+      if (remainingToDeduct > 0) {
+        await query(
+          `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
+           VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động (âm kho/không rõ lô)', NOW())`,
+          [recipe.ingredient_id, remainingToDeduct]
+        );
+      }
     }
   } catch (error: any) {
     console.error(`❌ Error deducting inventory for item ${orderItemId}:`, error.message);
