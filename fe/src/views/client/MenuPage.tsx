@@ -197,6 +197,65 @@ export const MenuPage: React.FC = () => {
   const nextSpread = MENU_SPREADS[nextIndex];
   const prevSpread = MENU_SPREADS[prevIndex];
 
+  const renderPageContent = (page: PageContent, pageNum: number) => {
+    return (
+      <div className="relative z-10 p-2 sm:p-4 flex-1 flex flex-col justify-between h-full w-full">
+        <div>
+          {/* Category Header */}
+          <div className="text-center mb-6">
+            <span className="text-[10px] tracking-widest font-black text-client-primary uppercase block mb-1">
+              {page.subtitle}
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold font-display text-[#36271c] px-4 border-b border-client-secondary/20 pb-2 inline-block">
+              {page.title}
+            </h2>
+          </div>
+
+          {/* Food visual banner */}
+          <div className="relative h-44 overflow-hidden rounded-lg border border-client-secondary/20 mb-6 shadow-sm">
+            <img
+              src={page.image}
+              alt={page.title}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
+              <p className="text-white text-xs italic line-clamp-2 leading-relaxed">
+                {page.description}
+              </p>
+            </div>
+          </div>
+
+          {/* Menu Items List */}
+          <div className="space-y-4">
+            {page.items.map((item, idx) => (
+              <div key={idx} className="group">
+                <div className="flex justify-between items-baseline gap-2">
+                  <span className="font-bold text-base text-[#2c2017] group-hover:text-client-primary transition-colors flex items-center gap-1">
+                    {item.isHot && <Star size={12} className="fill-client-secondary text-client-secondary shrink-0" />}
+                    {item.name}
+                  </span>
+                  <span className="border-b-2 border-dotted border-client-secondary/30 flex-1 mx-2 h-1 min-w-[20px]"></span>
+                  <span className="font-black text-client-primary font-mono text-sm whitespace-nowrap">
+                    {item.price.toLocaleString("vi-VN")}đ
+                  </span>
+                </div>
+                {item.desc && (
+                  <p className="text-[11px] text-client-muted italic mt-0.5 ml-0 leading-relaxed">
+                    {item.desc}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-8 text-center text-[10px] text-client-muted uppercase font-bold tracking-widest">
+          Restro - Trang {pageNum}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-[#1a1410] min-h-screen text-[#2a221c] py-16 px-4 md:px-8 relative overflow-hidden font-sans">
       {/* 3D Page flip CSS styles */}
@@ -239,6 +298,9 @@ export const MenuPage: React.FC = () => {
           -webkit-backface-visibility: hidden;
           background: #fdfcf7;
           box-shadow: inset 0 0 45px rgba(0, 0, 0, 0.05);
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
         }
         .face-back {
           transform: rotateY(180deg);
@@ -308,64 +370,12 @@ export const MenuPage: React.FC = () => {
                 {/* Front side of flipping page (current right page content) */}
                 <div className="face p-6 sm:p-10 border-l border-[#e7deb8]/40 relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)] shadow-[-5px_0_15px_rgba(0,0,0,0.15)]">
                   <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
-                  <div className="relative z-10 p-2 sm:p-4 h-full flex flex-col justify-between">
-                    <div>
-                      <div className="text-center mb-6">
-                        <span className="text-[10px] tracking-widest font-black text-client-primary uppercase block mb-1">
-                          {prevSpread.rightPage.subtitle}
-                        </span>
-                        <h2 className="text-2xl sm:text-3xl font-bold font-display text-[#36271c] px-4 border-b border-client-secondary/20 pb-2 inline-block">
-                          {prevSpread.rightPage.title}
-                        </h2>
-                      </div>
-                      <div className="relative h-44 overflow-hidden rounded-lg border border-client-secondary/20 mb-6 shadow-xs">
-                        <img src={prevSpread.rightPage.image} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="space-y-4">
-                        {prevSpread.rightPage.items.slice(0, 4).map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-baseline gap-2 text-xs opacity-50">
-                            <span className="font-bold text-[#2c2017]">{item.name}</span>
-                            <span className="border-b border-dotted border-client-secondary/30 flex-1 mx-2 h-1"></span>
-                            <span className="font-black text-client-primary font-mono">{item.price.toLocaleString("vi-VN")}đ</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-center text-[10px] text-client-muted uppercase font-bold tracking-widest">
-                      Trang {displayIndex * 2 + 2}
-                    </div>
-                  </div>
+                  {renderPageContent(prevSpread.rightPage, displayIndex * 2 + 2)}
                 </div>
                 {/* Back side of flipping page (new left page content) */}
                 <div className="face face-back p-6 sm:p-10 border-r border-[#e7deb8]/40 relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)] shadow-[5px_0_15px_rgba(0,0,0,0.15)]">
                   <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
-                  <div className="relative z-10 p-2 sm:p-4 h-full flex flex-col justify-between">
-                    <div>
-                      <div className="text-center mb-6">
-                        <span className="text-[10px] tracking-widest font-black text-client-primary uppercase block mb-1">
-                          {nextSpread.leftPage.subtitle}
-                        </span>
-                        <h2 className="text-2xl sm:text-3xl font-bold font-display text-[#36271c] px-4 border-b border-client-secondary/20 pb-2 inline-block">
-                          {nextSpread.leftPage.title}
-                        </h2>
-                      </div>
-                      <div className="relative h-44 overflow-hidden rounded-lg border border-client-secondary/20 mb-6 shadow-xs">
-                        <img src={nextSpread.leftPage.image} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="space-y-4">
-                        {nextSpread.leftPage.items.slice(0, 4).map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-baseline gap-2 text-xs opacity-50">
-                            <span className="font-bold text-[#2c2017]">{item.name}</span>
-                            <span className="border-b border-dotted border-client-secondary/30 flex-1 mx-2 h-1"></span>
-                            <span className="font-black text-client-primary font-mono">{item.price.toLocaleString("vi-VN")}đ</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-center text-[10px] text-client-muted uppercase font-bold tracking-widest">
-                      Trang {nextIndex * 2 + 1}
-                    </div>
-                  </div>
+                  {renderPageContent(nextSpread.leftPage, nextIndex * 2 + 1)}
                 </div>
               </div>
             )}
@@ -375,64 +385,12 @@ export const MenuPage: React.FC = () => {
                 {/* Front side of flipping page (current left page content) */}
                 <div className="face p-6 sm:p-10 border-r border-[#e7deb8]/40 relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)] shadow-[5px_0_15px_rgba(0,0,0,0.15)]">
                   <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
-                  <div className="relative z-10 p-2 sm:p-4 h-full flex flex-col justify-between">
-                    <div>
-                      <div className="text-center mb-6">
-                        <span className="text-[10px] tracking-widest font-black text-client-primary uppercase block mb-1">
-                          {prevSpread.leftPage.subtitle}
-                        </span>
-                        <h2 className="text-2xl sm:text-3xl font-bold font-display text-[#36271c] px-4 border-b border-client-secondary/20 pb-2 inline-block">
-                          {prevSpread.leftPage.title}
-                        </h2>
-                      </div>
-                      <div className="relative h-44 overflow-hidden rounded-lg border border-client-secondary/20 mb-6 shadow-xs">
-                        <img src={prevSpread.leftPage.image} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="space-y-4">
-                        {prevSpread.leftPage.items.slice(0, 4).map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-baseline gap-2 text-xs opacity-50">
-                            <span className="font-bold text-[#2c2017]">{item.name}</span>
-                            <span className="border-b border-dotted border-client-secondary/30 flex-1 mx-2 h-1"></span>
-                            <span className="font-black text-client-primary font-mono">{item.price.toLocaleString("vi-VN")}đ</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-center text-[10px] text-client-muted uppercase font-bold tracking-widest">
-                      Trang {displayIndex * 2 + 1}
-                    </div>
-                  </div>
+                  {renderPageContent(prevSpread.leftPage, displayIndex * 2 + 1)}
                 </div>
                 {/* Back side of flipping page (new right page content) */}
                 <div className="face face-back p-6 sm:p-10 border-l border-[#e7deb8]/40 relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)] shadow-[-5px_0_15px_rgba(0,0,0,0.15)]">
                   <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
-                  <div className="relative z-10 p-2 sm:p-4 h-full flex flex-col justify-between">
-                    <div>
-                      <div className="text-center mb-6">
-                        <span className="text-[10px] tracking-widest font-black text-client-primary uppercase block mb-1">
-                          {nextSpread.rightPage.subtitle}
-                        </span>
-                        <h2 className="text-2xl sm:text-3xl font-bold font-display text-[#36271c] px-4 border-b border-client-secondary/20 pb-2 inline-block">
-                          {nextSpread.rightPage.title}
-                        </h2>
-                      </div>
-                      <div className="relative h-44 overflow-hidden rounded-lg border border-client-secondary/20 mb-6 shadow-xs">
-                        <img src={nextSpread.rightPage.image} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="space-y-4">
-                        {nextSpread.rightPage.items.slice(0, 4).map((item, idx) => (
-                          <div key={idx} className="flex justify-between items-baseline gap-2 text-xs opacity-50">
-                            <span className="font-bold text-[#2c2017]">{item.name}</span>
-                            <span className="border-b border-dotted border-client-secondary/30 flex-1 mx-2 h-1"></span>
-                            <span className="font-black text-client-primary font-mono">{item.price.toLocaleString("vi-VN")}đ</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-center text-[10px] text-client-muted uppercase font-bold tracking-widest">
-                      Trang {nextIndex * 2 + 2}
-                    </div>
-                  </div>
+                  {renderPageContent(nextSpread.rightPage, nextIndex * 2 + 2)}
                 </div>
               </div>
             )}
@@ -441,122 +399,14 @@ export const MenuPage: React.FC = () => {
             <div className="flex-1 h-full p-6 sm:p-10 flex flex-col justify-between border-b md:border-b-0 md:border-r border-[#e7deb8]/40 relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)]">
               {/* Gold double border decorator */}
               <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
-              
-              <div className="relative z-10 p-2 sm:p-4 flex-1 flex flex-col justify-between">
-                <div>
-                  {/* Category Header */}
-                  <div className="text-center mb-6">
-                    <span className="text-[10px] tracking-widest font-black text-client-primary uppercase block mb-1">
-                      {currentSpread.leftPage.subtitle}
-                    </span>
-                    <h2 className="text-2xl sm:text-3xl font-bold font-display text-[#36271c] px-4 border-b border-client-secondary/20 pb-2 inline-block">
-                      {currentSpread.leftPage.title}
-                    </h2>
-                  </div>
-
-                  {/* Food visual banner */}
-                  <div className="relative h-44 overflow-hidden rounded-lg border border-client-secondary/20 mb-6 shadow-sm">
-                    <img
-                      src={currentSpread.leftPage.image}
-                      alt={currentSpread.leftPage.title}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
-                      <p className="text-white text-xs italic line-clamp-2 leading-relaxed">
-                        {currentSpread.leftPage.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Menu Items List */}
-                  <div className="space-y-4">
-                    {currentSpread.leftPage.items.map((item, idx) => (
-                      <div key={idx} className="group">
-                        <div className="flex justify-between items-baseline gap-2">
-                          <span className="font-bold text-base text-[#2c2017] group-hover:text-client-primary transition-colors flex items-center gap-1">
-                            {item.isHot && <Star size={12} className="fill-client-secondary text-client-secondary shrink-0" />}
-                            {item.name}
-                          </span>
-                          <span className="border-b-2 border-dotted border-client-secondary/30 flex-1 mx-2 h-1 min-w-[20px]"></span>
-                          <span className="font-black text-client-primary font-mono text-sm whitespace-nowrap">
-                            {item.price.toLocaleString("vi-VN")}đ
-                          </span>
-                        </div>
-                        {item.desc && (
-                          <p className="text-[11px] text-client-muted italic mt-0.5 ml-0 leading-relaxed">
-                            {item.desc}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-8 text-center text-[10px] text-client-muted uppercase font-bold tracking-widest">
-                 Restro - Trang {displayIndex * 2 + 1}
-                </div>
-              </div>
+              {renderPageContent(currentSpread.leftPage, displayIndex * 2 + 1)}
             </div>
 
             {/* UNDERLYING RIGHT PAGE */}
             <div className="flex-1 h-full p-6 sm:p-10 flex flex-col justify-between relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)]">
               {/* Gold double border decorator */}
               <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
-
-              <div className="relative z-10 p-2 sm:p-4 flex-1 flex flex-col justify-between">
-                <div>
-                  {/* Category Header */}
-                  <div className="text-center mb-6">
-                    <span className="text-[10px] tracking-widest font-black text-client-primary uppercase block mb-1">
-                      {currentSpread.rightPage.subtitle}
-                    </span>
-                    <h2 className="text-2xl sm:text-3xl font-bold font-display text-[#36271c] px-4 border-b border-client-secondary/20 pb-2 inline-block">
-                      {currentSpread.rightPage.title}
-                    </h2>
-                  </div>
-
-                  {/* Food visual banner */}
-                  <div className="relative h-44 overflow-hidden rounded-lg border border-client-secondary/20 mb-6 shadow-sm">
-                    <img
-                      src={currentSpread.rightPage.image}
-                      alt={currentSpread.rightPage.title}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
-                      <p className="text-white text-xs italic line-clamp-2 leading-relaxed">
-                        {currentSpread.rightPage.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Menu Items List */}
-                  <div className="space-y-4">
-                    {currentSpread.rightPage.items.map((item, idx) => (
-                      <div key={idx} className="group">
-                        <div className="flex justify-between items-baseline gap-2">
-                          <span className="font-bold text-base text-[#2c2017] group-hover:text-client-primary transition-colors flex items-center gap-1">
-                            {item.isHot && <Star size={12} className="fill-client-secondary text-client-secondary shrink-0" />}
-                            {item.name}
-                          </span>
-                          <span className="border-b-2 border-dotted border-client-secondary/30 flex-1 mx-2 h-1 min-w-[20px]"></span>
-                          <span className="font-black text-client-primary font-mono text-sm whitespace-nowrap">
-                            {item.price.toLocaleString("vi-VN")}đ
-                          </span>
-                        </div>
-                        {item.desc && (
-                          <p className="text-[11px] text-client-muted italic mt-0.5 ml-0 leading-relaxed">
-                            {item.desc}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-8 text-center text-[10px] text-[#7b6f65] uppercase font-bold tracking-widest">
-                  Restro — Trang {displayIndex * 2 + 2}
-                </div>
-              </div>
+              {renderPageContent(currentSpread.rightPage, displayIndex * 2 + 2)}
             </div>
 
           </div>

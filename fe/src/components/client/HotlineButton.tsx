@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Phone, X, MessageCircle, Send } from "lucide-react";
+import { Phone, X, Send } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
 
 export const HotlineButton: React.FC = () => {
