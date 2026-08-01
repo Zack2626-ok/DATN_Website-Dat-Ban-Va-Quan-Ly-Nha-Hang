@@ -3,6 +3,8 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer, Star } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, getPublicPromotions, payBookingDeposit } from "../../services/customerService";
+import { getComboConstituents } from "../../utils/comboHelper";
+import { isWithinPublicBookingHours, PUBLIC_BOOKING_HOURS } from "../../constants/booking";
 
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -109,6 +111,11 @@ export const BookingPage: React.FC = () => {
       return;
     }
     
+    if (!isWithinPublicBookingHours(form.time)) {
+      toast.error(`Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}.`);
+      return;
+    }
+
     // Kiểm tra không cho đặt giờ trong quá khứ nếu chọn ngày hôm nay
     const selectedDateTime = new Date(`${form.date}T${form.time}:00`);
     const now = new Date();
@@ -125,11 +132,8 @@ export const BookingPage: React.FC = () => {
     
     setLoadingTables(true);
     try {
-      const startTimeStr = `${form.date} ${form.time}:00`;
-      const tables = await getAvailableTables(startTimeStr);
-      // Filter tables that fit the guest count
-      const filtered = tables.filter((t: any) => t.capacity >= Number(form.guests));
-      setAvailableTables(filtered);
+      const tables = await getAvailableTables(form.date, form.time, guestCount);
+      setAvailableTables(tables);
       // Reset selected table from previous searches
       setForm((prev) => ({
         ...prev,
@@ -423,14 +427,26 @@ export const BookingPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {createdBooking.pre_ordered_items.map((item: any) => (
-                    <tr key={item.id} className="border-b border-gray-100">
-                      <td className="py-1">{item.menu_item_name}</td>
-                      <td className="py-1 text-center">{item.quantity}</td>
-                      <td className="py-1 text-right">{Number(item.unit_price).toLocaleString("vi-VN")}đ</td>
-                      <td className="py-1 text-right">{(item.quantity * item.unit_price).toLocaleString("vi-VN")}đ</td>
-                    </tr>
-                  ))}
+                  {createdBooking.pre_ordered_items.map((item: any) => {
+                    const constituents = getComboConstituents(item.menu_item_name);
+                    return (
+                      <tr key={item.id} className="border-b border-gray-100">
+                        <td className="py-1 text-left">
+                          <div className="font-bold">{item.menu_item_name}</div>
+                          {constituents && (
+                            <div className="pl-3 text-[10px] text-gray-500 font-medium mt-0.5 leading-relaxed">
+                              {constituents.map((sub, sIdx) => (
+                                <div key={sIdx}>• {sub}</div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-1 text-center">{item.quantity}</td>
+                        <td className="py-1 text-right">{Number(item.unit_price).toLocaleString("vi-VN")}đ</td>
+                        <td className="py-1 text-right">{(item.quantity * item.unit_price).toLocaleString("vi-VN")}đ</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -573,21 +589,16 @@ export const BookingPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Giờ đến *</label>
-                  <select
+                  <input
                     required
+                    type="time"
+                    min={PUBLIC_BOOKING_HOURS.OPEN}
+                    max={PUBLIC_BOOKING_HOURS.CLOSE}
                     value={form.time}
                     onChange={(e) => setField("time", e.target.value)}
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
-                  >
-                    <option value="">Chọn giờ</option>
-                    {[
-                      "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
-                      "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
-                      "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00"
-                    ].map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                  />
+                  <p className="mt-2 text-xs text-client-muted">Nhận đặt bàn từ 10:00 đến 22:00. Bạn có thể nhập chính xác từng phút.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số khách *</label>

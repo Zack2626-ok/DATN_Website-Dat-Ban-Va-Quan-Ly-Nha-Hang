@@ -6,6 +6,7 @@ import {
   updateCustomer,
   deleteCustomer,
   getCustomerLoyaltyHistory,
+  getCustomerUnusedVouchers,
   getAllVouchers,
   createVoucher,
   updateVoucher,
@@ -26,6 +27,7 @@ router.get("/customers/:id", getCustomerById);
 router.put("/customers/:id", updateCustomer);
 router.delete("/customers/:id", deleteCustomer);
 router.get("/customers/:id/loyalty", getCustomerLoyaltyHistory);
+router.get("/customers/:id/vouchers", getCustomerUnusedVouchers);
 
 // Vouchers API
 router.get("/vouchers", getAllVouchers);

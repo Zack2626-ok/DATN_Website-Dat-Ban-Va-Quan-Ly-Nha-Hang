@@ -72,10 +72,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
     const loadSuggestions = async () => {
       setLoadingSuggestions(true);
       try {
-        const [customers, vouchers] = await Promise.all([
-          crmService.getCustomers(),
-          crmService.getVouchers(),
-        ]);
+        const customers = await crmService.getCustomers();
 
         const normalizePhone = (phone?: string | null) => {
           if (!phone) return "";
@@ -95,7 +92,10 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
           setMatchedCustomer(customer);
           const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
           
-          const eligible = vouchers.filter(v => {
+          // Fetch customer-specific redeemed unused vouchers
+          const customerVouchers = await crmService.getCustomerUnusedVouchers(customer.id);
+          
+          const eligible = customerVouchers.filter(v => {
             if (v.is_active !== 1) return false;
             if (v.expired_at && new Date(v.expired_at) < new Date()) return false;
             if (subtotal < v.min_order) return false;

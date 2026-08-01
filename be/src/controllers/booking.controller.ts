@@ -4,6 +4,60 @@ import { sendError, sendSuccess } from "../utils/response";
 import { getPhoneNumberValidationError } from "../utils/validation";
 import { sendBookingConfirmationEmail } from "../utils/email";
 import { notifyWaitersAboutBooking } from "../utils/telegram";
+import { BOOKING_DURATION_MINUTES, MAX_BOOKING_PARTY_SIZE, PUBLIC_BOOKING_HOURS } from "../constants/booking";
+
+/** Builds a Vietnam-local booking datetime string from a date and time query. */
+const buildBookingDateTime = (date: string, time: string): string => `${date} ${time}:00`;
+
+/** Adds the configured booking duration to a local booking start time. */
+const calculateBookingEndTime = (startTime: string): string => {
+  const start = new Date(`${startTime.replace(" ", "T")}+07:00`);
+  const end = new Date(start.getTime() + BOOKING_DURATION_MINUTES * 60 * 1000);
+  const vietnamTime = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(end);
+  return vietnamTime.replace("T", " ");
+};
+
+/** Checks whether a clock value is valid and falls within public booking hours. */
+const isWithinPublicBookingHours = (time: string): boolean =>
+  /^\d{2}:\d{2}$/.test(time) && time >= PUBLIC_BOOKING_HOURS.OPEN && time <= PUBLIC_BOOKING_HOURS.CLOSE;
+
+/** Returns tables available for a requested booking interval. */
+export const getAvailableTablesHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const date = typeof req.query.date === "string" ? req.query.date : "";
+    const time = typeof req.query.time === "string" ? req.query.time : "";
+    const guests = Number(req.query.guests);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+      sendError(res, "date phải là YYYY-MM-DD và time phải là HH:mm", 400);
+      return;
+    }
+    if (!isWithinPublicBookingHours(time)) {
+      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
+      return;
+    }
+    if (!Number.isInteger(guests) || guests < 1 || guests > MAX_BOOKING_PARTY_SIZE) {
+      sendError(res, `guests phải từ 1 đến ${MAX_BOOKING_PARTY_SIZE}`, 400);
+      return;
+    }
+
+    const startTime = buildBookingDateTime(date, time);
+    const endTime = calculateBookingEndTime(startTime);
+    const tables = await db.getAvailableBookingTables(guests, startTime, endTime);
+    sendSuccess(res, { start_time: startTime, end_time: endTime, tables }, "Lấy bàn trống thành công");
+  } catch (error) {
+    console.error("Error fetching available booking tables:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -47,8 +101,8 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     }
 
     const partySizeNum = Number(party_size);
-    if (isNaN(partySizeNum) || partySizeNum < 1 || partySizeNum > 30) {
-      sendError(res, "Số lượng khách phải từ 1 đến 30 người", 400);
+    if (isNaN(partySizeNum) || partySizeNum < 1 || partySizeNum > MAX_BOOKING_PARTY_SIZE) {
+      sendError(res, `Số lượng khách phải từ 1 đến ${MAX_BOOKING_PARTY_SIZE} người`, 400);
       return;
     }
 
@@ -61,6 +115,12 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     const now = new Date();
     if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
+      return;
+    }
+
+    const requestedTime = normalizedStart.slice(11, 16);
+    if (!isWithinPublicBookingHours(requestedTime)) {
+      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
       return;
     }
 

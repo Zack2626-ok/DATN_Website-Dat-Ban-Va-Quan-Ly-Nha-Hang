@@ -447,6 +447,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   // Thêm món trực tiếp từ sơ đồ bàn
   const handleAddDish = async (item: any, quantity: number, note?: string) => {
     if (!selectedTableId) return;
+    const userId = getCurrentUserId();
     let orderId = activeOrder?.id;
     if (!orderId) {
       const currentUserId = getCurrentUserId();

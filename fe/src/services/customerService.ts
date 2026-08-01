@@ -123,16 +123,40 @@ export const getCustomerVouchers = async (): Promise<any[]> => {
   return response.data.data || [];
 };
 
+export const redeemVoucher = async (voucherId: number): Promise<any> => {
+  const response = await customerApi.post("/v1/customer/vouchers/redeem", { voucherId });
+  return response.data.data;
+};
+
+export const getMyUnusedVouchers = async (): Promise<any[]> => {
+  const response = await customerApi.get("/v1/customer/my-unused-vouchers");
+  return response.data.data || [];
+};
+
 // 3. BOOKING API CALLS
 export const getMyBookings = async (): Promise<any[]> => {
   const response = await customerApi.get("/v1/customer/bookings/my");
   return response.data.data || [];
 };
 
-export const getAvailableTables = async (startTime: string): Promise<any[]> => {
-  // Use existing table routes empty endpoint
-  const response = await customerApi.get(`/v1/tables/empty?start_time=${encodeURIComponent(startTime)}`);
-  return response.data.data || [];
+export interface AvailableBookingTable {
+  id: number;
+  name: string;
+  capacity: number;
+  area_name?: string;
+  row_pos?: string | number;
+}
+
+/** Gets tables that can serve the requested party during the full booking interval. */
+export const getAvailableTables = async (
+  date: string,
+  time: string,
+  guests: number,
+): Promise<AvailableBookingTable[]> => {
+  const response = await customerApi.get("/v1/bookings/available-tables", {
+    params: { date, time, guests },
+  });
+  return response.data.data?.tables || [];
 };
 
 export const createBooking = async (data: {

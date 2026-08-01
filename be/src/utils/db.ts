@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
+import { BOOKING_STATUS } from "../constants/booking";
+import { TABLE_STATUS } from "../constants/table";
 
 
 
@@ -524,9 +526,58 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: created booking_menu_items table");
     }
+
     // Migration: đảm bảo order_type trong bảng orders và status trong bảng order_items là VARCHAR(50) để hỗ trợ 'pre_order'
     await query("ALTER TABLE orders MODIFY COLUMN order_type VARCHAR(50) NOT NULL DEFAULT 'dine_in'").catch(() => {});
     await query("ALTER TABLE order_items MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'pending'").catch(() => {});
+
+    const voucherCostCol = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vouchers' AND COLUMN_NAME = 'points_cost'`,
+    );
+    if (voucherCostCol.length === 0) {
+      await query(`ALTER TABLE vouchers ADD COLUMN points_cost INT NOT NULL DEFAULT 0 AFTER value`);
+      await query(`UPDATE vouchers SET points_cost = 100 WHERE code = 'SAVE10'`);
+      await query(`UPDATE vouchers SET points_cost = 300 WHERE code = 'FIXED50'`);
+      await query(`UPDATE vouchers SET points_cost = 200 WHERE code = 'NEW20'`);
+      await query(`UPDATE vouchers SET points_cost = 150 WHERE code = 'SILVER15'`);
+      await query(`UPDATE vouchers SET points_cost = 250 WHERE code = 'GOLD25'`);
+      await query(`UPDATE vouchers SET points_cost = 400 WHERE code = 'VIP30'`);
+      console.log("✅ Migration: added points_cost column to vouchers table");
+    }
+
+    const customerVouchersTable = await query<any[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer_vouchers'`,
+    );
+    if (customerVouchersTable.length === 0) {
+      await query(`
+        CREATE TABLE customer_vouchers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT NOT NULL,
+            voucher_id INT NOT NULL,
+            is_used TINYINT(1) NOT NULL DEFAULT 0,
+            redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            used_at TIMESTAMP NULL DEFAULT NULL,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+            FOREIGN KEY (voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+      console.log("✅ Migration: created customer_vouchers table");
+    }
+    // Migration: recalculate member_level for all customers based on new tier thresholds
+    // Bronze: 0-1999 | Silver: 2000-7999 | Gold: 8000-19999 | VIP: 20000+
+    await query(`
+      UPDATE customers
+      SET member_level = CASE
+        WHEN loyalty_points >= 20000 THEN 'vip'
+        WHEN loyalty_points >= 8000  THEN 'gold'
+        WHEN loyalty_points >= 2000  THEN 'silver'
+        ELSE 'bronze'
+      END
+    `);
+    console.log("✅ Migration: recalculated all customer member_level with new tier thresholds");
+
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -1560,6 +1611,55 @@ export const hasActiveBookingsForTable = async (tableId: number): Promise<boolea
 //  RESMANAGER SCHEMA — Bookings
 // ============================================================================
 
+export interface AvailableBookingTable {
+  id: number;
+  name: string;
+  capacity: number;
+  area_name: string | null;
+}
+
+/**
+ * Returns tables that can accommodate a party and have no overlapping active booking.
+ * This is the single availability source used by both web booking and Telegram.
+ */
+export const getAvailableBookingTables = async (
+  partySize: number,
+  startTime: string,
+  endTime: string,
+): Promise<AvailableBookingTable[]> => {
+  const rows = await query<AvailableBookingTable[]>(
+    `SELECT t.id, t.name, t.capacity, a.name AS area_name
+     FROM tables t
+     LEFT JOIN table_areas a ON a.id = t.area_id
+     WHERE t.is_deleted = 0
+       AND t.status = ?
+       AND t.capacity >= ?
+       AND NOT EXISTS (
+         SELECT 1
+         FROM bookings b
+         WHERE b.table_id = t.id
+           AND b.status IN (?, ?)
+           AND b.start_time < ?
+           AND b.end_time > ?
+       )
+     ORDER BY t.capacity ASC, t.name ASC`,
+    [
+      TABLE_STATUS.EMPTY,
+      partySize,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      endTime,
+      startTime,
+    ],
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    capacity: Number(row.capacity),
+  }));
+};
+
 export const getBookings = async (status?: string): Promise<any[]> => {
   const rows = status
     ? await query<any[]>(
@@ -1628,13 +1728,32 @@ export const getBookingById = async (id: number): Promise<any | null> => {
 };
 
 export const createBooking = async (data: any): Promise<any> => {
+  const requestedPartySize = Number(data.party_size);
+  const availableTables = await getAvailableBookingTables(
+    requestedPartySize,
+    data.start_time,
+    data.end_time,
+  );
+  const selectedTableIsAvailable = availableTables.some(
+    (table) => table.id === Number(data.table_id),
+  );
+  if (!selectedTableIsAvailable) {
+    throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
+  }
+
   // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
   const overlaps = await query<any[]>(`
     SELECT id FROM bookings
-    WHERE table_id = ? AND status IN ('pending', 'confirmed')
+    WHERE table_id = ? AND status IN (?, ?)
       AND start_time < ? AND end_time > ?
     LIMIT 1
-  `, [data.table_id, data.end_time, data.start_time]);
+  `, [
+    data.table_id,
+    BOOKING_STATUS.PENDING,
+    BOOKING_STATUS.CONFIRMED,
+    data.end_time,
+    data.start_time,
+  ]);
 
   if (overlaps.length > 0) {
     throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
