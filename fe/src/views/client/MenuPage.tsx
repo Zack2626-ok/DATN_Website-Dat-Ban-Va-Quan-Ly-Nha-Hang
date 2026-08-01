@@ -156,12 +156,12 @@ export const MenuPage: React.FC = () => {
   const [flipDirection, setFlipDirection] = useState<"next" | "prev">("next");
   const [displayIndex, setDisplayIndex] = useState(0);
 
-  // Synchronize displayIndex with spreadIndex after animation halfpoint
+  // Synchronize displayIndex with spreadIndex after animation halfpoint (350ms for 700ms transition)
   useEffect(() => {
     if (isFlipping) {
       const timer = setTimeout(() => {
         setDisplayIndex(spreadIndex);
-      }, 300); // 300ms is exactly when Y rotation is at 90 degrees
+      }, 350); // 350ms is exactly the 90-degree vertical midpoint
       return () => clearTimeout(timer);
     } else {
       setDisplayIndex(spreadIndex);
@@ -218,6 +218,7 @@ export const MenuPage: React.FC = () => {
           transform-style: preserve-3d;
           transform-origin: left center;
           animation: flipToLeft 0.7s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+          will-change: transform;
         }
         .page-turning-left {
           position: absolute;
@@ -229,6 +230,7 @@ export const MenuPage: React.FC = () => {
           transform-style: preserve-3d;
           transform-origin: right center;
           animation: flipToRight 0.7s cubic-bezier(0.645, 0.045, 0.355, 1) forwards;
+          will-change: transform;
         }
         .face {
           position: absolute;
@@ -236,6 +238,7 @@ export const MenuPage: React.FC = () => {
           backface-visibility: hidden;
           -webkit-backface-visibility: hidden;
           background: #fdfcf7;
+          box-shadow: inset 0 0 45px rgba(0, 0, 0, 0.05);
         }
         .face-back {
           transform: rotateY(180deg);
@@ -294,7 +297,7 @@ export const MenuPage: React.FC = () => {
           </button>
 
           {/* Opened Menu Book Container */}
-          <div className="bg-[#fcfaf5] rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)] border-8 border-[#30251c] relative min-h-[630px] overflow-hidden flex flex-col md:flex-row book-container">
+          <div className="bg-[#fcfaf5] rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.6)] border-8 border-[#30251c] relative min-h-[650px] md:h-[730px] overflow-hidden flex flex-col md:flex-row book-container">
             
             {/* Book Spine (Middle Shadow Effect) */}
             <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-8 bg-gradient-to-r from-black/15 via-transparent to-black/15 z-20 hidden md:block border-l border-r border-black/5"></div>
@@ -435,7 +438,7 @@ export const MenuPage: React.FC = () => {
             )}
 
             {/* UNDERLYING LEFT PAGE */}
-            <div className="flex-1 p-6 sm:p-10 flex flex-col justify-between border-b md:border-b-0 md:border-r border-[#e7deb8]/40 relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)]">
+            <div className="flex-1 h-full p-6 sm:p-10 flex flex-col justify-between border-b md:border-b-0 md:border-r border-[#e7deb8]/40 relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)]">
               {/* Gold double border decorator */}
               <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
               
@@ -496,7 +499,7 @@ export const MenuPage: React.FC = () => {
             </div>
 
             {/* UNDERLYING RIGHT PAGE */}
-            <div className="flex-1 p-6 sm:p-10 flex flex-col justify-between relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)]">
+            <div className="flex-1 h-full p-6 sm:p-10 flex flex-col justify-between relative bg-[#fdfcf7] bg-[radial-gradient(ellipse_at_center,#ffffff_0%,#fbfaf0_100%)]">
               {/* Gold double border decorator */}
               <div className="absolute inset-4 border-2 border-double border-client-secondary/40 rounded-xl pointer-events-none"></div>
 
