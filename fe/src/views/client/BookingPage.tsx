@@ -684,7 +684,7 @@ export const BookingPage: React.FC = () => {
                   )}
 
                   {/* Sơ đồ bàn theo hàng/cột */}
-                  <div className="flex flex-col gap-6 overflow-y-auto max-h-[500px] pr-2">
+                  <div className="flex flex-col gap-6 flex-1">
                     {sortedRowKeys.map((rowKey) => (
                       <div key={rowKey} className="flex flex-row items-center gap-4">
                         <div className="w-8 flex items-center justify-center font-bold text-[#7b6f65] border-r border-[#f0eae1] pr-2 self-stretch">
