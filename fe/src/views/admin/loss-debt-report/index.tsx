@@ -37,20 +37,24 @@ export const LossDebtReport: React.FC = () => {
   }).length;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="border-b border-sky-100 pb-4 flex justify-between items-center">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-sky-700 font-playfair drop-shadow-[0_4px_20px_rgba(0,0,0,0.3)]">Báo cáo hao hụt & công nợ NCC</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
+            Báo cáo hao hụt & công nợ NCC
+          </h1>
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
             Chênh lệch kiểm kê kho và công nợ nhà cung cấp — Admin & Bếp trưởng
           </p>
         </div>
-        <button 
+        <button
+          type="button"
           onClick={fetchData}
           disabled={loading}
-          className="p-2 bg-white border border-sky-100 text-sky-600 rounded-lg shadow-sm hover:bg-sky-50 transition-colors"
+          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 disabled:opacity-50"
         >
-          <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
+          Làm mới
         </button>
       </div>
 

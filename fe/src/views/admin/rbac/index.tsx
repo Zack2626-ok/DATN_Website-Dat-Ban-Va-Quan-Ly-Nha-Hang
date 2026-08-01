@@ -98,32 +98,27 @@ export const AdminRbac: React.FC = () => {
   };
 
   return (
-  <div className="flex flex-col gap-6 animate-fade-in">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
+        <div>
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
+            Phân quyền hệ thống (RBAC)
+          </h1>
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
+            Quản lý quyền truy cập của từng vai trò trong nhà hàng
+          </p>
+        </div>
 
-    {/* Header */}
-
-    <div className="flex justify-between items-center">
-
-      <div>
-        <h2 className="text-3xl font-black text-slate-800">
-          Phân quyền hệ thống (RBAC)
-        </h2>
-
-        <p className="text-slate-500 mt-1">
-          Quản lý quyền truy cập của từng vai trò trong nhà hàng
-        </p>
+        <button
+          type="button"
+          onClick={handleSaveSettings}
+          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
+        >
+          <Save size={17} />
+          Lưu cấu hình
+        </button>
       </div>
-
-      <button
-        onClick={handleSaveSettings}
-        className="flex items-center gap-2 px-5 py-3 rounded-xl
-        bg-blue-600 hover:bg-blue-700 text-white font-semibold
-        shadow-lg transition"
-      >
-        <Save size={18} />
-        Lưu cấu hình
-      </button>
-    </div>
 
     {savedMessage && (
       <div

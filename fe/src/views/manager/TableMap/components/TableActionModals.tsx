@@ -112,7 +112,7 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-white bg-sky-500 hover:bg-[#e04f53] rounded-lg shadow-xs cursor-pointer"
+              className="px-5 py-2 text-xs font-black text-white bg-[#3E2016] hover:bg-[#5C2E17] rounded-full shadow-xs cursor-pointer"
             >
               {loading ? "Đang xử lý..." : "Mở bàn"}
             </button>

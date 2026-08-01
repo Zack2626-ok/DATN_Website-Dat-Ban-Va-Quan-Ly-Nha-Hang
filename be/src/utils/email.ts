@@ -67,7 +67,7 @@ const generateReceiptHtml = (order: OrderDetails): string => {
     <html lang="vi">
     <head>
       <meta charset="UTF-8">
-      <title>Hóa Đơn Đặt Hàng L'Ambroisie</title>
+      <title>Hóa Đơn Đặt Hàng Restro</title>
       <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@700;800&display=swap');
         body {
@@ -189,7 +189,7 @@ const generateReceiptHtml = (order: OrderDetails): string => {
     <body>
       <div class="container">
         <div class="header">
-          <div class="logo">L'AMBROISIE</div>
+          <div class="logo">RESTRO</div>
           <div class="subtitle">Michelin 3-Star Gastronomy</div>
           <div class="title">XÁC NHẬN ĐƠN HÀNG THÀNH CÔNG</div>
         </div>
@@ -260,7 +260,7 @@ const generateReceiptHtml = (order: OrderDetails): string => {
         </div>
 
         <div class="footer">
-          Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ ẩm thực tại L'Ambroisie.<br>
+          Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ ẩm thực tại Restro.<br>
           Mọi thắc mắc về đơn hàng, vui lòng liên hệ Hotline: <strong>+84 28 3829 4000</strong>.<br>
           <span style="color: #c5a880; font-family: 'Syne', sans-serif; font-weight: bold; letter-spacing: 1px; display: inline-block; margin-top: 10px;">
             ResManager - Quản lý Nhà hàng chuyên nghiệp
@@ -305,9 +305,9 @@ export const sendOrderReceiptEmail = async (order: OrderDetails): Promise<string
       });
 
       await transporter.sendMail({
-        from: process.env.SMTP_FROM || `"L'Ambroisie Gastronomy" <${process.env.SMTP_USER}>`,
+        from: process.env.SMTP_FROM || `"Restro" <${process.env.SMTP_USER}>`,
         to: order.customerEmail,
-        subject: `[L'Ambroisie] Xác Nhận Đơn Hàng Thành Công #${order.id}`,
+        subject: `[Restro] Xác Nhận Đơn Hàng Thành Công #${order.id}`,
         html: receiptHtml,
       });
 
@@ -401,7 +401,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
     <html lang="vi">
     <head>
       <meta charset="UTF-8">
-      <title>Xác Nhận Đặt Bàn L'Ambroisie</title>
+      <title>Xác Nhận Đặt Bàn Restro</title>
     </head>
     <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #130e0a; color: #f2ebd9; margin: 0; padding: 30px 15px;">
       
@@ -445,7 +445,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
               <!-- Header -->
               <div style="text-align: center; margin-bottom: 25px;">
                 <div style="color: #dcb36c; font-size: 14px; margin-bottom: 12px; letter-spacing: 6px;">✦ ✦ ✦</div>
-                <div style="font-family: 'Playfair Display', 'Georgia', serif; font-size: 26px; font-weight: bold; letter-spacing: 3px; color: #dcb36c; margin-bottom: 6px; text-transform: uppercase;">L'AMBROISIE</div>
+                <div style="font-family: 'Playfair Display', 'Georgia', serif; font-size: 26px; font-weight: bold; letter-spacing: 3px; color: #dcb36c; margin-bottom: 6px; text-transform: uppercase;">RESTRO</div>
                 <div style="font-size: 10px; color: #a48c68; letter-spacing: 2px; text-transform: uppercase; font-weight: 700;">Nhà Hàng Fine Dining & Thưởng Thức Ẩm Thực</div>
                 <div style="color: #bda06a; font-size: 16px; margin: 15px 0;">◆</div>
                 
@@ -463,7 +463,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
                   Xin chào ${booking.guest_name},
                 </p>
                 <p style="font-size: 13px; color: #d0c4b2; line-height: 1.7; margin-top: 0; max-width: 480px; margin-left: auto; margin-right: auto;">
-                  Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ tại nhà hàng <strong>L'Ambroisie</strong>. Yêu cầu đặt bàn của bạn đã được ghi nhận thành công với các thông tin chi tiết dưới đây:
+                  Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ tại nhà hàng <strong>Restro</strong>. Yêu cầu đặt bàn của bạn đã được ghi nhận thành công với các thông tin chi tiết dưới đây:
                 </p>
               </div>
 
@@ -525,7 +525,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
 
               <!-- Footer -->
               <div style="text-align: center; font-size: 12px; color: #a48c68; line-height: 1.8;">
-                Cảm ơn bạn đã tin tưởng dịch vụ của L'Ambroisie.<br>
+                Cảm ơn bạn đã tin tưởng dịch vụ của Restro.<br>
                 <span style="font-family: 'Playfair Display', 'Georgia', serif; font-style: italic; font-weight: 700; color: #dcb36c; font-size: 14px;">Rất hân hạnh được đón tiếp quý khách!</span><br>
                 <div style="color: #a48c68; font-size: 10px; font-weight: 700; letter-spacing: 1px; display: inline-block; margin-top: 15px; text-transform: uppercase;">
                   ResManager System — Restaurant & Booking Management
@@ -607,9 +607,9 @@ export const sendBookingConfirmationEmail = async (booking: BookingEmailDetails)
         });
 
         await transporter.sendMail({
-          from: process.env.SMTP_FROM || `"L'Ambroisie Gastronomy" <${process.env.SMTP_USER}>`,
+          from: process.env.SMTP_FROM || `"Restro" <${process.env.SMTP_USER}>`,
           to: targetEmail,
-          subject: `[L'Ambroisie] Xác Nhận Đặt Bàn Thành Công #${booking.confirmation_code || booking.id}`,
+          subject: `[Restro] Xác Nhận Đặt Bàn Thành Công #${booking.confirmation_code || booking.id}`,
           html: bookingHtml,
         });
 
@@ -632,9 +632,9 @@ export const sendBookingConfirmationEmail = async (booking: BookingEmailDetails)
         });
 
         const info = await testTransporter.sendMail({
-          from: `"L'Ambroisie Gastronomy" <${testAccount.user}>`,
+          from: `"Restro" <${testAccount.user}>`,
           to: targetEmail,
-          subject: `[L'Ambroisie] Xác Nhận Đặt Bàn Thành Công #${booking.confirmation_code || booking.id}`,
+          subject: `[Restro] Xác Nhận Đặt Bàn Thành Công #${booking.confirmation_code || booking.id}`,
           html: bookingHtml,
         });
 
