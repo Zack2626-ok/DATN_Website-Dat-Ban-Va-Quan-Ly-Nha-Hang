@@ -4,8 +4,8 @@ import { formatCurrency } from "../../../utils/formatCurrency";
 import api from "../../../services/axiosInstance";
 import { toast } from "react-hot-toast";
 import { KpiCard } from "./kpicard";
-import { PayDebtModal } from "./Paydebtmodal";
-import { StockCheckModal } from "./Stockcheckmodal";
+import { PayDebtModal } from "./paydebtmodal";
+import { StockCheckModal } from "./stockcheckmodal";
 
 export const LossDebtReport: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -224,7 +224,9 @@ export const LossDebtReport: React.FC = () => {
                     <td className="px-5 py-3">
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          row.status === "Quá hạn"
+                          row.status === "Đã thanh toán"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : row.status === "Quá hạn"
                             ? "bg-rose-50 text-rose-700"
                             : row.status === "Sắp đến hạn"
                             ? "bg-amber-50 text-amber-700"
@@ -233,23 +235,29 @@ export const LossDebtReport: React.FC = () => {
                       >
                         <span
                           className={`h-1.5 w-1.5 rounded-full ${
-                            row.status === "Quá hạn"
+                            row.status === "Đã thanh toán"
+                              ? "bg-emerald-500"
+                              : row.status === "Quá hạn"
                               ? "bg-rose-500"
                               : row.status === "Sắp đến hạn"
                               ? "bg-amber-500"
                               : "bg-slate-400"
                           }`}
                         />
-                        {row.status}
+                        {row.status === "Đã thanh toán" ? "Đã thanh toán" : "Còn thiếu"}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <button
-                        onClick={() => setPayModal({ open: true, supplier: row })}
-                        className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-sky-700"
-                      >
-                        Thanh toán
-                      </button>
+                      {row.amount > 0 ? (
+                        <button
+                          onClick={() => setPayModal({ open: true, supplier: row })}
+                          className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-sky-700"
+                        >
+                          Thanh toán
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
                     </td>
                   </tr>
                 ))

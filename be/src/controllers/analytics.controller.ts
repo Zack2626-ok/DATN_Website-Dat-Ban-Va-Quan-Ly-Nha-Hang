@@ -415,44 +415,56 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
       ORDER BY variance ASC
     `);
 
-    // 2) Công nợ NCC: lấy cả payment_terms để tính due_date đúng
+    // 2) Công nợ NCC: lấy tất cả NCC đang nợ (total_debt > 0) HOẶC đã từng nợ
+    //    và đã tất toán (có lịch sử trong debt_payments) để hiển thị "Đã thanh toán"
     const debtRows = await db.query(`
       SELECT 
-        id,
-        name       AS supplierName,
-        phone,
-        total_debt AS amount,
-        payment_terms
-      FROM suppliers
-      WHERE total_debt > 0
-      ORDER BY total_debt DESC
+        s.id,
+        s.name       AS supplierName,
+        s.phone,
+        s.total_debt AS amount,
+        s.payment_terms
+      FROM suppliers s
+      WHERE s.total_debt > 0
+         OR EXISTS (SELECT 1 FROM debt_payments dp WHERE dp.supplier_id = s.id)
+      ORDER BY s.total_debt DESC
     `);
 
     const now = new Date();
     const supplierDebts = debtRows.map((r: any) => {
+      const amount = Number(r.amount);
       const due = new Date(now);
       due.setDate(due.getDate() + (Number(r.payment_terms) || 30));
       const daysLeft = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-      let status = "Chưa thanh toán";
-      if (daysLeft < 0) status = "Quá hạn";
-      else if (daysLeft <= 3) status = "Sắp đến hạn";
+      // Nợ đã về 0 → tất toán xong, không cần tính hạn/quá hạn nữa
+      let status: string;
+      if (amount === 0) {
+        status = "Đã thanh toán";
+      } else if (daysLeft < 0) {
+        status = "Quá hạn";
+      } else if (daysLeft <= 3) {
+        status = "Sắp đến hạn";
+      } else {
+        status = "Chưa thanh toán";
+      }
 
       return {
         id: `SUP-${r.id}`,
         rawId: r.id,
         supplierName: r.supplierName,
         phone: r.phone,
-        amount: Number(r.amount),
+        amount,
         due: due.toISOString().split("T")[0],
         daysLeft,
         status,
       };
     });
 
-    // 3) Tổng hợp summary
-    const totalDebt = supplierDebts.reduce((s: number, d: any) => s + d.amount, 0);
-    const overdueDebt = supplierDebts
+    // 3) Tổng hợp summary — chỉ tính trên các NCC ĐANG còn nợ (amount > 0)
+    const owingSuppliers = supplierDebts.filter((d: any) => d.amount > 0);
+    const totalDebt = owingSuppliers.reduce((s: number, d: any) => s + d.amount, 0);
+    const overdueDebt = owingSuppliers
       .filter((d: any) => d.status === "Quá hạn")
       .reduce((s: number, d: any) => s + d.amount, 0);
 
@@ -472,8 +484,8 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
         summary: {
           totalDebt,
           overdueDebt,
-          supplierCount: supplierDebts.length,
-          overdueCount: supplierDebts.filter((d: any) => d.status === "Quá hạn").length,
+          supplierCount: owingSuppliers.length,
+          overdueCount: owingSuppliers.filter((d: any) => d.status === "Quá hạn").length,
         },
       },
       "Tải báo cáo hao hụt công nợ thành công"
