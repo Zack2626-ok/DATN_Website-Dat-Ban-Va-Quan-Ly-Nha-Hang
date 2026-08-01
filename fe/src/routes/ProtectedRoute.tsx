@@ -8,7 +8,7 @@ interface Props {
   requireCheckIn?: boolean;
 }
 
-export default function ProtectedRoute({ children, allowedRoles, requireCheckIn = true }: Props) {
+export default function ProtectedRoute({ children, allowedRoles }: Props) {
   const { user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
@@ -21,9 +21,9 @@ export default function ProtectedRoute({ children, allowedRoles, requireCheckIn 
   }
 
   // Chưa đăng nhập → về trang đăng nhập nhân viên
-  if (!user) {
-    return <Navigate to="/auth/login" replace />;
-  }
+  // if (!user) {
+  //   return <Navigate to="/auth/login" replace />;
+  // }
 
   // // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
   // if (allowedRoles) {

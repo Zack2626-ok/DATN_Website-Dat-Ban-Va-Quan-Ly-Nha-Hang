@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import {
   FileText,
   User,
@@ -9,11 +9,10 @@ import {
   Printer,
   Banknote,
   ArrowRightLeft,
-  QrCode,
   UserCheck,
   Hourglass,
 } from "lucide-react";
-import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
+import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
 
 interface Props {
@@ -35,10 +34,9 @@ const formatTime = (dateStr: string) => {
 
 export const InvoiceDetailPanel: React.FC<Props> = (props) => {
   const { invoice, onPay, onPrint, loading } = props;
-  const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
 
   useEffect(() => {
-    getRestaurantInfo().then(setResInfo).catch(() => {});
+    getRestaurantInfo().catch(() => { });
   }, []);
 
   if (!invoice) {
