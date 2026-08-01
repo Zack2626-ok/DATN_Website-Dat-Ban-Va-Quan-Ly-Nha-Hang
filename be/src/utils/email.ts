@@ -407,30 +407,58 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
       
       <!-- Outer Border / Inset Border Container -->
       <div style="max-width: 580px; margin: 0 auto; background-color: #18110b; border: 2px solid #bda06a; padding: 12px; border-radius: 4px; box-shadow: 0 15px 40px rgba(0,0,0,0.8);">
-        <div style="border: 1px solid rgba(189, 160, 106, 0.45); padding: 35px 25px;">
+        <div style="border: 1px solid rgba(189, 160, 106, 0.45); padding: 35px 25px; position: relative;">
+          
+          <!-- Corner flourishes -->
+          <div style="position: absolute; top: 10px; left: 10px; width: 60px; height: 60px; opacity: 0.65; pointer-events: none;">
+            <svg viewBox="0 0 100 100" fill="none" stroke="#dcb36c" stroke-width="1.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+              <path d="M 10,10 C 25,10 40,15 45,25 C 47,29 45,35 40,35 C 35,35 32,28 35,22 C 38,16 48,15 55,20 C 65,27 60,42 50,42 C 40,42 35,30 42,20 C 47,12 60,8 75,12" />
+              <path d="M 10,10 C 10,25 15,40 25,45 C 29,47 35,45 35,40 C 35,35 28,32 22,35 C 16,38 15,48 20,55 C 27,65 42,60 42,50 C 42,40 30,35 20,42 C 12,47 8,60 12,75" />
+              <circle cx="10" cy="10" r="2" fill="#dcb36c" />
+            </svg>
+          </div>
+          <div style="position: absolute; top: 10px; right: 10px; width: 60px; height: 60px; opacity: 0.65; pointer-events: none; transform: scaleX(-1);">
+            <svg viewBox="0 0 100 100" fill="none" stroke="#dcb36c" stroke-width="1.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+              <path d="M 10,10 C 25,10 40,15 45,25 C 47,29 45,35 40,35 C 35,35 32,28 35,22 C 38,16 48,15 55,20 C 65,27 60,42 50,42 C 40,42 35,30 42,20 C 47,12 60,8 75,12" />
+              <path d="M 10,10 C 10,25 15,40 25,45 C 29,47 35,45 35,40 C 35,35 28,32 22,35 C 16,38 15,48 20,55 C 27,65 42,60 42,50 C 42,40 30,35 20,42 C 12,47 8,60 12,75" />
+              <circle cx="10" cy="10" r="2" fill="#dcb36c" />
+            </svg>
+          </div>
+          <div style="position: absolute; bottom: 10px; left: 10px; width: 60px; height: 60px; opacity: 0.65; pointer-events: none; transform: scaleY(-1);">
+            <svg viewBox="0 0 100 100" fill="none" stroke="#dcb36c" stroke-width="1.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+              <path d="M 10,10 C 25,10 40,15 45,25 C 47,29 45,35 40,35 C 35,35 32,28 35,22 C 38,16 48,15 55,20 C 65,27 60,42 50,42 C 40,42 35,30 42,20 C 47,12 60,8 75,12" />
+              <path d="M 10,10 C 10,25 15,40 25,45 C 29,47 35,45 35,40 C 35,35 28,32 22,35 C 16,38 15,48 20,55 C 27,65 42,60 42,50 C 42,40 30,35 20,42 C 12,47 8,60 12,75" />
+              <circle cx="10" cy="10" r="2" fill="#dcb36c" />
+            </svg>
+          </div>
+          <div style="position: absolute; bottom: 10px; right: 10px; width: 60px; height: 60px; opacity: 0.65; pointer-events: none; transform: scale(-1);">
+            <svg viewBox="0 0 100 100" fill="none" stroke="#dcb36c" stroke-width="1.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+              <path d="M 10,10 C 25,10 40,15 45,25 C 47,29 45,35 40,35 C 35,35 32,28 35,22 C 38,16 48,15 55,20 C 65,27 60,42 50,42 C 40,42 35,30 42,20 C 47,12 60,8 75,12" />
+              <path d="M 10,10 C 10,25 15,40 25,45 C 29,47 35,45 35,40 C 35,35 28,32 22,35 C 16,38 15,48 20,55 C 27,65 42,60 42,50 C 42,40 30,35 20,42 C 12,47 8,60 12,75" />
+              <circle cx="10" cy="10" r="2" fill="#dcb36c" />
+            </svg>
+          </div>
+
+          <!-- Side flourishes -->
+          <div style="position: absolute; top: 35%; left: 8px; width: 35px; height: 90px; opacity: 0.45; pointer-events: none;">
+            <svg viewBox="0 0 50 150" fill="none" stroke="#dcb36c" stroke-width="1.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+              <path d="M 10,75 C 10,40 40,40 40,20 C 40,5 20,5 20,20 C 20,35 35,50 10,75 Z" />
+              <path d="M 10,75 C 10,110 40,110 40,130 C 40,145 20,145 20,130 C 20,115 35,100 10,75 Z" />
+            </svg>
+          </div>
+          <div style="position: absolute; top: 35%; right: 8px; width: 35px; height: 90px; opacity: 0.45; pointer-events: none; transform: scaleX(-1);">
+            <svg viewBox="0 0 50 150" fill="none" stroke="#dcb36c" stroke-width="1.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%;">
+              <path d="M 10,75 C 10,40 40,40 40,20 C 40,5 20,5 20,20 C 20,35 35,50 10,75 Z" />
+              <path d="M 10,75 C 10,110 40,110 40,130 C 40,145 20,145 20,130 C 20,115 35,100 10,75 Z" />
+            </svg>
+          </div>
           
           <!-- Header -->
           <div style="text-align: center; margin-bottom: 25px;">
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
-              <tr>
-                <td style="width: 30%; text-align: left; vertical-align: middle;">
-                  <img src="https://cdn-icons-png.flaticon.com/512/1083/1083416.png" style="width: 50px; opacity: 0.85; filter: sepia(100%) saturate(150%) hue-rotate(5deg);" alt="Golden Crane" />
-                </td>
-                <td style="width: 40%; text-align: center; vertical-align: middle;">
-                  <div style="color: #dcb36c; font-size: 14px; letter-spacing: 6px;">✦ ✦ ✦</div>
-                </td>
-                <td style="width: 30%; text-align: right; vertical-align: middle;">
-                  <img src="https://cdn-icons-png.flaticon.com/512/1083/1083416.png" style="width: 50px; opacity: 0.85; filter: sepia(100%) saturate(150%) hue-rotate(5deg); transform: scaleX(-1);" alt="Golden Crane" />
-                </td>
-              </tr>
-            </table>
-            
+            <div style="color: #dcb36c; font-size: 14px; margin-bottom: 12px; letter-spacing: 6px;">✦ ✦ ✦</div>
             <div style="font-family: 'Playfair Display', 'Georgia', serif; font-size: 26px; font-weight: bold; letter-spacing: 3px; color: #dcb36c; margin-bottom: 6px; text-transform: uppercase;">L'AMBROISIE</div>
-            <div style="font-size: 10px; color: #a48c68; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; margin-bottom: 15px;">Nhà Hàng Fine Dining & Thưởng Thức Ẩm Thực</div>
-            
-            <div style="text-align: center; margin: 15px 0;">
-              <img src="https://cdn-icons-png.flaticon.com/512/2723/2723639.png" style="width: 40px; opacity: 0.85; filter: sepia(100%) saturate(150%) hue-rotate(5deg);" alt="Golden Dragon" />
-            </div>
+            <div style="font-size: 10px; color: #a48c68; letter-spacing: 2px; text-transform: uppercase; font-weight: 700;">Nhà Hàng Fine Dining & Thưởng Thức Ẩm Thực</div>
+            <div style="color: #bda06a; font-size: 16px; margin: 15px 0;">◆</div>
             
             <div style="font-size: 18px; font-weight: 800; color: #f2ebd9; letter-spacing: 1px; margin-top: 15px;">🎉 XÁC NHẬN ĐẶT BÀN THÀNH CÔNG</div>
             <div style="font-size: 12px; color: #a48c68; letter-spacing: 1px; margin-top: 6px; text-transform: uppercase; font-weight: 700;">
@@ -494,8 +522,16 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
             <div>• Mọi thay đổi hoặc yêu cầu hỗ trợ, vui lòng gọi Hotline: <strong style="color: #dcb36c;">+84 28 3829 4000</strong>.</div>
           </div>
 
+          <!-- Bottom separator and flourish -->
           <div style="text-align: center; margin: 25px 0;">
-            <img src="https://cdn-icons-png.flaticon.com/512/3790/3790695.png" style="width: 35px; opacity: 0.8; filter: sepia(100%) saturate(150%) hue-rotate(5deg);" alt="Golden Cloud" />
+            <svg width="180" height="30" viewBox="0 0 200 30" fill="none" stroke="#dcb36c" stroke-width="1.2" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="opacity: 0.75; display: inline-block;">
+              <!-- Left scroll -->
+              <path d="M 100,15 C 70,15 50,5 40,15 C 30,25 45,25 50,15 C 55,5 30,5 20,15 C 10,25 5,15 15,10" />
+              <!-- Right scroll -->
+              <path d="M 100,15 C 130,15 150,5 160,15 C 170,25 155,25 150,15 C 145,5 170,5 180,15 C 190,25 195,15 185,10" />
+              <!-- Center diamond -->
+              <polygon points="100,10 105,15 100,20 95,15" fill="#dcb36c" />
+            </svg>
           </div>
 
           <!-- Footer -->
