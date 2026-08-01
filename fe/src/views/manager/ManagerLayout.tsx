@@ -1,6 +1,6 @@
 import React from "react";
-import { Outlet } from "react-router-dom";
-import { Bell, LogOut, Search, User } from "lucide-react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Bell, LogOut, Search, Timer, User } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
@@ -13,6 +13,7 @@ import { ManagerSidebar } from "./components/ManagerSidebar";
  */
 export const ManagerLayout: React.FC = () => {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || "manager";
@@ -68,6 +69,16 @@ export const ManagerLayout: React.FC = () => {
               <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#F5C344] text-[9px] font-black text-[#1A1A1A] shadow-xs">
                 3
               </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/checkin")}
+              title="Chấm công vào hoặc ra"
+              className="hidden sm:flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              <Timer size={14} />
+              Chấm công
             </button>
 
             {/* User Profile Card */}
