@@ -412,18 +412,48 @@ CREATE TABLE menu_items (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO menu_items (category_id, name, description, price, image_url, kitchen_station, is_featured) VALUES
- (1, 'Gỏi hải sản',      'Gỏi tôm mực rau thơm sốt chanh',      120000, 'goi.jpg',      'cold_kitchen', 1),
- (1, 'Chả giò',          'Chả giò nhân thịt heo, chiên giòn',     80000, 'chagio.jpg',   'hot_kitchen',  0),
- (2, 'Bò lúc lắc',       'Thăn bò xào dầu hào, khoai tây chiên', 180000, 'bo.jpg',       'hot_kitchen',  1),
- (2, 'Gà nướng',         'Gà nướng mật ong sả tắc',              160000, 'ga.jpg',       'hot_kitchen',  0),
- (2, 'Cá hồi sốt chanh', 'Phi lê cá hồi áp chảo, sốt bơ chanh', 220000, 'cahoi.jpg',    'hot_kitchen',  1),
- (3, 'Lẩu Thái',         'Lẩu chua cay kiểu Thái',               350000, 'lauthai.jpg',  'hot_kitchen',  0),
- (3, 'Lẩu hải sản',      'Lẩu hải sản tươi: tôm, mực, nghêu',   400000, 'lauhs.jpg',    'hot_kitchen',  0),
- (4, 'Coca Cola',        'Lon 330ml',                              20000, 'coca.jpg',     'bar',          0),
- (4, 'Pepsi',            'Lon 330ml',                              20000, 'pepsi.jpg',    'bar',          0),
- (4, 'Trà đào',          'Trà đào cam sả, đá viên',               35000, 'tradao.jpg',   'bar',          0),
- (5, 'Kem Vani',         'Kem vani 2 viên, sốt caramel',          45000, 'kem.jpg',      'cold_kitchen', 0),
- (5, 'Chè thái',         'Chè thái nhiều màu, nước cốt dừa',      40000, 'che_thai.jpg', 'cold_kitchen', 0);
+ (1, 'Nem rán giòn phố cổ Hà Nội', 'Thịt heo băm nhuyễn chiên cùng mộc nhĩ, miến dong chín vàng giòn rụm.', 95000, 'https://images.unsplash.com/photo-1606787366850-de6330128bfc?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (1, 'Chả giò cua bể Hải Phòng cuốn chặt', 'Cua bể tươi ngon béo ngậy trộn nấm mèo bọc trong vỏ bánh tráng giòn dai.', 125000, 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (1, 'Bánh bột lọc tôm sông đất cố đô', 'Bột lọc trong suốt dẻo dai bọc tôm sông rim đậm đà chan nước mắm chua ngọt.', 75000, 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (1, 'Nem lụi nướng sả tươi Hội An', 'Thịt heo giã nhuyễn bọc sả nướng than hoa ăn kèm rau sống và sốt đậu phộng.', 110000, 'https://images.unsplash.com/photo-1529193591184-b1d58069ecdd?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (1, 'Bánh xèo miền Tây sông nước vàng giòn', 'Bánh xèo nhân giá đỗ, tôm thịt vỏ mỏng giòn rụm cuốn cải xanh ăn kèm nước mắm tỏi ớt đặc sắc.', 115000, 'https://images.unsplash.com/photo-1625813506062-0aeb1d7a094b?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (1, 'Gỏi ngó sen tôm thịt', 'Ngó sen giòn sần sật trộn tôm đất tươi ngọt, thịt ba chỉ luộc và rau thơm.', 145000, 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 1),
+ (1, 'Gỏi hoa chuối bắp bò Tây Bắc', 'Hoa chuối bào sợi mỏng bóp chua ngọt cùng bắp bò luộc mềm và lạc rang.', 135000, 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 0),
+ (1, 'Cuốn diếp cải xanh tôm sông', 'Tôm luộc, thịt ba rọi và bún tươi cuộn gọn trong lá cải xanh mát chấm tương đậu béo.', 85000, 'https://images.unsplash.com/photo-1551248429-40975aa4de74?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 0),
+ (1, 'Phở cuốn thịt bò tơ nướng Hà Nội', 'Thịt bò xào lăn thơm phức cuốn trong bánh phở mềm mịn kèm rau thơm.', 120000, 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 1),
+ (1, 'Gỏi xoài xanh tôm khô đất chua ngọt', 'Xoài xanh bào sợi chua thanh trộn tôm khô đất cay nồng đặc sắc.', 95000, 'https://images.unsplash.com/photo-1607532941433-304659e8198a?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 0),
+ (2, 'Sò dương nướng sốt mỡ hành sa tế', 'Sò tươi dai ngọt hòa quyện cùng sa tế thơm nồng.', 159000, 'https://images.unsplash.com/photo-1534080564583-6be75777b70a?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (2, 'Cá chình nướng nghệ đất sét Hội An', 'Cá chình béo ngậy ướp nghệ tươi nướng niêu đất sực mùi thơm thảo mộc.', 420000, 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Cá mú đỏ hấp tàu xì Hồng Kông', 'Cá mú đỏ thịt ngọt chắc nướng chín tới cùng nước tương tàu xì hảo hạng.', 480000, 'https://images.unsplash.com/photo-1534604973900-c43ab4c2e0ab?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Tôm hùm bông đút lò phô mai đút lò', 'Tôm hùm thượng hạng nướng phô mai đút lò thơm lừng quyến rũ.', 1250000, 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (2, 'Hàu sữa Nha Trang nướng bơ tỏi', 'Hàu sữa béo ngậy nướng sốt bơ tỏi thơm giòn.', 180000, 'https://images.unsplash.com/photo-1553618551-fba689030290?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Vịt quay gia truyền nguyên con', 'Ăn kèm bánh bao hấp/chiên và sốt chấm tương đen truyền thống.', 1090000, 'https://images.unsplash.com/photo-1518492104633-130d0cc84637?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (2, 'Vịt quay gia truyền nửa con', 'Phù hợp cho nhóm khách nhỏ thưởng thức nét tinh túy ẩm thực.', 590000, 'https://images.unsplash.com/photo-1518492104633-130d0cc84637?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Sườn heo nướng lá mắc mật Lạng Sơn', 'Sườn heo tảng ướp mật ong rừng cùng lá mắc mật thơm dịu.', 280000, 'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Bò tơ nướng lụi bản gang sả ớt', 'Bò tơ mềm ngọt nướng cháy xém cạnh trên bản gang nóng hổi.', 340000, 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (2, 'Heo sữa quay giòn giòn da', 'Heo sữa nguyên con quay giòn da đỏ bóng ăn kèm dưa kiệu.', 1450000, 'https://images.unsplash.com/photo-1627308595229-7830a5c91f9f?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Combo Sung Túc (3 - 4 người)', 'Gồm gỏi ngó sen, gà nướng xôi phồng, cá kho tộ, canh chua Nam Bộ và cơm niêu đất.', 2300000, 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (2, 'Combo Thịnh Soạn (5 - 6 người)', 'Bổ sung hàu nướng bơ tỏi, heo quay bánh hỏi và lẩu hải sản chua cay thập cẩm.', 2830000, 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Combo Phố Cổ Hội An hội tụ', 'Trải nghiệm trọn vẹn đặc sản cơm gà Hội An, cao lầu thịt xá xíu và bánh vạc tai vạc.', 1850000, 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (2, 'Cơm niêu đất xá xíu hoàng kim hạt dẻo', 'Cơm niêu nóng hổi phủ thịt xá xíu mềm thơm, trứng muối bùi béo ngọt ngào.', 145000, 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Canh chua cá lóc Nam Bộ chuẩn vị', 'Nước dùng cá lóc tươi nấu chua chua ngọt ngọt cùng dứa, dọc mùng và me quả.', 120000, 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Mỳ Quảng gà ta trứng cút đặc sản', 'Sợi mỳ vàng dai cùng gà ta kho đậm đà, rắc lạc rang và bánh đa giòn rụm.', 85000, 'https://images.unsplash.com/photo-1625398407796-82650a8c135f?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Mỳ Quảng tôm thịt sườn non rút xương', 'Sự kết hợp tuyệt vời của tôm sông rim ngọt và sườn non ninh mềm mượt.', 95000, 'https://images.unsplash.com/photo-1625398407796-82650a8c135f?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Phở bò Wagyu tái lăn đặc biệt', 'Sự giao thoa ẩm thực Việt Nhật với thịt bò Wagyu xào tái lăn cùng hành hoa.', 185000, 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 1),
+ (2, 'Bún bò Huế ngự uyển chân giò', 'Nước dùng cay nồng mùi sả mắm ruốc đặc trưng, ăn kèm chả cua bể.', 90000, 'https://images.unsplash.com/photo-1625398407796-82650a8c135f?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (2, 'Bún chả nem cua bể Hà Nội nướng chao', 'Thịt viên nướng cháy cạnh thơm lừng ăn kèm nem cua bể giòn ngọt ngào.', 95000, 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (3, 'Lẩu Thái chua cay', 'Lẩu chua cay kiểu Thái kèm hải sản và rau nấm.', 350000, 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (3, 'Lẩu hải sản sâm đất', 'Lẩu hải sản tươi ngọt nấu kèm sâm đất thanh mát.', 400000, 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800&auto=format&fit=crop&q=80', 'hot_kitchen', 0),
+ (4, 'Trà ô long sen vàng kem sữa béo', 'Trà ô long mộc mạc thơm lừng lớp kem phô mai béo ngậy mặn mặn.', 65000, 'https://images.unsplash.com/photo-1541658016709-82535e94bc69?w=800&auto=format&fit=crop&q=80', 'bar', 0),
+ (4, 'Trà đào cam sả hạt chia tươi', 'Hương sả nồng ấm hòa quyện đào lát giòn ngọt mọng nước.', 55000, 'https://images.unsplash.com/photo-1597481499750-3e6b22637e12?w=800&auto=format&fit=crop&q=80', 'bar', 0),
+ (4, 'Sinh tố bơ dừa sáp béo ngậy', 'Bơ sáp Đắk Lắk xay nhuyễn cùng sữa đặc và nước cốt dừa thơm béo.', 75000, 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=800&auto=format&fit=crop&q=80', 'bar', 0),
+ (4, 'Nước ép cam xoài tươi nhiệt đới', 'Cung cấp vitamin dồi dào từ cam vàng và xoài cát chín thơm ngon.', 60000, 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=800&auto=format&fit=crop&q=80', 'bar', 0),
+ (4, 'Cocktail Restro Signature', 'Sự kết hợp tinh tế giữa rượu Gin, nước cốt chanh dây, lá bạc hà tươi mát.', 165000, 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=800&auto=format&fit=crop&q=80', 'bar', 1),
+ (4, 'Sâm dứa sữa dừa đá bào Hội An', 'Thức uống tuổi thơ giải nhiệt nhanh chóng.', 40000, 'https://images.unsplash.com/photo-1497534446932-c925b458314e?w=800&auto=format&fit=crop&q=80', 'bar', 0),
+ (4, 'Cà phê cốt dừa Hà Nội thơm nồng', 'Cà phê espresso sánh đậm xay cùng đá và cốt dừa sánh béo ngậy.', 55000, 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&auto=format&fit=crop&q=80', 'bar', 0),
+ (5, 'Chè hạt sen long nhãn Huế', 'Hạt sen bùi dẻo bọc trong nhãn lồng cùi dày ngọt lịm.', 45000, 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 1),
+ (5, 'Sữa chua hoa quả đác hạt dẻo', 'Sữa chua lên men tự nhiên trộn cùng dâu tây, kiwi và hạt đác rim mật.', 50000, 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 0),
+ (5, 'Chè trôi nước ngũ sắc trân châu', 'Bánh trôi nước năm màu dẻo dai nhân đậu xanh chan nước cốt dừa béo.', 40000, 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80', 'cold_kitchen', 0);
 
 CREATE TABLE modifier_groups (
     id           INT          NOT NULL AUTO_INCREMENT,
@@ -1175,5 +1205,48 @@ UPDATE vouchers SET used_count = 1 WHERE code = 'GOLD25';
 UPDATE vouchers SET used_count = 1 WHERE code = 'VIP30';
 
 
+-- ===== Bổ sung: Báo cáo hao hụt & công nợ NCC =====
 
+ALTER TABLE suppliers
+  ADD COLUMN payment_terms INT NOT NULL DEFAULT 30 COMMENT 'Số ngày nợ cho phép';
 
+CREATE TABLE debt_payments (
+  id          INT           NOT NULL AUTO_INCREMENT,
+  supplier_id INT           NOT NULL,
+  amount      DECIMAL(12,2) NOT NULL,
+  method      ENUM('cash','bank_transfer','card') NOT NULL DEFAULT 'cash',
+  note        TEXT          DEFAULT NULL,
+  paid_by     INT           NOT NULL,
+  paid_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_debt_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_debt_user     FOREIGN KEY (paid_by)     REFERENCES users(id)     ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE stock_in
+  ADD COLUMN is_credit  TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = mua chịu chưa trả tiền',
+  ADD COLUMN due_date   DATE       DEFAULT NULL        COMMENT 'Hạn thanh toán lô hàng này';
+
+-- ============================================================================
+-- Demo data để test trang "Báo cáo hao hụt & công nợ NCC" có dữ liệu hiển thị
+-- Chạy sau khi đã có bảng debt_payments + cột payment_terms (đã có trong
+-- SQLQuery1.sql bạn gửi)
+-- ============================================================================
+
+-- 1) Cho 2 NCC đang NỢ (sẽ hiện "Còn thiếu")
+UPDATE suppliers SET total_debt = 15000000.00, payment_terms = 30 WHERE id = 1; -- Công ty TNHH Thực phẩm ABC
+UPDATE suppliers SET total_debt =  8000000.00, payment_terms = 7  WHERE id = 2; -- Nhà phân phối Hải sản XYZ
+-- payment_terms = 7 ngày -> nếu hôm nay + 7 ngày vẫn ra tương lai thì sẽ là "Chưa thanh toán"
+-- muốn test trạng thái "Quá hạn" ngay, đặt payment_terms = 0 hoặc số âm:
+-- UPDATE suppliers SET total_debt = 8000000.00, payment_terms = 0 WHERE id = 2;
+
+-- 2) Cho NCC còn lại (id = 3) có LỊCH SỬ đã trả nợ xong (sẽ hiện "Đã thanh toán")
+--    total_debt giữ nguyên 0.00, chỉ cần có 1 dòng trong debt_payments là đủ
+INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by, paid_at)
+VALUES (3, 5000000.00, 'cash', 'Thanh toán demo - đã tất toán', 1, '2026-07-20 10:00:00');
+
+-- 3) Tạo 1 bản ghi kiểm kê MỚI có chênh lệch thật (khác current_stock hiện tại)
+--    để bảng "Chênh lệch hao hụt" có variance khác 0 ngay lập tức
+--    Ví dụ: Thịt bò current_stock = 47.500, giờ kiểm kê thực tế chỉ còn 45.000
+INSERT INTO stock_inventory (ingredient_id, actual_stock, system_stock, noted_at, created_by)
+VALUES (1, 45.000, 47.500, CURDATE(), 2);

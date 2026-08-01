@@ -27,6 +27,17 @@
   --color-admin-border: #e2e8f0;
   --color-admin-text-main: #0f172a;
   --color-admin-text-sub: #475569;
+
+  /* Client / Customer Page Theme Colors (Restro Style) */
+  --color-client-primary: #a72d1e; /* Deep terracotta red */
+  --color-client-primary-hover: #8e2316;
+  --color-client-secondary: #dfb05b; /* Warm mustard gold */
+  --color-client-secondary-hover: #c99c4c;
+  --color-client-bg: #fdfbf7; /* Elegant soft cream background */
+  --color-client-card: #ffffff;
+  --color-client-text: #2a221c; /* Deep warm charcoal */
+  --color-client-muted: #7b6f65; /* Muted warm grey */
+  --color-client-accent: #f0eae1; /* Light sand/beige */
 }
 
 * {

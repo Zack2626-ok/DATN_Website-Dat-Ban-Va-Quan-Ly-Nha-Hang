@@ -40,7 +40,9 @@ export default function CheckInPage() {
 
   useEffect(() => {
     intervalRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(intervalRef.current);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
   const redirectToWork = (delay = 800) => {

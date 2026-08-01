@@ -69,7 +69,7 @@ export default function CustomerLoginPage() {
               <UtensilsCrossed size={32} />
             </span>
           </div>
-          <h1 className="text-4xl font-bold text-white drop-shadow-sm">ResManager</h1>
+          <h1 className="text-4xl font-bold text-white drop-shadow-sm">Restro</h1>
           <p className="text-gray-300 mt-2">Đăng nhập để đặt bàn &amp; quản lý tài khoản</p>
         </div>
 

@@ -91,6 +91,13 @@ export const clearNotificationsApi = async (role?: string): Promise<any> => {
   return response.data.data;
 };
 
+/**
+ * Fetch KDS history of completed and returned items
+ */
+export const getKdsHistoryApi = async (date?: string): Promise<any[]> => {
+  const response = await api.get("/kds/history", { params: { date } });
+  return response.data.data;
+};
 
 /**
  * Fetch all real ingredients from backend

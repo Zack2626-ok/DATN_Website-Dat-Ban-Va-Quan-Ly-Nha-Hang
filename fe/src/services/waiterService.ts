@@ -97,6 +97,7 @@ export const addOrderItem = async (
     seat_number?: number | null;
     course_number?: number;
     kitchen_note?: string;
+    created_by?: number;
   },
 ): Promise<WaiterOrderItem> => {
   const response = await api.post(`/v1/waiter/orders/${orderId}/items`, data);

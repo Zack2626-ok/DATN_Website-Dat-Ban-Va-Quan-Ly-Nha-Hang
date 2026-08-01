@@ -11,7 +11,7 @@ import {
   Clock,
   CheckCircle2,
   Printer,
-  } from "lucide-react";
+} from "lucide-react";
 import { getPaymentHistoryApi, getInvoiceByIdApi } from "../../../services/invoiceService";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 import { printCashierInvoice } from "../../../utils/printBill";
@@ -64,7 +64,7 @@ export const PaymentHistoryPage: React.FC = () => {
 
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
-  
+
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
 
@@ -205,11 +205,10 @@ export const PaymentHistoryPage: React.FC = () => {
             <button
               key={opt.value}
               onClick={() => setMethodFilter(opt.value)}
-              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                methodFilter === opt.value
+              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${methodFilter === opt.value
                   ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
-              }`}
+                }`}
             >
               {opt.label}
             </button>
@@ -337,11 +336,10 @@ export const PaymentHistoryPage: React.FC = () => {
                         <button
                           key={page}
                           onClick={() => setCurrentPage(page)}
-                          className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                            currentPage === page
+                          className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${currentPage === page
                               ? "z-10 bg-blue-600 text-white"
                               : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>
@@ -364,4 +362,3 @@ export const PaymentHistoryPage: React.FC = () => {
     </div>
   );
 };
-
