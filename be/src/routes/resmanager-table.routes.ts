@@ -4,6 +4,7 @@ import {
   getResmanagerTablesHandler,
   getEmptyTablesHandler,
   getResmanagerTableHandler,
+  getActiveOrderForTableHandler,
   updateResmanagerTableStatusHandler,
   transferTableHandler,
   mergeTableHandler,
@@ -33,6 +34,7 @@ router.post("/", createResmanagerTableHandler);
 router.post("/tab", openResmanagerTabHandler);
 
 // GET /api/v1/tables/:id
+router.get("/:id/active-order", getActiveOrderForTableHandler);
 router.get("/:id", getResmanagerTableHandler);
 
 // PATCH /api/v1/tables/:id - Sửa bàn

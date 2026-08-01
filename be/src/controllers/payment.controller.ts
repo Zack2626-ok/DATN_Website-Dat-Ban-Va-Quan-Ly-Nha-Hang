@@ -86,7 +86,8 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
         const orders = await db.getAllResmanagerOrders();
         const order = orders.find((o: any) => String(o.id) === String(orderId));
         if (order && order.table_id) {
-          await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
         }
       } catch (err) {
         console.warn("Could not update order or table status on payment creation:", err);

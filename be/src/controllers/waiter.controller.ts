@@ -55,8 +55,10 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       return;
     }
 
+    const requestedTableId = table_id ? Number(table_id) : null;
+    const primaryTableId = requestedTableId ? await db.resolveResmanagerPrimaryTableId(requestedTableId) : null;
     const order = await db.createResmanagerOrder({
-      table_id: table_id ? Number(table_id) : null,
+      table_id: primaryTableId,
       customer_id: customer_id ? Number(customer_id) : null,
       created_by: Number(created_by),
       order_type: order_type || "dine_in",
@@ -67,11 +69,11 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     });
 
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
-    if (table_id) {
-      await db.updateResmanagerTableStatus(Number(table_id), "serving");
+    if (primaryTableId) {
+      await db.updateResmanagerTableStatus(primaryTableId, "serving");
       // Tự động chuyển món đặt trước (nếu có) sang order_items
-      await db.transferBookingItemsToOrder(Number(table_id), order.id);
-      await db.completeActiveBookingForTable(Number(table_id));
+      await db.transferBookingItemsToOrder(primaryTableId, order.id);
+      await db.completeActiveBookingForTable(primaryTableId);
     }
 
     sendSuccess(res, order, "Tạo order thành công", 201);

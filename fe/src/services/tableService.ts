@@ -33,11 +33,27 @@ export interface ResmanagerTable {
   }[];
   maintenance_note?: string | null;
   is_merged_primary?: boolean;
-  merged_tables?: { id: number; name: string }[];
+  merged_tables?: { id: number; name: string; capacity: number }[];
   is_merged_child?: boolean;
-  merged_into?: { id: number; name: string } | null;
+  merged_into?: { id: number; name: string; capacity: number } | null;
+  cluster_capacity?: number;
   is_split?: boolean;
   split_labels?: string[];
+}
+
+export interface ActiveOrderResolution {
+  requestedTableId: number;
+  primaryTableId: number;
+  redirected: boolean;
+  activeOrderId: number | null;
+  activeOrder: {
+    id: number;
+    tableId: number;
+    status: string;
+    guestName: string | null;
+    guestPhone: string | null;
+    guestCount: number | null;
+  } | null;
 }
 
 export const getTableAreas = async (): Promise<TableArea[]> => {
@@ -52,6 +68,12 @@ export const getTables = async (areaId?: number): Promise<ResmanagerTable[]> => 
 };
 
 export const getTablesV1 = getTables;
+
+/** Resolve a table to the active order managed by its merge-root table. */
+export const getActiveOrderForTable = async (tableId: number): Promise<ActiveOrderResolution> => {
+  const response = await api.get(`/v1/tables/${tableId}/active-order`);
+  return response.data.data;
+};
 
 /** Lấy bàn trống. Nếu có startTime, API sẽ loại trừ bàn bị booking vào khoảng thời gian đó */
 export const getEmptyTables = async (startTime?: string): Promise<ResmanagerTable[]> => {

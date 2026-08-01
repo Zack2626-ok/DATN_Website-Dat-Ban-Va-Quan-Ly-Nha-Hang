@@ -19,6 +19,7 @@ import {
   FileText,
   Loader2,
   Copy,
+  Link2,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -87,6 +88,14 @@ const getCurrentUserInfo = () => {
     return { name: "Nhân viên Phục vụ", code: "NV004" };
   }
 };
+
+/** Return the total physical capacity available to a table or its merged cluster. */
+const getTableClusterCapacity = (table: ResmanagerTable): number =>
+  table.cluster_capacity ?? table.capacity;
+
+/** Check whether a table's current guest count exceeds its physical cluster capacity. */
+const isTableOverClusterCapacity = (table: ResmanagerTable): boolean =>
+  typeof table.guest_count === "number" && table.guest_count > getTableClusterCapacity(table);
 
 const STATUS_CONFIG: Record<
   string,
@@ -258,11 +267,16 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       fetchData();
     });
 
+    socket.on("table:merge_resolved", () => {
+      fetchData();
+    });
+
     return () => {
       socket.off("connect");
       socket.off("table:status_changed");
       socket.off("table:transferred");
       socket.off("table:merged");
+      socket.off("table:merge_resolved");
       socket.disconnect();
       console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
     };
@@ -666,6 +680,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3.5">
                 {filteredTables.map((t) => {
                   const isSelected = selectedTableId?.toString() === t.id.toString();
+                  const mergedTableNames = t.merged_tables?.map((table) => table.name).join(", ") ?? "";
 
                   return (
                     <div
@@ -706,6 +721,23 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                           </span>
                         )}
                       </div>
+
+                      {t.is_merged_primary && mergedTableNames && (
+                        <span
+                          className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black text-violet-700 shadow-xs"
+                          title={`Bàn chính, gộp với ${mergedTableNames}`}
+                        >
+                          <Link2 size={10} /> Chính · {mergedTableNames}
+                        </span>
+                      )}
+                      {t.is_merged_child && t.merged_into && (
+                        <span
+                          className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-black text-sky-700 shadow-xs"
+                          title={`Bàn phụ, đang gộp vào ${t.merged_into.name}`}
+                        >
+                          <Link2 size={10} /> Gộp → {t.merged_into.name}
+                        </span>
+                      )}
 
                       {/* Chairs arranged around the table */}
                       {Array.from({ length: t.capacity }).map((_, i) => {
@@ -761,7 +793,11 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 <div>
                   <h3 className="text-lg font-black text-slate-800">Bàn {selectedTable.name}</h3>
                   <p className="text-xs text-slate-400">
-                    Khu vực: {selectedTable.area_name} • {selectedTable.status !== "empty" ? `Khách: ${selectedTable.guest_count || "?"}/${selectedTable.capacity} người` : `Sức chứa: ${selectedTable.capacity} khách`}
+                    Khu vực: {selectedTable.area_name} • {selectedTable.is_merged_child
+                      ? `Bàn phụ của ${selectedTable.merged_into?.name ?? "bàn chính"}`
+                      : selectedTable.status !== "empty"
+                        ? `Khách: ${selectedTable.guest_count || "?"}/${getTableClusterCapacity(selectedTable)} người`
+                        : `Sức chứa: ${getTableClusterCapacity(selectedTable)} khách`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -780,6 +816,33 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   </button>
                 </div>
               </div>
+
+              {selectedTable.is_merged_primary && (selectedTable.merged_tables?.length ?? 0) > 0 && (
+                <div className="mx-5 mt-4 flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs text-violet-800">
+                  <Link2 size={15} className="mt-0.5 shrink-0 text-violet-600" />
+                  <p>
+                    <span className="font-black">Bàn chính của cụm:</span>{" "}
+                    {selectedTable.name} + {selectedTable.merged_tables?.map((table) => table.name).join(", ")}. Sức chứa cụm: {getTableClusterCapacity(selectedTable)} khách. Món ăn và thanh toán được xử lý chung tại đây.
+                  </p>
+                </div>
+              )}
+
+              {selectedTable.is_merged_child && selectedTable.merged_into && (
+                <div className="mx-5 mt-4 flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800">
+                  <div className="flex items-start gap-2">
+                    <Link2 size={15} className="mt-0.5 shrink-0 text-sky-600" />
+                    <p>
+                      <span className="font-black">Bàn phụ:</span> {selectedTable.name} đang gộp vào {selectedTable.merged_into.name}. Món ăn và thanh toán dùng chung với bàn chính.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedTableId(selectedTable.merged_into?.id ?? null)}
+                    className="shrink-0 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-[10px] font-black text-sky-700 hover:bg-sky-100 transition-colors"
+                  >
+                    Mở {selectedTable.merged_into.name}
+                  </button>
+                </div>
+              )}
 
               {/* Status control buttons */}
               <div className="p-5 space-y-4">
@@ -863,8 +926,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
                         <div className="flex justify-between">
                           <span className="text-gray-500">Số khách đặt/đang ngồi:</span>
-                          <span className="font-bold text-emerald-700">
-                            {selectedTable.guest_count || "?"} / {selectedTable.capacity} người
+                          <span className={`font-bold ${isTableOverClusterCapacity(selectedTable) ? "text-rose-600" : "text-emerald-700"}`}>
+                            {selectedTable.is_merged_child
+                              ? `Xem tại ${selectedTable.merged_into?.name ?? "bàn chính"}`
+                              : `${selectedTable.guest_count || "?"} / ${getTableClusterCapacity(selectedTable)} người`}
                           </span>
                         </div>
                         {selectedTable.booking_code && (
@@ -959,13 +1024,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                       )}
 
                       {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
-                      {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
+                      {isTableOverClusterCapacity(selectedTable) && (
                         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 space-y-2">
                           <div className="flex items-start gap-2">
                             <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
                             <div>
                               <p className="font-bold text-amber-800">
-                                Bàn phát sinh thêm người ({selectedTable.guest_count}/{selectedTable.capacity} khách)
+                                Bàn phát sinh thêm người ({selectedTable.guest_count}/{getTableClusterCapacity(selectedTable)} khách)
                               </p>
                               <p className="text-[11px] text-amber-700 mt-0.5">
                                 Bạn có thể chuyển sang bàn lớn hơn hoặc gộp bàn để phục vụ thuận tiện.
@@ -999,7 +1064,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                                 Món ăn đã gọi
                               </h4>
                             </div>
-                            {selectedTable.status === "serving" && (
+                            {selectedTable.status === "serving" && !selectedTable.is_merged_child && (
                               <button
                                 onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
                                 className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
@@ -1088,7 +1153,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                           )}
 
                           {/* Nút thao tác chuyển/gộp/tách — CHỈ HIỂN THỊ khi bàn đang ở trạng thái phục vụ (serving) */}
-                          {selectedTable.status === "serving" && (
+                          {selectedTable.status === "serving" && !selectedTable.is_merged_child && (
                             <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
                               <button
                                 onClick={() => setActiveAction("transfer")}
@@ -1216,8 +1281,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <MergeTableModal
         isOpen={activeAction === "merge"}
         onClose={() => setActiveAction(null)}
-        sourceTable={selectedTable as any}
-        availableTables={tables as any}
+        sourceTable={selectedTable}
+        availableTables={tables}
         onConfirm={async () => {
           await fetchData();
           setActiveAction(null);

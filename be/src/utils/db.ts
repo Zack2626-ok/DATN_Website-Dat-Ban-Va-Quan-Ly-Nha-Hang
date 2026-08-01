@@ -5,7 +5,13 @@ import fs from "fs";
 import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
 import { BOOKING_STATUS } from "../constants/booking";
-import { TABLE_STATUS } from "../constants/table";
+import { TABLE_STATUS, type TableStatus } from "../constants/table";
+import {
+  ACTIVE_ORDER_STATUSES,
+  MERGE_BOOKING_LOOKAHEAD_MINUTES,
+  ORDER_STATUS,
+  TABLE_MERGE_STATUS,
+} from "../constants/order";
 
 
 
@@ -17,6 +23,28 @@ let dbAvailable = false;
 let isInitializing = false;
 const JSON_DB_DIR = path.join(process.cwd(), "src", "database");
 const JSON_DB_PATH = path.join(JSON_DB_DIR, "db.json");
+
+interface SchemaMetadataRow {
+  COLUMN_NAME?: string;
+  COLUMN_TYPE?: string;
+  TABLE_NAME?: string;
+  CONSTRAINT_NAME?: string;
+}
+
+interface TableMergeDisplayRow {
+  id: number;
+  name: string;
+  capacity: number;
+}
+
+interface TableIdRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+export interface ResmanagerTableStatusUpdateResult {
+  primaryTableId: number;
+  updatedTableIds: number[];
+}
 
 const ensurePool = (): mysql.Pool => {
   if (!connectionPool) {
@@ -482,6 +510,118 @@ const runSchemaMigrations = async (): Promise<void> => {
     `);
 
     // Migration: Thêm các cột cọc tiền và guest_email vào bookings nếu chưa có
+    // Table merge schema: direct root reference, order traceability and immutable audit rows.
+    const mergedIntoTableColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tables' AND COLUMN_NAME = 'merged_into_table_id'`,
+    );
+    if (mergedIntoTableColumn.length === 0) {
+      await query(`ALTER TABLE tables ADD COLUMN merged_into_table_id INT NULL AFTER maintenance_note`);
+      await query(`ALTER TABLE tables ADD INDEX idx_tables_merged_into (merged_into_table_id)`);
+      await query(`ALTER TABLE tables ADD CONSTRAINT fk_tables_merged_into
+        FOREIGN KEY (merged_into_table_id) REFERENCES tables(id) ON DELETE SET NULL`);
+      console.log("Migration: added tables.merged_into_table_id");
+    }
+
+    const mergedIntoOrderColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'merged_into_order_id'`,
+    );
+    if (mergedIntoOrderColumn.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN merged_into_order_id INT NULL AFTER closed_at`);
+      await query(`ALTER TABLE orders ADD INDEX idx_orders_merged_into (merged_into_order_id)`);
+      await query(`ALTER TABLE orders ADD CONSTRAINT fk_orders_merged_into
+        FOREIGN KEY (merged_into_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+      console.log("Migration: added orders.merged_into_order_id");
+    }
+
+    const orderStatusColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'status'`,
+    );
+    if (orderStatusColumn.length > 0 && !String(orderStatusColumn[0].COLUMN_TYPE).includes(ORDER_STATUS.MERGED)) {
+      await query(`ALTER TABLE orders MODIFY COLUMN status
+        ENUM('open','serving','pending_payment','completed','cancelled','merged') NOT NULL DEFAULT 'open'`);
+      console.log("Migration: added orders.status = merged");
+    }
+
+    const sourceOrderColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'source_order_id'`,
+    );
+    if (sourceOrderColumn.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN source_order_id INT NULL AFTER order_id`);
+      await query(`ALTER TABLE order_items ADD INDEX idx_order_items_source_order (source_order_id)`);
+      await query(`ALTER TABLE order_items ADD CONSTRAINT fk_order_items_source_order
+        FOREIGN KEY (source_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+      console.log("Migration: added order_items.source_order_id");
+    }
+
+    const mergeTableExists = await query<SchemaMetadataRow[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges'`,
+    );
+    if (mergeTableExists.length === 0) {
+      await query(`
+        CREATE TABLE table_merges (
+          id INT NOT NULL AUTO_INCREMENT,
+          primary_table_id INT NOT NULL,
+          merged_table_id INT NOT NULL,
+          primary_order_id INT NULL,
+          merged_order_id INT NULL,
+          merged_by INT NULL,
+          status ENUM('active','resolved') NOT NULL DEFAULT 'active',
+          merged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          resolved_at DATETIME NULL,
+          PRIMARY KEY (id),
+          INDEX idx_table_merges_primary_status (primary_table_id, status),
+          INDEX idx_table_merges_merged_status (merged_table_id, status),
+          CONSTRAINT fk_merge_primary FOREIGN KEY (primary_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_merge_merged FOREIGN KEY (merged_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_merge_primary_order FOREIGN KEY (primary_order_id) REFERENCES orders(id) ON DELETE SET NULL,
+          CONSTRAINT fk_merge_merged_order FOREIGN KEY (merged_order_id) REFERENCES orders(id) ON DELETE SET NULL,
+          CONSTRAINT fk_merge_user FOREIGN KEY (merged_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log("Migration: created table_merges audit table");
+    } else {
+      const mergeColumns = await query<SchemaMetadataRow[]>(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges'`,
+      );
+      const mergeColumnNames = new Set(mergeColumns.map((column) => String(column.COLUMN_NAME)));
+      if (!mergeColumnNames.has("primary_order_id")) await query(`ALTER TABLE table_merges ADD COLUMN primary_order_id INT NULL AFTER merged_table_id`);
+      if (!mergeColumnNames.has("merged_order_id")) await query(`ALTER TABLE table_merges ADD COLUMN merged_order_id INT NULL AFTER primary_order_id`);
+      if (!mergeColumnNames.has("merged_by")) await query(`ALTER TABLE table_merges ADD COLUMN merged_by INT NULL AFTER merged_order_id`);
+      if (!mergeColumnNames.has("status")) await query(`ALTER TABLE table_merges ADD COLUMN status ENUM('active','resolved') NOT NULL DEFAULT 'active' AFTER merged_by`);
+      if (!mergeColumnNames.has("resolved_at")) await query(`ALTER TABLE table_merges ADD COLUMN resolved_at DATETIME NULL AFTER merged_at`);
+    }
+
+    const mergeConstraints = await query<SchemaMetadataRow[]>(
+      `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges' AND CONSTRAINT_TYPE = 'FOREIGN KEY'`,
+    );
+    const mergeConstraintNames = new Set(mergeConstraints.map((constraint) => String(constraint.CONSTRAINT_NAME)));
+    if (!mergeConstraintNames.has("fk_merge_primary_order")) {
+      await query(`ALTER TABLE table_merges ADD CONSTRAINT fk_merge_primary_order
+        FOREIGN KEY (primary_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+    }
+    if (!mergeConstraintNames.has("fk_merge_merged_order")) {
+      await query(`ALTER TABLE table_merges ADD CONSTRAINT fk_merge_merged_order
+        FOREIGN KEY (merged_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+    }
+    if (!mergeConstraintNames.has("fk_merge_user")) {
+      await query(`ALTER TABLE table_merges ADD CONSTRAINT fk_merge_user
+        FOREIGN KEY (merged_by) REFERENCES users(id) ON DELETE SET NULL`);
+    }
+
+    await query(`
+      UPDATE tables t
+      JOIN table_merges tm ON tm.merged_table_id = t.id AND tm.status = ?
+      SET t.merged_into_table_id = tm.primary_table_id
+      WHERE t.merged_into_table_id IS NULL
+    `, [TABLE_MERGE_STATUS.ACTIVE]);
+
     const bookingCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
@@ -1442,10 +1582,10 @@ export const getResmanagerTableById = async (id: number | string): Promise<any |
 
 export const updateResmanagerTableStatus = async (
   id: number | string,
-  status: "empty" | "reserved" | "serving" | "pending_payment" | "cleaning" | "maintenance",
+  status: TableStatus,
   maintenanceNote?: string,
-): Promise<boolean> => {
-  let targetId: any = id;
+): Promise<ResmanagerTableStatusUpdateResult | null> => {
+  let targetId: number | string = id;
   const num = Number(id);
   if (!isNaN(num) && num > 0) targetId = num;
   else if (typeof id === "string") {
@@ -1454,63 +1594,94 @@ export const updateResmanagerTableStatus = async (
   }
 
   // Luôn kiểm tra bàn có tồn tại không trước khi update
-  const checkRows = await query<any[]>(
-    "SELECT id FROM tables WHERE (id = ? OR name = ?) AND is_deleted = 0",
-    [targetId, String(id)]
-  );
-  if (!checkRows || checkRows.length === 0) {
-    return false;
-  }
-  const actualId = checkRows[0].id;
-
+  const connection = await ensurePool().getConnection();
   try {
-    if (status === "maintenance" && maintenanceNote) {
-      await query<any>(
-        "UPDATE tables SET status = ?, maintenance_note = ? WHERE id = ? AND is_deleted = 0",
-        [status, maintenanceNote, actualId]
-      );
-    } else if (status === "empty") {
-      await query<any>(
-        "UPDATE tables SET status = ?, maintenance_note = NULL WHERE id = ? AND is_deleted = 0",
-        [status, actualId]
-      );
-    } else {
-      await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, actualId]);
+    await connection.beginTransaction();
+    const [selectedRows] = await connection.query<TableIdRow[]>(
+      `SELECT id FROM tables
+       WHERE (id = ? OR name = ?) AND is_deleted = 0
+       FOR UPDATE`,
+      [targetId, String(id)],
+    );
+    const selectedTable = selectedRows[0];
+    if (!selectedTable) {
+      await connection.rollback();
+      return null;
     }
-  } catch (err: any) {
-    const isUnknownColumn =
-      err?.message?.includes("Unknown column") || err?.code === "ER_BAD_FIELD_ERROR";
-    if (isUnknownColumn) {
-      console.warn("[db] maintenance_note column not found, falling back to status-only update.");
-      await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, actualId]);
-    } else {
-      throw err;
-    }
-  }
 
-  if (status === "pending_payment") {
-    await query<any>(
-      "UPDATE orders SET status = 'pending_payment' WHERE table_id = ? AND status IN ('open', 'serving')",
-      [actualId]
-    ).catch(() => {});
-  } else if (status === "serving") {
-    await query<any>(
-      "UPDATE orders SET status = 'serving' WHERE table_id = ? AND status = 'pending_payment'",
-      [actualId]
-    ).catch(() => {});
-    await query<any>(
-      `UPDATE bookings SET status = 'completed'
-       WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
-      [actualId]
-    ).catch(() => {});
-  } else if (status === "empty") {
-    await query<any>(
-      `UPDATE bookings SET status = 'cancelled'
-       WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
-      [actualId]
-    ).catch(() => {});
+    const primaryTableId = await resolveMergedTableRootInTransaction(connection, selectedTable.id);
+    const [clusterRows] = await connection.query<TableIdRow[]>(
+      `SELECT id FROM tables
+       WHERE (id = ? OR merged_into_table_id = ?) AND is_deleted = 0
+       FOR UPDATE`,
+      [primaryTableId, primaryTableId],
+    );
+    const updatedTableIds = clusterRows.map((table) => table.id);
+    if (updatedTableIds.length === 0) {
+      throw new TableMergeValidationError("Không tìm thấy cụm bàn cần cập nhật.");
+    }
+    const tablePlaceholders = updatedTableIds.map(() => "?").join(", ");
+
+    if (status === TABLE_STATUS.MAINTENANCE && maintenanceNote) {
+      await connection.query(
+        `UPDATE tables SET status = ?, maintenance_note = ?
+         WHERE id IN (${tablePlaceholders}) AND is_deleted = 0`,
+        [status, maintenanceNote, ...updatedTableIds],
+      );
+    } else if (status === TABLE_STATUS.EMPTY) {
+      await connection.query(
+        `UPDATE tables
+         SET status = ?, maintenance_note = NULL, merged_into_table_id = NULL
+         WHERE id IN (${tablePlaceholders}) AND is_deleted = 0`,
+        [status, ...updatedTableIds],
+      );
+    } else {
+      await connection.query(
+        `UPDATE tables SET status = ?
+         WHERE id IN (${tablePlaceholders}) AND is_deleted = 0`,
+        [status, ...updatedTableIds],
+      );
+    }
+
+    if (status === TABLE_STATUS.PENDING_PAYMENT) {
+      await connection.query(
+        `UPDATE orders SET status = ?
+         WHERE table_id = ? AND status IN (?, ?)`,
+        [ORDER_STATUS.PENDING_PAYMENT, primaryTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING],
+      );
+    } else if (status === TABLE_STATUS.SERVING) {
+      await connection.query(
+        `UPDATE orders SET status = ?
+         WHERE table_id = ? AND status = ?`,
+        [ORDER_STATUS.SERVING, primaryTableId, ORDER_STATUS.PENDING_PAYMENT],
+      );
+      await connection.query(
+        `UPDATE bookings SET status = ?
+         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
+        [BOOKING_STATUS.COMPLETED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
+      );
+    } else if (status === TABLE_STATUS.EMPTY) {
+      await connection.query(
+        `UPDATE bookings SET status = ?
+         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
+        [BOOKING_STATUS.CANCELLED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
+      );
+      await connection.query(
+        `UPDATE table_merges
+         SET status = ?, resolved_at = NOW()
+         WHERE primary_table_id = ? AND status = ?`,
+        [TABLE_MERGE_STATUS.RESOLVED, primaryTableId, TABLE_MERGE_STATUS.ACTIVE],
+      );
+    }
+
+    await connection.commit();
+    return { primaryTableId, updatedTableIds };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
-  return true;
 };
 
 export const createResmanagerTable = async (table: {
@@ -2022,8 +2193,34 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
 
   const results = [];
   for (const r of rows) {
-    const mergedTo = await query("SELECT primary_table_id FROM table_merges WHERE merged_table_id = ?", [r.id]);
-    const mergedChildren = await query("SELECT merged_table_id FROM table_merges WHERE primary_table_id = ?", [r.id]);
+    const mergedTo = await query<TableMergeDisplayRow[]>(
+      `SELECT t.id, t.name, t.capacity
+       FROM tables t
+       WHERE t.id = COALESCE(?, (
+         SELECT primary_table_id
+         FROM table_merges
+         WHERE merged_table_id = ? AND status = ?
+         ORDER BY merged_at DESC, id DESC
+         LIMIT 1
+       ))`,
+      [r.merged_into_table_id, r.id, TABLE_MERGE_STATUS.ACTIVE],
+    );
+    const mergedChildren = await query<TableMergeDisplayRow[]>(
+      `SELECT t.id, t.name, t.capacity
+       FROM tables t
+       WHERE t.merged_into_table_id = ? AND t.is_deleted = 0
+       ORDER BY t.name ASC`,
+      [r.id],
+    );
+    const clusterPrimaryTableId = mergedTo[0]?.id ?? Number(r.id);
+    const clusterTables = await query<TableMergeDisplayRow[]>(
+      `SELECT t.id, t.name, t.capacity
+       FROM tables t
+       WHERE (t.id = ? OR t.merged_into_table_id = ?) AND t.is_deleted = 0
+       ORDER BY t.name ASC`,
+      [clusterPrimaryTableId, clusterPrimaryTableId],
+    );
+    const clusterCapacity = clusterTables.reduce((total, table) => total + Number(table.capacity), 0);
     const splits = await query("SELECT child_label FROM table_splits WHERE parent_table_id = ?", [r.id]);
 
     let preOrderedItems: any[] = [];
@@ -2055,10 +2252,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
       deposit_amount: Number(r.deposit_amount || 0),
       pre_ordered_items: preOrderedItems,
       is_merged_child: mergedTo.length > 0,
-      merged_into: mergedTo.length > 0 ? mergedTo[0].primary_table_id : null,
-      is_merged_primary: mergedChildren.length > 0,
-      merged_tables: mergedChildren.map((c: any) => c.merged_table_id),
-      is_split: splits.length > 0,
+      merged_into: mergedTo.length > 0 ? mergedTo[0] : null,
+       is_merged_primary: mergedChildren.length > 0,
+       merged_tables: mergedChildren,
+       cluster_capacity: clusterCapacity || Number(r.capacity),
+       is_split: splits.length > 0,
       split_labels: splits.map((s: any) => s.child_label)
     });
   }
@@ -2189,6 +2387,548 @@ export const unmergeResmanagerTable = async (primaryTableId: number): Promise<bo
 };
 
 
+interface MergeTableRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  area_id: number;
+  row_pos: string;
+  col_pos: number;
+  capacity: number;
+  status: string;
+  merged_into_table_id: number | null;
+}
+
+interface MergeOrderRow extends mysql.RowDataPacket {
+  id: number;
+  table_id: number;
+  customer_id: number | null;
+  created_by: number;
+  order_type: string;
+  status: string;
+  note: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  guest_count: number | null;
+}
+
+interface MergeBookingRow extends mysql.RowDataPacket {
+  table_id: number;
+  start_time: Date | string;
+  table_name: string;
+}
+
+interface MergeGuestCountRow extends mysql.RowDataPacket {
+  total_guest_count: number | null;
+}
+
+interface MergeInsertResult extends mysql.ResultSetHeader {
+  insertId: number;
+}
+
+export interface TableMergeResult {
+  primaryTableId: number;
+  mergedTableIds: number[];
+  primaryOrderId: number | null;
+}
+
+export interface ActiveOrderResolution {
+  requestedTableId: number;
+  primaryTableId: number;
+  redirected: boolean;
+  activeOrderId: number | null;
+  activeOrder: ActiveOrderSummary | null;
+}
+
+/** Public operational fields for the current order of a merged-table cluster. */
+export interface ActiveOrderSummary {
+  id: number;
+  tableId: number;
+  status: string;
+  guestName: string | null;
+  guestPhone: string | null;
+  guestCount: number | null;
+}
+
+/** Error raised for an invalid operational table merge without changing persisted data. */
+export class TableMergeValidationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "TableMergeValidationError";
+  }
+}
+
+const ADJACENT_TABLE_GRID_DISTANCE = 1;
+
+/** Return whether two tables share a physical edge in the same restaurant area. */
+const areTablesPhysicallyAdjacent = (firstTable: MergeTableRow, secondTable: MergeTableRow): boolean => {
+  if (firstTable.area_id !== secondTable.area_id) {
+    return false;
+  }
+
+  const sameRow = firstTable.row_pos === secondTable.row_pos;
+  const sameColumn = firstTable.col_pos === secondTable.col_pos;
+  const rowDistance = Math.abs(firstTable.row_pos.charCodeAt(0) - secondTable.row_pos.charCodeAt(0));
+  const columnDistance = Math.abs(firstTable.col_pos - secondTable.col_pos);
+
+  return (sameRow && columnDistance === ADJACENT_TABLE_GRID_DISTANCE)
+    || (sameColumn && rowDistance === ADJACENT_TABLE_GRID_DISTANCE);
+};
+
+/** Validate that new physical tables can connect to the existing primary-table cluster. */
+const assertMergeTablesAreContiguous = (
+  primaryTable: MergeTableRow,
+  existingMergedTables: MergeTableRow[],
+  requestedMergedTables: MergeTableRow[],
+): void => {
+  const connectedTables = [primaryTable, ...existingMergedTables];
+  const pendingTables = [...requestedMergedTables];
+
+  while (pendingTables.length > 0) {
+    const nextTableIndex = pendingTables.findIndex((candidateTable) =>
+      connectedTables.some((connectedTable) => areTablesPhysicallyAdjacent(connectedTable, candidateTable)),
+    );
+    if (nextTableIndex < 0) {
+      const disconnectedNames = pendingTables.map((table) => table.name).join(", ");
+      throw new TableMergeValidationError(
+        `Chỉ có thể gộp các bàn liền kề. ${disconnectedNames} không nối liền với cụm ${primaryTable.name}.`,
+      );
+    }
+    const [nextTable] = pendingTables.splice(nextTableIndex, 1);
+    connectedTables.push(nextTable);
+  }
+};
+
+/** Resolve a table to its direct merge root while rejecting corrupt cyclic chains. */
+const resolveMergedTableRootInTransaction = async (
+  connection: mysql.PoolConnection,
+  tableId: number,
+): Promise<number> => {
+  let currentTableId = tableId;
+  const visitedTableIds = new Set<number>();
+
+  while (true) {
+    if (visitedTableIds.has(currentTableId)) {
+      throw new TableMergeValidationError("Phát hiện vòng lặp dữ liệu gộp bàn. Vui lòng liên hệ quản lý.");
+    }
+    visitedTableIds.add(currentTableId);
+
+    const [rows] = await connection.query<MergeTableRow[]>(
+      `SELECT id, merged_into_table_id
+       FROM tables
+       WHERE id = ? AND is_deleted = 0
+       FOR UPDATE`,
+      [currentTableId],
+    );
+    const currentTable = rows[0];
+    if (!currentTable) {
+      throw new TableMergeValidationError("Không tìm thấy bàn cần thao tác.");
+    }
+    if (currentTable.merged_into_table_id === null) {
+      return currentTable.id;
+    }
+    currentTableId = Number(currentTable.merged_into_table_id);
+  }
+};
+
+/** Resolve a table root for read flows such as opening an order from a merged child table. */
+export const resolveResmanagerPrimaryTableId = async (tableId: number): Promise<number> => {
+  let currentTableId = tableId;
+  const visitedTableIds = new Set<number>();
+
+  while (true) {
+    if (visitedTableIds.has(currentTableId)) {
+      throw new TableMergeValidationError("Phát hiện vòng lặp dữ liệu gộp bàn. Vui lòng liên hệ quản lý.");
+    }
+    visitedTableIds.add(currentTableId);
+
+    const rows = await query<MergeTableRow[]>(
+      `SELECT id, merged_into_table_id
+       FROM tables
+       WHERE id = ? AND is_deleted = 0`,
+      [currentTableId],
+    );
+    const currentTable = rows[0];
+    if (!currentTable) {
+      throw new TableMergeValidationError("Không tìm thấy bàn cần thao tác.");
+    }
+    if (currentTable.merged_into_table_id === null) {
+      return currentTable.id;
+    }
+    currentTableId = Number(currentTable.merged_into_table_id);
+  }
+};
+
+/** Return the shared active order for a table or redirect a merged child to its root. */
+export const getResmanagerActiveOrderForTable = async (tableId: number): Promise<ActiveOrderResolution> => {
+  const primaryTableId = await resolveResmanagerPrimaryTableId(tableId);
+  const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+  const orders = await query<MergeOrderRow[]>(
+    `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+     FROM orders
+     WHERE table_id = ? AND status IN (${statusPlaceholders})
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+  );
+
+  return {
+    requestedTableId: tableId,
+    primaryTableId,
+    redirected: primaryTableId !== tableId,
+    activeOrderId: orders[0]?.id ?? null,
+    activeOrder: orders[0]
+      ? {
+          id: orders[0].id,
+          tableId: orders[0].table_id,
+          status: orders[0].status,
+          guestName: orders[0].guest_name,
+          guestPhone: orders[0].guest_phone,
+          guestCount: orders[0].guest_count,
+        }
+      : null,
+  };
+};
+
+/** Merge one or more adjacent operational tables into a single flattened root inside one ACID transaction. */
+export const mergeResmanagerTablesTransactionally = async (
+  requestedPrimaryTableId: number,
+  requestedMergedTableIds: number[],
+  mergedBy: number | null,
+): Promise<TableMergeResult> => {
+  const uniqueMergedTableIds = [...new Set(requestedMergedTableIds.map(Number))];
+  if (uniqueMergedTableIds.length === 0 || uniqueMergedTableIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw new TableMergeValidationError("Danh sách bàn cần gộp không hợp lệ.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const primaryTableId = await resolveMergedTableRootInTransaction(connection, requestedPrimaryTableId);
+
+    if (uniqueMergedTableIds.includes(primaryTableId) || uniqueMergedTableIds.includes(requestedPrimaryTableId)) {
+      throw new TableMergeValidationError("Bàn chính không thể gộp vào chính nó.");
+    }
+
+    const tableIds = [primaryTableId, ...uniqueMergedTableIds];
+    const placeholders = tableIds.map(() => "?").join(", ");
+    const [tableRows] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, row_pos, col_pos, capacity, status, merged_into_table_id
+       FROM tables
+       WHERE id IN (${placeholders}) AND is_deleted = 0
+       FOR UPDATE`,
+      tableIds,
+    );
+    if (tableRows.length !== tableIds.length) {
+      throw new TableMergeValidationError("Có bàn không tồn tại hoặc đã bị xóa.");
+    }
+
+    const primaryTable = tableRows.find((table) => table.id === primaryTableId);
+    if (!primaryTable) {
+      throw new TableMergeValidationError("Không tìm thấy bàn chính.");
+    }
+
+    const [existingMergedTables] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, row_pos, col_pos, capacity, status, merged_into_table_id
+       FROM tables
+       WHERE merged_into_table_id = ? AND is_deleted = 0
+       FOR UPDATE`,
+      [primaryTableId],
+    );
+
+    const allowedStatuses = new Set<string>([TABLE_STATUS.EMPTY, TABLE_STATUS.SERVING]);
+    if (!allowedStatuses.has(primaryTable.status)) {
+      throw new TableMergeValidationError(`Bàn ${primaryTable.name} đang ở trạng thái không thể gộp.`);
+    }
+
+    const mergedTables = uniqueMergedTableIds.map((tableId) => {
+      const table = tableRows.find((candidate) => candidate.id === tableId);
+      if (!table) {
+        throw new TableMergeValidationError("Không tìm thấy bàn cần gộp.");
+      }
+      return table;
+    });
+    for (const mergedTable of mergedTables) {
+      if (mergedTable.area_id !== primaryTable.area_id) {
+        throw new TableMergeValidationError("Chỉ có thể gộp các bàn trong cùng khu vực.");
+      }
+      if (!allowedStatuses.has(mergedTable.status)) {
+        throw new TableMergeValidationError(`Bàn ${mergedTable.name} đang ở trạng thái không thể gộp.`);
+      }
+      if (mergedTable.merged_into_table_id !== null) {
+        throw new TableMergeValidationError(`Bàn ${mergedTable.name} đã thuộc một cụm bàn khác.`);
+      }
+    }
+
+    assertMergeTablesAreContiguous(primaryTable, existingMergedTables, mergedTables);
+
+    const bookingWindowEnd = new Date(Date.now() + MERGE_BOOKING_LOOKAHEAD_MINUTES * 60 * 1000);
+    const [upcomingBookings] = await connection.query<MergeBookingRow[]>(
+      `SELECT b.table_id, b.start_time, t.name AS table_name
+       FROM bookings b
+       JOIN tables t ON t.id = b.table_id
+       WHERE b.table_id IN (${uniqueMergedTableIds.map(() => "?").join(", ")})
+         AND b.status = ?
+         AND b.start_time >= NOW()
+         AND b.start_time < ?
+       FOR UPDATE`,
+      [...uniqueMergedTableIds, BOOKING_STATUS.CONFIRMED, bookingWindowEnd],
+    );
+    const blockingBooking = upcomingBookings[0];
+    if (blockingBooking) {
+      const bookingTime = new Date(blockingBooking.start_time).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      throw new TableMergeValidationError(`Bàn ${blockingBooking.table_name} có lịch khách đặt lúc ${bookingTime}.`);
+    }
+
+    const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+    const [primaryOrders] = await connection.query<MergeOrderRow[]>(
+      `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+       FROM orders
+       WHERE table_id = ? AND status IN (${statusPlaceholders})
+       ORDER BY created_at DESC, id DESC
+       FOR UPDATE`,
+      [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+    );
+    if (primaryOrders.some((order) => order.status === ORDER_STATUS.PENDING_PAYMENT)) {
+      throw new TableMergeValidationError("Không thể gộp bàn chính đang chờ thanh toán.");
+    }
+
+    const mergedClusterCapacity = [primaryTable, ...existingMergedTables, ...mergedTables]
+      .reduce((total, table) => total + Number(table.capacity), 0);
+    const guestCountScopeTableIds = [primaryTableId, ...uniqueMergedTableIds];
+    const guestCountScopePlaceholders = guestCountScopeTableIds.map(() => "?").join(", ");
+    const [guestCountRows] = await connection.query<MergeGuestCountRow[]>(
+      `SELECT COALESCE(SUM(COALESCE(guest_count, 0)), 0) AS total_guest_count
+       FROM orders
+       WHERE table_id IN (${guestCountScopePlaceholders})
+         AND status IN (${statusPlaceholders})
+       FOR UPDATE`,
+      [...guestCountScopeTableIds, ...ACTIVE_ORDER_STATUSES],
+    );
+    const mergedGuestCount = Number(guestCountRows[0]?.total_guest_count ?? 0);
+    if (mergedGuestCount > mergedClusterCapacity) {
+      throw new TableMergeValidationError(
+        `Cụm bàn sau khi gộp chỉ có ${mergedClusterCapacity} chỗ, không đủ cho ${mergedGuestCount} khách.`,
+      );
+    }
+
+    let primaryOrderId = primaryOrders[0]?.id ?? null;
+    let guestCountToAdd = 0;
+    for (const mergedTable of mergedTables) {
+      const [sourceOrders] = await connection.query<MergeOrderRow[]>(
+        `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+         FROM orders
+         WHERE table_id = ? AND status IN (${statusPlaceholders})
+         ORDER BY created_at ASC, id ASC
+         FOR UPDATE`,
+        [mergedTable.id, ...ACTIVE_ORDER_STATUSES],
+      );
+      if (sourceOrders.some((order) => order.status === ORDER_STATUS.PENDING_PAYMENT)) {
+        throw new TableMergeValidationError(`Bàn ${mergedTable.name} đang chờ thanh toán nên không thể gộp.`);
+      }
+
+      for (const sourceOrder of sourceOrders) {
+        const sourceGuestCount = Number(sourceOrder.guest_count ?? 0);
+        if (primaryOrderId === null) {
+          const [insertResult] = await connection.query<MergeInsertResult>(
+            `INSERT INTO orders (
+              table_id, customer_id, created_by, order_type, status, note,
+              guest_name, guest_phone, guest_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              primaryTableId,
+              sourceOrder.customer_id,
+              sourceOrder.created_by,
+              sourceOrder.order_type,
+              ORDER_STATUS.SERVING,
+              sourceOrder.note,
+              sourceOrder.guest_name,
+              sourceOrder.guest_phone,
+              sourceGuestCount || null,
+            ],
+          );
+          primaryOrderId = insertResult.insertId;
+        } else {
+          guestCountToAdd += sourceGuestCount;
+        }
+
+        await connection.query(
+          `UPDATE order_items
+           SET source_order_id = COALESCE(source_order_id, order_id), order_id = ?
+           WHERE order_id = ?`,
+          [primaryOrderId, sourceOrder.id],
+        );
+        await connection.query(
+          `UPDATE orders
+           SET status = ?, merged_into_order_id = ?, closed_at = NOW(),
+               note = CONCAT_WS(' | ', note, ?)
+           WHERE id = ?`,
+          [ORDER_STATUS.MERGED, primaryOrderId, `Đã gộp vào order #${primaryOrderId}`, sourceOrder.id],
+        );
+
+        await connection.query(
+          `UPDATE table_merges
+           SET status = ?, resolved_at = NOW()
+           WHERE merged_table_id = ? AND status = ?`,
+          [TABLE_MERGE_STATUS.RESOLVED, mergedTable.id, TABLE_MERGE_STATUS.ACTIVE],
+        );
+        await connection.query(
+          `INSERT INTO table_merges (
+            primary_table_id, merged_table_id, primary_order_id, merged_order_id, merged_by, status
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            primaryTableId,
+            mergedTable.id,
+            primaryOrderId,
+            sourceOrder.id,
+            mergedBy,
+            TABLE_MERGE_STATUS.ACTIVE,
+          ],
+        );
+      }
+
+      if (sourceOrders.length === 0) {
+        await connection.query(
+          `UPDATE table_merges
+           SET status = ?, resolved_at = NOW()
+           WHERE merged_table_id = ? AND status = ?`,
+          [TABLE_MERGE_STATUS.RESOLVED, mergedTable.id, TABLE_MERGE_STATUS.ACTIVE],
+        );
+        await connection.query(
+          `INSERT INTO table_merges (
+            primary_table_id, merged_table_id, primary_order_id, merged_order_id, merged_by, status
+          ) VALUES (?, ?, ?, NULL, ?, ?)`,
+          [primaryTableId, mergedTable.id, primaryOrderId, mergedBy, TABLE_MERGE_STATUS.ACTIVE],
+        );
+      }
+    }
+
+    if (primaryOrderId !== null && guestCountToAdd > 0) {
+      await connection.query(
+        `UPDATE orders
+         SET guest_count = COALESCE(guest_count, 0) + ?
+         WHERE id = ?`,
+        [guestCountToAdd, primaryOrderId],
+      );
+    }
+
+    await connection.query(
+      `UPDATE tables
+       SET status = ?, merged_into_table_id = CASE WHEN id = ? THEN NULL ELSE ? END
+       WHERE id IN (${tableIds.map(() => "?").join(", ")})`,
+      [TABLE_STATUS.SERVING, primaryTableId, primaryTableId, ...tableIds],
+    );
+
+    await connection.commit();
+    return { primaryTableId, mergedTableIds: uniqueMergedTableIds, primaryOrderId };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Release the root and every merged child after a successful payment. */
+export const releaseMergedTableClusterAfterPayment = async (tableId: number): Promise<number[]> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const primaryTableId = await resolveMergedTableRootInTransaction(connection, tableId);
+    const [clusterRows] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, status, merged_into_table_id
+       FROM tables
+       WHERE id = ? OR merged_into_table_id = ?
+       FOR UPDATE`,
+      [primaryTableId, primaryTableId],
+    );
+    const clusterTableIds = clusterRows.map((table) => table.id);
+    if (clusterTableIds.length === 0) {
+      throw new TableMergeValidationError("Không tìm thấy cụm bàn cần giải phóng.");
+    }
+
+    await connection.query(
+      `UPDATE tables
+       SET status = ?, merged_into_table_id = NULL
+       WHERE id IN (${clusterTableIds.map(() => "?").join(", ")})`,
+      [TABLE_STATUS.CLEANING, ...clusterTableIds],
+    );
+    await connection.query(
+      `UPDATE table_merges
+       SET status = ?, resolved_at = NOW()
+       WHERE primary_table_id = ? AND status = ?`,
+      [TABLE_MERGE_STATUS.RESOLVED, primaryTableId, TABLE_MERGE_STATUS.ACTIVE],
+    );
+
+    await connection.commit();
+    return clusterTableIds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Undo a merge only before any active root order exists, preserving the audit trail. */
+export const unmergeResmanagerTablesTransactionally = async (tableId: number): Promise<number[]> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const primaryTableId = await resolveMergedTableRootInTransaction(connection, tableId);
+    const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+    const [activeOrders] = await connection.query<MergeOrderRow[]>(
+      `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+       FROM orders
+       WHERE table_id = ? AND status IN (${statusPlaceholders})
+       FOR UPDATE`,
+      [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+    );
+    if (activeOrders.length > 0) {
+      throw new TableMergeValidationError("Không thể bỏ gộp sau khi đã phát sinh order. Hãy tách món theo nghiệp vụ.");
+    }
+
+    const [mergedTables] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, status, merged_into_table_id
+       FROM tables
+       WHERE merged_into_table_id = ?
+       FOR UPDATE`,
+      [primaryTableId],
+    );
+    const mergedTableIds = mergedTables.map((table) => table.id);
+    if (mergedTableIds.length === 0) {
+      throw new TableMergeValidationError("Bàn này không có cụm bàn phụ để bỏ gộp.");
+    }
+
+    await connection.query(
+      `UPDATE tables
+       SET status = ?, merged_into_table_id = NULL
+       WHERE id IN (${mergedTableIds.map(() => "?").join(", ")})`,
+      [TABLE_STATUS.EMPTY, ...mergedTableIds],
+    );
+    await connection.query(
+      `UPDATE tables SET status = ?, merged_into_table_id = NULL WHERE id = ?`,
+      [TABLE_STATUS.EMPTY, primaryTableId],
+    );
+    await connection.query(
+      `UPDATE table_merges
+       SET status = ?, resolved_at = NOW()
+       WHERE primary_table_id = ? AND status = ?`,
+      [TABLE_MERGE_STATUS.RESOLVED, primaryTableId, TABLE_MERGE_STATUS.ACTIVE],
+    );
+
+    await connection.commit();
+    return mergedTableIds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 export const splitResmanagerTable = async (
   parentTableId: number,
   childLabel: string,
@@ -2250,7 +2990,14 @@ export const getResmanagerCategories = async (): Promise<any[]> => {
 };
 
 export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]> => {
-  const orders = await query<any[]>("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment') ORDER BY id DESC", [tableId]);
+  const primaryTableId = await resolveResmanagerPrimaryTableId(tableId);
+  const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+  const orders = await query<any[]>(
+    `SELECT * FROM orders
+     WHERE table_id = ? AND status IN (${statusPlaceholders})
+     ORDER BY id DESC`,
+    [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+  );
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
     order.items = allItems.filter((i: any) => i.status !== "voided" && i.status !== "cancelled");
@@ -2502,6 +3249,10 @@ export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> =
 };
 
 export const createResmanagerOrder = async (data: any): Promise<any> => {
+  if (data.table_id) {
+    data.table_id = await resolveResmanagerPrimaryTableId(Number(data.table_id));
+  }
+
   let validCustomerId: number | null = null;
   if (data.customer_id) {
     const custRows = await query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);

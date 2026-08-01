@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
+import { TABLE_STATUS, type TableStatus } from "../constants/table";
 
 // Lấy tất cả khu vực bàn (table_areas)
 export const getTableAreasHandler = async (_req: Request, res: Response): Promise<void> => {
@@ -49,33 +50,55 @@ export const getResmanagerTableHandler = async (req: Request, res: Response): Pr
   }
 };
 
+/** Resolve a selected table to the active order owned by its merge root. */
+export const getActiveOrderForTableHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    if (!Number.isInteger(tableId) || tableId <= 0) {
+      sendError(res, "Mã bàn không hợp lệ", 400);
+      return;
+    }
+    const resolution = await db.getResmanagerActiveOrderForTable(tableId);
+    sendSuccess(res, resolution, "Lấy đơn đang phục vụ thành công");
+  } catch (error) {
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
+  }
+};
+
 // Cập nhật trạng thái bàn
 export const updateResmanagerTableStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { status, maintenance_note } = req.body;
 
-    const validStatuses = ["empty", "reserved", "serving", "pending_payment", "cleaning", "maintenance"];
-    if (!status || !validStatuses.includes(status)) {
+    const validStatuses = Object.values(TABLE_STATUS);
+    if (typeof status !== "string" || !validStatuses.includes(status as TableStatus)) {
       sendError(res, `Trạng thái phải là: ${validStatuses.join(", ")}`, 400);
       return;
     }
 
     // Bắt buộc phải có lý do khi chuyển sang bảo trì
-    if (status === "maintenance" && !maintenance_note?.trim()) {
+    const tableStatus = status as TableStatus;
+    if (tableStatus === TABLE_STATUS.MAINTENANCE && !maintenance_note?.trim()) {
       sendError(res, "Vui lòng nhập lý do bảo trì (maintenance_note)", 400);
       return;
     }
 
-    const success = await db.updateResmanagerTableStatus(
+    const updateResult = await db.updateResmanagerTableStatus(
       Number(id),
-      status,
+      tableStatus,
       maintenance_note?.trim() || undefined,
     );
-    if (!success) {
+    if (!updateResult) {
       sendError(res, "Không tìm thấy bàn", 404);
       return;
     }
+
+    const io = req.app.get("io");
+    updateResult.updatedTableIds.forEach((tableId) => {
+      io?.emit("table:status_changed", { tableId, status: tableStatus });
+    });
 
     sendSuccess(res, { id, status, maintenance_note: maintenance_note?.trim() || null }, "Cập nhật trạng thái bàn thành công");
   } catch (error) {
@@ -159,18 +182,21 @@ export const mergeTableHandler = async (req: Request, res: Response): Promise<vo
       clusterTables.push(mergedTable);
     }
 
-    const success = await db.mergeResmanagerTables(primaryTableId, merged_table_ids.map(Number));
+    const mergedBy = req.user?.userId ? Number(req.user.userId) : null;
+    const result = await db.mergeResmanagerTablesTransactionally(
+      primaryTableId,
+      merged_table_ids.map(Number),
+      Number.isInteger(mergedBy) && Number(mergedBy) > 0 ? Number(mergedBy) : null,
+    );
 
-    if (!success) {
-      sendError(res, "Không thể gộp bàn", 400);
-      return;
-    }
+    const io = req.app.get("io");
+    io?.to("pos_lounge").emit("table:merged", result);
+    io?.emit("table:merged", result);
 
-    req.app.get("io")?.emit("table:merged", { primaryTableId, mergedTableIds: merged_table_ids });
-
-    sendSuccess(res, { primaryTableId, mergedTableIds: merged_table_ids }, "Gộp bàn thành công");
+    sendSuccess(res, result, "Gộp bàn thành công");
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
   }
 };
 
@@ -178,13 +204,14 @@ export const mergeTableHandler = async (req: Request, res: Response): Promise<vo
 export const unmergeTableHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const primaryTableId = Number(req.params.id);
-    await db.unmergeResmanagerTable(primaryTableId);
+    const mergedTableIds = await db.unmergeResmanagerTablesTransactionally(primaryTableId);
 
     req.app.get("io")?.emit("table:unmerged", { primaryTableId });
 
-    sendSuccess(res, { primaryTableId }, "Bỏ gộp bàn thành công");
+    sendSuccess(res, { primaryTableId, mergedTableIds }, "Bỏ gộp bàn thành công");
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
   }
 };
 
