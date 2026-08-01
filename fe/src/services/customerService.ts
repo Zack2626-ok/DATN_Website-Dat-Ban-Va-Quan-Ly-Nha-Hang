@@ -139,10 +139,24 @@ export const getMyBookings = async (): Promise<any[]> => {
   return response.data.data || [];
 };
 
-export const getAvailableTables = async (startTime: string): Promise<any[]> => {
-  // Use existing table routes empty endpoint
-  const response = await customerApi.get(`/v1/tables/empty?start_time=${encodeURIComponent(startTime)}`);
-  return response.data.data || [];
+export interface AvailableBookingTable {
+  id: number;
+  name: string;
+  capacity: number;
+  area_name?: string;
+  row_pos?: string | number;
+}
+
+/** Gets tables that can serve the requested party during the full booking interval. */
+export const getAvailableTables = async (
+  date: string,
+  time: string,
+  guests: number,
+): Promise<AvailableBookingTable[]> => {
+  const response = await customerApi.get("/v1/bookings/available-tables", {
+    params: { date, time, guests },
+  });
+  return response.data.data?.tables || [];
 };
 
 export const createBooking = async (data: {

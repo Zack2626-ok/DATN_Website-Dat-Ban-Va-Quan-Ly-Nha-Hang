@@ -13,3 +13,9 @@ export const BOOKING_DURATION_MINUTES = 120;
 
 /** Maximum party size accepted by the public booking flow. */
 export const MAX_BOOKING_PARTY_SIZE = 30;
+
+/** Restaurant-local business hours accepted by the public booking flow. */
+export const PUBLIC_BOOKING_HOURS = {
+  OPEN: "10:00",
+  CLOSE: "22:00",
+} as const;

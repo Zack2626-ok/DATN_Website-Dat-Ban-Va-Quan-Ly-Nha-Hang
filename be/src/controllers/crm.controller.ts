@@ -3,10 +3,12 @@ import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 
 // Helper to calculate tier level based on accumulated points
+// Bronze: 0 - 1,999 pts  | Silver: 2,000 - 7,999 pts
+// Gold: 8,000 - 19,999 pts | VIP: 20,000+ pts
 const getTierLevel = (points: number): "bronze" | "silver" | "gold" | "vip" => {
-  if (points >= 500) return "vip";
-  if (points >= 300) return "gold";
-  if (points >= 100) return "silver";
+  if (points >= 20000) return "vip";
+  if (points >= 8000) return "gold";
+  if (points >= 2000) return "silver";
   return "bronze";
 };
 

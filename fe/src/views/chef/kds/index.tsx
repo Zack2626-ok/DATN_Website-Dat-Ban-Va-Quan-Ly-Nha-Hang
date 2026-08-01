@@ -30,6 +30,7 @@ import {
   X,
   FolderKanban
 } from "lucide-react";
+import { getComboConstituents } from "../../../utils/comboHelper";
 
 export const ChefKitchenQueue: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -600,54 +601,71 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Danh sách món */}
                       <div className="flex flex-col gap-3">
-                        {group.items.map((item) => (
-                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
-                                {item.name}
-                              </div>
-                              <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-0.5 rounded-lg border border-blue-200/60 shadow-sm whitespace-nowrap">
-                                x{item.quantity}
-                              </span>
-                            </div>
-
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
-                                {getStationLabel(item.kitchenStation)}
-                              </span>
-                              {item.orderType && (
-                                <span className="text-slate-400 font-semibold">
-                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                        {group.items.map((item) => {
+                          const constituents = getComboConstituents(item.name);
+                          return (
+                            <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
+                                  {item.name}
+                                </div>
+                                <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-0.5 rounded-lg border border-blue-200/60 shadow-sm whitespace-nowrap">
+                                  x{item.quantity}
                                 </span>
+                              </div>
+
+                              <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
+                                  {getStationLabel(item.kitchenStation)}
+                                </span>
+                                {item.orderType && (
+                                  <span className="text-slate-400 font-semibold">
+                                    ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                                  </span>
+                                )}
+                                <span className="text-blue-650 font-bold bg-blue-50/60 border border-blue-150 border-blue-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                              </div>
+
+                              {/* Món đặt trước badge */}
+                              {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                                <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
+                                  🍳 Món đặt trước (Nấu sẵn)
+                                </div>
                               )}
-                              <span className="text-blue-650 font-bold bg-blue-50/60 border border-blue-150 border-blue-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
-                                🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
+
+                              {constituents && (
+                                <div className="mt-1.5 bg-blue-50/50 rounded-xl p-2.5 border border-blue-100/60 flex flex-col gap-1">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 block">Chi tiết combo:</span>
+                                  <div className="flex flex-col gap-1 pl-1">
+                                    {constituents.map((sub, idx) => (
+                                      <div key={idx} className="text-[10px] text-slate-650 font-bold flex items-center gap-1.5">
+                                        <span className="h-1 w-1 rounded-full bg-blue-500"></span>
+                                        {sub}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Ghi chú */}
+                              {(item.kitchenNote || (item as any).kitchen_note) && (
+                                <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
+                                  📝 {item.kitchenNote || (item as any).kitchen_note}
+                                </div>
+                              )}
+
+                              {/* Nút nấu món lẻ */}
+                              <button
+                                onClick={() => handleUpdateStatus(item.id, "cooking")}
+                                className="mt-2 w-full py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              >
+                                <Play size={9} className="fill-white" /> Bắt đầu nấu
+                              </button>
                             </div>
-
-                            {/* Món đặt trước badge */}
-                            {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
-                              <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
-                                🍳 Món đặt trước (Nấu sẵn)
-                              </div>
-                            )}
-
-                            {/* Ghi chú */}
-                            {(item.kitchenNote || (item as any).kitchen_note) && (
-                              <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
-                                📝 {item.kitchenNote || (item as any).kitchen_note}
-                              </div>
-                            )}
-
-                            {/* Nút nấu món lẻ */}
-                            <button
-                              onClick={() => handleUpdateStatus(item.id, "cooking")}
-                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
-                            >
-                              <Play size={9} className="fill-white" /> Bắt đầu nấu
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Hành động cả bàn (nếu có > 1 món) */}
@@ -716,54 +734,71 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Danh sách món */}
                       <div className="flex flex-col gap-3">
-                        {group.items.map((item) => (
-                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
-                                {item.name}
-                              </div>
-                              <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-0.5 rounded-lg border border-amber-200/60 shadow-sm whitespace-nowrap">
-                                x{item.quantity}
-                              </span>
-                            </div>
-
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
-                                {getStationLabel(item.kitchenStation)}
-                              </span>
-                              {item.orderType && (
-                                <span className="text-slate-400 font-semibold">
-                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                        {group.items.map((item) => {
+                          const constituents = getComboConstituents(item.name);
+                          return (
+                            <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
+                                  {item.name}
+                                </div>
+                                <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-0.5 rounded-lg border border-amber-200/60 shadow-sm whitespace-nowrap">
+                                  x{item.quantity}
                                 </span>
+                              </div>
+
+                              <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
+                                  {getStationLabel(item.kitchenStation)}
+                                </span>
+                                {item.orderType && (
+                                  <span className="text-slate-400 font-semibold">
+                                    ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                                  </span>
+                                )}
+                                <span className="text-amber-700 font-bold bg-amber-50/60 border border-amber-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                              </div>
+
+                              {/* Món đặt trước badge */}
+                              {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                                <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
+                                  🍳 Món đặt trước (Nấu sẵn)
+                                </div>
                               )}
-                              <span className="text-amber-700 font-bold bg-amber-50/60 border border-amber-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
-                                🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
+
+                              {constituents && (
+                                <div className="mt-1.5 bg-amber-50/50 rounded-xl p-2.5 border border-amber-100/60 flex flex-col gap-1">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 block">Chi tiết combo:</span>
+                                  <div className="flex flex-col gap-1 pl-1">
+                                    {constituents.map((sub, idx) => (
+                                      <div key={idx} className="text-[10px] text-slate-650 font-bold flex items-center gap-1.5">
+                                        <span className="h-1 w-1 rounded-full bg-amber-500"></span>
+                                        {sub}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Ghi chú */}
+                              {(item.kitchenNote || (item as any).kitchen_note) && (
+                                <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
+                                  📝 {item.kitchenNote || (item as any).kitchen_note}
+                                </div>
+                              )}
+
+                              {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
+                              <button
+                                onClick={() => handleUpdateStatus(item.id, "done")}
+                                className="mt-2 w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              >
+                                <Check size={9} /> Hoàn thành
+                              </button>
                             </div>
-
-                            {/* Món đặt trước badge */}
-                            {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
-                              <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
-                                🍳 Món đặt trước (Nấu sẵn)
-                              </div>
-                            )}
-
-                            {/* Ghi chú */}
-                            {(item.kitchenNote || (item as any).kitchen_note) && (
-                              <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
-                                📝 {item.kitchenNote || (item as any).kitchen_note}
-                              </div>
-                            )}
-
-                            {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
-                            <button
-                              onClick={() => handleUpdateStatus(item.id, "done")}
-                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
-                            >
-                              <Check size={9} /> Hoàn thành
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Hành động cả bàn (nếu có > 1 món) */}
@@ -823,39 +858,56 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Danh sách món */}
                       <div className="flex flex-col gap-3">
-                        {group.items.map((item) => (
-                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="text-[13px] font-extrabold text-slate-400 line-through leading-snug">
-                                {item.name}
-                              </div>
-                              <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-0.5 rounded-lg border border-emerald-200/60 shadow-sm whitespace-nowrap">
-                                x{item.quantity}
-                              </span>
-                            </div>
-
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
-                                {getStationLabel(item.kitchenStation)}
-                              </span>
-                              {item.orderType && (
-                                <span className="text-slate-400 font-semibold">
-                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                        {group.items.map((item) => {
+                          const constituents = getComboConstituents(item.name);
+                          return (
+                            <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="text-[13px] font-extrabold text-slate-400 line-through leading-snug">
+                                  {item.name}
+                                </div>
+                                <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-0.5 rounded-lg border border-emerald-200/60 shadow-sm whitespace-nowrap">
+                                  x{item.quantity}
                                 </span>
-                              )}
-                              <span className="text-emerald-700 font-bold bg-emerald-50/80 border border-emerald-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
-                                🕒 {new Date(item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
-                            </div>
-
-                            {/* Món đặt trước badge */}
-                            {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
-                              <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
-                                🍳 Món đặt trước (Nấu sẵn)
                               </div>
-                            )}
-                          </div>
-                        ))}
+
+                              <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
+                                  {getStationLabel(item.kitchenStation)}
+                                </span>
+                                {item.orderType && (
+                                  <span className="text-slate-400 font-semibold">
+                                    ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                                  </span>
+                                )}
+                                <span className="text-emerald-700 font-bold bg-emerald-50/80 border border-emerald-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🕒 {new Date(item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                              </div>
+
+                              {/* Món đặt trước badge */}
+                              {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                                <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
+                                  🍳 Món đặt trước (Nấu sẵn)
+                                </div>
+                              )}
+
+                              {constituents && (
+                                <div className="mt-1.5 bg-emerald-50/30 rounded-xl p-2.5 border border-emerald-100/40 flex flex-col gap-1">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-650 block">Chi tiết combo:</span>
+                                  <div className="flex flex-col gap-1 pl-1">
+                                    {constituents.map((sub, idx) => (
+                                      <div key={idx} className="text-[10px] text-slate-400 line-through flex items-center gap-1.5">
+                                        <span className="h-1 w-1 rounded-full bg-slate-350"></span>
+                                        {sub}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );

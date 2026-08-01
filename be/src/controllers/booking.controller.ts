@@ -4,7 +4,7 @@ import { sendError, sendSuccess } from "../utils/response";
 import { getPhoneNumberValidationError } from "../utils/validation";
 import { sendBookingConfirmationEmail } from "../utils/email";
 import { notifyWaitersAboutBooking } from "../utils/telegram";
-import { BOOKING_DURATION_MINUTES, MAX_BOOKING_PARTY_SIZE } from "../constants/booking";
+import { BOOKING_DURATION_MINUTES, MAX_BOOKING_PARTY_SIZE, PUBLIC_BOOKING_HOURS } from "../constants/booking";
 
 /** Builds a Vietnam-local booking datetime string from a date and time query. */
 const buildBookingDateTime = (date: string, time: string): string => `${date} ${time}:00`;
@@ -25,6 +25,10 @@ const calculateBookingEndTime = (startTime: string): string => {
   return vietnamTime.replace("T", " ");
 };
 
+/** Checks whether a clock value is valid and falls within public booking hours. */
+const isWithinPublicBookingHours = (time: string): boolean =>
+  /^\d{2}:\d{2}$/.test(time) && time >= PUBLIC_BOOKING_HOURS.OPEN && time <= PUBLIC_BOOKING_HOURS.CLOSE;
+
 /** Returns tables available for a requested booking interval. */
 export const getAvailableTablesHandler = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -34,6 +38,10 @@ export const getAvailableTablesHandler = async (req: Request, res: Response): Pr
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
       sendError(res, "date phải là YYYY-MM-DD và time phải là HH:mm", 400);
+      return;
+    }
+    if (!isWithinPublicBookingHours(time)) {
+      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
       return;
     }
     if (!Number.isInteger(guests) || guests < 1 || guests > MAX_BOOKING_PARTY_SIZE) {
@@ -107,6 +115,12 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     const now = new Date();
     if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
+      return;
+    }
+
+    const requestedTime = normalizedStart.slice(11, 16);
+    if (!isWithinPublicBookingHours(requestedTime)) {
+      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
       return;
     }
 

@@ -72,10 +72,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
     const loadSuggestions = async () => {
       setLoadingSuggestions(true);
       try {
-        const [customers, vouchers] = await Promise.all([
-          crmService.getCustomers(),
-          crmService.getVouchers(),
-        ]);
+        const customers = await crmService.getCustomers();
 
         const normalizePhone = (phone?: string | null) => {
           if (!phone) return "";

@@ -210,9 +210,9 @@ export const getCustomerLoyalty = async (req: Request, res: Response): Promise<v
 };
 
 const getTierLevel = (points: number): "bronze" | "silver" | "gold" | "vip" => {
-  if (points >= 500) return "vip";
-  if (points >= 300) return "gold";
-  if (points >= 100) return "silver";
+  if (points >= 20000) return "vip";
+  if (points >= 8000) return "gold";
+  if (points >= 2000) return "silver";
   return "bronze";
 };
 
@@ -259,6 +259,16 @@ export const redeemCustomerVoucher = async (req: Request, res: Response): Promis
     // Check max_uses vs used_count
     if (voucher.max_uses !== null && voucher.used_count >= voucher.max_uses) {
       sendError(res, "Voucher này đã hết lượt sử dụng.", 400);
+      return;
+    }
+
+    // 2b. Check if customer already holds an unused copy of this voucher
+    const existingRows = await db.query(
+      "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? AND is_used = 0 LIMIT 1",
+      [customer.id, voucher.id]
+    );
+    if (existingRows && existingRows.length > 0) {
+      sendError(res, "Bạn đang có voucher này chưa sử dụng trong ví. Hãy dùng trước khi đổi thêm.", 400);
       return;
     }
 

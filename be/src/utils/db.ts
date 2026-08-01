@@ -555,6 +555,19 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: created customer_vouchers table");
     }
+    // Migration: recalculate member_level for all customers based on new tier thresholds
+    // Bronze: 0-1999 | Silver: 2000-7999 | Gold: 8000-19999 | VIP: 20000+
+    await query(`
+      UPDATE customers
+      SET member_level = CASE
+        WHEN loyalty_points >= 20000 THEN 'vip'
+        WHEN loyalty_points >= 8000  THEN 'gold'
+        WHEN loyalty_points >= 2000  THEN 'silver'
+        ELSE 'bronze'
+      END
+    `);
+    console.log("✅ Migration: recalculated all customer member_level with new tier thresholds");
+
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
