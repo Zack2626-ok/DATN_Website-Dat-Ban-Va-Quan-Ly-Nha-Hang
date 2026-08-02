@@ -184,6 +184,19 @@ const createDatabaseTables = async (): Promise<void> => {
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS table_sessions (
+      id VARCHAR(50) PRIMARY KEY,
+      table_id INT NOT NULL,
+      session_token VARCHAR(255) NOT NULL,
+      status ENUM('active', 'closed') DEFAULT 'active',
+      start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      end_time DATETIME NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS menu_items (
       id VARCHAR(50) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,

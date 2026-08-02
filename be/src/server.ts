@@ -31,6 +31,7 @@ import eventConfigRoutes from "./routes/eventConfig.routes";
 import eventRoutes from "./routes/event.routes";
 import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
+import sessionRoutes from "./routes/session.routes";
 import notificationRoutes from "./routes/notification.routes";
 import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
 import attendanceRoutes from "./routes/attendance.routes";
@@ -146,6 +147,7 @@ app.use("/api/v1/analytics", analyticsRoutes);
 app.use("/api/v1/crm", crmRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
+app.use("/api/v1/session", sessionRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
 app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
 app.use("/api/restaurant-info", restaurantInfoRoutes);
