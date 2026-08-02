@@ -142,7 +142,8 @@ const createDatabaseTables = async (): Promise<void> => {
       customerEmail VARCHAR(255),
       guestCount INT NOT NULL,
       deliveryAddress VARCHAR(500),
-      orderType VARCHAR(50) NOT NULL
+      orderType VARCHAR(50) NOT NULL,
+      deposit_amount DOUBLE DEFAULT 0
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
@@ -1756,8 +1757,8 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
   }
 
   const result = await query(`
-    INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
+    INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status, deposit_amount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
   `, [
     data.table_id,
     validCustomerId,
@@ -1766,9 +1767,18 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     data.note || null,
     data.guest_name || null,
     data.guest_phone || null,
-    data.guest_count || null
+    data.guest_count || null,
+    data.deposit_amount || 0
   ]);
   return { id: result.insertId, ...data, status: 'open', customer_id: validCustomerId };
+};
+
+export const getActiveBookingForTable = async (tableId: number): Promise<any> => {
+  const rows = await query<any[]>(
+    `SELECT * FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') LIMIT 1`,
+    [tableId]
+  );
+  return rows.length > 0 ? rows[0] : null;
 };
 
 export const completeActiveBookingForTable = async (tableId: number): Promise<boolean> => {

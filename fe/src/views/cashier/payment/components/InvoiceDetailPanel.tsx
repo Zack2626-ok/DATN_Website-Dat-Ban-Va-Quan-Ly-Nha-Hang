@@ -157,9 +157,21 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
 
       {/* Footer: Total & Pay button */}
       <div className="border-t border-slate-100 p-5">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-2">
           <span className="text-sm font-bold text-slate-600">Tạm tính</span>
-          <span className="text-lg font-black text-slate-900 font-display">{formatVnd(invoice.totalAmount)} vnđ</span>
+          <span className="text-sm font-bold text-slate-900">{formatVnd(invoice.totalAmount)} vnđ</span>
+        </div>
+        {invoice.depositAmount && invoice.depositAmount > 0 ? (
+          <div className="flex justify-between items-center mb-2 text-amber-600">
+            <span className="text-sm font-bold">Trừ tiền đặt cọc</span>
+            <span className="text-sm font-bold">- {formatVnd(invoice.depositAmount / 1000)} vnđ</span>
+          </div>
+        ) : null}
+        <div className="flex justify-between items-center mb-4 pt-2 border-t border-slate-100">
+          <span className="text-base font-black text-slate-800">Khách cần thanh toán</span>
+          <span className="text-xl font-black text-blue-600 font-display">
+            {formatVnd(Math.max(0, invoice.totalAmount - ((invoice.depositAmount || 0) / 1000)))} vnđ
+          </span>
         </div>
 
         {canAct && (

@@ -23,6 +23,7 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
         quantity: item.quantity,
       })),
       totalAmount: o.totalAmount || 0,
+      depositAmount: Number(o.deposit_amount) || 0,
       status: o.status,
       invoiceStatus:
         o.status === "completed" || o.status === "paid"
@@ -117,11 +118,13 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     }
 
     const subtotal = order.totalAmount;
+    const depositAmount = Number(order.deposit_amount) || 0;
     const vat = vatRate !== undefined ? subtotal * (vatRate / 100) : subtotal * 0.1;
     const serviceFee = serviceFeeRate !== undefined ? subtotal * (serviceFeeRate / 100) : 0;
     const voucher = voucherAmount || 0;
     const tip = tipAmount || 0;
-    const finalAmount = subtotal + vat + serviceFee - voucher + tip;
+    // Calculate finalAmount but make sure it doesn't go below 0
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher + tip - depositAmount);
 
     const payment = await db.createPayment({
       orderId: id,
@@ -136,6 +139,7 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         serviceFee,
         voucher,
         voucherCode,
+        depositAmount,
         tip,
         finalAmount,
         vatRate: vatRate ?? 10,

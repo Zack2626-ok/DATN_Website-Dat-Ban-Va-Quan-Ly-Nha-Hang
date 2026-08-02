@@ -55,6 +55,14 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       return;
     }
 
+    let depositAmount = 0;
+    if (table_id) {
+      const activeBooking = await db.getActiveBookingForTable(Number(table_id));
+      if (activeBooking) {
+        depositAmount = activeBooking.deposit_amount || 0;
+      }
+    }
+
     const order = await db.createResmanagerOrder({
       table_id: table_id ? Number(table_id) : null,
       customer_id: customer_id ? Number(customer_id) : null,
@@ -64,6 +72,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       guest_name: guest_name || null,
       guest_phone: guest_phone || null,
       guest_count: guest_count ? Number(guest_count) : null,
+      deposit_amount: depositAmount,
     });
 
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'

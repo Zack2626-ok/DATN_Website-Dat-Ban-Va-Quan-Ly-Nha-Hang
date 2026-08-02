@@ -144,6 +144,11 @@ export const OrderPage: React.FC = () => {
             held: Boolean(i.is_held),
           })),
         );
+        // Lưu trữ thông tin deposit amount nếu có
+        setTable((prev: any) => ({
+          ...prev,
+          deposit_amount: latest.deposit_amount || 0,
+        }));
       })
       .catch(() => {
         setOrderItems([]);
@@ -442,6 +447,11 @@ export const OrderPage: React.FC = () => {
               {table.guest_name && (
                 <span className="text-base font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                   👤 {table.guest_name} {table.guest_phone ? `(${table.guest_phone})` : ""}
+                </span>
+              )}
+              {table.deposit_amount > 0 && (
+                <span className="text-base font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
+                  💰 Đã cọc: {Number(table.deposit_amount).toLocaleString("vi-VN")}₫
                 </span>
               )}
             </h1>

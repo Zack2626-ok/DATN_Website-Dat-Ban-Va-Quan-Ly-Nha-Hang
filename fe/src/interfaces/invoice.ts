@@ -12,6 +12,7 @@ export interface Invoice {
   guestCount: number;
   items: OrderItem[];
   totalAmount: number;
+  depositAmount?: number;
   status: string;
   invoiceStatus: InvoiceStatus;
   createdAt: string;
@@ -26,6 +27,7 @@ export interface PaymentBreakdown {
   serviceFeeRate: number;
   voucher: number;
   voucherCode?: string;
+  depositAmount?: number;
   tip: number;
   finalAmount: number;
 }
