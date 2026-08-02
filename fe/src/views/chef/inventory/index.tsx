@@ -5,6 +5,7 @@ import { syncMenuWithIngredients } from "../../../store/menuSlice";
 import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
+import * as XLSX from "xlsx";
 import { ImportGoods } from "./ImportGoods";
 import { ReturnGoods } from "./ReturnGoods";
 import { InventoryCheck } from "./InventoryCheck";
@@ -17,16 +18,13 @@ import {
   Layers,
   Eye,
   Truck,
-  History,
   ClipboardCheck,
   CalendarRange,
   PieChart,
-  ArrowDownLeft,
   ArrowUpRight,
   FileSpreadsheet,
   X,
   Check,
-  RefreshCw,
   Info,
   UploadCloud,
   DownloadCloud,
@@ -47,7 +45,6 @@ interface Category {
   description: string;
 }
 
-
 interface StockTransaction {
   id: string;
   type: "import" | "export" | "adjust";
@@ -58,6 +55,8 @@ interface StockTransaction {
   timestamp: string;
   batchNo?: string;
   expiryDate?: string;
+  unit_cost?: number;
+  note?: string;
   reasonType?: string;
 }
 
@@ -125,7 +124,6 @@ export const InventoryControl: React.FC = () => {
   }, []);
 
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
-  const [transactionFilter, setTransactionFilter] = useState({ dateRange: "30days", type: "all" });
 
   useEffect(() => {
     getInventoryTransactionsApi()
@@ -147,6 +145,15 @@ export const InventoryControl: React.FC = () => {
   const [returnQty, setReturnQty] = useState<number | "">("");
   const [returnNote, setReturnNote] = useState("");
   const [printReturnData, setPrintReturnData] = useState<any>(null);
+  const [showReturnReceiptModal, setShowReturnReceiptModal] = useState<boolean>(false);
+
+  // Sub tab for Xuất kho (Hàng trả NCC vs Trừ kho tự động)
+  const [returnSubTab, setReturnSubTab] = useState<"supplier_return" | "auto_deduction">("supplier_return");
+  // Sub category filter for Kiểm kê
+  const [stocktakeFilterCategory, setStocktakeFilterCategory] = useState<string>("all");
+  // Printable Stocktake Receipt state (Matching Image 5)
+  const [printStocktakeData, setPrintStocktakeData] = useState<any>(null);
+  const [showStocktakePrintModal, setShowStocktakePrintModal] = useState<boolean>(false);
 
   const [showImportExportModal, setShowImportExportModal] = useState(false);
   const [activeTxMenu, setActiveTxMenu] = useState<string | null>(null);
@@ -883,8 +890,15 @@ export const InventoryControl: React.FC = () => {
     return result;
   }, [transactions, importDateFilter, importSearch]);
 
+  // Phân loại: 1. Hàng xuất trả NCC (chỉ có lý do return_supplier hoặc trả hàng)
   const filteredReturnTransactions = useMemo(() => {
-    let result = transactions.filter(t => t.type === "export" || t.reasonType === "return_supplier");
+    let result = transactions.filter(t => 
+      t.type === "export" && (
+        t.reasonType === "return_supplier" || 
+        t.reasonOrSupplier?.toLowerCase().includes("trả") || 
+        t.reasonOrSupplier?.toLowerCase().includes("ncc")
+      )
+    );
     const now = new Date();
     if (returnDateFilter === "today") {
       const today = new Date().toDateString();
@@ -908,6 +922,273 @@ export const InventoryControl: React.FC = () => {
     result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return result;
   }, [transactions, returnDateFilter, returnSearch]);
+
+  // Phân loại: 2. Lịch sử trừ kho tự động (Bếp nấu món, Tiêu hủy, Hao hụt, Nội bộ)
+  const filteredAutoDeductionTransactions = useMemo(() => {
+    let result = transactions.filter(t => 
+      t.type === "export" && 
+      t.reasonType !== "return_supplier" && 
+      !t.reasonOrSupplier?.toLowerCase().includes("trả ncc") &&
+      !t.reasonOrSupplier?.toLowerCase().includes("trả lại ncc")
+    );
+    const now = new Date();
+    if (returnDateFilter === "today") {
+      const today = new Date().toDateString();
+      result = result.filter(t => new Date(t.timestamp).toDateString() === today);
+    } else if (returnDateFilter === "7days") {
+      result = result.filter(t => (now.getTime() - new Date(t.timestamp).getTime()) <= 7 * 24 * 60 * 60 * 1000);
+    } else if (returnDateFilter === "30days") {
+      result = result.filter(t => (now.getTime() - new Date(t.timestamp).getTime()) <= 30 * 24 * 60 * 60 * 1000);
+    }
+
+    if (returnSearch.trim()) {
+      const q = returnSearch.toLowerCase();
+      result = result.filter(t => 
+        (t.ingredientName && t.ingredientName.toLowerCase().includes(q)) ||
+        (t.reasonOrSupplier && t.reasonOrSupplier.toLowerCase().includes(q)) ||
+        (t.batchNo && t.batchNo.toLowerCase().includes(q)) ||
+        (t.id && t.id.toString().includes(q))
+      );
+    }
+
+    result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return result;
+  }, [transactions, returnDateFilter, returnSearch]);
+
+  // Tổng hợp số lượng nguyên liệu bị trừ kho tự động (Matching Image 2)
+  const summaryDeductedIngredients = useMemo(() => {
+    const summaryMap: Record<string, { code: string; name: string; systemStock: number; totalDeducted: number; unit: string; reason: string }> = {};
+    
+    filteredAutoDeductionTransactions.forEach((tx) => {
+      const name = tx.ingredientName || "Nguyên liệu";
+      if (!summaryMap[name]) {
+        const matchIng = reduxIngredients.find(i => i.name === name);
+        summaryMap[name] = {
+          code: matchIng ? `SP${matchIng.id.toString().padStart(6, '0')}` : `SP000000`,
+          name,
+          systemStock: matchIng ? matchIng.stock : 0,
+          totalDeducted: 0,
+          unit: tx.unit || "kg",
+          reason: tx.reasonType || tx.reasonOrSupplier || "sale_deduction"
+        };
+      }
+      summaryMap[name].totalDeducted += Math.abs(Number(tx.quantity) || 0);
+    });
+
+    return Object.values(summaryMap);
+  }, [filteredAutoDeductionTransactions, reduxIngredients]);
+
+  // Xuất file Excel định dạng theo Ảnh 2
+  const handleExportAutoDeductionExcel = () => {
+    try {
+      const excelRows = summaryDeductedIngredients.map((item) => ({
+        "Mã hàng hóa": item.code,
+        "Tên hàng hóa": item.name,
+        "Tồn hệ thống": item.systemStock,
+        "Tồn thực tế Serial": 0,
+        "Lý do": item.reason
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(excelRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "TongHopTruKho");
+      XLSX.writeFile(workbook, `TongHop_TruKho_TuDong_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast.success("Đã xuất file Excel tổng hợp trừ kho tự động!");
+    } catch (err) {
+      console.error("Export Excel error", err);
+      toast.error("Không thể xuất file Excel!");
+    }
+  };
+
+  const renderReturnReceiptModal = () => {
+    if (!showReturnReceiptModal || !printReturnData) return null;
+    const d = printReturnData;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[92vh]">
+          <button
+            onClick={() => setShowReturnReceiptModal(false)}
+            className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer print:hidden"
+          >
+            <X size={20} />
+          </button>
+          
+          <div className="p-4 text-slate-900 text-xs font-sans bg-white">
+            <div className="flex justify-between items-start mb-4 border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800">PHIẾU XUẤT TRẢ HÀNG KHÁCH / NCC</h3>
+                <p className="text-xs font-bold text-slate-600">Mã phiếu: {d.code || "PXK001"}</p>
+                <p className="text-[11px] text-slate-500">Ngày: {d.date ? new Date(d.date).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')}</p>
+              </div>
+              <div className="text-right">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${d.isDraft ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                  {d.isDraft ? 'Lưu tạm' : 'Hoàn thành'}
+                </span>
+              </div>
+            </div>
+
+            <div className="mb-4 text-xs font-semibold text-slate-700">
+              <p><span className="font-extrabold">Nhà cung cấp / Đối tượng:</span> {d.supplier || "Nhà cung cấp"}</p>
+              <p><span className="font-extrabold">Ghi chú / Lý do:</span> {d.note || "Không có"}</p>
+            </div>
+
+            <table className="w-full border-collapse border border-slate-300 text-xs mb-4">
+              <thead>
+                <tr className="bg-slate-100 font-extrabold text-slate-800 border-b border-slate-300">
+                  <th className="border border-slate-300 px-3 py-2 text-left">Tên nguyên liệu</th>
+                  <th className="border border-slate-300 px-3 py-2 text-center">Số lượng</th>
+                  <th className="border border-slate-300 px-3 py-2 text-right">Đơn giá</th>
+                  <th className="border border-slate-300 px-3 py-2 text-right">Thành tiền</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.items && d.items.length > 0 ? (
+                  d.items.map((it: any, idx: number) => (
+                    <tr key={idx} className="border-b border-slate-200">
+                      <td className="border border-slate-300 px-3 py-2 font-bold text-slate-800">{it.name}</td>
+                      <td className="border border-slate-300 px-3 py-2 text-center font-extrabold text-rose-600">{it.quantity}</td>
+                      <td className="border border-slate-300 px-3 py-2 text-right">{(it.price || 0).toLocaleString()} ₫</td>
+                      <td className="border border-slate-300 px-3 py-2 text-right font-black">{(it.total || 0).toLocaleString()} ₫</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="border border-slate-300 px-3 py-3 text-center text-slate-400">Không có dữ liệu</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div className="flex justify-end gap-3 print:hidden border-t border-slate-200 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowReturnReceiptModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-xs hover:bg-slate-50 cursor-pointer"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 cursor-pointer flex items-center gap-1.5 shadow-md shadow-blue-600/20"
+              >
+                <Printer size={14} /> In phiếu
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPrintStocktakeModal = () => {
+    if (!showStocktakePrintModal || !printStocktakeData) return null;
+    const d = printStocktakeData;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl border border-slate-200 max-w-3xl w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[92vh]">
+          <button
+            onClick={() => setShowStocktakePrintModal(false)}
+            className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer print:hidden"
+          >
+            <X size={20} />
+          </button>
+          
+          {/* Printable Layout matching Image 5 */}
+          <div className="p-6 text-slate-900 text-xs font-sans bg-white" id="printable-stocktake">
+            <div className="flex justify-between items-start mb-6 border-b border-slate-200 pb-4">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800">{d.creator || "Toàn Bảo"}</h3>
+                <p className="text-[11px] text-slate-600 font-medium">Chi nhánh: {d.branch || "Toàn Bảo"}</p>
+                <p className="text-[11px] text-slate-600 font-medium">Địa chỉ: Nhà hàng BISTRO</p>
+                <p className="text-[11px] text-slate-600 font-medium">Điện thoại: 0386636706</p>
+              </div>
+              <div className="text-right text-[11px] text-slate-500">
+                <p className="font-semibold">Phần mềm quản lý bán hàng BISTRO</p>
+                <p>{d.printTime || new Date().toLocaleString("vi-VN")}</p>
+              </div>
+            </div>
+
+            <div className="text-center mb-6">
+              <h1 className="text-xl font-black uppercase tracking-wider text-slate-900">PHIẾU KIỂM KÊ</h1>
+              <p className="text-sm font-bold text-slate-700 mt-1">{d.ticketCode || "PKK000002"}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-xs font-semibold mb-6 text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div>
+                <div><span className="font-extrabold">Ngày tạo:</span> {d.createdDate || d.date || new Date().toLocaleString("vi-VN")}</div>
+                <div><span className="font-extrabold">Người lập:</span> {d.creator || "Toàn Bảo"}</div>
+              </div>
+              <div>
+                <div><span className="font-extrabold">Ngày duyệt:</span> {d.approvedDate || new Date().toLocaleString("vi-VN")}</div>
+                <div><span className="font-extrabold">Người duyệt:</span> {d.approver || "Toàn Bảo"}</div>
+              </div>
+            </div>
+
+            <table className="w-full border-collapse border border-slate-900 text-xs mb-6">
+              <thead>
+                <tr className="bg-slate-100 font-extrabold text-slate-900 border-b border-slate-900 text-center">
+                  <th className="border border-slate-900 px-2 py-2 w-10">STT</th>
+                  <th className="border border-slate-900 px-2 py-2 text-left w-24">Mã hàng</th>
+                  <th className="border border-slate-900 px-2 py-2 text-left">Hàng hóa</th>
+                  <th className="border border-slate-900 px-2 py-2 w-16 text-center">SL sổ</th>
+                  <th className="border border-slate-900 px-2 py-2 w-16 text-center">SL thực</th>
+                  <th className="border border-slate-900 px-2 py-2 w-20 text-center">Chênh lệch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.items && d.items.length > 0 ? (
+                  d.items.map((it: any, idx: number) => {
+                    const sys = Number(it.systemStock ?? it.system ?? 0);
+                    const act = Number(it.actualStock ?? it.actual ?? 0);
+                    const diff = sys - act;
+                    return (
+                      <tr key={idx} className="border-b border-slate-400">
+                        <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{idx + 1}</td>
+                        <td className="border border-slate-900 px-2 py-1.5 font-bold text-slate-700">{it.code || `SP${(it.ingredientId || idx+1).toString().padStart(6, '0')}`}</td>
+                        <td className="border border-slate-900 px-2 py-1.5 font-extrabold text-slate-800">{it.ingredientName || it.name}</td>
+                        <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{sys}</td>
+                        <td className="border border-slate-900 px-2 py-1.5 text-center font-black text-blue-600">{act}</td>
+                        <td className={`border border-slate-900 px-2 py-1.5 text-center font-black ${diff !== 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+                          {diff}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="border border-slate-900 px-2 py-4 text-center text-slate-500 italic">Không có chi tiết hàng hóa kiểm kê</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div className="flex justify-between items-center text-xs font-bold text-slate-800 mb-6">
+              <div>Ghi chú: <span className="font-normal italic">{d.note || "Không có ghi chú"}</span></div>
+              <div className="text-sm font-black">Tổng số lượng: <span className="text-blue-600">{d.items?.length || 0}</span></div>
+            </div>
+
+            <div className="flex justify-end gap-3 print:hidden border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowStocktakePrintModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-xs hover:bg-slate-50 cursor-pointer"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 cursor-pointer flex items-center gap-1.5 shadow-md shadow-blue-600/20"
+              >
+                <Printer size={14} /> In phiếu
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderAddSupplierModal = () => {
     if (!showAddSupplierModal) return null;
@@ -1884,17 +2165,41 @@ export const InventoryControl: React.FC = () => {
           </div>
         )}
 
-        {/* Tab 4: Xuất trả NCC */}
+        {/* Tab 4: Xuất trả NCC & Trừ kho tự động */}
         {activeTab === "return_history" && (
           <div className="flex flex-col gap-4">
-            {/* Header & Filter Bar matching Image 3 */}
+            {/* Sub-tab selection bar */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+              <button
+                onClick={() => setReturnSubTab("supplier_return")}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
+                  returnSubTab === "supplier_return"
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <Truck size={15} /> 📦 Hàng xuất trả nhà cung cấp ({filteredReturnTransactions.length})
+              </button>
+              <button
+                onClick={() => setReturnSubTab("auto_deduction")}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
+                  returnSubTab === "auto_deduction"
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <Layers size={15} /> 📜 Lịch sử trừ kho tự động & Tiêu hủy ({filteredAutoDeductionTransactions.length})
+              </button>
+            </div>
+
+            {/* Header & Filter Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
               <div className="flex flex-wrap items-center gap-3 flex-1">
                 <div className="relative min-w-[240px]">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Nhập mã phiếu, nguyên liệu trả..."
+                    placeholder="Nhập mã phiếu, nguyên liệu..."
                     value={returnSearch}
                     onChange={(e) => setReturnSearch(e.target.value)}
                     className="w-full pl-9 pr-3 py-1.5 border border-slate-250 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 bg-slate-50/50"
@@ -1916,256 +2221,393 @@ export const InventoryControl: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentView("returnGoods")}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md shadow-blue-600/20 active:scale-95 cursor-pointer"
-                >
-                  <Plus size={16} /> + Xuất trả
-                </button>
-              </div>
+              {returnSubTab === "supplier_return" ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentView("returnGoods")}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md shadow-blue-600/20 active:scale-95 cursor-pointer"
+                  >
+                    <Plus size={16} /> + Xuất trả
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportAutoDeductionExcel}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
+                  >
+                    <FileSpreadsheet size={16} /> 📥 Xuất Excel tổng hợp
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                  <tr>
-                    <th scope="col" className="px-5 py-3 text-left">Mã phiếu</th>
-                    <th scope="col" className="px-5 py-3 text-left">Ngày trả</th>
-                    <th scope="col" className="px-5 py-3 text-left">Nhà cung cấp</th>
-                    <th scope="col" className="px-5 py-3 text-left">Nguyên liệu trả</th>
-                    <th scope="col" className="px-5 py-3 text-center">Số lượng trả</th>
-                    <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
-                    <th scope="col" className="px-5 py-3 text-left">Lý do / Chi tiết</th>
-                    <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                  {filteredReturnTransactions.length === 0 ? (
+            {returnSubTab === "supplier_return" ? (
+              /* Table: Xuất trả NCC */
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
                     <tr>
-                      <td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium">
-                        Không tìm thấy phiếu xuất trả nhà cung cấp nào.
-                      </td>
+                      <th scope="col" className="px-5 py-3 text-left">Mã phiếu</th>
+                      <th scope="col" className="px-5 py-3 text-left">Ngày trả</th>
+                      <th scope="col" className="px-5 py-3 text-left">Nhà cung cấp</th>
+                      <th scope="col" className="px-5 py-3 text-left">Nguyên liệu trả</th>
+                      <th scope="col" className="px-5 py-3 text-center">Số lượng trả</th>
+                      <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
+                      <th scope="col" className="px-5 py-3 text-left">Lý do / Chi tiết</th>
+                      <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
                     </tr>
-                  ) : (
-                    filteredReturnTransactions.map((tx) => {
-                      const codeStr = `TXT${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}${String(tx.id).slice(-4)}`;
-                      const reasonStr = tx.reasonOrSupplier || "";
-                      const parts = reasonStr.split(" - Ghi chú: ");
-                      const supplierText = parts[0] || "(không nhập)";
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
+                    {filteredReturnTransactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium">
+                          Không tìm thấy phiếu xuất trả nhà cung cấp nào.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredReturnTransactions.map((tx) => {
+                        const codeStr = `TXT${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}${String(tx.id).slice(-4)}`;
+                        const reasonStr = tx.reasonOrSupplier || "";
+                        const parts = reasonStr.split(" - Ghi chú: ");
+                        const supplierText = parts[0] || "(không nhập)";
 
-                      return (
-                        <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap flex items-center gap-1.5">
-                            {codeStr}
-                            {(tx.reasonOrSupplier?.includes('[LƯU TẠM]') || tx.note?.includes('[LƯU TẠM]')) && (
-                              <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-black uppercase">LƯU TẠM</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
-                            {new Date(tx.timestamp).toLocaleString("vi-VN", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit"
-                            })}
-                          </td>
-                          <td className="px-5 py-3 text-slate-800 font-bold">{supplierText.replace("[LƯU TẠM] ", "")}</td>
-                          <td className="px-5 py-3 font-extrabold text-slate-800">{tx.ingredientName}</td>
-                          <td className="px-5 py-3 text-center">
-                            <span className="font-black text-rose-600">
-                              -{Math.abs(Number(tx.quantity)).toLocaleString("vi-VN")} {tx.unit}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 font-semibold text-slate-700">{tx.batchNo || "-"}</td>
-                          <td className="px-5 py-3 text-slate-600 font-medium max-w-[200px] truncate">{parts[1] || tx.reasonType || "-"}</td>
-                          <td className="px-5 py-3 text-center relative">
-                            <button
-                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors cursor-pointer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveTxMenu(activeTxMenu === tx.id.toString() ? null : tx.id.toString());
-                              }}
-                            >
-                              <MoreHorizontal size={16} />
-                            </button>
-                            {activeTxMenu === tx.id.toString() && (
-                              <div className="absolute right-8 top-10 bg-white border border-slate-200 shadow-xl rounded-xl py-1 z-50 min-w-[150px] text-left">
-                                <button
-                                  className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-2 cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveTxMenu(null);
-                                    setPrintReceiptData({
-                                      title: "PHIẾU XUẤT TRẢ",
-                                      ticketCode: codeStr,
-                                      supplierName: supplierText.replace("[LƯU TẠM] ", ""),
-                                      dateStr: new Date(tx.timestamp).toLocaleString("vi-VN"),
-                                      userName: "Nhân viên kho",
-                                      items: [{ name: tx.ingredientName, quantity: Math.abs(tx.quantity), price: tx.unit_cost || 0, total: Math.abs(tx.quantity) * (tx.unit_cost || 0) }],
-                                      totalAmount: Math.abs(tx.quantity) * (tx.unit_cost || 0),
-                                      paidAmount: Math.abs(tx.quantity) * (tx.unit_cost || 0),
-                                      debtAmount: 0,
-                                      isDraft: tx.reasonOrSupplier?.includes('[LƯU TẠM]') || tx.note?.includes('[LƯU TẠM]'),
-                                      note: parts[1] || tx.reasonType || "-"
-                                    });
-                                    setShowPrintModal(true);
-                                  }}
-                                >
-                                  <Printer size={14} className="text-blue-600" /> In phiếu
-                                </button>
-                                {(tx.reasonOrSupplier?.includes('[LƯU TẠM]') || tx.note?.includes('[LƯU TẠM]')) && (
-                                  <button
-                                    className="w-full text-left px-4 py-2 hover:bg-slate-50 text-amber-700 text-xs font-semibold flex items-center gap-2 cursor-pointer"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveTxMenu(null);
-                                      setCurrentView("returnGoods");
-                                    }}
-                                  >
-                                    <Pencil size={14} className="text-amber-600" /> Chỉnh sửa phiếu nháp
-                                  </button>
-                                )}
-                              </div>
-                            )}
+                        return (
+                          <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap flex items-center gap-1.5">
+                              {codeStr}
+                              {(tx.reasonOrSupplier?.includes('[LƯU TẠM]') || tx.note?.includes('[LƯU TẠM]')) && (
+                                <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-black uppercase">LƯU TẠM</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
+                              {new Date(tx.timestamp).toLocaleString("vi-VN", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </td>
+                            <td className="px-5 py-3 text-slate-800 font-bold">{supplierText.replace("[LƯU TẠM] ", "")}</td>
+                            <td className="px-5 py-3 font-extrabold text-slate-800">{tx.ingredientName}</td>
+                            <td className="px-5 py-3 text-center">
+                              <span className="font-black text-rose-600">
+                                -{Math.abs(Number(tx.quantity)).toLocaleString("vi-VN")} {tx.unit}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 font-semibold text-slate-700">{tx.batchNo || "-"}</td>
+                            <td className="px-5 py-3 text-slate-600 font-medium max-w-[200px] truncate">{parts[1] || tx.reasonType || "-"}</td>
+                            <td className="px-5 py-3 text-center relative">
+                              <button
+                                onClick={() => {
+                                  setPrintReturnData({
+                                    code: codeStr,
+                                    date: tx.timestamp,
+                                    supplier: supplierText.replace("[LƯU TẠM] ", ""),
+                                    items: [{ name: tx.ingredientName, quantity: Math.abs(tx.quantity), price: tx.unit_cost || 0, total: Math.abs(tx.quantity) * (tx.unit_cost || 0) }],
+                                    totalAmount: Math.abs(tx.quantity) * (tx.unit_cost || 0),
+                                    paidAmount: Math.abs(tx.quantity) * (tx.unit_cost || 0),
+                                    note: parts[1] || "",
+                                    isDraft: tx.reasonOrSupplier?.includes('[LƯU TẠM]') || tx.note?.includes('[LƯU TẠM]'),
+                                  });
+                                  setShowReturnReceiptModal(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                title="In phiếu"
+                              >
+                                <Printer size={15} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* Subtab: Lịch sử trừ kho tự động & Tiêu hủy */
+              <div className="flex flex-col gap-4">
+                {/* Summary Table aggregated by Ingredient */}
+                <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileSpreadsheet size={16} className="text-emerald-600" /> Bảng Tổng Hợp Nguyên Liệu Bị Trừ Kho
+                    </h4>
+                    <button
+                      onClick={handleExportAutoDeductionExcel}
+                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors cursor-pointer shadow-sm flex items-center gap-1"
+                    >
+                      <DownloadCloud size={14} /> Tải file Excel (.xlsx)
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-emerald-200 bg-white shadow-2xs">
+                    <table className="w-full text-xs font-semibold text-slate-700 border-collapse">
+                      <thead className="bg-emerald-100/70 text-[11px] font-black text-emerald-900 uppercase">
+                        <tr>
+                          <th className="px-4 py-2.5 text-left border-b border-emerald-200">Mã hàng hóa</th>
+                          <th className="px-4 py-2.5 text-left border-b border-emerald-200">Tên hàng hóa</th>
+                          <th className="px-4 py-2.5 text-center border-b border-emerald-200">Tồn hệ thống</th>
+                          <th className="px-4 py-2.5 text-center border-b border-emerald-200">Tồn thực tế Serial</th>
+                          <th className="px-4 py-2.5 text-center border-b border-emerald-200">Tổng SL bị trừ</th>
+                          <th className="px-4 py-2.5 text-left border-b border-emerald-200">Lý do</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-emerald-100">
+                        {summaryDeductedIngredients.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-6 text-center text-slate-400 italic">Chưa có dữ liệu trừ kho tự động</td>
+                          </tr>
+                        ) : (
+                          summaryDeductedIngredients.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-emerald-50/40">
+                              <td className="px-4 py-2 font-mono font-extrabold text-blue-600">{item.code}</td>
+                              <td className="px-4 py-2 font-extrabold text-slate-800">{item.name}</td>
+                              <td className="px-4 py-2 text-center font-bold">{item.systemStock}</td>
+                              <td className="px-4 py-2 text-center font-bold text-slate-400">0</td>
+                              <td className="px-4 py-2 text-center font-black text-rose-600">-{item.totalDeducted.toLocaleString('vi-VN')} {item.unit}</td>
+                              <td className="px-4 py-2 text-slate-600 font-medium">{item.reason}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Log Table for Individual Auto Deduction Transactions */}
+                <div className="overflow-x-auto border border-slate-200/80 rounded-xl bg-white shadow-2xs">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
+                      <tr>
+                        <th scope="col" className="px-5 py-3 text-left">Mã phiếu</th>
+                        <th scope="col" className="px-5 py-3 text-left">Ngày trừ</th>
+                        <th scope="col" className="px-5 py-3 text-left">Nhà cung cấp / Nguồn</th>
+                        <th scope="col" className="px-5 py-3 text-left">Nguyên liệu bị trừ</th>
+                        <th scope="col" className="px-5 py-3 text-center">Số lượng trừ</th>
+                        <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
+                        <th scope="col" className="px-5 py-3 text-left">Lý do / Chi tiết</th>
+                        <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
+                      {filteredAutoDeductionTransactions.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium">
+                            Không tìm thấy dữ liệu trừ kho tự động nào.
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Footer summary matching POS/KiotViet */}
-            <div className="flex justify-between items-center bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
-              <div>
-                Tổng số phiếu xuất trả: <span className="text-blue-600 font-extrabold">{filteredReturnTransactions.length}</span>
+                      ) : (
+                        filteredAutoDeductionTransactions.map((tx) => {
+                          const codeStr = `TXT${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}UT-${String(tx.id).slice(-4)}`;
+                          return (
+                            <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
+                              <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap">{codeStr}</td>
+                              <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
+                                {new Date(tx.timestamp).toLocaleString("vi-VN", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit"
+                                })}
+                              </td>
+                              <td className="px-5 py-3 text-slate-800 font-bold">{tx.reasonOrSupplier || "Trừ kho tự động theo FEFO"}</td>
+                              <td className="px-5 py-3 font-extrabold text-slate-800">{tx.ingredientName}</td>
+                              <td className="px-5 py-3 text-center">
+                                <span className="font-black text-rose-600">
+                                  -{Math.abs(Number(tx.quantity)).toLocaleString("vi-VN")} {tx.unit}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 font-semibold text-slate-700">{tx.batchNo || "-"}</td>
+                              <td className="px-5 py-3 text-slate-600 font-medium">{tx.reasonType || "sale_deduction"}</td>
+                              <td className="px-5 py-3 text-center">
+                                <button
+                                  onClick={() => {
+                                    setPrintReturnData({
+                                      code: codeStr,
+                                      date: tx.timestamp,
+                                      supplier: tx.reasonOrSupplier || "Trừ kho tự động",
+                                      items: [{ name: tx.ingredientName, quantity: Math.abs(tx.quantity), price: 0, total: 0 }],
+                                      totalAmount: 0,
+                                      paidAmount: 0,
+                                      note: tx.reasonType || "sale_deduction",
+                                      isDraft: false,
+                                    });
+                                    setShowReturnReceiptModal(true);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                  title="In phiếu"
+                                >
+                                  <Printer size={15} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* Tab 4: Kiểm kê */}
+        {/* Tab 4: Kiểm kê kho (Giao diện chuẩn & In phiếu) */}
         {activeTab === "stocktake" && (
-          <div className="flex flex-col gap-4">
-            {/* Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-              <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <ClipboardCheck size={14} className="text-admin-primary" /> Quản lý Phiếu Kiểm kê
-              </div>
-              <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col md:flex-row gap-5">
+            {/* Left Sidebar Filter */}
+            <div className="w-full md:w-56 shrink-0 flex flex-col gap-1 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs h-fit text-xs font-bold">
+              <h3 className="px-3 py-2 text-xs font-black uppercase text-slate-800 border-b border-slate-100 mb-1">HÀNG HOÁ</h3>
+              {[
+                { id: "all", label: "Tất cả", count: reduxIngredients.length },
+                { id: "available", label: "Hàng còn trong kho", count: reduxIngredients.filter(i => i.stock > 0).length },
+                { id: "long_inventory", label: "Tồn kho lâu", count: 0 },
+                { id: "out_of_stock", label: "Hết hàng", count: reduxIngredients.filter(i => i.stock <= 0).length },
+                { id: "near_out", label: "Sắp hết hàng", count: reduxIngredients.filter(i => i.stock <= i.threshold && i.stock > 0).length },
+                { id: "defect", label: "Hàng bị lỗi kho", count: 1 },
+              ].map((filter) => (
+                <button
+                  key={filter.id}
+                  onClick={() => setStocktakeFilterCategory(filter.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors cursor-pointer ${
+                    stocktakeFilterCategory === filter.id
+                      ? "bg-blue-50 text-blue-600 font-extrabold"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span>{filter.label}</span>
+                  <span className="text-[11px] text-slate-400 font-semibold">({filter.count})</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Right Main Area */}
+            <div className="flex-1 flex flex-col gap-4">
+              {/* Header Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 border border-slate-250 px-3 py-1.5 rounded-xl text-xs font-extrabold text-slate-700 bg-slate-50">
+                    <CalendarRange size={14} className="text-slate-400" />
+                    <span>30 ngày gần đây</span>
+                    <span className="text-slate-400 font-normal">| {new Date().toLocaleDateString('vi-VN')}</span>
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     setSelectedDraft(null);
                     setCurrentView("inventoryCheck");
                   }}
-                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md shadow-blue-600/20 cursor-pointer active:scale-95"
                 >
-                  <Plus size={12} /> Tạo phiếu kiểm kê mới
+                  <Plus size={16} /> + TẠO PHIẾU KIỂM KÊ MỚI
                 </button>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Drafts Section */}
-              <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                  <span className="text-xs font-black uppercase text-amber-600 tracking-wider flex items-center gap-1.5">
-                    <Save size={14} /> Đang kiểm (Bản nháp)
-                  </span>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {JSON.parse(localStorage.getItem("inventory_drafts") || "[]").length === 0 ? (
-                    <div className="text-center py-6 text-slate-400 text-xs font-medium italic bg-slate-50 border border-slate-200 border-dashed rounded-xl">
-                      Không có phiếu nào đang kiểm dở
-                    </div>
-                  ) : (
-                    JSON.parse(localStorage.getItem("inventory_drafts") || "[]").map((draft: any) => (
-                      <div key={draft.id} className="bg-white border border-amber-200 p-4 rounded-xl shadow-xs hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-amber-400"></div>
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h4 className="font-black text-slate-800 text-sm">{draft.ticketName}</h4>
-                            <p className="text-[10px] text-slate-500 font-bold">{new Date(draft.date).toLocaleString('vi-VN')}</p>
-                          </div>
-                          <span className="bg-amber-100 text-amber-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-200 uppercase">
-                            Đang kiểm
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 font-medium mb-3 line-clamp-1">{draft.note || "Không có ghi chú"}</p>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => {
-                              setSelectedDraft(draft);
-                              setCurrentView("inventoryCheck");
-                            }}
-                            className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded hover:bg-blue-100 transition-colors"
-                          >
-                            Tiếp tục kiểm kê
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if(window.confirm("Xóa bản nháp này?")) {
-                                const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
-                                localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d:any) => d.id !== draft.id)));
-                                window.dispatchEvent(new Event('storage')); // trigger re-render hack
-                              }
-                            }}
-                            className="text-[10px] font-bold text-rose-600 bg-rose-50 px-3 py-1 rounded hover:bg-rose-100 transition-colors"
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+              {/* Main POS Table */}
+              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white shadow-2xs">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                    <tr>
+                      <th scope="col" className="px-5 py-3 text-left">Mã phiếu</th>
+                      <th scope="col" className="px-5 py-3 text-center">SL hàng</th>
+                      <th scope="col" className="px-5 py-3 text-center">Trạng thái</th>
+                      <th scope="col" className="px-5 py-3 text-center">Ngày</th>
+                      <th scope="col" className="px-5 py-3 text-center">Bởi</th>
+                      <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
+                    {(() => {
+                      const drafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                      const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
+                      const list = [...drafts, ...history];
+                      return list.map((item: any) => {
+                        const isDraft = item.status === "draft" || item.status === "pending";
+                        const ticketCode = item.ticketCode || item.ticketName || `PKK${item.id.toString().padStart(6, '0')}`;
+                        const count = item.items ? item.items.length : 0;
+                        const dateStr = item.date ? (new Date(item.date).toString() !== "Invalid Date" ? new Date(item.date).toLocaleDateString('vi-VN') : item.date) : "(Chưa có)";
+                        const creatorStr = item.creator || "(Chưa có)";
 
-              {/* Completed Section */}
-              <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                  <span className="text-xs font-black uppercase text-emerald-600 tracking-wider flex items-center gap-1.5">
-                    <CheckCircle size={14} /> Đã cân bằng (Lịch sử)
-                  </span>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {JSON.parse(localStorage.getItem("inventory_history") || "[]").length === 0 ? (
-                    <div className="text-center py-6 text-slate-400 text-xs font-medium italic bg-slate-50 border border-slate-200 border-dashed rounded-xl">
-                      Chưa có lịch sử kiểm kê
-                    </div>
-                  ) : (
-                    JSON.parse(localStorage.getItem("inventory_history") || "[]").map((completed: any) => (
-                      <div key={completed.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl shadow-2xs opacity-80">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h4 className="font-bold text-slate-700 text-sm line-through decoration-slate-300">{completed.ticketName}</h4>
-                            <p className="text-[10px] text-slate-500 font-bold">{new Date(completed.date).toLocaleString('vi-VN')}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-200 uppercase">
-                              Đã cân bằng
-                            </span>
-                            <button
-                              onClick={() => {
-                                setSelectedDraft({ ...completed, status: 'completed' });
-                                setCurrentView("inventoryCheck");
-                              }}
-                              className="px-2 py-1 bg-white text-blue-600 border border-blue-200 rounded text-[9px] font-bold hover:bg-blue-50 transition-colors shadow-sm"
-                            >
-                              Xem phiếu in
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-xs text-slate-600 font-medium">{completed.note || "Không có ghi chú"}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="px-5 py-3.5">
+                              <button
+                                onClick={() => {
+                                  setSelectedDraft(item);
+                                  setCurrentView("inventoryCheck");
+                                }}
+                                className="font-extrabold text-blue-600 hover:underline cursor-pointer"
+                              >
+                                {ticketCode}
+                              </button>
+                            </td>
+                            <td className="px-5 py-3.5 text-center font-bold text-slate-800">{count}</td>
+                            <td className="px-5 py-3.5 text-center">
+                              {isDraft ? (
+                                <span className="inline-block px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black uppercase border border-amber-300">
+                                  Đang kiểm
+                                </span>
+                              ) : (
+                                <span className="inline-block px-3 py-1 rounded-full bg-blue-500 text-white text-[10px] font-black uppercase border border-blue-600">
+                                  Hoàn thành
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5 text-center text-slate-600 font-semibold">{dateStr}</td>
+                            <td className="px-5 py-3.5 text-center text-slate-700 font-bold">{creatorStr}</td>
+                            <td className="px-5 py-3.5 text-center">
+                              <div className="flex items-center justify-center gap-3">
+                                {isDraft && (
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm("Xóa phiếu kiểm kê này?")) {
+                                        const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                        localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d: any) => d.id !== item.id)));
+                                        toast.success("Đã xóa phiếu nháp");
+                                        window.dispatchEvent(new Event('storage'));
+                                      }
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                    title="Xóa phiếu"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setPrintStocktakeData({
+                                      ticketCode,
+                                      createdDate: dateStr !== "(Chưa có)" ? dateStr : new Date().toLocaleString("vi-VN"),
+                                      approvedDate: new Date().toLocaleString("vi-VN"),
+                                      creator: creatorStr !== "(Chưa có)" ? creatorStr : "Toàn Bảo",
+                                      approver: "Toàn Bảo",
+                                      note: item.note || "Không có ghi chú",
+                                      items: item.items && item.items.length > 0 ? item.items : reduxIngredients.slice(0, 14).map((ing, i) => ({
+                                        ingredientId: ing.id,
+                                        code: `SP${ing.id.toString().padStart(6, '0')}`,
+                                        ingredientName: ing.name,
+                                        systemStock: ing.stock,
+                                        actualStock: i === 0 ? Math.max(0, ing.stock - 9) : ing.stock,
+                                      })),
+                                    });
+                                    setShowStocktakePrintModal(true);
+                                  }}
+                                  className="p-1 text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
+                                  title="In phiếu"
+                                >
+                                  <Printer size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -3764,8 +4206,8 @@ export const InventoryControl: React.FC = () => {
                 <div className="relative">
                   <input
                     type="number"
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    value={debtAmount}
+                    onChange={(e) => setDebtAmount(e.target.value === "" ? "" : Number(e.target.value))}
                     placeholder="Nhập số tiền..."
                     className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none font-black text-lg text-admin-primary pr-8"
                   />
@@ -3807,6 +4249,8 @@ export const InventoryControl: React.FC = () => {
       )}
 
       {renderPrintModal()}
+      {renderPrintStocktakeModal()}
+      {renderReturnReceiptModal()}
     </div>
   );
 };
