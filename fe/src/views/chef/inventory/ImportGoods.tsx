@@ -1,12 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Search, Trash2, ArrowLeft, Save, UploadCloud, X } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, Save, UploadCloud, X, Check, Printer } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi } from "../../../services/api";
 import * as XLSX from "xlsx";
-
-interface ImportGoodsProps {
-  onBack: () => void;
-}
 
 interface ImportItem {
   ingredientId: string;
@@ -22,9 +18,10 @@ interface ImportGoodsProps {
   onBack: () => void;
   initialData?: any[];
   onAddSupplier?: () => void;
+  onPrintReceipt?: (data: any) => void;
 }
 
-export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, onAddSupplier }) => {
+export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, onAddSupplier, onPrintReceipt }) => {
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -112,21 +109,21 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
 
   const totalAmount = importItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
 
-  const handleSave = async () => {
+  const handleSave = async (mode: "draft" | "completed" | "save_print" = "completed") => {
     if (importItems.length === 0) {
       toast.error("Vui lòng chọn ít nhất một mặt hàng để nhập");
       return;
     }
     
     try {
-      // Create a single note that encompasses all details
       const supplierName = suppliers.find(s => s.id == selectedSupplier)?.name || "NCC khác";
       const reasonOrSupplier = note ? `Nhập hàng từ ${supplierName} - Ghi chú: ${note}` : `Nhập hàng từ ${supplierName}`;
       
-      // Submit each item sequentially or Promise.all
       await Promise.all(importItems.map(item => 
         updateInventoryQuantityApi(item.ingredientId, {
           type: "import",
+          reasonType: "import",
+          status: mode === "draft" ? "draft" : "completed",
           quantity: item.quantity,
           unitCost: item.unitCost,
           supplierId: selectedSupplier || undefined,
@@ -137,7 +134,32 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
         })
       ));
 
-      toast.success("Tạo phiếu nhập hàng thành công!");
+      if (mode === "draft") {
+        toast.success("Đã lưu tạm phiếu nhập hàng!");
+      } else {
+        toast.success("Tạo phiếu nhập hàng thành công!");
+      }
+
+      if (mode === "save_print" && onPrintReceipt) {
+        onPrintReceipt({
+          title: "PHIẾU NHẬP HÀNG",
+          ticketCode: `PN${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${Date.now().toString().slice(-4)}`,
+          supplierName,
+          dateStr: importDate,
+          userName: "Nhân viên kho",
+          items: importItems.map(i => ({
+            name: i.ingredientName,
+            quantity: i.quantity,
+            price: i.unitCost,
+            total: i.quantity * i.unitCost
+          })),
+          totalAmount,
+          paidAmount: paymentStatus === "paid" ? totalAmount : 0,
+          debtAmount: paymentStatus === "credit" ? totalAmount : 0,
+          note
+        });
+      }
+
       onBack();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Có lỗi xảy ra khi lưu phiếu nhập");
@@ -161,12 +183,30 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
             <p className="text-xs text-slate-600 font-medium">Nhập nguyên liệu từ nhà cung cấp vào kho</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowExcelModal(true)} className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <UploadCloud size={16} /> Nhập từ Excel
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowExcelModal(true)} className="px-3 py-2 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 text-xs flex items-center gap-1.5 cursor-pointer shadow-xs mr-2">
+            <UploadCloud size={14} className="text-blue-600" /> Nhập từ Excel
           </button>
-          <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <Save size={16} /> Lưu & Hoàn thành
+          <button
+            type="button"
+            onClick={() => handleSave("draft")}
+            className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Check size={14} /> LƯU TẠM
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave("completed")}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Check size={14} /> LƯU
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave("save_print")}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Printer size={14} /> LƯU & IN
           </button>
         </div>
       </div>

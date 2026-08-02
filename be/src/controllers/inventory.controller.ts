@@ -35,7 +35,7 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           i.name as ingredientName,
           so.quantity as quantity,
           i.unit as unit,
-          so.reason as reasonOrSupplier,
+          so.note as reasonOrSupplier,
           0 as unit_cost,
           so.note as note,
           so.created_at as timestamp,
@@ -208,9 +208,12 @@ export const wasteExpiredBatches = async (req: Request, res: Response): Promise<
 export const updateInventoryQuantity = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate, batchNo } = req.body; // type: import | export | adjust
+    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate, batchNo, reasonType, status } = req.body; // type: import | export | adjust
 
     const qty = Number(quantity);
+    const isDraft = status === "draft";
+    const noteWithDraft = isDraft ? `[LƯU TẠM] ${reasonOrSupplier || ""}`.trim() : (reasonOrSupplier || "");
+
     if (type === "import") {
       await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, id]);
       
@@ -219,11 +222,11 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
 
       await db.query(
         `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, reasonOrSupplier || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
+        [id, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, noteWithDraft || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
       );
 
       // TASK 5: Nhập hàng CHỊU (mua chịu) + có chọn NCC → cộng nợ cho NCC đó
-      if (isCredit && supplierId) {
+      if (isCredit && supplierId && !isDraft) {
         const cost = qty * (Number(unitCost) || 0);
         if (cost > 0) {
           await db.query(
@@ -244,6 +247,8 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
         [id]
       );
 
+      const exportReason = reasonType || (reasonOrSupplier && reasonOrSupplier.includes("Trả hàng") ? 'return_supplier' : 'other');
+
       for (const batch of batches) {
         if (remainingToDeduct <= 0) break;
         const deductQty = Math.min(batch.remaining_quantity, remainingToDeduct);
@@ -255,7 +260,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
 
         await db.query(
           `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-          [id, batch.id, deductQty, 'other', reasonOrSupplier || 'Xuất/Điều chỉnh kho thủ công', 1]
+          [id, batch.id, deductQty, exportReason, noteWithDraft || 'Xuất/Điều chỉnh kho thủ công', 1]
         );
 
         remainingToDeduct -= deductQty;
@@ -264,7 +269,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       if (remainingToDeduct > 0) {
         await db.query(
           `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?)`,
-          [id, remainingToDeduct, 'other', reasonOrSupplier || 'Xuất/Điều chỉnh kho (âm/không rõ lô)', 1]
+          [id, remainingToDeduct, exportReason, noteWithDraft || 'Xuất/Điều chỉnh kho (âm/không rõ lô)', 1]
         );
       }
     }

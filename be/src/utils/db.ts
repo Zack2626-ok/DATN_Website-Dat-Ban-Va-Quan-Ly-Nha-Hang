@@ -2262,6 +2262,105 @@ export const splitResmanagerTable = async (
 };
 
 // ===== WAITER/MENU DATABASE OPERATIONS =====
+export const checkMenuItemAvailability = async (menuItemId: number): Promise<{ available: boolean; reason?: string; is_expired?: boolean; out_of_stock?: boolean }> => {
+  const menuCheck = await query<any[]>(`
+    SELECT id, name, is_active FROM menu_items WHERE id = ? AND is_deleted = 0
+  `, [menuItemId]).catch(() => []);
+
+  if (!menuCheck || menuCheck.length === 0) {
+    return { available: false, reason: "Món ăn không tồn tại hoặc đã bị xóa!" };
+  }
+
+  const menuItemName = menuCheck[0].name;
+
+  if (!menuCheck[0].is_active) {
+    return { available: false, reason: `Món '${menuItemName}' đang tạm ngưng phục vụ!` };
+  }
+
+  // 1. Kiểm tra nguyên liệu qua công thức recipe_items
+  const recipeIngredients = await query<any[]>(`
+    SELECT 
+      i.id as ingredient_id, 
+      i.name as ingredient_name, 
+      i.current_stock
+    FROM recipes r
+    JOIN recipe_items ri ON r.id = ri.recipe_id
+    JOIN ingredients i ON ri.ingredient_id = i.id
+    WHERE r.menu_item_id = ? AND i.is_deleted = 0
+  `, [menuItemId]).catch(() => []);
+
+  if (recipeIngredients && recipeIngredients.length > 0) {
+    for (const ing of recipeIngredients) {
+      if (Number(ing.current_stock) <= 0) {
+        return {
+          available: false,
+          out_of_stock: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.ingredient_name}' đã HẾT HÀNG trong kho (Tồn kho = 0)!`
+        };
+      }
+
+      const validBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND (expiry_date IS NULL OR expiry_date >= CURDATE())
+      `, [ing.ingredient_id]).catch(() => []);
+
+      const expiredBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND expiry_date IS NOT NULL AND expiry_date < CURDATE()
+      `, [ing.ingredient_id]).catch(() => []);
+
+      if (validBatches.length === 0 && expiredBatches.length > 0) {
+        return {
+          available: false,
+          is_expired: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.ingredient_name}' trong kho đã HẾT HẠN SỬ DỤNG!`
+        };
+      }
+    }
+  } else {
+    // 2. Fallback: đối chiếu từ khóa tên nguyên liệu với tên món ăn
+    const matchedIngredients = await query<any[]>(`
+      SELECT id, name, current_stock
+      FROM ingredients
+      WHERE is_deleted = 0 AND ? LIKE CONCAT('%', name, '%')
+    `, [menuItemName]).catch(() => []);
+
+    for (const ing of matchedIngredients) {
+      if (Number(ing.current_stock) <= 0) {
+        return {
+          available: false,
+          out_of_stock: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.name}' đã HẾT HÀNG trong kho!`
+        };
+      }
+
+      const validBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND (expiry_date IS NULL OR expiry_date >= CURDATE())
+      `, [ing.id]).catch(() => []);
+
+      const expiredBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND expiry_date IS NOT NULL AND expiry_date < CURDATE()
+      `, [ing.id]).catch(() => []);
+
+      if (validBatches.length === 0 && expiredBatches.length > 0) {
+        return {
+          available: false,
+          is_expired: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.name}' trong kho đã HẾT HẠN SỬ DỤNG!`
+        };
+      }
+    }
+  }
+
+  return { available: true };
+};
+
 export const getResmanagerMenuItems = async (categoryId?: number): Promise<any[]> => {
   let sql = `
     SELECT m.*, c.name AS category_name
@@ -2274,7 +2373,17 @@ export const getResmanagerMenuItems = async (categoryId?: number): Promise<any[]
     sql += " AND m.category_id = ?";
     params.push(categoryId);
   }
-  return query(sql, params);
+  const items = await query<any[]>(sql, params);
+
+  for (const item of items) {
+    const avail = await checkMenuItemAvailability(item.id);
+    item.available = avail.available;
+    item.out_of_stock = avail.out_of_stock || false;
+    item.is_expired = avail.is_expired || false;
+    item.stock_status_reason = avail.reason || null;
+  }
+
+  return items;
 };
 
 export const getResmanagerCategories = async (): Promise<any[]> => {
@@ -2636,6 +2745,13 @@ export const completeActiveBookingForTable = async (tableId: number): Promise<bo
 };
 
 export const addResmanagerOrderItem = async (data: any): Promise<any> => {
+  if (data.menu_item_id) {
+    const availCheck = await checkMenuItemAvailability(Number(data.menu_item_id));
+    if (!availCheck.available) {
+      throw new Error(availCheck.reason || "Món ăn đã hết hàng hoặc nguyên liệu trong kho đã hết hạn!");
+    }
+  }
+
   if (!data.bypass_status_check && data.order_id) {
     const orderCheck = await query<any[]>(`
       SELECT o.status as order_status, t.status as table_status

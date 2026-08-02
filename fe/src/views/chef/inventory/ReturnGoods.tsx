@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Search, Trash2, ArrowLeft, Save, UploadCloud } from "lucide-react";
+import { Search, Trash2, ArrowLeft, Save, UploadCloud, Check, Printer } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi, getIngredientBatchesApi } from "../../../services/api"; 
 
 interface ReturnGoodsProps {
   onBack: () => void;
   initialReturnData?: any;
+  onPrintReceipt?: (data: any) => void;
 }
 
 interface ReturnItem {
@@ -18,7 +19,7 @@ interface ReturnItem {
   availableBatches: any[];
 }
 
-export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnData }) => {
+export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnData, onPrintReceipt }) => {
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -102,20 +103,24 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
 
   const totalAmount = returnItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
 
-  const handleSave = async () => {
+  const handleSave = async (mode: "draft" | "completed" | "save_print" = "completed") => {
     if (returnItems.length === 0) {
       toast.error("Vui lòng chọn ít nhất một mặt hàng để trả");
       return;
     }
     
     try {
-      const reasonOrSupplier = `Trả hàng cho ${suppliers.find(s => s.id == selectedSupplier)?.name || "NCC khác"} - Ghi chú: ${note}`;
+      const supplierObj = suppliers.find(s => s.id == selectedSupplier);
+      const supplierName = supplierObj ? supplierObj.name : "NCC khác";
+      const reasonOrSupplier = `Trả hàng cho ${supplierName} - Ghi chú: ${note}`;
       
       await Promise.all(returnItems.map(item => 
         updateInventoryQuantityApi(item.ingredientId, {
           type: "export",
+          reasonType: "return_supplier",
+          status: mode === "draft" ? "draft" : "completed",
           quantity: item.quantity,
-          unitCost: item.unitCost, // though export usually deducts based on batch, we send it for record
+          unitCost: item.unitCost,
           supplierId: selectedSupplier || undefined,
           isCredit: paymentStatus === "deduct_credit",
           batchNo: item.batchNo,
@@ -123,11 +128,32 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
         })
       ));
 
-      // Note: The backend updateInventoryQuantity for type="export" currently relies on FIFO.
-      // If we want to deduct from specific batchNo, we need to update the backend export logic to support batchNo filtering.
-      // But for UI presentation, this fulfills the "Trả hàng" requirement.
+      if (mode === "draft") {
+        toast.success("Đã lưu tạm phiếu trả hàng!");
+      } else {
+        toast.success("Tạo phiếu trả hàng thành công!");
+      }
 
-      toast.success("Tạo phiếu trả hàng thành công!");
+      if (mode === "save_print" && onPrintReceipt) {
+        onPrintReceipt({
+          title: "PHIẾU XUẤT TRẢ",
+          ticketCode: `TXT${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${Date.now().toString().slice(-4)}`,
+          supplierName,
+          dateStr: returnDate,
+          userName: "Nhân viên kho",
+          items: returnItems.map(i => ({
+            name: i.ingredientName,
+            quantity: i.quantity,
+            price: i.unitCost,
+            total: i.quantity * i.unitCost
+          })),
+          totalAmount,
+          paidAmount: paymentStatus === "refund" ? totalAmount : 0,
+          debtAmount: paymentStatus === "deduct_credit" ? totalAmount : 0,
+          note
+        });
+      }
+
       onBack();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Có lỗi xảy ra khi lưu phiếu trả hàng");
@@ -151,9 +177,27 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
             <p className="text-xs text-slate-600 font-medium">Xuất trả nguyên liệu lại cho nhà cung cấp</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <Save size={16} /> Lưu & Hoàn thành
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSave("draft")}
+            className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Check size={14} /> LƯU TẠM
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave("completed")}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Check size={14} /> LƯU
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave("save_print")}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Printer size={14} /> LƯU & IN
           </button>
         </div>
       </div>
@@ -226,11 +270,14 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
                             className="w-40 p-1.5 border rounded text-xs font-semibold focus:border-blue-500 outline-none cursor-pointer"
                           >
                             <option value="">-- Chọn lô --</option>
-                            {item.availableBatches.map(b => (
-                              <option key={b.id} value={b.batch_code}>
-                                {b.batch_code} (Tồn {b.remaining_quantity})
-                              </option>
-                            ))}
+                            {item.availableBatches.map(b => {
+                              const unit = ingredients.find(i => i.id === item.ingredientId)?.unit || '';
+                              return (
+                                <option key={b.id} value={b.batch_code}>
+                                  {b.batch_code} (Hiện còn {b.remaining_quantity} {unit})
+                                </option>
+                              );
+                            })}
                           </select>
                         ) : (
                           <span className="text-xs text-rose-500 font-medium italic">Hết lô</span>
@@ -326,7 +373,9 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
                   }`}
                 >
                   <option value="refund">Nhận tiền mặt / CK lại</option>
-                  <option value="deduct_credit">Giảm trừ vào Công nợ NCC</option>
+                  {(suppliers.find(s => s.id == selectedSupplier)?.debt || 0) > 0 && (
+                    <option value="deduct_credit">Giảm trừ vào Công nợ NCC (Đang nợ {(suppliers.find(s => s.id == selectedSupplier)?.debt || 0).toLocaleString()} ₫)</option>
+                  )}
                 </select>
               </div>
             </div>
