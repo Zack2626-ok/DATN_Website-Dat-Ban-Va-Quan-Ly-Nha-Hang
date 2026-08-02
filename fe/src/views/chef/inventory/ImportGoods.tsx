@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi } from "../../../services/api";
+// @ts-ignore
 import * as XLSX from "xlsx";
 
 interface ImportItem {

@@ -4,8 +4,24 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { Table, MenuItem, Inventory, Payment, User } from "./types";
-import { BOOKING_STATUS } from "../constants/booking";
-import { TABLE_STATUS } from "../constants/table";
+import {
+  BOOKING_STATUS,
+  BOOKING_DURATION_MINUTES,
+  BOOKING_CHECK_IN_EARLY_MINUTES,
+  BOOKING_SCHEDULE_MODE,
+  MAX_BOOKING_ALLOCATION_TABLES,
+  type BookingScheduleMode,
+} from "../constants/booking";
+import { TABLE_STATUS, type TableStatus } from "../constants/table";
+import {
+  ACTIVE_ORDER_STATUSES,
+  GROUP_SEATING_CODE_PREFIX,
+  GROUP_SEATING_STATUS,
+  MERGE_BOOKING_LOOKAHEAD_MINUTES,
+  ORDER_STATUS,
+  TABLE_MERGE_STATUS,
+} from "../constants/order";
+import { formatVietnamBookingDateTime } from "./bookingTime";
 
 
 
@@ -17,6 +33,61 @@ let dbAvailable = false;
 let isInitializing = false;
 const JSON_DB_DIR = path.join(process.cwd(), "src", "database");
 const JSON_DB_PATH = path.join(JSON_DB_DIR, "db.json");
+
+interface SchemaMetadataRow {
+  COLUMN_NAME?: string;
+  COLUMN_TYPE?: string;
+  TABLE_NAME?: string;
+  CONSTRAINT_NAME?: string;
+}
+
+interface TableMergeDisplayRow {
+  id: number;
+  name: string;
+  capacity: number;
+}
+
+interface GroupSeatingDisplayRow extends TableMergeDisplayRow {
+  group_code: string;
+  area_name?: string;
+}
+
+interface TableIdRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+interface BookingTableAssignmentRow extends mysql.RowDataPacket {
+  table_id: number;
+}
+
+interface GroupSeatingTableRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  capacity: number;
+  area_id: number;
+  area_name?: string;
+  row_pos: string;
+  col_pos: number;
+  status: TableStatus;
+  merged_into_table_id: number | null;
+}
+
+interface GroupSeatingGuestCountRow extends mysql.RowDataPacket {
+  guest_count: number | null;
+}
+
+export interface GroupSeatingResult {
+  primaryTableId: number;
+  assignedTableIds: number[];
+  groupCode: string;
+  totalCapacity: number;
+  guestCount: number;
+}
+
+export interface ResmanagerTableStatusUpdateResult {
+  primaryTableId: number;
+  updatedTableIds: number[];
+}
 
 const ensurePool = (): mysql.Pool => {
   if (!connectionPool) {
@@ -470,18 +541,202 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added orders.guest_count");
     }
 
-    // Đồng bộ bàn reserved với booking pending/confirmed còn hiệu lực
+    const orderBookingIdColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'booking_id'`,
+    );
+    if (orderBookingIdColumn.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN booking_id INT NULL AFTER table_id`);
+      await query(`ALTER TABLE orders ADD INDEX idx_orders_booking_id (booking_id)`);
+      await query(`ALTER TABLE orders ADD CONSTRAINT fk_orders_booking
+        FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL`);
+      console.log("Migration: added orders.booking_id");
+    }
+
+    // A booking belongs to the calendar. It must never leave a physical table stuck in
+    // "reserved" before the customer actually arrives and service begins.
     await query(`
       UPDATE tables t
-      SET t.status = 'reserved'
-      WHERE t.status = 'empty' AND t.is_deleted = 0
-        AND EXISTS (
-          SELECT 1 FROM bookings b
-          WHERE b.table_id = t.id AND b.status IN ('pending', 'confirmed')
+      SET t.status = ?
+      WHERE t.status = ? AND t.is_deleted = 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM orders o
+          WHERE o.table_id = t.id AND o.status IN (?, ?, ?)
         )
-    `);
+    `, [
+      TABLE_STATUS.EMPTY,
+      TABLE_STATUS.RESERVED,
+      ORDER_STATUS.OPEN,
+      ORDER_STATUS.SERVING,
+      ORDER_STATUS.PENDING_PAYMENT,
+    ]);
 
     // Migration: Thêm các cột cọc tiền và guest_email vào bookings nếu chưa có
+    // Table merge schema: direct root reference, order traceability and immutable audit rows.
+    const mergedIntoTableColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tables' AND COLUMN_NAME = 'merged_into_table_id'`,
+    );
+    if (mergedIntoTableColumn.length === 0) {
+      await query(`ALTER TABLE tables ADD COLUMN merged_into_table_id INT NULL AFTER maintenance_note`);
+      await query(`ALTER TABLE tables ADD INDEX idx_tables_merged_into (merged_into_table_id)`);
+      await query(`ALTER TABLE tables ADD CONSTRAINT fk_tables_merged_into
+        FOREIGN KEY (merged_into_table_id) REFERENCES tables(id) ON DELETE SET NULL`);
+      console.log("Migration: added tables.merged_into_table_id");
+    }
+
+    const mergedIntoOrderColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'merged_into_order_id'`,
+    );
+    if (mergedIntoOrderColumn.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN merged_into_order_id INT NULL AFTER closed_at`);
+      await query(`ALTER TABLE orders ADD INDEX idx_orders_merged_into (merged_into_order_id)`);
+      await query(`ALTER TABLE orders ADD CONSTRAINT fk_orders_merged_into
+        FOREIGN KEY (merged_into_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+      console.log("Migration: added orders.merged_into_order_id");
+    }
+
+    const orderStatusColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'status'`,
+    );
+    if (orderStatusColumn.length > 0 && !String(orderStatusColumn[0].COLUMN_TYPE).includes(ORDER_STATUS.MERGED)) {
+      await query(`ALTER TABLE orders MODIFY COLUMN status
+        ENUM('open','serving','pending_payment','completed','cancelled','merged') NOT NULL DEFAULT 'open'`);
+      console.log("Migration: added orders.status = merged");
+    }
+
+    const sourceOrderColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'source_order_id'`,
+    );
+    if (sourceOrderColumn.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN source_order_id INT NULL AFTER order_id`);
+      await query(`ALTER TABLE order_items ADD INDEX idx_order_items_source_order (source_order_id)`);
+      await query(`ALTER TABLE order_items ADD CONSTRAINT fk_order_items_source_order
+        FOREIGN KEY (source_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+      console.log("Migration: added order_items.source_order_id");
+    }
+
+    const mergeTableExists = await query<SchemaMetadataRow[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges'`,
+    );
+    if (mergeTableExists.length === 0) {
+      await query(`
+        CREATE TABLE table_merges (
+          id INT NOT NULL AUTO_INCREMENT,
+          primary_table_id INT NOT NULL,
+          merged_table_id INT NOT NULL,
+          primary_order_id INT NULL,
+          merged_order_id INT NULL,
+          merged_by INT NULL,
+          status ENUM('active','resolved') NOT NULL DEFAULT 'active',
+          merged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          resolved_at DATETIME NULL,
+          PRIMARY KEY (id),
+          INDEX idx_table_merges_primary_status (primary_table_id, status),
+          INDEX idx_table_merges_merged_status (merged_table_id, status),
+          CONSTRAINT fk_merge_primary FOREIGN KEY (primary_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_merge_merged FOREIGN KEY (merged_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_merge_primary_order FOREIGN KEY (primary_order_id) REFERENCES orders(id) ON DELETE SET NULL,
+          CONSTRAINT fk_merge_merged_order FOREIGN KEY (merged_order_id) REFERENCES orders(id) ON DELETE SET NULL,
+          CONSTRAINT fk_merge_user FOREIGN KEY (merged_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log("Migration: created table_merges audit table");
+    } else {
+      const mergeColumns = await query<SchemaMetadataRow[]>(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges'`,
+      );
+      const mergeColumnNames = new Set(mergeColumns.map((column) => String(column.COLUMN_NAME)));
+      if (!mergeColumnNames.has("primary_order_id")) await query(`ALTER TABLE table_merges ADD COLUMN primary_order_id INT NULL AFTER merged_table_id`);
+      if (!mergeColumnNames.has("merged_order_id")) await query(`ALTER TABLE table_merges ADD COLUMN merged_order_id INT NULL AFTER primary_order_id`);
+      if (!mergeColumnNames.has("merged_by")) await query(`ALTER TABLE table_merges ADD COLUMN merged_by INT NULL AFTER merged_order_id`);
+      if (!mergeColumnNames.has("status")) await query(`ALTER TABLE table_merges ADD COLUMN status ENUM('active','resolved') NOT NULL DEFAULT 'active' AFTER merged_by`);
+      if (!mergeColumnNames.has("resolved_at")) await query(`ALTER TABLE table_merges ADD COLUMN resolved_at DATETIME NULL AFTER merged_at`);
+    }
+
+    const mergeConstraints = await query<SchemaMetadataRow[]>(
+      `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges' AND CONSTRAINT_TYPE = 'FOREIGN KEY'`,
+    );
+    const mergeConstraintNames = new Set(mergeConstraints.map((constraint) => String(constraint.CONSTRAINT_NAME)));
+    if (!mergeConstraintNames.has("fk_merge_primary_order")) {
+      await query(`ALTER TABLE table_merges ADD CONSTRAINT fk_merge_primary_order
+        FOREIGN KEY (primary_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+    }
+    if (!mergeConstraintNames.has("fk_merge_merged_order")) {
+      await query(`ALTER TABLE table_merges ADD CONSTRAINT fk_merge_merged_order
+        FOREIGN KEY (merged_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+    }
+    if (!mergeConstraintNames.has("fk_merge_user")) {
+      await query(`ALTER TABLE table_merges ADD CONSTRAINT fk_merge_user
+        FOREIGN KEY (merged_by) REFERENCES users(id) ON DELETE SET NULL`);
+    }
+
+    await query(`
+      UPDATE tables t
+      JOIN table_merges tm ON tm.merged_table_id = t.id AND tm.status = ?
+      SET t.merged_into_table_id = tm.primary_table_id
+      WHERE t.merged_into_table_id IS NULL
+    `, [TABLE_MERGE_STATUS.ACTIVE]);
+
+    // Party seating is deliberately separate from physical table merging: one order can serve tables in different zones.
+    await query(`
+      CREATE TABLE IF NOT EXISTS table_group_seatings (
+        id INT NOT NULL AUTO_INCREMENT,
+        group_code VARCHAR(40) NOT NULL,
+        primary_table_id INT NOT NULL,
+        assigned_table_id INT NOT NULL,
+        guest_count INT NOT NULL,
+        created_by INT NULL,
+        status ENUM('active','resolved') NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved_at DATETIME NULL,
+        PRIMARY KEY (id),
+        INDEX idx_group_seatings_primary_status (primary_table_id, status),
+        INDEX idx_group_seatings_assigned_status (assigned_table_id, status),
+        CONSTRAINT fk_group_seatings_primary FOREIGN KEY (primary_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_group_seatings_assigned FOREIGN KEY (assigned_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_group_seatings_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Future reservations use a separate allocation record. This must never be confused with a live merge.
+    await query(`
+      CREATE TABLE IF NOT EXISTS booking_table_assignments (
+        id INT NOT NULL AUTO_INCREMENT,
+        booking_id INT NOT NULL,
+        table_id INT NOT NULL,
+        is_primary TINYINT(1) NOT NULL DEFAULT 0,
+        allocated_capacity INT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uq_booking_table_assignments (booking_id, table_id),
+        INDEX idx_booking_table_assignments_table (table_id),
+        CONSTRAINT fk_booking_assignment_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+        CONSTRAINT fk_booking_assignment_table FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE RESTRICT
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Active reservations created before the unified three-hour policy are normalized once.
+    await query(
+      `UPDATE bookings
+       SET end_time = DATE_ADD(start_time, INTERVAL ? MINUTE)
+       WHERE status IN (?, ?)
+         AND TIMESTAMPDIFF(MINUTE, start_time, end_time) <> ?`,
+      [
+        BOOKING_DURATION_MINUTES,
+        BOOKING_STATUS.PENDING,
+        BOOKING_STATUS.CONFIRMED,
+        BOOKING_DURATION_MINUTES,
+      ],
+    );
+
     const bookingCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
@@ -837,6 +1092,20 @@ export const updateOrderStatus = async (id: string, status: string): Promise<boo
   const isClosed = status === "completed" || status === "paid" || status === "cancelled";
   if (isClosed) {
     const result = await query<any>("UPDATE orders SET status = ?, closed_at = NOW() WHERE id = ?", [status, id]);
+    if (result.affectedRows > 0 && status === ORDER_STATUS.COMPLETED) {
+      await query(
+        `UPDATE bookings b
+         JOIN orders o ON o.booking_id = b.id
+         SET b.status = ?
+         WHERE o.id = ? AND b.status IN (?, ?)`,
+        [
+          BOOKING_STATUS.COMPLETED,
+          id,
+          BOOKING_STATUS.PENDING,
+          BOOKING_STATUS.CONFIRMED,
+        ],
+      );
+    }
     return result.affectedRows > 0;
   }
   const result = await query<any>("UPDATE orders SET status = ? WHERE id = ?", [status, id]);
@@ -1474,10 +1743,10 @@ export const getResmanagerTableById = async (id: number | string): Promise<any |
 
 export const updateResmanagerTableStatus = async (
   id: number | string,
-  status: "empty" | "reserved" | "serving" | "pending_payment" | "cleaning" | "maintenance",
+  status: TableStatus,
   maintenanceNote?: string,
-): Promise<boolean> => {
-  let targetId: any = id;
+): Promise<ResmanagerTableStatusUpdateResult | null> => {
+  let targetId: number | string = id;
   const num = Number(id);
   if (!isNaN(num) && num > 0) targetId = num;
   else if (typeof id === "string") {
@@ -1486,63 +1755,116 @@ export const updateResmanagerTableStatus = async (
   }
 
   // Luôn kiểm tra bàn có tồn tại không trước khi update
-  const checkRows = await query<any[]>(
-    "SELECT id FROM tables WHERE (id = ? OR name = ?) AND is_deleted = 0",
-    [targetId, String(id)]
-  );
-  if (!checkRows || checkRows.length === 0) {
-    return false;
-  }
-  const actualId = checkRows[0].id;
-
+  const connection = await ensurePool().getConnection();
   try {
-    if (status === "maintenance" && maintenanceNote) {
-      await query<any>(
-        "UPDATE tables SET status = ?, maintenance_note = ? WHERE id = ? AND is_deleted = 0",
-        [status, maintenanceNote, actualId]
-      );
-    } else if (status === "empty") {
-      await query<any>(
-        "UPDATE tables SET status = ?, maintenance_note = NULL WHERE id = ? AND is_deleted = 0",
-        [status, actualId]
-      );
-    } else {
-      await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, actualId]);
+    await connection.beginTransaction();
+    const [selectedRows] = await connection.query<TableIdRow[]>(
+      `SELECT id FROM tables
+       WHERE (id = ? OR name = ?) AND is_deleted = 0
+       FOR UPDATE`,
+      [targetId, String(id)],
+    );
+    const selectedTable = selectedRows[0];
+    if (!selectedTable) {
+      await connection.rollback();
+      return null;
     }
-  } catch (err: any) {
-    const isUnknownColumn =
-      err?.message?.includes("Unknown column") || err?.code === "ER_BAD_FIELD_ERROR";
-    if (isUnknownColumn) {
-      console.warn("[db] maintenance_note column not found, falling back to status-only update.");
-      await query<any>("UPDATE tables SET status = ? WHERE id = ? AND is_deleted = 0", [status, actualId]);
-    } else {
-      throw err;
-    }
-  }
 
-  if (status === "pending_payment") {
-    await query<any>(
-      "UPDATE orders SET status = 'pending_payment' WHERE table_id = ? AND status IN ('open', 'serving')",
-      [actualId]
-    ).catch(() => {});
-  } else if (status === "serving") {
-    await query<any>(
-      "UPDATE orders SET status = 'serving' WHERE table_id = ? AND status = 'pending_payment'",
-      [actualId]
-    ).catch(() => {});
-    await query<any>(
-      `UPDATE bookings SET status = 'completed'
-       WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
-      [actualId]
-    ).catch(() => {});
-  } else if (status === "empty") {
-    await query<any>(
-      `UPDATE bookings SET status = 'cancelled'
-       WHERE table_id = ? AND status IN ('pending', 'confirmed')`,
-      [actualId]
-    ).catch(() => {});
+    const mergedPrimaryTableId = await resolveMergedTableRootInTransaction(connection, selectedTable.id);
+    const [groupOwnerRows] = await connection.query<TableIdRow[]>(
+      `SELECT primary_table_id AS id
+       FROM table_group_seatings
+       WHERE assigned_table_id = ? AND status = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [mergedPrimaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+    );
+    const primaryTableId = groupOwnerRows[0]?.id ?? mergedPrimaryTableId;
+    const [clusterRows] = await connection.query<TableIdRow[]>(
+      `SELECT id FROM tables
+       WHERE (id = ? OR merged_into_table_id = ?) AND is_deleted = 0
+       FOR UPDATE`,
+      [primaryTableId, primaryTableId],
+    );
+    const [groupRows] = await connection.query<TableIdRow[]>(
+      `SELECT assigned_table_id AS id
+       FROM table_group_seatings
+       WHERE primary_table_id = ? AND status = ?
+       FOR UPDATE`,
+      [primaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+    );
+    const updatedTableIds = [...new Set([...clusterRows, ...groupRows].map((table) => table.id))];
+    if (updatedTableIds.length === 0) {
+      throw new TableMergeValidationError("Không tìm thấy cụm bàn cần cập nhật.");
+    }
+    const tablePlaceholders = updatedTableIds.map(() => "?").join(", ");
+
+    if (status === TABLE_STATUS.MAINTENANCE && maintenanceNote) {
+      await connection.query(
+        `UPDATE tables SET status = ?, maintenance_note = ?
+         WHERE id IN (${tablePlaceholders}) AND is_deleted = 0`,
+        [status, maintenanceNote, ...updatedTableIds],
+      );
+    } else if (status === TABLE_STATUS.EMPTY) {
+      await connection.query(
+        `UPDATE tables
+         SET status = ?, maintenance_note = NULL, merged_into_table_id = NULL
+         WHERE id IN (${tablePlaceholders}) AND is_deleted = 0`,
+        [status, ...updatedTableIds],
+      );
+    } else {
+      await connection.query(
+        `UPDATE tables SET status = ?
+         WHERE id IN (${tablePlaceholders}) AND is_deleted = 0`,
+        [status, ...updatedTableIds],
+      );
+    }
+
+    if (status === TABLE_STATUS.PENDING_PAYMENT) {
+      await connection.query(
+        `UPDATE orders SET status = ?
+         WHERE table_id = ? AND status IN (?, ?)`,
+        [ORDER_STATUS.PENDING_PAYMENT, primaryTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING],
+      );
+    } else if (status === TABLE_STATUS.SERVING) {
+      await connection.query(
+        `UPDATE orders SET status = ?
+         WHERE table_id = ? AND status = ?`,
+        [ORDER_STATUS.SERVING, primaryTableId, ORDER_STATUS.PENDING_PAYMENT],
+      );
+      await connection.query(
+        `UPDATE bookings SET status = ?
+         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
+        [BOOKING_STATUS.COMPLETED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
+      );
+    } else if (status === TABLE_STATUS.EMPTY) {
+      await connection.query(
+        `UPDATE bookings SET status = ?
+         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
+        [BOOKING_STATUS.CANCELLED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
+      );
+      await connection.query(
+        `UPDATE table_merges
+         SET status = ?, resolved_at = NOW()
+         WHERE primary_table_id = ? AND status = ?`,
+        [TABLE_MERGE_STATUS.RESOLVED, primaryTableId, TABLE_MERGE_STATUS.ACTIVE],
+      );
+      await connection.query(
+        `UPDATE table_group_seatings
+         SET status = ?, resolved_at = NOW()
+         WHERE primary_table_id = ? AND status = ?`,
+        [GROUP_SEATING_STATUS.RESOLVED, primaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+      );
+    }
+
+    await connection.commit();
+    return { primaryTableId, updatedTableIds };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
-  return true;
 };
 
 export const createResmanagerTable = async (table: {
@@ -1632,9 +1954,56 @@ export const hasActiveOrdersForTable = async (tableId: number): Promise<boolean>
 };
 
 export const hasActiveBookingsForTable = async (tableId: number): Promise<boolean> => {
-  const rows = await query<any[]>(
-    `SELECT 1 FROM bookings WHERE table_id = ? AND status IN ('pending', 'confirmed') LIMIT 1`,
-    [tableId]
+  const rows = await query<{ id: number }[]>(
+    `SELECT b.id
+     FROM bookings b
+     WHERE b.status IN (?, ?)
+       AND (
+         b.table_id = ?
+         OR EXISTS (
+           SELECT 1
+           FROM booking_table_assignments bta
+           WHERE bta.booking_id = b.id AND bta.table_id = ?
+         )
+       )
+     LIMIT 1`,
+    [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED, tableId, tableId]
+  );
+  return rows.length > 0;
+};
+
+interface ActiveTableBookingRow {
+  id: number;
+}
+
+/** Checks whether a table belongs to a booking whose three-hour service window is in progress. */
+export const hasBookingInProgressForTable = async (
+  tableId: number,
+  currentTime: string,
+): Promise<boolean> => {
+  const rows = await query<ActiveTableBookingRow[]>(
+    `SELECT b.id
+     FROM bookings b
+     WHERE b.status IN (?, ?)
+       AND b.start_time <= ?
+       AND b.end_time > ?
+       AND (
+         b.table_id = ?
+         OR EXISTS (
+           SELECT 1
+           FROM booking_table_assignments bta
+           WHERE bta.booking_id = b.id AND bta.table_id = ?
+         )
+       )
+     LIMIT 1`,
+    [
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      currentTime,
+      currentTime,
+      tableId,
+      tableId,
+    ],
   );
   return rows.length > 0;
 };
@@ -1650,36 +2019,67 @@ export interface AvailableBookingTable {
   area_name: string | null;
 }
 
-/**
- * Returns tables that can accommodate a party and have no overlapping active booking.
- * This is the single availability source used by both web booking and Telegram.
- */
-export const getAvailableBookingTables = async (
-  partySize: number,
+interface BookingAllocationTable extends AvailableBookingTable {
+  status: TableStatus;
+  area_id: number | null;
+  row_pos: string | null;
+  col_pos: number | null;
+}
+
+export const BOOKING_ALLOCATION_KIND = {
+  SINGLE: "single",
+  ADJACENT: "adjacent",
+  SEPARATE: "separate",
+} as const;
+
+export type BookingAllocationKind = (typeof BOOKING_ALLOCATION_KIND)[keyof typeof BOOKING_ALLOCATION_KIND];
+
+export interface BookingTableAllocationOption {
+  primaryTable: AvailableBookingTable;
+  tables: AvailableBookingTable[];
+  totalCapacity: number;
+  allocationKind: BookingAllocationKind;
+}
+
+/** Returns tables free for the whole requested interval, including multi-table booking conflicts. */
+const getBookingTablesFreeForInterval = async (
   startTime: string,
   endTime: string,
-): Promise<AvailableBookingTable[]> => {
-  const rows = await query<AvailableBookingTable[]>(
-    `SELECT t.id, t.name, t.capacity, a.name AS area_name
+): Promise<BookingAllocationTable[]> => {
+  const rows = await query<BookingAllocationTable[]>(
+    `SELECT t.id, t.name, t.capacity, t.status, t.area_id, t.row_pos, t.col_pos, a.name AS area_name
      FROM tables t
      LEFT JOIN table_areas a ON a.id = t.area_id
      WHERE t.is_deleted = 0
-       AND t.status = ?
-       AND t.capacity >= ?
+       AND t.status <> ?
        AND NOT EXISTS (
          SELECT 1
          FROM bookings b
          WHERE b.table_id = t.id
-           AND b.status IN (?, ?)
+           AND b.status IN (?, ?, ?)
+           AND b.start_time < ?
+           AND b.end_time > ?
+       )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM booking_table_assignments bta
+         JOIN bookings b ON b.id = bta.booking_id
+         WHERE bta.table_id = t.id
+           AND b.status IN (?, ?, ?)
            AND b.start_time < ?
            AND b.end_time > ?
        )
      ORDER BY t.capacity ASC, t.name ASC`,
     [
-      TABLE_STATUS.EMPTY,
-      partySize,
+      TABLE_STATUS.MAINTENANCE,
       BOOKING_STATUS.PENDING,
       BOOKING_STATUS.CONFIRMED,
+      BOOKING_STATUS.COMPLETED,
+      endTime,
+      startTime,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      BOOKING_STATUS.COMPLETED,
       endTime,
       startTime,
     ],
@@ -1689,7 +2089,143 @@ export const getAvailableBookingTables = async (
     ...row,
     id: Number(row.id),
     capacity: Number(row.capacity),
+    area_id: row.area_id === null ? null : Number(row.area_id),
+    col_pos: row.col_pos === null ? null : Number(row.col_pos),
   }));
+};
+
+/** Converts internal allocation rows into the public booking table shape. */
+const toAvailableBookingTable = (table: BookingAllocationTable): AvailableBookingTable => ({
+  id: table.id,
+  name: table.name,
+  capacity: table.capacity,
+  area_name: table.area_name,
+});
+
+/** Builds a stable unique key for a table allocation candidate. */
+const getBookingAllocationKey = (tables: AvailableBookingTable[]): string =>
+  tables.map((table) => table.id).sort((left, right) => left - right).join(",");
+
+/** Adds one allocation option if it serves the party and was not already generated. */
+const addBookingAllocationOption = (
+  options: BookingTableAllocationOption[],
+  uniqueKeys: Set<string>,
+  tables: BookingAllocationTable[],
+  partySize: number,
+  allocationKind: BookingAllocationKind,
+): void => {
+  const totalCapacity = tables.reduce((total, table) => total + table.capacity, 0);
+  const publicTables = tables.map(toAvailableBookingTable);
+  const key = getBookingAllocationKey(publicTables);
+  if (tables.length === 0 || totalCapacity < partySize || uniqueKeys.has(key)) return;
+
+  uniqueKeys.add(key);
+  options.push({
+    primaryTable: publicTables[0],
+    tables: publicTables,
+    totalCapacity,
+    allocationKind,
+  });
+};
+
+/** Selects the smallest-capacity non-adjacent table combination that can serve the booking party. */
+const getBestSeparateBookingAllocation = (
+  tables: BookingAllocationTable[],
+  partySize: number,
+): BookingAllocationTable[] => {
+  const largestTableCapacity = Math.max(...tables.map((table) => table.capacity));
+  const maximumRelevantCapacity = partySize + largestTableCapacity - 1;
+  const combinationsByCapacity = new Map<number, BookingAllocationTable[]>([[0, []]]);
+
+  for (const table of [...tables].sort((left, right) => right.capacity - left.capacity || left.name.localeCompare(right.name))) {
+    const currentCombinations = [...combinationsByCapacity.entries()];
+    for (const [capacity, combination] of currentCombinations) {
+      if (combination.length >= MAX_BOOKING_ALLOCATION_TABLES) continue;
+
+      const nextCapacity = capacity + table.capacity;
+      if (nextCapacity > maximumRelevantCapacity) continue;
+
+      const nextCombination = [...combination, table];
+      const existingCombination = combinationsByCapacity.get(nextCapacity);
+      if (!existingCombination || nextCombination.length < existingCombination.length) {
+        combinationsByCapacity.set(nextCapacity, nextCombination);
+      }
+    }
+  }
+
+  const bestMatch = [...combinationsByCapacity.entries()]
+    .filter(([capacity]) => capacity >= partySize)
+    .sort(([leftCapacity, leftTables], [rightCapacity, rightTables]) =>
+      leftCapacity - rightCapacity || leftTables.length - rightTables.length,
+    )[0];
+
+  return bestMatch?.[1] ?? [];
+};
+
+/** Finds allocation options, preferring one table then physically adjacent tables before separate zones. */
+export const getAvailableBookingTableOptions = async (
+  partySize: number,
+  startTime: string,
+  endTime: string,
+): Promise<BookingTableAllocationOption[]> => {
+  const tables = await getBookingTablesFreeForInterval(startTime, endTime);
+  const options: BookingTableAllocationOption[] = [];
+  const uniqueKeys = new Set<string>();
+
+  for (const table of tables.filter((item) => item.capacity >= partySize)) {
+    addBookingAllocationOption(options, uniqueKeys, [table], partySize, BOOKING_ALLOCATION_KIND.SINGLE);
+  }
+
+  const tablesByRow = new Map<string, BookingAllocationTable[]>();
+  for (const table of tables) {
+    if (table.area_id === null || table.row_pos === null || table.col_pos === null) continue;
+    const rowKey = `${table.area_id}:${table.row_pos}`;
+    const rowTables = tablesByRow.get(rowKey) ?? [];
+    rowTables.push(table);
+    tablesByRow.set(rowKey, rowTables);
+  }
+
+  for (const rowTables of tablesByRow.values()) {
+    const sortedTables = [...rowTables].sort((left, right) => (left.col_pos ?? 0) - (right.col_pos ?? 0));
+    for (let startIndex = 0; startIndex < sortedTables.length; startIndex += 1) {
+      const candidate: BookingAllocationTable[] = [];
+      for (let index = startIndex; index < sortedTables.length; index += 1) {
+        const previous = candidate[candidate.length - 1];
+        const current = sortedTables[index];
+        if (previous && (current.col_pos ?? 0) - (previous.col_pos ?? 0) > 1) break;
+        candidate.push(current);
+        addBookingAllocationOption(options, uniqueKeys, candidate, partySize, BOOKING_ALLOCATION_KIND.ADJACENT);
+        if (candidate.length >= MAX_BOOKING_ALLOCATION_TABLES) break;
+      }
+    }
+  }
+
+  const separateCandidate = getBestSeparateBookingAllocation(tables, partySize);
+  addBookingAllocationOption(options, uniqueKeys, separateCandidate, partySize, BOOKING_ALLOCATION_KIND.SEPARATE);
+
+  return options.sort((left, right) => {
+    const kindRank = {
+      [BOOKING_ALLOCATION_KIND.SINGLE]: 0,
+      [BOOKING_ALLOCATION_KIND.ADJACENT]: 1,
+      [BOOKING_ALLOCATION_KIND.SEPARATE]: 2,
+    } as const;
+    return kindRank[left.allocationKind] - kindRank[right.allocationKind]
+      || left.tables.length - right.tables.length
+      || left.totalCapacity - right.totalCapacity;
+  });
+};
+
+/**
+ * Returns tables that can accommodate a party and have no overlapping active booking.
+ * This is the single availability source used by both web booking and Telegram.
+ */
+export const getAvailableBookingTables = async (
+  partySize: number,
+  startTime: string,
+  endTime: string,
+): Promise<AvailableBookingTable[]> => {
+  const tables = await getBookingTablesFreeForInterval(startTime, endTime);
+  return tables.filter((table) => table.capacity >= partySize).map(toAvailableBookingTable);
 };
 
 export const getBookings = async (status?: string): Promise<any[]> => {
@@ -1722,20 +2258,197 @@ export const getBookings = async (status?: string): Promise<any[]> => {
      WHERE bmi.booking_id IN (${placeholders})`,
     bookingIds,
   );
+  const assignments = await query<{ booking_id: number; table_id: number; table_name: string; allocated_capacity: number }[]>(
+    `SELECT bta.booking_id, bta.table_id, t.name AS table_name, bta.allocated_capacity
+     FROM booking_table_assignments bta
+     JOIN tables t ON t.id = bta.table_id
+     WHERE bta.booking_id IN (${placeholders})
+     ORDER BY bta.is_primary DESC, t.name ASC`,
+    bookingIds,
+  );
 
   const itemMap = new Map<number, any[]>();
+  const assignmentMap = new Map<number, { table_id: number; table_name: string; allocated_capacity: number }[]>();
   for (const item of items) {
     if (!itemMap.has(item.booking_id)) {
       itemMap.set(item.booking_id, []);
     }
     itemMap.get(item.booking_id)!.push(item);
   }
+  for (const assignment of assignments) {
+    const currentAssignments = assignmentMap.get(Number(assignment.booking_id)) ?? [];
+    currentAssignments.push(assignment);
+    assignmentMap.set(Number(assignment.booking_id), currentAssignments);
+  }
 
   for (const row of rows) {
     row.pre_ordered_items = itemMap.get(row.id) || [];
+    const tableAssignments = assignmentMap.get(Number(row.id)) ?? [];
+    if (tableAssignments.length > 0) {
+      row.table_ids = tableAssignments.map((assignment) => assignment.table_id);
+      row.table_names = tableAssignments.map((assignment) => assignment.table_name).join(", ");
+      row.total_capacity = tableAssignments.reduce(
+        (total, assignment) => total + Number(assignment.allocated_capacity),
+        0,
+      );
+    }
   }
 
   return rows;
+};
+
+/** Input used to filter the staff booking calendar without mixing it with table status. */
+export interface BookingScheduleFilters {
+  tableId?: number;
+  startDate?: string;
+  endDate?: string;
+  includeCancelled?: boolean;
+  mode?: BookingScheduleMode;
+}
+
+/** Calendar row returned to staff screens for one booking and all tables allocated to it. */
+export interface BookingScheduleRow {
+  id: number;
+  confirmation_code: string;
+  guest_name: string;
+  guest_phone: string;
+  guest_email: string | null;
+  party_size: number;
+  start_time: string;
+  end_time: string;
+  status: string;
+  guest_note: string | null;
+  note: string | null;
+  primary_table_id: number;
+  primary_table_name: string;
+  table_names: string;
+  table_ids: string;
+  total_capacity: number;
+  check_in_open_at: string;
+  check_in_close_at: string;
+}
+
+/** A confirmed or pending booking interval that blocks a table's calendar. */
+export interface BookingTableBookedInterval {
+  start_time: string;
+  end_time: string;
+}
+
+/** Calendar availability data for one named table on one restaurant-local day. */
+export interface BookingTableAvailability {
+  id: number;
+  name: string;
+  capacity: number;
+  bookedIntervals: BookingTableBookedInterval[];
+}
+
+/** Returns bookings in a date range, including every table allocated to a group booking. */
+export const getBookingSchedule = async (
+  filters: BookingScheduleFilters = {},
+): Promise<BookingScheduleRow[]> => {
+  const conditions: string[] = [];
+  const params: Array<string | number> = [];
+
+  if (filters.mode === BOOKING_SCHEDULE_MODE.CURRENT) {
+    conditions.push("b.status IN (?, ?)");
+    params.push(BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED);
+  } else if (filters.mode === BOOKING_SCHEDULE_MODE.HISTORY) {
+    conditions.push("b.status IN (?, ?)");
+    params.push(BOOKING_STATUS.COMPLETED, BOOKING_STATUS.CANCELLED);
+  } else if (!filters.includeCancelled) {
+    conditions.push("b.status <> ?");
+    params.push(BOOKING_STATUS.CANCELLED);
+  }
+  if (filters.startDate) {
+    conditions.push("b.start_time >= ?");
+    params.push(`${filters.startDate} 00:00:00`);
+  }
+  if (filters.endDate) {
+    conditions.push("b.start_time < DATE_ADD(?, INTERVAL 1 DAY)");
+    params.push(`${filters.endDate} 00:00:00`);
+  }
+  if (filters.tableId !== undefined) {
+    conditions.push("(bta.table_id = ? OR (bta.booking_id IS NULL AND b.table_id = ?))");
+    params.push(filters.tableId, filters.tableId);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const orderByClause = filters.mode === BOOKING_SCHEDULE_MODE.HISTORY
+    ? "ORDER BY b.end_time DESC, b.id DESC"
+    : "ORDER BY b.start_time ASC, b.id ASC";
+  return query<BookingScheduleRow[]>(
+    `SELECT b.id, b.confirmation_code, b.guest_name, b.guest_phone, b.guest_email,
+            b.party_size, b.start_time, b.end_time, b.status, b.guest_note, b.note,
+            b.table_id AS primary_table_id, primary_table.name AS primary_table_name,
+            COALESCE(GROUP_CONCAT(DISTINCT allocated_table.name ORDER BY bta.is_primary DESC, allocated_table.name SEPARATOR ', '), primary_table.name) AS table_names,
+            COALESCE(GROUP_CONCAT(DISTINCT allocated_table.id ORDER BY bta.is_primary DESC, allocated_table.name), CAST(b.table_id AS CHAR)) AS table_ids,
+            COALESCE(SUM(bta.allocated_capacity), primary_table.capacity) AS total_capacity,
+            DATE_SUB(b.start_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_open_at,
+            DATE_SUB(b.end_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_close_at
+     FROM bookings b
+     LEFT JOIN tables primary_table ON primary_table.id = b.table_id
+     LEFT JOIN booking_table_assignments bta ON bta.booking_id = b.id
+     LEFT JOIN tables allocated_table ON allocated_table.id = bta.table_id
+     ${whereClause}
+     GROUP BY b.id
+     ${orderByClause}`,
+    params,
+  );
+};
+
+/** Returns a table's booking intervals that overlap the requested restaurant-local day. */
+export const getBookingTableAvailabilityForDate = async (
+  tableName: string,
+  date: string,
+): Promise<BookingTableAvailability | null> => {
+  const normalizedTableName = tableName.trim().toUpperCase();
+  const tableRows = await query<AvailableBookingTable[]>(
+    `SELECT t.id, t.name, t.capacity, a.name AS area_name
+     FROM tables t
+     LEFT JOIN table_areas a ON a.id = t.area_id
+     WHERE UPPER(t.name) = ? AND t.is_deleted = 0
+     LIMIT 1`,
+    [normalizedTableName],
+  );
+  const table = tableRows[0];
+  if (!table) return null;
+
+  const dayStart = `${date} 00:00:00`;
+  const bookedIntervals = await query<BookingTableBookedInterval[]>(
+    `SELECT DATE_FORMAT(GREATEST(b.start_time, ?), '%H:%i') AS start_time,
+            DATE_FORMAT(LEAST(b.end_time, DATE_ADD(?, INTERVAL 1 DAY)), '%H:%i') AS end_time
+     FROM bookings b
+     WHERE b.status IN (?, ?, ?)
+       AND b.start_time < DATE_ADD(?, INTERVAL 1 DAY)
+       AND b.end_time > ?
+       AND (
+         b.table_id = ?
+         OR EXISTS (
+           SELECT 1
+           FROM booking_table_assignments bta
+           WHERE bta.booking_id = b.id AND bta.table_id = ?
+         )
+       )
+     ORDER BY b.start_time ASC, b.id ASC`,
+    [
+      dayStart,
+      dayStart,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      BOOKING_STATUS.COMPLETED,
+      dayStart,
+      dayStart,
+      table.id,
+      table.id,
+    ],
+  );
+
+  return {
+    id: Number(table.id),
+    name: table.name,
+    capacity: Number(table.capacity),
+    bookedIntervals,
+  };
 };
 
 export const getBookingById = async (id: number): Promise<any | null> => {
@@ -1756,33 +2469,67 @@ export const getBookingById = async (id: number): Promise<any | null> => {
     WHERE bmi.booking_id = ?
   `, [id]);
   booking.pre_ordered_items = items;
+  booking.table_assignments = await query(
+    `SELECT bta.table_id, bta.is_primary, bta.allocated_capacity, t.name AS table_name, a.name AS area_name
+     FROM booking_table_assignments bta
+     JOIN tables t ON t.id = bta.table_id
+     LEFT JOIN table_areas a ON a.id = t.area_id
+     WHERE bta.booking_id = ?
+     ORDER BY bta.is_primary DESC, t.name ASC`,
+    [id],
+  );
   return booking;
 };
 
 export const createBooking = async (data: any): Promise<any> => {
   const requestedPartySize = Number(data.party_size);
-  const availableTables = await getAvailableBookingTables(
+  const rawTableIds: unknown[] = Array.isArray(data.table_ids) ? data.table_ids : [data.table_id];
+  const requestedTableIds = [...new Set(
+    rawTableIds
+      .map((tableId) => Number(tableId))
+      .filter((tableId): tableId is number => Number.isInteger(tableId)),
+  )];
+  const requestedPrimaryTableId = Number(data.table_id);
+  if (!Number.isInteger(requestedPrimaryTableId) || !requestedTableIds.includes(requestedPrimaryTableId)) {
+    throw new Error("Cụm bàn đặt trước không hợp lệ.");
+  }
+  const availableOptions = await getAvailableBookingTableOptions(
     requestedPartySize,
     data.start_time,
     data.end_time,
   );
-  const selectedTableIsAvailable = availableTables.some(
-    (table) => table.id === Number(data.table_id),
+  const requestedOptionKey = requestedTableIds.sort((left, right) => left - right).join(",");
+  const selectedTableIsAvailable = availableOptions.some(
+    (option) => option.primaryTable.id === requestedPrimaryTableId
+      && getBookingAllocationKey(option.tables) === requestedOptionKey,
   );
   if (!selectedTableIsAvailable) {
     throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
   }
 
   // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
+  const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
   const overlaps = await query<any[]>(`
-    SELECT id FROM bookings
-    WHERE table_id = ? AND status IN (?, ?)
-      AND start_time < ? AND end_time > ?
+    SELECT b.id FROM bookings b
+    WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?, ?)
+      AND b.start_time < ? AND b.end_time > ?
+    UNION
+    SELECT b.id FROM booking_table_assignments bta
+    JOIN bookings b ON b.id = bta.booking_id
+    WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?, ?)
+      AND b.start_time < ? AND b.end_time > ?
     LIMIT 1
   `, [
-    data.table_id,
+    ...requestedTableIds,
     BOOKING_STATUS.PENDING,
     BOOKING_STATUS.CONFIRMED,
+    BOOKING_STATUS.COMPLETED,
+    data.end_time,
+    data.start_time,
+    ...requestedTableIds,
+    BOOKING_STATUS.PENDING,
+    BOOKING_STATUS.CONFIRMED,
+    BOOKING_STATUS.COMPLETED,
     data.end_time,
     data.start_time,
   ]);
@@ -1870,6 +2617,25 @@ export const createBooking = async (data: any): Promise<any> => {
   ]);
   const insertId = result.insertId;
 
+  const assignedTables = await query<AvailableBookingTable[]>(
+    `SELECT id, name, capacity, NULL AS area_name FROM tables WHERE id IN (${tablePlaceholders})`,
+    requestedTableIds,
+  );
+  const assignmentPlaceholders = assignedTables.map(() => "(?, ?, ?, ?)").join(",");
+  const assignmentValues: number[] = [];
+  for (const table of assignedTables) {
+    assignmentValues.push(
+      insertId,
+      Number(table.id),
+      Number(table.id) === requestedPrimaryTableId ? 1 : 0,
+      Number(table.capacity),
+    );
+  }
+  await query(
+    `INSERT INTO booking_table_assignments (booking_id, table_id, is_primary, allocated_capacity) VALUES ${assignmentPlaceholders}`,
+    assignmentValues,
+  );
+
   if (preOrderedItems.length > 0) {
     const placeholders = preOrderedItems.map(() => "(?, ?, ?, ?)").join(",");
     const insertParams: any[] = [];
@@ -1896,10 +2662,11 @@ export const createBooking = async (data: any): Promise<any> => {
 
     // Thêm logic của main branch: tạo ngay 1 đơn hàng pre_order và chi tiết order_items để chuyển xuống bếp
     const orderResult = await query(`
-      INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
-      VALUES (?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
+      INSERT INTO orders (table_id, booking_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
+      VALUES (?, ?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
     `, [
       data.table_id,
+      insertId,
       validCustomerId || null,
       1,
       data.guest_note ? `[Booking ${code}] ${data.guest_note}` : `[Booking ${code}] Đơn đặt món trước`,
@@ -1924,9 +2691,6 @@ export const createBooking = async (data: any): Promise<any> => {
       ]);
     }
   }
-
-  // Cập nhật trạng thái bàn sang reserved ngay khi có booking mới
-  await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [data.table_id]);
 
   const bookingDetails = await getBookingById(insertId);
   return bookingDetails;
@@ -1953,6 +2717,213 @@ export const transferBookingItemsToOrder = async (tableId: number, orderId: stri
       );
     }
     console.log(`✅ Transferred ${items.length} items from booking ${bookingId} to order ${orderId}`);
+  }
+};
+
+interface BookingCheckInRow extends mysql.RowDataPacket {
+  id: number;
+  table_id: number;
+  customer_id: number | null;
+  guest_name: string;
+  guest_phone: string;
+  party_size: number;
+  guest_note: string | null;
+  status: string;
+}
+
+interface BookingCheckInTableRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+interface BookingCheckInPhysicalTableRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  status: string;
+}
+
+interface BookingCheckInOrderRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+interface BookingCheckInResult {
+  orderId: number;
+  bookingId: number;
+  primaryTableId: number;
+  updatedTableIds: number[];
+}
+
+/**
+ * Seats a booked party only inside its operational arrival window and preserves the booking
+ * as an active calendar record until the linked order is paid.
+ */
+export const checkInScheduledBooking = async (
+  requestedTableId: number,
+  bookingId: number,
+  createdBy: number,
+): Promise<BookingCheckInResult> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const now = formatVietnamBookingDateTime();
+    const [bookingRows] = await connection.query<BookingCheckInRow[]>(
+      `SELECT b.id, b.table_id, b.customer_id, b.guest_name, b.guest_phone,
+              b.party_size, b.guest_note, b.status
+       FROM bookings b
+       WHERE b.id = ?
+         AND (b.table_id = ? OR EXISTS (
+           SELECT 1 FROM booking_table_assignments bta
+           WHERE bta.booking_id = b.id AND bta.table_id = ?
+         ))
+       FOR UPDATE`,
+      [bookingId, requestedTableId, requestedTableId],
+    );
+    const booking = bookingRows[0];
+    if (!booking) {
+      throw new Error("Không tìm thấy lịch đặt cho bàn này.");
+    }
+    if (booking.status !== BOOKING_STATUS.PENDING && booking.status !== BOOKING_STATUS.CONFIRMED) {
+      throw new Error("Lịch đặt này không còn có thể nhận khách.");
+    }
+
+    const [checkInWindowRows] = await connection.query<mysql.RowDataPacket[]>(
+      `SELECT CASE
+         WHEN ? < DATE_SUB(start_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) THEN 'before'
+         WHEN ? > DATE_SUB(end_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) THEN 'expired'
+         ELSE 'open'
+       END AS check_in_state
+       FROM bookings WHERE id = ?`,
+      [now, now, bookingId],
+    );
+    const checkInState = String(checkInWindowRows[0]?.check_in_state ?? "expired");
+    if (checkInState === "before") {
+      throw new Error(`Chỉ có thể mở bàn trước giờ đặt ${BOOKING_CHECK_IN_EARLY_MINUTES} phút.`);
+    }
+    if (checkInState === "expired") {
+      throw new Error("Đã quá thời gian nhận khách của lịch đặt này. Vui lòng tạo booking mới hoặc liên hệ quản lý.");
+    }
+
+    const [bookingTableRows] = await connection.query<BookingCheckInTableRow[]>(
+      `SELECT table_id AS id FROM booking_table_assignments WHERE booking_id = ?
+       UNION SELECT table_id AS id FROM bookings WHERE id = ?`,
+      [bookingId, bookingId],
+    );
+    const bookingTableIds = [...new Set(bookingTableRows.map((row) => Number(row.id)))];
+    if (bookingTableIds.length === 0) {
+      throw new Error("Lịch đặt chưa được gán bàn.");
+    }
+    const tablePlaceholders = bookingTableIds.map(() => "?").join(", ");
+    const [physicalTableRows] = await connection.query<BookingCheckInPhysicalTableRow[]>(
+      `SELECT id, name, status FROM tables WHERE id IN (${tablePlaceholders}) FOR UPDATE`,
+      bookingTableIds,
+    );
+    if (physicalTableRows.length !== bookingTableIds.length) {
+      throw new Error("Không thể xác định đầy đủ các bàn đã gán cho lịch đặt.");
+    }
+    const unavailableTables = physicalTableRows.filter((table) => table.status !== TABLE_STATUS.EMPTY);
+    if (unavailableTables.length > 0) {
+      const tableNames = unavailableTables.map((table) => table.name).join(", ");
+      throw new Error(`Bàn ${tableNames} chưa sẵn sàng để nhận khách mới.`);
+    }
+    const [activeOrderRows] = await connection.query<BookingCheckInOrderRow[]>(
+      `SELECT id FROM orders
+       WHERE table_id IN (${tablePlaceholders})
+         AND status IN (?, ?, ?)
+         AND order_type <> 'pre_order'
+       FOR UPDATE`,
+      [
+        ...bookingTableIds,
+        ORDER_STATUS.OPEN,
+        ORDER_STATUS.SERVING,
+        ORDER_STATUS.PENDING_PAYMENT,
+      ],
+    );
+    if (activeOrderRows.length > 0) {
+      throw new Error("Bàn vẫn đang phục vụ khách trước. Không thể mở lịch đặt kế tiếp cho đến khi bàn được thanh toán và dọn xong.");
+    }
+
+    const [preOrderRows] = await connection.query<BookingCheckInOrderRow[]>(
+      `SELECT id FROM orders
+       WHERE booking_id = ? AND order_type = 'pre_order'
+         AND status IN (?, ?)
+       ORDER BY created_at DESC, id DESC LIMIT 1
+       FOR UPDATE`,
+      [bookingId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING],
+    );
+    const preOrder = preOrderRows[0];
+    let orderId: number;
+    if (preOrder) {
+      orderId = Number(preOrder.id);
+      await connection.query(
+        `UPDATE orders
+         SET table_id = ?, created_by = ?, order_type = ?, status = ?,
+             guest_name = ?, guest_phone = ?, guest_count = ?
+         WHERE id = ?`,
+        [
+          booking.table_id,
+          createdBy,
+          "dine_in",
+          ORDER_STATUS.OPEN,
+          booking.guest_name,
+          booking.guest_phone,
+          booking.party_size,
+          orderId,
+        ],
+      );
+      await connection.query(
+        `UPDATE order_items SET status = 'pending', is_held = 0
+         WHERE order_id = ? AND status = 'pre_order'`,
+        [orderId],
+      );
+    } else {
+      const [orderResult] = await connection.query<mysql.ResultSetHeader>(
+        `INSERT INTO orders (
+          table_id, booking_id, customer_id, created_by, order_type, note,
+          guest_name, guest_phone, guest_count, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          booking.table_id,
+          booking.id,
+          booking.customer_id,
+          createdBy,
+          "dine_in",
+          booking.guest_note,
+          booking.guest_name,
+          booking.guest_phone,
+          booking.party_size,
+          ORDER_STATUS.OPEN,
+        ],
+      );
+      orderId = Number(orderResult.insertId);
+      const [preOrderedItemRows] = await connection.query<mysql.RowDataPacket[]>(
+        `SELECT menu_item_id, quantity, unit_price
+         FROM booking_menu_items WHERE booking_id = ?`,
+        [bookingId],
+      );
+      for (const item of preOrderedItemRows) {
+        await connection.query(
+          `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status)
+           VALUES (?, ?, ?, ?, 'waiting_kitchen')`,
+          [orderId, item.menu_item_id, item.quantity, item.unit_price],
+        );
+      }
+    }
+
+    await connection.query(
+      `UPDATE tables SET status = ? WHERE id IN (${tablePlaceholders})`,
+      [TABLE_STATUS.SERVING, ...bookingTableIds],
+    );
+    await connection.commit();
+    return {
+      orderId,
+      bookingId,
+      primaryTableId: Number(booking.table_id),
+      updatedTableIds: bookingTableIds,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
 };
 
@@ -1983,12 +2954,8 @@ export const updateBookingStatus = async (
     `, [status, id]);
   }
 
-  // Update table status accordingly
-  if (status === 'cancelled' || status === 'completed') {
-    await query("UPDATE tables SET status = 'empty' WHERE id = ?", [booking.table_id]);
-  } else if (status === 'confirmed') {
-    await query("UPDATE tables SET status = 'reserved' WHERE id = ?", [booking.table_id]);
-  }
+  // Booking status is a calendar state. Physical table status changes only when staff seats,
+  // serves, cleans, or closes a table, so future schedules never reserve a physical table all day.
   return true;
 };
 
@@ -2029,19 +2996,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     LEFT JOIN table_areas a ON t.area_id = a.id
     LEFT JOIN orders o ON o.id = (
       SELECT id FROM orders
-      WHERE table_id = t.id AND status IN ('open', 'serving', 'pending_payment')
+      WHERE table_id = t.id AND status IN ('open', 'serving', 'pending_payment') AND order_type <> 'pre_order'
       ORDER BY created_at DESC, id DESC
       LIMIT 1
     )
-    LEFT JOIN bookings b ON b.id = (
-      SELECT id FROM bookings
-      WHERE table_id = t.id AND (
-        status IN ('pending', 'confirmed') OR 
-        (t.status IN ('serving', 'pending_payment') AND status = 'completed')
-      )
-      ORDER BY FIELD(status, 'pending', 'confirmed', 'completed'), start_time DESC
-      LIMIT 1
-    )
+    LEFT JOIN bookings b ON b.id = o.booking_id
     WHERE t.is_deleted = 0
   `;
   const params: any[] = [];
@@ -2054,8 +3013,61 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
 
   const results = [];
   for (const r of rows) {
-    const mergedTo = await query("SELECT primary_table_id FROM table_merges WHERE merged_table_id = ?", [r.id]);
-    const mergedChildren = await query("SELECT merged_table_id FROM table_merges WHERE primary_table_id = ?", [r.id]);
+    const mergedTo = await query<TableMergeDisplayRow[]>(
+      `SELECT t.id, t.name, t.capacity
+       FROM tables t
+       WHERE t.id = COALESCE(?, (
+         SELECT primary_table_id
+         FROM table_merges
+         WHERE merged_table_id = ? AND status = ?
+         ORDER BY merged_at DESC, id DESC
+         LIMIT 1
+       ))`,
+      [r.merged_into_table_id, r.id, TABLE_MERGE_STATUS.ACTIVE],
+    );
+    const mergedChildren = await query<TableMergeDisplayRow[]>(
+      `SELECT t.id, t.name, t.capacity
+       FROM tables t
+       WHERE t.merged_into_table_id = ? AND t.is_deleted = 0
+       ORDER BY t.name ASC`,
+      [r.id],
+    );
+    const clusterPrimaryTableId = mergedTo[0]?.id ?? Number(r.id);
+    const clusterTables = await query<TableMergeDisplayRow[]>(
+      `SELECT t.id, t.name, t.capacity
+       FROM tables t
+       WHERE (t.id = ? OR t.merged_into_table_id = ?) AND t.is_deleted = 0
+       ORDER BY t.name ASC`,
+      [clusterPrimaryTableId, clusterPrimaryTableId],
+    );
+    const clusterCapacity = clusterTables.reduce((total, table) => total + Number(table.capacity), 0);
+    const groupOwner = await query<GroupSeatingDisplayRow[]>(
+      `SELECT p.id, p.name, p.capacity, gs.group_code
+       FROM table_group_seatings gs
+       JOIN tables p ON p.id = gs.primary_table_id
+       WHERE gs.assigned_table_id = ? AND gs.status = ?
+       ORDER BY gs.created_at DESC, gs.id DESC
+       LIMIT 1`,
+      [r.id, GROUP_SEATING_STATUS.ACTIVE],
+    );
+    const groupPrimaryTableId = groupOwner[0]?.id ?? Number(r.id);
+    const groupChildren = await query<GroupSeatingDisplayRow[]>(
+      `SELECT t.id, t.name, t.capacity, gs.group_code, a.name AS area_name
+       FROM table_group_seatings gs
+       JOIN tables t ON t.id = gs.assigned_table_id
+       LEFT JOIN table_areas a ON a.id = t.area_id
+       WHERE gs.primary_table_id = ? AND gs.status = ?
+       ORDER BY t.area_id, t.row_pos, t.col_pos`,
+      [groupPrimaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+    );
+    const groupPrimaryCluster = await query<TableMergeDisplayRow[]>(
+      `SELECT id, name, capacity
+       FROM tables
+       WHERE (id = ? OR merged_into_table_id = ?) AND is_deleted = 0`,
+      [groupPrimaryTableId, groupPrimaryTableId],
+    );
+    const groupCapacity = groupPrimaryCluster.reduce((total, table) => total + Number(table.capacity), 0)
+      + groupChildren.reduce((total, table) => total + Number(table.capacity), 0);
     const splits = await query("SELECT child_label FROM table_splits WHERE parent_table_id = ?", [r.id]);
 
     let preOrderedItems: any[] = [];
@@ -2080,24 +3092,36 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
       }
     }
 
-    const effectiveStatus = (r.status === 'empty' || r.status === 'available') && (r.booking_id || r.booking_code) ? 'reserved' : r.status;
     results.push({
       ...r,
-      status: effectiveStatus,
+      // A booking is calendar data; do not turn an otherwise empty physical table into reserved.
+      status: r.status,
       deposit_amount: Number(r.deposit_amount || 0),
       pre_ordered_items: preOrderedItems,
       is_merged_child: mergedTo.length > 0,
-      merged_into: mergedTo.length > 0 ? mergedTo[0].primary_table_id : null,
-      is_merged_primary: mergedChildren.length > 0,
-      merged_tables: mergedChildren.map((c: any) => c.merged_table_id),
-      is_split: splits.length > 0,
+      merged_into: mergedTo.length > 0 ? mergedTo[0] : null,
+       is_merged_primary: mergedChildren.length > 0,
+       merged_tables: mergedChildren,
+       cluster_capacity: clusterCapacity || Number(r.capacity),
+       is_group_seating_child: groupOwner.length > 0,
+       group_seating_into: groupOwner.length > 0 ? groupOwner[0] : null,
+       is_group_seating_primary: groupChildren.length > 0,
+       group_seating_tables: groupChildren,
+       group_seating_code: groupOwner[0]?.group_code ?? groupChildren[0]?.group_code ?? null,
+       group_seating_capacity: groupChildren.length > 0 || groupOwner.length > 0
+         ? groupCapacity
+         : null,
+       is_split: splits.length > 0,
       split_labels: splits.map((s: any) => s.child_label)
     });
   }
   return results;
 };
 
-export const getEmptyTablesForBooking = async (startTime?: string): Promise<any[]> => {
+export const getEmptyTablesForBooking = async (startTime?: string, endTime?: string): Promise<any[]> => {
+  if (startTime && endTime) {
+    return getBookingTablesFreeForInterval(startTime, endTime);
+  }
   let sql = `
     SELECT t.*, a.name AS area_name
     FROM tables t
@@ -2220,6 +3244,728 @@ export const unmergeResmanagerTable = async (primaryTableId: number): Promise<bo
   return true;
 };
 
+
+interface MergeTableRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  area_id: number;
+  row_pos: string;
+  col_pos: number;
+  capacity: number;
+  status: string;
+  merged_into_table_id: number | null;
+}
+
+interface MergeOrderRow extends mysql.RowDataPacket {
+  id: number;
+  table_id: number;
+  customer_id: number | null;
+  created_by: number;
+  order_type: string;
+  status: string;
+  note: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  guest_count: number | null;
+}
+
+interface MergeBookingRow extends mysql.RowDataPacket {
+  table_id: number;
+  start_time: Date | string;
+  table_name: string;
+}
+
+interface MergeGuestCountRow extends mysql.RowDataPacket {
+  total_guest_count: number | null;
+}
+
+interface MergeInsertResult extends mysql.ResultSetHeader {
+  insertId: number;
+}
+
+export interface TableMergeResult {
+  primaryTableId: number;
+  mergedTableIds: number[];
+  primaryOrderId: number | null;
+}
+
+export interface ActiveOrderResolution {
+  requestedTableId: number;
+  primaryTableId: number;
+  redirected: boolean;
+  activeOrderId: number | null;
+  activeOrder: ActiveOrderSummary | null;
+}
+
+/** Public operational fields for the current order of a merged-table cluster. */
+export interface ActiveOrderSummary {
+  id: number;
+  tableId: number;
+  status: string;
+  guestName: string | null;
+  guestPhone: string | null;
+  guestCount: number | null;
+}
+
+/** Error raised for an invalid operational table merge without changing persisted data. */
+export class TableMergeValidationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "TableMergeValidationError";
+  }
+}
+
+const ADJACENT_TABLE_GRID_DISTANCE = 1;
+
+/** Return whether two tables share a physical edge in the same restaurant area. */
+const areTablesPhysicallyAdjacent = (firstTable: MergeTableRow, secondTable: MergeTableRow): boolean => {
+  if (firstTable.area_id !== secondTable.area_id) {
+    return false;
+  }
+
+  const sameRow = firstTable.row_pos === secondTable.row_pos;
+  const sameColumn = firstTable.col_pos === secondTable.col_pos;
+  const rowDistance = Math.abs(firstTable.row_pos.charCodeAt(0) - secondTable.row_pos.charCodeAt(0));
+  const columnDistance = Math.abs(firstTable.col_pos - secondTable.col_pos);
+
+  return (sameRow && columnDistance === ADJACENT_TABLE_GRID_DISTANCE)
+    || (sameColumn && rowDistance === ADJACENT_TABLE_GRID_DISTANCE);
+};
+
+/** Validate that new physical tables can connect to the existing primary-table cluster. */
+const assertMergeTablesAreContiguous = (
+  primaryTable: MergeTableRow,
+  existingMergedTables: MergeTableRow[],
+  requestedMergedTables: MergeTableRow[],
+): void => {
+  const connectedTables = [primaryTable, ...existingMergedTables];
+  const pendingTables = [...requestedMergedTables];
+
+  while (pendingTables.length > 0) {
+    const nextTableIndex = pendingTables.findIndex((candidateTable) =>
+      connectedTables.some((connectedTable) => areTablesPhysicallyAdjacent(connectedTable, candidateTable)),
+    );
+    if (nextTableIndex < 0) {
+      const disconnectedNames = pendingTables.map((table) => table.name).join(", ");
+      throw new TableMergeValidationError(
+        `Chỉ có thể gộp các bàn liền kề. ${disconnectedNames} không nối liền với cụm ${primaryTable.name}.`,
+      );
+    }
+    const [nextTable] = pendingTables.splice(nextTableIndex, 1);
+    connectedTables.push(nextTable);
+  }
+};
+
+/** Resolve a table to its direct merge root while rejecting corrupt cyclic chains. */
+const resolveMergedTableRootInTransaction = async (
+  connection: mysql.PoolConnection,
+  tableId: number,
+): Promise<number> => {
+  let currentTableId = tableId;
+  const visitedTableIds = new Set<number>();
+
+  while (true) {
+    if (visitedTableIds.has(currentTableId)) {
+      throw new TableMergeValidationError("Phát hiện vòng lặp dữ liệu gộp bàn. Vui lòng liên hệ quản lý.");
+    }
+    visitedTableIds.add(currentTableId);
+
+    const [rows] = await connection.query<MergeTableRow[]>(
+      `SELECT id, merged_into_table_id
+       FROM tables
+       WHERE id = ? AND is_deleted = 0
+       FOR UPDATE`,
+      [currentTableId],
+    );
+    const currentTable = rows[0];
+    if (!currentTable) {
+      throw new TableMergeValidationError("Không tìm thấy bàn cần thao tác.");
+    }
+    if (currentTable.merged_into_table_id === null) {
+      return currentTable.id;
+    }
+    currentTableId = Number(currentTable.merged_into_table_id);
+  }
+};
+
+/** Resolve a table root for read flows such as opening an order from a merged child table. */
+export const resolveResmanagerPrimaryTableId = async (tableId: number): Promise<number> => {
+  let currentTableId = tableId;
+  const visitedTableIds = new Set<number>();
+
+  while (true) {
+    if (visitedTableIds.has(currentTableId)) {
+      throw new TableMergeValidationError("Phát hiện vòng lặp dữ liệu gộp bàn. Vui lòng liên hệ quản lý.");
+    }
+    visitedTableIds.add(currentTableId);
+
+    const rows = await query<MergeTableRow[]>(
+      `SELECT id, merged_into_table_id
+       FROM tables
+       WHERE id = ? AND is_deleted = 0`,
+      [currentTableId],
+    );
+    const currentTable = rows[0];
+    if (!currentTable) {
+      throw new TableMergeValidationError("Không tìm thấy bàn cần thao tác.");
+    }
+    if (currentTable.merged_into_table_id === null) {
+      return currentTable.id;
+    }
+    currentTableId = Number(currentTable.merged_into_table_id);
+  }
+};
+
+/** Return the shared active order for a table or redirect a merged child to its root. */
+export const getResmanagerActiveOrderForTable = async (tableId: number): Promise<ActiveOrderResolution> => {
+  const mergedPrimaryTableId = await resolveResmanagerPrimaryTableId(tableId);
+  const groupOwner = await query<TableIdRow[]>(
+    `SELECT primary_table_id AS id
+     FROM table_group_seatings
+     WHERE assigned_table_id = ? AND status = ?
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [mergedPrimaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+  );
+  const primaryTableId = groupOwner[0]?.id ?? mergedPrimaryTableId;
+  const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+  const orders = await query<MergeOrderRow[]>(
+    `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+     FROM orders
+     WHERE table_id = ? AND status IN (${statusPlaceholders})
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+  );
+
+  return {
+    requestedTableId: tableId,
+    primaryTableId,
+    redirected: primaryTableId !== tableId,
+    activeOrderId: orders[0]?.id ?? null,
+    activeOrder: orders[0]
+      ? {
+          id: orders[0].id,
+          tableId: orders[0].table_id,
+          status: orders[0].status,
+          guestName: orders[0].guest_name,
+          guestPhone: orders[0].guest_phone,
+          guestCount: orders[0].guest_count,
+        }
+      : null,
+  };
+};
+
+/**
+ * Allocate a large party across separate, available tables while keeping one root order and invoice.
+ * Unlike a physical merge, assigned tables may be remote and remain individually visible on the map.
+ */
+export const arrangeGroupSeatingTransactionally = async (
+  requestedPrimaryTableId: number,
+  requestedAssignedTableIds: number[],
+  createdBy: number | null,
+): Promise<GroupSeatingResult> => {
+  const assignedTableIds = [...new Set(requestedAssignedTableIds.map(Number))];
+  if (assignedTableIds.length === 0 || assignedTableIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw new TableMergeValidationError("Danh sách bàn xếp cho đoàn không hợp lệ.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const primaryTableId = await resolveMergedTableRootInTransaction(connection, requestedPrimaryTableId);
+    if (assignedTableIds.includes(primaryTableId) || assignedTableIds.includes(requestedPrimaryTableId)) {
+      throw new TableMergeValidationError("Không thể xếp bàn chính vào chính đoàn của nó.");
+    }
+
+    const primaryClusterIdsRows = await connection.query<GroupSeatingTableRow[]>(
+      `SELECT id, capacity
+       FROM tables
+       WHERE (id = ? OR merged_into_table_id = ?) AND is_deleted = 0
+       FOR UPDATE`,
+      [primaryTableId, primaryTableId],
+    );
+    const [primaryClusterRows] = primaryClusterIdsRows;
+    const primaryClusterIds = primaryClusterRows.map((table) => table.id);
+
+    const [primaryRows] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, row_pos, col_pos, capacity, status, merged_into_table_id
+       FROM tables
+       WHERE id = ? AND is_deleted = 0
+       FOR UPDATE`,
+      [primaryTableId],
+    );
+    const primaryTable = primaryRows[0];
+    if (!primaryTable) {
+      throw new TableMergeValidationError("Không tìm thấy bàn chính của đoàn.");
+    }
+    const allowedPrimaryStatuses = new Set<string>([TABLE_STATUS.SERVING, TABLE_STATUS.RESERVED]);
+    if (!allowedPrimaryStatuses.has(primaryTable.status)) {
+      throw new TableMergeValidationError(`Bàn ${primaryTable.name} phải đang phục vụ hoặc đã đặt trước để xếp bàn đoàn.`);
+    }
+
+    const assignedPlaceholders = assignedTableIds.map(() => "?").join(", ");
+    const [assignedTables] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, row_pos, col_pos, capacity, status, merged_into_table_id
+       FROM tables
+       WHERE id IN (${assignedPlaceholders}) AND is_deleted = 0
+       FOR UPDATE`,
+      assignedTableIds,
+    );
+    if (assignedTables.length !== assignedTableIds.length) {
+      throw new TableMergeValidationError("Có bàn xếp cho đoàn không tồn tại hoặc đã bị xóa.");
+    }
+
+    const [physicalMergeRows] = await connection.query<TableIdRow[]>(
+      `SELECT id
+       FROM tables
+       WHERE merged_into_table_id IN (${assignedPlaceholders})
+          OR (id IN (${assignedPlaceholders}) AND merged_into_table_id IS NOT NULL)
+       FOR UPDATE`,
+      [...assignedTableIds, ...assignedTableIds],
+    );
+    if (physicalMergeRows.length > 0) {
+      throw new TableMergeValidationError("Bàn đã thuộc một cụm gộp vật lý không thể được xếp riêng cho đoàn.");
+    }
+
+    const involvedPlaceholders = [...primaryClusterIds, ...assignedTableIds].map(() => "?").join(", ");
+    const [existingGroupRows] = await connection.query<TableIdRow[]>(
+      `SELECT assigned_table_id AS id
+       FROM table_group_seatings
+       WHERE status = ?
+         AND (primary_table_id IN (${involvedPlaceholders}) OR assigned_table_id IN (${involvedPlaceholders}))
+       FOR UPDATE`,
+      [GROUP_SEATING_STATUS.ACTIVE, ...primaryClusterIds, ...assignedTableIds, ...primaryClusterIds, ...assignedTableIds],
+    );
+    if (existingGroupRows.length > 0) {
+      throw new TableMergeValidationError("Một trong các bàn đã thuộc đoàn khác. Hãy hoàn tất hoặc tách đoàn hiện tại trước.");
+    }
+
+    for (const assignedTable of assignedTables) {
+      if (assignedTable.status !== TABLE_STATUS.EMPTY) {
+        throw new TableMergeValidationError(`Bàn ${assignedTable.name} phải ở trạng thái trống để xếp cho đoàn.`);
+      }
+    }
+
+    const activeOrderStatusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+    const [guestCountRows] = await connection.query<GroupSeatingGuestCountRow[]>(
+      `SELECT guest_count
+       FROM orders
+       WHERE table_id = ? AND status IN (${activeOrderStatusPlaceholders})
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+    );
+    let guestCount = Number(guestCountRows[0]?.guest_count ?? 0);
+    if (guestCount <= 0) {
+      const [bookingGuestRows] = await connection.query<GroupSeatingGuestCountRow[]>(
+        `SELECT party_size AS guest_count
+         FROM bookings
+         WHERE table_id = ? AND status IN (?, ?)
+         ORDER BY start_time DESC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [primaryTableId, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
+      );
+      guestCount = Number(bookingGuestRows[0]?.guest_count ?? 0);
+    }
+    if (!Number.isInteger(guestCount) || guestCount <= 0) {
+      throw new TableMergeValidationError("Chưa có số lượng khách hợp lệ trên bàn chính nên chưa thể xếp bàn đoàn.");
+    }
+
+    const totalCapacity = [...primaryClusterRows, ...assignedTables]
+      .reduce((total, table) => total + Number(table.capacity), 0);
+    if (guestCount > totalCapacity) {
+      throw new TableMergeValidationError(`Tổng sức chứa ${totalCapacity} chỗ vẫn không đủ cho đoàn ${guestCount} khách.`);
+    }
+
+    const groupCode = `${GROUP_SEATING_CODE_PREFIX}-${Date.now()}`;
+    for (const assignedTableId of assignedTableIds) {
+      await connection.query(
+        `INSERT INTO table_group_seatings (
+          group_code, primary_table_id, assigned_table_id, guest_count, created_by, status
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [groupCode, primaryTableId, assignedTableId, guestCount, createdBy, GROUP_SEATING_STATUS.ACTIVE],
+      );
+    }
+    await connection.query(
+      `UPDATE tables SET status = ? WHERE id IN (${assignedPlaceholders})`,
+      [primaryTable.status, ...assignedTableIds],
+    );
+
+    await connection.commit();
+    return { primaryTableId, assignedTableIds, groupCode, totalCapacity, guestCount };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Merge one or more adjacent operational tables into a single flattened root inside one ACID transaction. */
+export const mergeResmanagerTablesTransactionally = async (
+  requestedPrimaryTableId: number,
+  requestedMergedTableIds: number[],
+  mergedBy: number | null,
+): Promise<TableMergeResult> => {
+  const uniqueMergedTableIds = [...new Set(requestedMergedTableIds.map(Number))];
+  if (uniqueMergedTableIds.length === 0 || uniqueMergedTableIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw new TableMergeValidationError("Danh sách bàn cần gộp không hợp lệ.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const primaryTableId = await resolveMergedTableRootInTransaction(connection, requestedPrimaryTableId);
+
+    if (uniqueMergedTableIds.includes(primaryTableId) || uniqueMergedTableIds.includes(requestedPrimaryTableId)) {
+      throw new TableMergeValidationError("Bàn chính không thể gộp vào chính nó.");
+    }
+
+    const tableIds = [primaryTableId, ...uniqueMergedTableIds];
+    const placeholders = tableIds.map(() => "?").join(", ");
+    const [tableRows] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, row_pos, col_pos, capacity, status, merged_into_table_id
+       FROM tables
+       WHERE id IN (${placeholders}) AND is_deleted = 0
+       FOR UPDATE`,
+      tableIds,
+    );
+    if (tableRows.length !== tableIds.length) {
+      throw new TableMergeValidationError("Có bàn không tồn tại hoặc đã bị xóa.");
+    }
+
+    const primaryTable = tableRows.find((table) => table.id === primaryTableId);
+    if (!primaryTable) {
+      throw new TableMergeValidationError("Không tìm thấy bàn chính.");
+    }
+
+    const [existingMergedTables] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, row_pos, col_pos, capacity, status, merged_into_table_id
+       FROM tables
+       WHERE merged_into_table_id = ? AND is_deleted = 0
+       FOR UPDATE`,
+      [primaryTableId],
+    );
+
+    const allowedStatuses = new Set<string>([TABLE_STATUS.EMPTY, TABLE_STATUS.SERVING]);
+    if (!allowedStatuses.has(primaryTable.status)) {
+      throw new TableMergeValidationError(`Bàn ${primaryTable.name} đang ở trạng thái không thể gộp.`);
+    }
+
+    const mergedTables = uniqueMergedTableIds.map((tableId) => {
+      const table = tableRows.find((candidate) => candidate.id === tableId);
+      if (!table) {
+        throw new TableMergeValidationError("Không tìm thấy bàn cần gộp.");
+      }
+      return table;
+    });
+    for (const mergedTable of mergedTables) {
+      if (mergedTable.area_id !== primaryTable.area_id) {
+        throw new TableMergeValidationError("Chỉ có thể gộp các bàn trong cùng khu vực.");
+      }
+      if (!allowedStatuses.has(mergedTable.status)) {
+        throw new TableMergeValidationError(`Bàn ${mergedTable.name} đang ở trạng thái không thể gộp.`);
+      }
+      if (mergedTable.merged_into_table_id !== null) {
+        throw new TableMergeValidationError(`Bàn ${mergedTable.name} đã thuộc một cụm bàn khác.`);
+      }
+    }
+
+    assertMergeTablesAreContiguous(primaryTable, existingMergedTables, mergedTables);
+
+    const bookingWindowEnd = new Date(Date.now() + MERGE_BOOKING_LOOKAHEAD_MINUTES * 60 * 1000);
+    const [upcomingBookings] = await connection.query<MergeBookingRow[]>(
+      `SELECT b.table_id, b.start_time, t.name AS table_name
+       FROM bookings b
+       JOIN tables t ON t.id = b.table_id
+       WHERE b.table_id IN (${uniqueMergedTableIds.map(() => "?").join(", ")})
+         AND b.status = ?
+         AND b.start_time >= NOW()
+         AND b.start_time < ?
+       FOR UPDATE`,
+      [...uniqueMergedTableIds, BOOKING_STATUS.CONFIRMED, bookingWindowEnd],
+    );
+    const blockingBooking = upcomingBookings[0];
+    if (blockingBooking) {
+      const bookingTime = new Date(blockingBooking.start_time).toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      throw new TableMergeValidationError(`Bàn ${blockingBooking.table_name} có lịch khách đặt lúc ${bookingTime}.`);
+    }
+
+    const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+    const [primaryOrders] = await connection.query<MergeOrderRow[]>(
+      `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+       FROM orders
+       WHERE table_id = ? AND status IN (${statusPlaceholders})
+       ORDER BY created_at DESC, id DESC
+       FOR UPDATE`,
+      [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+    );
+    if (primaryOrders.some((order) => order.status === ORDER_STATUS.PENDING_PAYMENT)) {
+      throw new TableMergeValidationError("Không thể gộp bàn chính đang chờ thanh toán.");
+    }
+
+    const mergedClusterCapacity = [primaryTable, ...existingMergedTables, ...mergedTables]
+      .reduce((total, table) => total + Number(table.capacity), 0);
+    const guestCountScopeTableIds = [primaryTableId, ...uniqueMergedTableIds];
+    const guestCountScopePlaceholders = guestCountScopeTableIds.map(() => "?").join(", ");
+    const [guestCountRows] = await connection.query<MergeGuestCountRow[]>(
+      `SELECT COALESCE(SUM(COALESCE(guest_count, 0)), 0) AS total_guest_count
+       FROM orders
+       WHERE table_id IN (${guestCountScopePlaceholders})
+         AND status IN (${statusPlaceholders})
+       FOR UPDATE`,
+      [...guestCountScopeTableIds, ...ACTIVE_ORDER_STATUSES],
+    );
+    const mergedGuestCount = Number(guestCountRows[0]?.total_guest_count ?? 0);
+    if (mergedGuestCount > mergedClusterCapacity) {
+      throw new TableMergeValidationError(
+        `Cụm bàn sau khi gộp chỉ có ${mergedClusterCapacity} chỗ, không đủ cho ${mergedGuestCount} khách.`,
+      );
+    }
+
+    let primaryOrderId = primaryOrders[0]?.id ?? null;
+    let guestCountToAdd = 0;
+    for (const mergedTable of mergedTables) {
+      const [sourceOrders] = await connection.query<MergeOrderRow[]>(
+        `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+         FROM orders
+         WHERE table_id = ? AND status IN (${statusPlaceholders})
+         ORDER BY created_at ASC, id ASC
+         FOR UPDATE`,
+        [mergedTable.id, ...ACTIVE_ORDER_STATUSES],
+      );
+      if (sourceOrders.some((order) => order.status === ORDER_STATUS.PENDING_PAYMENT)) {
+        throw new TableMergeValidationError(`Bàn ${mergedTable.name} đang chờ thanh toán nên không thể gộp.`);
+      }
+
+      for (const sourceOrder of sourceOrders) {
+        const sourceGuestCount = Number(sourceOrder.guest_count ?? 0);
+        if (primaryOrderId === null) {
+          const [insertResult] = await connection.query<MergeInsertResult>(
+            `INSERT INTO orders (
+              table_id, customer_id, created_by, order_type, status, note,
+              guest_name, guest_phone, guest_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              primaryTableId,
+              sourceOrder.customer_id,
+              sourceOrder.created_by,
+              sourceOrder.order_type,
+              ORDER_STATUS.SERVING,
+              sourceOrder.note,
+              sourceOrder.guest_name,
+              sourceOrder.guest_phone,
+              sourceGuestCount || null,
+            ],
+          );
+          primaryOrderId = insertResult.insertId;
+        } else {
+          guestCountToAdd += sourceGuestCount;
+        }
+
+        await connection.query(
+          `UPDATE order_items
+           SET source_order_id = COALESCE(source_order_id, order_id), order_id = ?
+           WHERE order_id = ?`,
+          [primaryOrderId, sourceOrder.id],
+        );
+        await connection.query(
+          `UPDATE orders
+           SET status = ?, merged_into_order_id = ?, closed_at = NOW(),
+               note = CONCAT_WS(' | ', note, ?)
+           WHERE id = ?`,
+          [ORDER_STATUS.MERGED, primaryOrderId, `Đã gộp vào order #${primaryOrderId}`, sourceOrder.id],
+        );
+
+        await connection.query(
+          `UPDATE table_merges
+           SET status = ?, resolved_at = NOW()
+           WHERE merged_table_id = ? AND status = ?`,
+          [TABLE_MERGE_STATUS.RESOLVED, mergedTable.id, TABLE_MERGE_STATUS.ACTIVE],
+        );
+        await connection.query(
+          `INSERT INTO table_merges (
+            primary_table_id, merged_table_id, primary_order_id, merged_order_id, merged_by, status
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            primaryTableId,
+            mergedTable.id,
+            primaryOrderId,
+            sourceOrder.id,
+            mergedBy,
+            TABLE_MERGE_STATUS.ACTIVE,
+          ],
+        );
+      }
+
+      if (sourceOrders.length === 0) {
+        await connection.query(
+          `UPDATE table_merges
+           SET status = ?, resolved_at = NOW()
+           WHERE merged_table_id = ? AND status = ?`,
+          [TABLE_MERGE_STATUS.RESOLVED, mergedTable.id, TABLE_MERGE_STATUS.ACTIVE],
+        );
+        await connection.query(
+          `INSERT INTO table_merges (
+            primary_table_id, merged_table_id, primary_order_id, merged_order_id, merged_by, status
+          ) VALUES (?, ?, ?, NULL, ?, ?)`,
+          [primaryTableId, mergedTable.id, primaryOrderId, mergedBy, TABLE_MERGE_STATUS.ACTIVE],
+        );
+      }
+    }
+
+    if (primaryOrderId !== null && guestCountToAdd > 0) {
+      await connection.query(
+        `UPDATE orders
+         SET guest_count = COALESCE(guest_count, 0) + ?
+         WHERE id = ?`,
+        [guestCountToAdd, primaryOrderId],
+      );
+    }
+
+    await connection.query(
+      `UPDATE tables
+       SET status = ?, merged_into_table_id = CASE WHEN id = ? THEN NULL ELSE ? END
+       WHERE id IN (${tableIds.map(() => "?").join(", ")})`,
+      [TABLE_STATUS.SERVING, primaryTableId, primaryTableId, ...tableIds],
+    );
+
+    await connection.commit();
+    return { primaryTableId, mergedTableIds: uniqueMergedTableIds, primaryOrderId };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Release the root and every merged child after a successful payment. */
+export const releaseMergedTableClusterAfterPayment = async (tableId: number): Promise<number[]> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const mergedPrimaryTableId = await resolveMergedTableRootInTransaction(connection, tableId);
+    const [groupOwnerRows] = await connection.query<TableIdRow[]>(
+      `SELECT primary_table_id AS id
+       FROM table_group_seatings
+       WHERE assigned_table_id = ? AND status = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [mergedPrimaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+    );
+    const primaryTableId = groupOwnerRows[0]?.id ?? mergedPrimaryTableId;
+    const [clusterRows] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, status, merged_into_table_id
+       FROM tables
+       WHERE id = ? OR merged_into_table_id = ?
+       FOR UPDATE`,
+      [primaryTableId, primaryTableId],
+    );
+    const [groupRows] = await connection.query<TableIdRow[]>(
+      `SELECT assigned_table_id AS id
+       FROM table_group_seatings
+       WHERE primary_table_id = ? AND status = ?
+       FOR UPDATE`,
+      [primaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+    );
+    const clusterTableIds = [...new Set([...clusterRows, ...groupRows].map((table) => table.id))];
+    if (clusterTableIds.length === 0) {
+      throw new TableMergeValidationError("Không tìm thấy cụm bàn cần giải phóng.");
+    }
+
+    await connection.query(
+      `UPDATE tables
+       SET status = ?, merged_into_table_id = NULL
+       WHERE id IN (${clusterTableIds.map(() => "?").join(", ")})`,
+      [TABLE_STATUS.CLEANING, ...clusterTableIds],
+    );
+    await connection.query(
+      `UPDATE table_merges
+       SET status = ?, resolved_at = NOW()
+       WHERE primary_table_id = ? AND status = ?`,
+      [TABLE_MERGE_STATUS.RESOLVED, primaryTableId, TABLE_MERGE_STATUS.ACTIVE],
+    );
+    await connection.query(
+      `UPDATE table_group_seatings
+       SET status = ?, resolved_at = NOW()
+       WHERE primary_table_id = ? AND status = ?`,
+      [GROUP_SEATING_STATUS.RESOLVED, primaryTableId, GROUP_SEATING_STATUS.ACTIVE],
+    );
+
+    await connection.commit();
+    return clusterTableIds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Undo a merge only before any active root order exists, preserving the audit trail. */
+export const unmergeResmanagerTablesTransactionally = async (tableId: number): Promise<number[]> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const primaryTableId = await resolveMergedTableRootInTransaction(connection, tableId);
+    const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+    const [activeOrders] = await connection.query<MergeOrderRow[]>(
+      `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
+       FROM orders
+       WHERE table_id = ? AND status IN (${statusPlaceholders})
+       FOR UPDATE`,
+      [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+    );
+    if (activeOrders.length > 0) {
+      throw new TableMergeValidationError("Không thể bỏ gộp sau khi đã phát sinh order. Hãy tách món theo nghiệp vụ.");
+    }
+
+    const [mergedTables] = await connection.query<MergeTableRow[]>(
+      `SELECT id, name, area_id, status, merged_into_table_id
+       FROM tables
+       WHERE merged_into_table_id = ?
+       FOR UPDATE`,
+      [primaryTableId],
+    );
+    const mergedTableIds = mergedTables.map((table) => table.id);
+    if (mergedTableIds.length === 0) {
+      throw new TableMergeValidationError("Bàn này không có cụm bàn phụ để bỏ gộp.");
+    }
+
+    await connection.query(
+      `UPDATE tables
+       SET status = ?, merged_into_table_id = NULL
+       WHERE id IN (${mergedTableIds.map(() => "?").join(", ")})`,
+      [TABLE_STATUS.EMPTY, ...mergedTableIds],
+    );
+    await connection.query(
+      `UPDATE tables SET status = ?, merged_into_table_id = NULL WHERE id = ?`,
+      [TABLE_STATUS.EMPTY, primaryTableId],
+    );
+    await connection.query(
+      `UPDATE table_merges
+       SET status = ?, resolved_at = NOW()
+       WHERE primary_table_id = ? AND status = ?`,
+      [TABLE_MERGE_STATUS.RESOLVED, primaryTableId, TABLE_MERGE_STATUS.ACTIVE],
+    );
+
+    await connection.commit();
+    return mergedTableIds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
 
 export const splitResmanagerTable = async (
   parentTableId: number,
@@ -2391,7 +4137,14 @@ export const getResmanagerCategories = async (): Promise<any[]> => {
 };
 
 export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]> => {
-  const orders = await query<any[]>("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment') ORDER BY id DESC", [tableId]);
+  const primaryTableId = await resolveResmanagerPrimaryTableId(tableId);
+  const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
+  const orders = await query<any[]>(
+    `SELECT * FROM orders
+     WHERE table_id = ? AND status IN (${statusPlaceholders})
+     ORDER BY id DESC`,
+    [primaryTableId, ...ACTIVE_ORDER_STATUSES],
+  );
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
     order.items = allItems.filter((i: any) => i.status !== "voided" && i.status !== "cancelled");
@@ -2673,6 +4426,10 @@ export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> =
 };
 
 export const createResmanagerOrder = async (data: any): Promise<any> => {
+  if (data.table_id) {
+    data.table_id = await resolveResmanagerPrimaryTableId(Number(data.table_id));
+  }
+
   let validCustomerId: number | null = null;
   if (data.customer_id) {
     const custRows = await query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
@@ -2691,6 +4448,7 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     const existingPreOrders = await query<any[]>(`
       SELECT id FROM orders 
       WHERE table_id = ? AND status IN ('open', 'serving') AND order_type = 'pre_order'
+        AND booking_id IS NULL
       ORDER BY created_at DESC LIMIT 1
     `, [data.table_id]);
 
@@ -2714,7 +4472,6 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
         SET status = 'pending', is_held = 0 
         WHERE order_id = ? AND status = 'pre_order'
       `, [preOrderId]);
-      await completeActiveBookingForTable(data.table_id);
       return { id: preOrderId, ...data, status: 'open', customer_id: validCustomerId };
     }
   }
