@@ -23,5 +23,14 @@ export const TABLE_MERGE_STATUS = {
   RESOLVED: "resolved",
 } as const;
 
+/** Lifecycle values for a party allocated across separate table clusters. */
+export const GROUP_SEATING_STATUS = {
+  ACTIVE: "active",
+  RESOLVED: "resolved",
+} as const;
+
+/** Prefix used for an auditable multi-table party allocation code. */
+export const GROUP_SEATING_CODE_PREFIX = "DOAN";
+
 /** Booking window protected from operational table merges. */
 export const MERGE_BOOKING_LOOKAHEAD_MINUTES = 120;

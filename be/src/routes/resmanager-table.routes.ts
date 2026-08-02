@@ -4,10 +4,12 @@ import {
   getResmanagerTablesHandler,
   getEmptyTablesHandler,
   getResmanagerTableHandler,
+  getTableBookingScheduleHandler,
   getActiveOrderForTableHandler,
   updateResmanagerTableStatusHandler,
   transferTableHandler,
   mergeTableHandler,
+  arrangeGroupSeatingHandler,
   unmergeTableHandler,
   splitTableHandler,
   createResmanagerTableHandler,
@@ -35,6 +37,7 @@ router.post("/tab", openResmanagerTabHandler);
 
 // GET /api/v1/tables/:id
 router.get("/:id/active-order", getActiveOrderForTableHandler);
+router.get("/:id/booking-schedule", getTableBookingScheduleHandler);
 router.get("/:id", getResmanagerTableHandler);
 
 // PATCH /api/v1/tables/:id - Sửa bàn
@@ -51,6 +54,9 @@ router.post("/:id/transfer", transferTableHandler);
 
 // POST /api/v1/tables/:id/merge
 router.post("/:id/merge", mergeTableHandler);
+
+// POST /api/v1/tables/:id/group-seating
+router.post("/:id/group-seating", arrangeGroupSeatingHandler);
 
 // DELETE /api/v1/tables/:id/merge
 router.delete("/:id/merge", unmergeTableHandler);

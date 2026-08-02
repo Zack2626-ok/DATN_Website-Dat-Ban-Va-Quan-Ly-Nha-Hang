@@ -28,7 +28,8 @@ export const getResmanagerTablesHandler = async (req: Request, res: Response): P
 export const getEmptyTablesHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const startTime = req.query.start_time as string | undefined;
-    const tables = await db.getEmptyTablesForBooking(startTime);
+    const endTime = req.query.end_time as string | undefined;
+    const tables = await db.getEmptyTablesForBooking(startTime, endTime);
     sendSuccess(res, tables, "Lấy danh sách bàn trống thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -45,6 +46,33 @@ export const getResmanagerTableHandler = async (req: Request, res: Response): Pr
       return;
     }
     sendSuccess(res, table, "Lấy thông tin bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+/** Returns one table's booking calendar without changing its physical service status. */
+export const getTableBookingScheduleHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    if (!Number.isInteger(tableId) || tableId <= 0) {
+      sendError(res, "Mã bàn không hợp lệ.", 400);
+      return;
+    }
+    const table = await db.getResmanagerTableById(tableId);
+    if (!table) {
+      sendError(res, "Không tìm thấy bàn.", 404);
+      return;
+    }
+    const startDate = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
+    const endDate = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if ((startDate && !datePattern.test(startDate)) || (endDate && !datePattern.test(endDate))) {
+      sendError(res, "Ngày lọc phải theo định dạng YYYY-MM-DD.", 400);
+      return;
+    }
+    const schedule = await db.getBookingSchedule({ tableId, startDate, endDate });
+    sendSuccess(res, { table, schedule }, "Lấy lịch đặt của bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
@@ -201,6 +229,36 @@ export const mergeTableHandler = async (req: Request, res: Response): Promise<vo
 };
 
 // Bỏ gộp bàn — DELETE /api/v1/tables/:id/merge
+/** Allocate a large party to separate tables while keeping one primary order and invoice. */
+export const arrangeGroupSeatingHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const primaryTableId = Number(req.params.id);
+    const { assigned_table_ids } = req.body;
+    if (!Number.isInteger(primaryTableId) || primaryTableId <= 0) {
+      sendError(res, "ID bàn chính không hợp lệ", 400);
+      return;
+    }
+    if (!Array.isArray(assigned_table_ids) || assigned_table_ids.length === 0) {
+      sendError(res, "assigned_table_ids là bắt buộc (mảng các bàn xếp cho đoàn)", 400);
+      return;
+    }
+
+    const arrangedBy = req.user?.userId ? Number(req.user.userId) : null;
+    const result = await db.arrangeGroupSeatingTransactionally(
+      primaryTableId,
+      assigned_table_ids.map(Number),
+      Number.isInteger(arrangedBy) && Number(arrangedBy) > 0 ? Number(arrangedBy) : null,
+    );
+    const io = req.app.get("io");
+    io?.to("pos_lounge").emit("table:group_seating_changed", result);
+    io?.emit("table:group_seating_changed", result);
+    sendSuccess(res, result, "Xếp bàn đoàn thành công");
+  } catch (error) {
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
+  }
+};
+
 export const unmergeTableHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const primaryTableId = Number(req.params.id);

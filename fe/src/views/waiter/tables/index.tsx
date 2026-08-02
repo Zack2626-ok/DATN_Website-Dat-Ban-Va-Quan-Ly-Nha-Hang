@@ -20,6 +20,7 @@ import {
   Loader2,
   Copy,
   Link2,
+  UsersRound,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -28,15 +29,19 @@ import { TableArea } from "../../../interfaces/table.interface";
 import { toast } from "react-hot-toast";
 import { TransferTableModal } from "./TransferTableModal";
 import { MergeTableModal } from "./MergeTableModal";
+import { GroupSeatingModal } from "./GroupSeatingModal";
 import { SplitTableModal } from "./SplitTableModal";
 import {
   getTableAreas,
   getTablesV1,
+  getActiveOrderForTable,
   updateTableStatus,
   createResmanagerTable,
   deleteResmanagerTable,
+  getTableBookingSchedule,
   type ResmanagerTable,
 } from "../../../services/tableService";
+import type { BookingScheduleItem } from "../../../services/bookingService";
 import {
   getOrdersByTable,
   getOrderItems,
@@ -52,7 +57,7 @@ import { AddDishModal } from "./AddDishModal";
 import { ProvisionalBillModal } from "./ProvisionalBillModal";
 import { updateBookingStatus } from "../../../services/bookingService";
 
-type TableAction = "transfer" | "merge" | "split" | null;
+type TableAction = "transfer" | "merge" | "groupSeating" | "split" | null;
 
 interface ActiveOrderInfo {
   id: number;
@@ -91,11 +96,25 @@ const getCurrentUserInfo = () => {
 
 /** Return the total physical capacity available to a table or its merged cluster. */
 const getTableClusterCapacity = (table: ResmanagerTable): number =>
-  table.cluster_capacity ?? table.capacity;
+  table.group_seating_capacity ?? table.cluster_capacity ?? table.capacity;
 
 /** Check whether a table's current guest count exceeds its physical cluster capacity. */
 const isTableOverClusterCapacity = (table: ResmanagerTable): boolean =>
   typeof table.guest_count === "number" && table.guest_count > getTableClusterCapacity(table);
+
+/** Formats a date as a date-input value for the staff booking calendar. */
+const toDateInputValue = (date: Date): string => date.toISOString().slice(0, 10);
+
+/** Formats one scheduled booking timestamp for staff without exposing raw SQL/UTC text. */
+const formatScheduleTimestamp = (value: string): string => new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+}).format(new Date(value));
 
 const STATUS_CONFIG: Record<
   string,
@@ -167,6 +186,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   // Layout 2 cột: bàn đang được chọn bên phải
   const [selectedTableId, setSelectedTableId] = useState<number | string | null>(null);
+  const [tableSchedule, setTableSchedule] = useState<BookingScheduleItem[]>([]);
+  const [isTableScheduleOpen, setIsTableScheduleOpen] = useState(false);
+  const [loadingTableSchedule, setLoadingTableSchedule] = useState(false);
 
   const location = useLocation();
   const userInfo = getCurrentUserInfo();
@@ -271,12 +293,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       fetchData();
     });
 
+    socket.on("table:group_seating_changed", () => {
+      fetchData();
+    });
+
     return () => {
       socket.off("connect");
       socket.off("table:status_changed");
       socket.off("table:transferred");
       socket.off("table:merged");
       socket.off("table:merge_resolved");
+      socket.off("table:group_seating_changed");
       socket.disconnect();
       console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
     };
@@ -291,7 +318,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     }
     setLoadingOrder(true);
     try {
-      const orders = await getOrdersByTable(Number(tableId));
+      const resolution = await getActiveOrderForTable(Number(tableId));
+      const orders = await getOrdersByTable(resolution.primaryTableId);
       if (orders.length === 0) {
         setActiveOrder(null);
         return;
@@ -494,6 +522,27 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       fetchData();
     } catch {
       toast.error("Không thể thay đổi trạng thái");
+    }
+  };
+
+  /** Opens the next 30-day booking calendar assigned to the selected physical table. */
+  const handleOpenTableSchedule = async (): Promise<void> => {
+    if (!selectedTable) return;
+    const startDate = toDateInputValue(new Date());
+    const endDateValue = new Date();
+    endDateValue.setDate(endDateValue.getDate() + 30);
+    try {
+      setLoadingTableSchedule(true);
+      const result = await getTableBookingSchedule(selectedTable.id, {
+        startDate,
+        endDate: toDateInputValue(endDateValue),
+      });
+      setTableSchedule(result.schedule);
+      setIsTableScheduleOpen(true);
+    } catch {
+      toast.error("Không thể tải lịch đặt của bàn này");
+    } finally {
+      setLoadingTableSchedule(false);
     }
   };
 
@@ -738,6 +787,22 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                           <Link2 size={10} /> Gộp → {t.merged_into.name}
                         </span>
                       )}
+                      {t.is_group_seating_primary && (t.group_seating_tables?.length ?? 0) > 0 && (
+                        <span
+                          className="absolute -bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-black text-cyan-700 shadow-xs"
+                          title={`Đoàn chung với ${t.group_seating_tables?.map((table) => table.name).join(", ")}`}
+                        >
+                          <UsersRound size={10} /> Đoàn · {(t.group_seating_tables?.length ?? 0) + 1} bàn
+                        </span>
+                      )}
+                      {t.is_group_seating_child && t.group_seating_into && (
+                        <span
+                          className="absolute -bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-black text-cyan-700 shadow-xs"
+                          title={`Bàn đoàn, order chung tại ${t.group_seating_into.name}`}
+                        >
+                          <UsersRound size={10} /> Đoàn → {t.group_seating_into.name}
+                        </span>
+                      )}
 
                       {/* Chairs arranged around the table */}
                       {Array.from({ length: t.capacity }).map((_, i) => {
@@ -795,7 +860,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   <p className="text-xs text-slate-400">
                     Khu vực: {selectedTable.area_name} • {selectedTable.is_merged_child
                       ? `Bàn phụ của ${selectedTable.merged_into?.name ?? "bàn chính"}`
-                      : selectedTable.status !== "empty"
+                      : selectedTable.is_group_seating_child
+                        ? `Bàn đoàn của ${selectedTable.group_seating_into?.name ?? "bàn chính"}`
+                        : selectedTable.status !== "empty"
                         ? `Khách: ${selectedTable.guest_count || "?"}/${getTableClusterCapacity(selectedTable)} người`
                         : `Sức chứa: ${getTableClusterCapacity(selectedTable)} khách`}
                   </p>
@@ -807,6 +874,15 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   >
                     {(STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
                   </span>
+                  <button
+                    type="button"
+                    onClick={handleOpenTableSchedule}
+                    disabled={loadingTableSchedule}
+                    title="Xem lịch đặt 30 ngày"
+                    className="rounded-lg border border-sky-100 bg-white px-2 py-1.5 text-[10px] font-black text-sky-700 hover:bg-sky-50 disabled:opacity-50 transition-colors"
+                  >
+                    {loadingTableSchedule ? "Đang tải" : "Lịch đặt"}
+                  </button>
                   <button
                     onClick={() => handleDeleteTable(selectedTable)}
                     title="Xóa bàn"
@@ -845,6 +921,26 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
               )}
 
               {/* Status control buttons */}
+              {selectedTable.is_group_seating_primary && (selectedTable.group_seating_tables?.length ?? 0) > 0 && (
+                <div className="mx-5 mt-4 flex items-start gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs text-cyan-900">
+                  <UsersRound size={15} className="mt-0.5 shrink-0 text-cyan-700" />
+                  <p>
+                    <span className="font-black">Bàn chính của đoàn:</span>{" "}
+                    {selectedTable.name} + {selectedTable.group_seating_tables?.map((table) => table.name).join(", ")}. Tổng sức chứa: {getTableClusterCapacity(selectedTable)} khách. Các bàn cùng dùng chung order và hóa đơn.
+                  </p>
+                </div>
+              )}
+
+              {selectedTable.is_group_seating_child && selectedTable.group_seating_into && (
+                <div className="mx-5 mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs text-cyan-800">
+                  <div className="flex items-start gap-2">
+                    <UsersRound size={15} className="mt-0.5 shrink-0 text-cyan-700" />
+                    <p><span className="font-black">Bàn của đoàn:</span> {selectedTable.name} dùng chung order và hóa đơn tại {selectedTable.group_seating_into.name}.</p>
+                  </div>
+                  <button onClick={() => setSelectedTableId(selectedTable.group_seating_into?.id ?? null)} className="shrink-0 rounded-lg border border-cyan-200 bg-white px-2 py-1.5 text-[10px] font-black text-cyan-700 hover:bg-cyan-100 transition-colors">Mở {selectedTable.group_seating_into.name}</button>
+                </div>
+              )}
+
               <div className="p-5 space-y-4">
                 {selectedTable.status === "empty" && (
                   <div className="space-y-2">
@@ -1049,6 +1145,12 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                               className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
                             >
                               <GitMerge size={12} /> Gộp bàn
+                            </button>
+                            <button
+                              onClick={() => setActiveAction("groupSeating")}
+                              className="flex-1 rounded-lg border border-cyan-300 bg-cyan-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-cyan-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <UsersRound size={12} /> Xếp đoàn
                             </button>
                           </div>
                         </div>
@@ -1287,6 +1389,49 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           await fetchData();
           setActiveAction(null);
         }}
+        onSuccess={() => {
+          fetchData();
+          setActiveAction(null);
+        }}
+      />
+
+      <Modal
+        isOpen={isTableScheduleOpen}
+        onClose={() => setIsTableScheduleOpen(false)}
+        title={`Lịch đặt 30 ngày — Bàn ${selectedTable?.name ?? ""}`}
+        size="lg"
+        theme="light"
+      >
+        {tableSchedule.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm font-medium text-slate-400">
+            Bàn này chưa có lịch đặt nào trong 30 ngày tới.
+          </p>
+        ) : (
+          <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+            {tableSchedule.map((booking) => (
+              <div key={booking.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-black text-slate-800">#{booking.confirmation_code} · {booking.guest_name}</p>
+                    <p className="mt-1 text-xs font-medium text-slate-500">{booking.guest_phone} · {booking.party_size} khách</p>
+                  </div>
+                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
+                    {formatScheduleTimestamp(booking.start_time)}
+                  </span>
+                </div>
+                <p className="mt-3 text-xs text-slate-600">Bàn: <strong>{booking.table_names}</strong> · Sức chứa cụm: {booking.total_capacity}</p>
+                {booking.guest_note && <p className="mt-1 text-xs italic text-slate-500">Ghi chú: {booking.guest_note}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      <GroupSeatingModal
+        isOpen={activeAction === "groupSeating"}
+        onClose={() => setActiveAction(null)}
+        sourceTable={selectedTable}
+        availableTables={tables}
         onSuccess={() => {
           fetchData();
           setActiveAction(null);

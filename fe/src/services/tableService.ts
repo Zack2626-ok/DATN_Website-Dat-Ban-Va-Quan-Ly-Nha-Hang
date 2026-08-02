@@ -1,5 +1,6 @@
 import api from "./axiosInstance";
 import type { TableArea } from "../interfaces/table.interface";
+import type { BookingScheduleItem } from "./bookingService";
 
 export interface ResmanagerTable {
   id: number;
@@ -37,6 +38,12 @@ export interface ResmanagerTable {
   is_merged_child?: boolean;
   merged_into?: { id: number; name: string; capacity: number } | null;
   cluster_capacity?: number;
+  is_group_seating_primary?: boolean;
+  group_seating_tables?: { id: number; name: string; capacity: number; area_name?: string }[];
+  is_group_seating_child?: boolean;
+  group_seating_into?: { id: number; name: string; capacity: number; area_name?: string } | null;
+  group_seating_code?: string | null;
+  group_seating_capacity?: number | null;
   is_split?: boolean;
   split_labels?: string[];
 }
@@ -56,6 +63,14 @@ export interface ActiveOrderResolution {
   } | null;
 }
 
+export interface GroupSeatingResult {
+  primaryTableId: number;
+  assignedTableIds: number[];
+  groupCode: string;
+  totalCapacity: number;
+  guestCount: number;
+}
+
 export const getTableAreas = async (): Promise<TableArea[]> => {
   const response = await api.get("/v1/tables/areas");
   return response.data.data || [];
@@ -69,6 +84,17 @@ export const getTables = async (areaId?: number): Promise<ResmanagerTable[]> => 
 
 export const getTablesV1 = getTables;
 
+/** Loads the scheduled bookings assigned to a physical table in a calendar range. */
+export const getTableBookingSchedule = async (
+  tableId: number,
+  params: { startDate?: string; endDate?: string } = {},
+): Promise<{ table: ResmanagerTable; schedule: BookingScheduleItem[] }> => {
+  const response = await api.get(`/v1/tables/${tableId}/booking-schedule`, {
+    params: { start_date: params.startDate, end_date: params.endDate },
+  });
+  return response.data.data;
+};
+
 /** Resolve a table to the active order managed by its merge-root table. */
 export const getActiveOrderForTable = async (tableId: number): Promise<ActiveOrderResolution> => {
   const response = await api.get(`/v1/tables/${tableId}/active-order`);
@@ -76,9 +102,10 @@ export const getActiveOrderForTable = async (tableId: number): Promise<ActiveOrd
 };
 
 /** Lấy bàn trống. Nếu có startTime, API sẽ loại trừ bàn bị booking vào khoảng thời gian đó */
-export const getEmptyTables = async (startTime?: string): Promise<ResmanagerTable[]> => {
-  const url = startTime ? `/v1/tables/empty?start_time=${encodeURIComponent(startTime)}` : "/v1/tables/empty";
-  const response = await api.get(url);
+export const getEmptyTables = async (startTime?: string, endTime?: string): Promise<ResmanagerTable[]> => {
+  const response = await api.get("/v1/tables/empty", {
+    params: { start_time: startTime, end_time: endTime },
+  });
   return response.data.data || [];
 };
 
@@ -102,6 +129,17 @@ export const transferTable = async (sourceTableId: number, targetTableId: number
 /** Gộp bàn: gộp nhiều bàn vào bàn chính */
 export const mergeTables = async (primaryTableId: number, mergedTableIds: number[]): Promise<void> => {
   await api.post(`/v1/tables/${primaryTableId}/merge`, { merged_table_ids: mergedTableIds });
+};
+
+/** Allocate a large party to separate tables while retaining one primary order and invoice. */
+export const arrangeGroupSeating = async (
+  primaryTableId: number,
+  assignedTableIds: number[],
+): Promise<GroupSeatingResult> => {
+  const response = await api.post(`/v1/tables/${primaryTableId}/group-seating`, {
+    assigned_table_ids: assignedTableIds,
+  });
+  return response.data.data;
 };
 
 /** Bỏ gộp bàn */
