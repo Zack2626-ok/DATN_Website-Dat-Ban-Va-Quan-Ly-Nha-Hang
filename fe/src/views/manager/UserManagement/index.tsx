@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Users } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { userService } from "../../../services/userService";
 import type { User, Role } from "../../../interfaces";
@@ -102,22 +102,24 @@ const UserManagement: React.FC = () => {
   }, [userToDelete, fetchData]);
 
   return (
-    <div className="p-6">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-slate-700 flex items-center gap-3">
-            <Users className="w-7 h-7 text-sky-600" />
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
             Quản lý người dùng
           </h1>
-          <p className="text-slate-400 mt-1">Quản lý tài khoản và vai trò của nhân viên</p>
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
+            Quản lý tài khoản, vai trò và quyền hạn của nhân viên nhà hàng
+          </p>
         </div>
         <button
+          type="button"
           onClick={() => {
             setEditingUser(null);
             setIsDrawerOpen(true);
           }}
-          className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium flex items-center gap-2"
+          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
         >
           <Plus size={18} />
           Thêm người dùng

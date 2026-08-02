@@ -71,10 +71,14 @@ export interface Order {
   items: OrderItem[];
   status: OrderStatus;
   totalAmount: number;
+  subtotal?: number;
+  depositAmount?: number;
   createdAt: string;
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
+  guest_name?: string;
+  guest_phone?: string;
   guestCount: number;
   deliveryAddress?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";

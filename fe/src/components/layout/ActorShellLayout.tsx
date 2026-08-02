@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone } from "lucide-react";
+import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone, Timer } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
@@ -248,11 +248,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     }
   };
 
-  // Fetch notifications and poll
+  // Track notified IDs to avoid duplicate toast side-effects in React 18 StrictMode
+  const notifiedIdsRef = React.useRef<Set<number>>(new Set());
+  const hasInitializedRef = React.useRef<boolean>(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   React.useEffect(() => {
     let active = true;
+    hasInitializedRef.current = false;
+    notifiedIdsRef.current.clear();
 
     const fetchNotifications = async () => {
       if (document.visibilityState === "hidden") return;
@@ -260,23 +264,29 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
         const data = await getNotificationsApi(displayRole);
         if (!active) return;
 
-        const unreadCount = data.filter((n: any) => !n.is_read).length;
+        const unreadItems = data.filter((n: any) => !n.is_read);
 
-        setNotifications((prev) => {
-          const prevUnreadCount = prev.filter((n: any) => !n.is_read).length;
-
-          if (prev.length > 0 && unreadCount > prevUnreadCount) {
-            const newN = data.filter(
-              (item: any) => !item.is_read && !prev.some((oldItem) => oldItem.id === item.id)
-            );
-
-            newN.forEach((notif: any) => {
-              toast.success(notif.message, { duration: 5000 });
+        if (!hasInitializedRef.current) {
+          // Lần đầu tiên load: ghi nhận danh sách ID đã có để không nổ toast thông báo cũ
+          unreadItems.forEach((n: any) => notifiedIdsRef.current.add(n.id));
+          hasInitializedRef.current = true;
+        } else {
+          // Lần poll tiếp theo: lọc ra các thông báo mới chưa từng nổ toast
+          const freshItems = unreadItems.filter((n: any) => !notifiedIdsRef.current.has(n.id));
+          if (freshItems.length > 0) {
+            freshItems.forEach((notif: any) => {
+              notifiedIdsRef.current.add(notif.id);
+              if (displayRole !== "chef") {
+                toast.success(notif.message, { duration: 5000 });
+              }
             });
-            playBeepSound();
+            if (displayRole !== "chef") {
+              playBeepSound();
+            }
           }
-          return data;
-        });
+        }
+
+        setNotifications(data);
       } catch (err) {
         console.error("Failed to load notifications:", err);
       }
@@ -352,84 +362,98 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-transparent text-slate-800 md:flex-row">
-      <aside className="flex w-full shrink-0 flex-col border-b border-sky-700 bg-gradient-to-b from-sky-600 to-sky-800 md:w-64 md:border-b-0 md:border-r z-20 shadow-xl">
-        <div className="border-b border-white/10 p-5">
-          <Link to={homeLink} className="text-2xl font-playfair font-bold text-white hover:text-sky-100 drop-shadow-sm tracking-wide">
-            ResManager
-          </Link>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-sky-200">
-            {ROLE_LABELS[displayRole]}
-          </p>
-        </div>
+    <div className="min-h-screen w-full bg-[#E4E4E4] text-[#1A1A1A] flex flex-col md:flex-row font-sans p-2 md:p-3.5 gap-2 md:gap-3.5 select-none">
+      {/* Floating Sidebar Container */}
+      <aside className="flex w-full shrink-0 flex-col md:w-72 p-2 font-sans select-none z-20">
+        <div className="flex flex-1 flex-col rounded-[24px] bg-gradient-to-b from-[#F0F0F0] to-[#EAEAEA] border border-white/80 shadow-xs p-4 w-full">
+          {/* Header - ResManager + UtensilsCrossed */}
+          <div className="flex items-center gap-2.5 pb-3.5 border-b border-[#8A8A8A]/20">
+            <UtensilsCrossed size={20} strokeWidth={1.8} className="text-[#1A1A1A]" />
+            <Link to={homeLink} className="text-lg font-black text-[#1A1A1A] tracking-tight font-sans">
+              ResManager
+            </Link>
+            <span className="ml-auto text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#FFFFFF] border border-[#8A8A8A]/20">
+              {ROLE_LABELS[displayRole] || displayRole}
+            </span>
+          </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {navLinks.map((link) => {
-            const isActive =
-              location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isActive
-                  ? "bg-white/20 text-white font-bold border border-white/10 shadow-sm"
-                  : "text-sky-100 hover:bg-white/10 hover:text-white border border-transparent"
+          {/* Navigation Links */}
+          <nav className="flex-1 space-y-2 overflow-y-auto py-3.5 scrollbar-none">
+            {navLinks.map((link) => {
+              const isActive =
+                location.pathname === link.to ||
+                (link.to !== "/" && location.pathname.startsWith(`${link.to}/`));
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 ${
+                    isActive
+                      ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                      : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
                   }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  {link.icon}
-                  {link.label}
-                </span>
-                {link.badge !== undefined && link.badge > 0 && (
-                  <span className="rounded bg-sky-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                    {link.badge}
+                >
+                  <span className="flex items-center gap-3">
+                    {link.icon}
+                    {link.label}
                   </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+                  {link.badge !== undefined && link.badge > 0 && (
+                    <span className="rounded-full bg-[#EC4899] px-2 py-0.5 text-[10px] font-extrabold text-white shadow-xs">
+                      {link.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
 
-        <div className="hidden border-t border-white/10 p-4 text-xs text-sky-200 md:flex md:flex-col md:gap-2">
-          {restaurantInfo && (
-            <a
-              href={`tel:${restaurantInfo.hotline.replace(/\s/g, "")}`}
-              className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-white hover:bg-white/20 transition-colors mb-1"
-            >
-              <Phone size={13} className="text-green-300" />
-              <span className="font-bold text-[11px]">{restaurantInfo.hotline}</span>
-            </a>
-          )}
-          <div className="flex items-center gap-2">
-            <Database size={12} className="text-green-300" />
-            Hệ thống online
-            <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-300 shadow-[0_0_8px_rgba(134,239,172,0.8)]" />
+          {/* Footer Contact / Realtime Indicator */}
+          <div className="pt-3 mt-auto border-t border-[#8A8A8A]/20 flex flex-col gap-2 text-[12px] font-medium text-[#8A8A8A]">
+            {restaurantInfo && (
+              <a
+                href={`tel:${restaurantInfo.hotline.replace(/\s/g, "")}`}
+                className="flex items-center gap-2 rounded-full bg-[#FFFFFF] px-3 py-1.5 text-[#1A1A1A] border border-slate-200/60 shadow-2xs hover:bg-slate-50 transition-colors"
+              >
+                <Phone size={13} strokeWidth={1.5} className="text-[#3E2016]" />
+                <span className="font-bold text-[11px]">{restaurantInfo.hotline}</span>
+              </a>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <Database size={14} strokeWidth={1.5} className="text-[#1A1A1A]" />
+              <span>Hệ thống thời gian thực</span>
+              <span className="ml-auto h-2 w-2 rounded-full bg-[#EC4899]" />
+            </div>
           </div>
         </div>
       </aside>
 
+      {/* Main Content Workspace */}
       <div className="flex flex-1 flex-col overflow-hidden relative">
-        <header className="flex items-center justify-between bg-white/80 backdrop-blur-xl px-6 py-4 z-10 border-b border-sky-100 shadow-sm relative">
+        {/* Top Header */}
+        <header className="flex items-center justify-between px-4 py-3 md:px-6">
           <div className="relative hidden max-w-sm flex-1 sm:block">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm..."
-              value={searchQuery}
-              onChange={(e) => dispatch(setSearchQuery(e.target.value))}
-              className="w-full rounded-lg border border-slate-200 bg-white/50 py-2 pl-9 pr-8 text-sm text-slate-700 placeholder-slate-400 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => dispatch(clearSearchQuery())}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            )}
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-white/80 rounded-full px-4 py-2 shadow-xs">
+              <Search size={16} className="text-[#8A8A8A]" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm thông tin..."
+                value={searchQuery}
+                onChange={(e) => dispatch(setSearchQuery(e.target.value))}
+                className="w-full bg-transparent text-sm text-[#1A1A1A] placeholder-[#8A8A8A] focus:outline-none font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => dispatch(clearSearchQuery())}
+                  className="text-[#8A8A8A] hover:text-[#1A1A1A] cursor-pointer"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="ml-auto flex items-center gap-4">
+
+          <div className="ml-auto flex items-center gap-3">
             {actorRole === "waiter" ? (
               <WaiterNotificationBell />
             ) : (
@@ -438,13 +462,12 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 <button
                   type="button"
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className={`relative rounded-lg p-2 transition-colors cursor-pointer ${
-                    dropdownOpen ? "bg-sky-100 text-sky-600" : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
-                  }`}
+                  className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/90 border border-white/80 text-[#1A1A1A] shadow-xs hover:bg-white transition-colors cursor-pointer"
+                  title="Thông báo"
                 >
-                  <Bell size={18} />
+                  <Bell size={18} strokeWidth={1.5} />
                   {notifications.filter((n) => !n.is_read).length > 0 && (
-                    <span className="absolute right-1 top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-sky-500 text-white text-[8px] font-bold px-1 shadow-sm">
+                    <span className="absolute -top-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-[#EC4899] text-white text-[8px] font-bold px-1 shadow-xs">
                       {notifications.filter((n) => !n.is_read).length}
                     </span>
                   )}
@@ -452,54 +475,46 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
                 {dropdownOpen && (
                   <>
-                    {/* Overlay background to dismiss */}
                     <div
                       className="fixed inset-0 z-40"
                       onClick={() => setDropdownOpen(false)}
                     />
 
-                    {/* Dropdown Container */}
-                    <div className="absolute right-0 mt-2.5 w-80 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                      {/* Header */}
-                      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
-                        <span className="text-xs font-playfair font-bold text-sky-700 uppercase tracking-widest">Thông báo</span>
+                    <div className="absolute right-0 mt-2.5 w-80 rounded-3xl bg-white/95 backdrop-blur-xl border border-slate-200/70 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 p-2">
+                      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                        <span className="text-xs font-bold text-[#1A1A1A] uppercase tracking-wider">Thông báo</span>
                         {notifications.filter((n) => !n.is_read).length > 0 && (
                           <button
+                            type="button"
                             onClick={handleMarkAllAsRead}
-                            className="text-[11px] font-bold text-sky-600 hover:text-sky-700 transition-colors cursor-pointer"
+                            className="text-[11px] font-bold text-[#3E2016] hover:underline cursor-pointer"
                           >
-                            Đọc tất cả
+                            Đánh dấu đã đọc
                           </button>
                         )}
                       </div>
 
-                      {/* Notification list */}
-                      <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 scrollbar-none">
                         {notifications.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-8 text-center text-slate-500">
-                            <Bell size={24} className="mb-2 text-slate-400" />
-                            <p className="text-xs italic">Không có thông báo nào</p>
+                          <div className="py-8 text-center text-xs font-medium text-[#8A8A8A]">
+                            Không có thông báo mới
                           </div>
                         ) : (
                           notifications.map((item) => (
                             <div
                               key={item.id}
                               onClick={() => handleNotificationClick(item)}
-                              className={`flex flex-col gap-1 px-4 py-3 text-left transition-colors cursor-pointer select-none ${
-                                item.is_read ? "bg-transparent hover:bg-slate-50" : "bg-sky-50/50 hover:bg-sky-50"
+                              className={`p-3 text-xs cursor-pointer transition-colors hover:bg-slate-50 flex items-start gap-2.5 ${
+                                !item.is_read ? "bg-amber-50/50 font-bold" : "text-[#8A8A8A]"
                               }`}
                             >
-                              <div className="flex items-start justify-between gap-1.5">
-                                <span className={`text-[12px] leading-tight ${item.is_read ? "text-slate-600 font-medium" : "text-sky-900 font-bold"}`}>
-                                  {item.message}
+                              <CheckCircle size={14} className="text-[#3E2016] mt-0.5 shrink-0" />
+                              <div className="flex-1">
+                                <p className="text-[#1A1A1A] font-semibold">{item.message}</p>
+                                <span className="text-[10px] text-[#8A8A8A] mt-1 block">
+                                  {formatTime(item.created_at)}
                                 </span>
-                                {!item.is_read && (
-                                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500 animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.6)]" />
-                                )}
                               </div>
-                              <span className="text-[10px] text-slate-400 font-medium">
-                                {formatTime(item.created_at)}
-                              </span>
                             </div>
                           ))
                         )}
@@ -509,35 +524,45 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 )}
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-slate-700 flex items-center justify-end gap-1.5">
+
+            {/* Profile Pill Card */}
+            <button
+              type="button"
+              onClick={() => navigate("/checkin")}
+              title="Chấm công vào hoặc ra"
+              className="hidden sm:flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              <Timer size={14} />
+              Chấm công
+            </button>
+            <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md border border-white/80 rounded-full pl-3 pr-1.5 py-1.5 shadow-xs">
+              <div className="hidden text-right sm:block pl-1">
+                <p className="text-xs font-bold text-[#1A1A1A] flex items-center justify-end gap-1.5">
                   <span>{user?.full_name || defaultName}</span>
                   {user && (
-                    <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-200">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-[#1A1A1A] border border-slate-200">
                       {user.employee_code || `NV${String(user.id).padStart(3, "0")}`}
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-slate-500">{ROLE_LABELS[displayRole]}</p>
+                <p className="text-[10px] font-semibold text-[#8A8A8A]">{ROLE_LABELS[displayRole]}</p>
               </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-50 text-sky-600 border border-sky-100">
-                <User size={16} />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-white">
+                <User size={15} />
               </div>
               <button
                 type="button"
                 onClick={() => setShowLogoutModal(true)}
                 title="Đăng xuất"
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors cursor-pointer ml-1"
+                className="flex items-center justify-center h-8 w-8 rounded-full text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
               >
                 <LogOut size={16} />
-                <span className="hidden sm:inline">Đăng xuất</span>
               </button>
             </div>
           </div>
         </header>
 
-        <main className={`flex-1 overflow-y-auto p-6 ${mainClassName}`}>
+        <main className={`flex-1 overflow-y-auto p-4 md:p-6 ${mainClassName}`}>
           <Outlet />
         </main>
       </div>
@@ -551,24 +576,27 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
         footer={
           <div className="flex w-full gap-3 justify-end">
             <button
+              type="button"
               onClick={() => setShowLogoutModal(false)}
-              className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-full text-xs font-extrabold border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Hủy
             </button>
             <button
+              type="button"
               onClick={() => {
                 setShowLogoutModal(false);
                 dispatch(logoutAction());
+                navigate("/auth/login", { replace: true });
               }}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-rose-500 text-white hover:bg-rose-600 transition-colors cursor-pointer shadow-[0_0_15px_rgba(244,63,94,0.3)]"
+              className="px-5 py-2 rounded-full text-xs font-black bg-rose-600 text-white hover:bg-rose-700 transition-colors cursor-pointer shadow-xs"
             >
               Đăng xuất
             </button>
           </div>
         }
       >
-        <p className="text-slate-600 text-sm">Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?</p>
+        <p className="text-slate-700 text-xs font-medium">Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?</p>
       </Modal>
     </div>
   );

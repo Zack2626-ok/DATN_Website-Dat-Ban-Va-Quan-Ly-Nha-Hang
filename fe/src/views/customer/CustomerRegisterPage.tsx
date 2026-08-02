@@ -101,7 +101,7 @@ export default function CustomerRegisterPage() {
               <UtensilsCrossed size={32} />
             </span>
           </div>
-          <h1 className="text-4xl font-bold text-white drop-shadow-sm">ResManager</h1>
+          <h1 className="text-4xl font-bold text-white drop-shadow-sm">Restro</h1>
           <p className="text-gray-300 mt-2">Tạo tài khoản để tận hưởng đặc quyền thành viên</p>
         </div>
 

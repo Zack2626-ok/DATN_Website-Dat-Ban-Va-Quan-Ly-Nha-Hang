@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search, LogIn, LogOut, CheckCircle, Clock } from "lucide-react";
 import type { Attendance, ShiftEmployee } from "../../../../interfaces/shift.interface";
 
@@ -21,9 +21,39 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
 }) => {
   const [query, setQuery] = useState("");
   const [selectedEmpId, setSelectedEmpId] = useState<number | "">("");
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => setCurrentTimestamp(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, []);
 
   // Lọc lịch sử chấm công
-  const filtered = attendance.filter((a) => {
+  /** Creates a YYYY-MM-DD key in the restaurant's local timezone. */
+  const getVietnamDateKey = (value: Date): string => {
+    const dateParts = new Intl.DateTimeFormat("en", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(value);
+    const getPart = (type: Intl.DateTimeFormatPartTypes): string => dateParts.find((part) => part.type === type)?.value ?? "";
+    return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+  };
+
+  /** Returns one current clock-in record for each employee. */
+  const getCurrentAttendance = (): Attendance[] => {
+    const today = getVietnamDateKey(new Date());
+    const currentEmployeeIds = new Set<number>();
+    return attendance.filter((record) => {
+      const recordDate = getVietnamDateKey(new Date(record.clock_in));
+      if (record.clock_out || recordDate !== today || currentEmployeeIds.has(record.employee_id)) return false;
+      currentEmployeeIds.add(record.employee_id);
+      return true;
+    });
+  };
+
+  const filtered = getCurrentAttendance().filter((a) => {
     const nameMatch = a.employee_name?.toLowerCase().includes(query.toLowerCase());
     const roleMatch = a.employee_role?.toLowerCase().includes(query.toLowerCase());
     return nameMatch || roleMatch;
@@ -35,17 +65,20 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
     return attendance.find((a) => a.employee_id === selectedEmpId && a.clock_out === null) || null;
   }, [selectedEmpId, attendance]);
 
+  /** Formats the duration of a completed or currently active attendance record. */
   const calculateHours = (inStr: string, outStr: string | null): string => {
-    if (!outStr) return "-";
     try {
       const inDate = new Date(inStr);
-      const outDate = new Date(outStr);
-      const diffMs = outDate.getTime() - inDate.getTime();
-      if (isNaN(diffMs) || diffMs < 0) return "0.0h";
-      const hours = diffMs / (1000 * 60 * 60);
-      return hours.toFixed(1) + "h";
+      const endTimestamp = outStr ? new Date(outStr).getTime() : currentTimestamp;
+      const durationSeconds = Math.floor((endTimestamp - inDate.getTime()) / 1000);
+      if (Number.isNaN(durationSeconds) || durationSeconds < 0) return "00:00:00";
+
+      const hours = Math.floor(durationSeconds / 3600);
+      const minutes = Math.floor((durationSeconds % 3600) / 60);
+      const seconds = durationSeconds % 60;
+      return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
     } catch {
-      return "-";
+      return "00:00:00";
     }
   };
 
@@ -67,7 +100,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Cột Trái: Bảng Lịch sử Chấm Công */}
+      {/* Cột Trái: Nhân viên đang chấm công */}
       <div className="lg:col-span-2 space-y-4">
         <div className="bg-white p-4 rounded-xl border border-gray-150 shadow-xs flex items-center">
           <div className="relative w-full">
@@ -76,7 +109,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Tìm lịch sử theo tên hoặc vai trò..."
+              placeholder="Tìm nhân viên đang chấm công..."
               className="w-full rounded-lg border border-sky-100 py-2 pl-10 pr-3 text-xs focus:border-sky-500 focus:outline-none"
             />
           </div>
@@ -100,14 +133,14 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
                     <td colSpan={5} className="px-5 py-10 text-center text-gray-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
-                        <span>Đang tải lịch sử chấm công...</span>
+                        <span>Đang tải danh sách chấm công...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-5 py-8 text-center text-gray-400 font-medium">
-                      Không tìm thấy bản ghi chấm công nào.
+                      Chưa có nhân viên nào đang chấm công.
                     </td>
                   </tr>
                 ) : (

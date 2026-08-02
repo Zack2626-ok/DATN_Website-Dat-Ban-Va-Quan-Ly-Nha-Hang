@@ -314,14 +314,16 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
             <select
               value={formData.role_id}
               onChange={(e) => setFormData({ ...formData, role_id: Number(e.target.value) })}
-              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white transition-shadow"
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white transition-shadow shadow-2xs outline-none"
               disabled={loading}
             >
-              {roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.description}
-                </option>
-              ))}
+              {roles
+                .filter((role) => role.name !== "admin")
+                .map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.description}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -340,8 +342,8 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
                 })
               }
               disabled={loading}
-              className={`w-11 h-6 rounded-full transition-colors focus:outline-none relative flex-shrink-0 ${
-                formData.status === "active" ? "bg-sky-500" : "bg-gray-300"
+              className={`w-11 h-6 rounded-full transition-colors focus:outline-none relative flex-shrink-0 cursor-pointer ${
+                formData.status === "active" ? "bg-[#3E2016]" : "bg-gray-300"
               }`}
             >
               <div
@@ -357,12 +359,12 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
         </form>
 
         {/* Sticky Footer Actions */}
-        <div className="sticky bottom-0 bg-white border-t border-sky-100 px-6 py-4 flex gap-3 z-10 shadow-lg">
+        <div className="sticky bottom-0 bg-white border-t border-slate-100 px-6 py-4 flex gap-3 z-10 shadow-lg">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 px-4 py-2.5 border border-sky-200 text-slate-600 rounded-lg hover:bg-sky-50/50 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-full hover:bg-slate-50 transition-colors font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Hủy bỏ
           </button>
@@ -370,7 +372,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
             type="submit"
             form="user-drawer-form"
             disabled={loading}
-            className="flex-1 px-4 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2.5 bg-[#3E2016] text-white rounded-full hover:bg-[#5C2E17] transition-all font-black text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

@@ -63,7 +63,7 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const validMethods = ["cash", "card", "transfer", "wallet"];
+    const validMethods = ["cash", "card", "transfer", "wallet", "momo", "vnpay"];
     if (!validMethods.includes(paymentMethod)) {
       sendError(res, `Phương thức phải là: ${validMethods.join(", ")}`, 400);
       return;
@@ -73,12 +73,25 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
       orderId,
       amount,
       paymentMethod,
-      status: status || "pending",
+      status: status || "completed",
       discountAmount,
       discountReason,
       notes,
       completedAt,
     });
+
+    if (status === "completed" || !status) {
+      try {
+        await db.updateOrderStatus(String(orderId), "completed");
+        const orders = await db.getAllResmanagerOrders();
+        const order = orders.find((o: any) => String(o.id) === String(orderId));
+        if (order && order.table_id) {
+          await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+        }
+      } catch (err) {
+        console.warn("Could not update order or table status on payment creation:", err);
+      }
+    }
 
     sendSuccess(res, payment, "Tạo thanh toán thành công", 201);
   } catch (error) {

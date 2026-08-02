@@ -123,16 +123,40 @@ export const getCustomerVouchers = async (): Promise<any[]> => {
   return response.data.data || [];
 };
 
+export const redeemVoucher = async (voucherId: number): Promise<any> => {
+  const response = await customerApi.post("/v1/customer/vouchers/redeem", { voucherId });
+  return response.data.data;
+};
+
+export const getMyUnusedVouchers = async (): Promise<any[]> => {
+  const response = await customerApi.get("/v1/customer/my-unused-vouchers");
+  return response.data.data || [];
+};
+
 // 3. BOOKING API CALLS
 export const getMyBookings = async (): Promise<any[]> => {
   const response = await customerApi.get("/v1/customer/bookings/my");
   return response.data.data || [];
 };
 
-export const getAvailableTables = async (startTime: string): Promise<any[]> => {
-  // Use existing table routes empty endpoint
-  const response = await customerApi.get(`/v1/tables/empty?start_time=${encodeURIComponent(startTime)}`);
-  return response.data.data || [];
+export interface AvailableBookingTable {
+  id: number;
+  name: string;
+  capacity: number;
+  area_name?: string;
+  row_pos?: string | number;
+}
+
+/** Gets tables that can serve the requested party during the full booking interval. */
+export const getAvailableTables = async (
+  date: string,
+  time: string,
+  guests: number,
+): Promise<AvailableBookingTable[]> => {
+  const response = await customerApi.get("/v1/bookings/available-tables", {
+    params: { date, time, guests },
+  });
+  return response.data.data?.tables || [];
 };
 
 export const createBooking = async (data: {
@@ -141,10 +165,12 @@ export const createBooking = async (data: {
   promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
+  guest_email?: string;
   party_size: number;
   start_time: string;
   end_time: string;
   guest_note?: string;
+  pre_ordered_items?: any[];
   items?: {
     menu_item_id: number;
     quantity: number;
@@ -159,6 +185,11 @@ export const createBooking = async (data: {
 
 export const cancelBooking = async (id: number): Promise<void> => {
   await customerApi.patch(`/v1/customer/bookings/${id}/cancel`);
+};
+
+export const payBookingDeposit = async (id: number): Promise<any> => {
+  const response = await customerApi.patch(`/v1/bookings/${id}/pay-deposit`);
+  return response.data.data;
 };
 
 export const createEventContract = async (data: {
@@ -179,5 +210,17 @@ export const createEventContract = async (data: {
 export const getMyEventContracts = async (): Promise<any[]> => {
   const response = await customerApi.get("/v1/customer/contracts/my");
   return response.data.data || [];
+};
+
+export const createQROrder = async (data: {
+  table_id: number;
+  items: { menu_item_id: number; quantity: number; unit_price: number }[];
+  guest_name?: string;
+  guest_phone?: string;
+  guest_count?: number;
+  note?: string;
+}): Promise<any> => {
+  const response = await customerApi.post("/v1/waiter/qr-order", data);
+  return response.data.data;
 };
 

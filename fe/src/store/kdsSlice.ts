@@ -18,12 +18,16 @@ export interface KdsItem {
   seatNumber?: number | null;
   courseNumber?: number | null;
   kitchenNote?: string | null;
-  status: "pending" | "cooking" | "done" | "delivered" | "cancelled" | "voided";
+  status: "pending" | "waiting_kitchen" | "cooking" | "done" | "served" | "cancelled" | "voided";
   createdAt: string;
   updatedAt?: string;
   tableName?: string;
   areaName?: string;
   orderType?: "dine_in" | "delivery" | "takeaway";
+  voidReason?: string;
+  voidedAt?: string;
+  chefDismissed?: number;
+  waiterName?: string;
 }
 
 export interface KdsVoidAlert {
@@ -210,7 +214,7 @@ const kdsSlice = createSlice({
             }
             
             // Check Đổi món (Số lượng hoặc Ghi chú)
-            if (oldItem && newItem.status !== "done" && newItem.status !== "delivered") {
+            if (oldItem && newItem.status !== "done" && newItem.status !== "served") {
               if (oldItem.quantity !== newItem.quantity) {
                 state.changeAlerts.push({
                   id: `${newItem.id}_qty_${now}`,

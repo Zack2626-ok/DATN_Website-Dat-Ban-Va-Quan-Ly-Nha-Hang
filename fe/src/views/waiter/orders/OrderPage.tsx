@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2 } from "lucide-react";
+import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, RefreshCw } from "lucide-react";
 import { Modal } from "../../../components/Modal";
 import { VoidItemModal, type OrderItemStatus } from "./VoidItemModal";
 import { toast } from "react-hot-toast";
@@ -19,6 +19,7 @@ import {
   type WaiterCategory,
 } from "../../../services/waiterService";
 import { getTablesV1, updateTableStatus } from "../../../services/tableService";
+import { getComboConstituents } from "../../../utils/comboHelper";
 
 interface DisplayOrderItem {
   id: number;
@@ -33,14 +34,16 @@ interface DisplayOrderItem {
 
 const STATUS_STYLES: Record<OrderItemStatus, string> = {
   pending: "bg-sky-100 text-slate-600",
-  cooking: "bg-orange-100 text-orange-700",
-  done: "bg-green-100 text-green-700",
+  waiting_kitchen: "bg-purple-100 text-purple-700 font-bold",
+  cooking: "bg-orange-100 text-orange-700 font-bold",
+  done: "bg-green-100 text-green-700 font-bold",
   served: "bg-blue-100 text-blue-700",
   voided: "bg-red-100 text-red-700 line-through",
 };
 
 const STATUS_LABELS: Record<OrderItemStatus, string> = {
   pending: "⏳ Chờ gửi",
+  waiting_kitchen: "👨‍🍳 Chờ nấu",
   cooking: "🔥 Đang nấu",
   done: "✅ Hoàn thành",
   served: "🛎 Đã mang ra",
@@ -75,6 +78,7 @@ export const OrderPage: React.FC = () => {
 
   // Order data
   const [orderId, setOrderId] = useState<number | null>(null);
+  const [orderStatus, setOrderStatus] = useState<string | null>(null);
   const [orderItems, setOrderItems] = useState<DisplayOrderItem[]>([]);
   const [orderLoading, setOrderLoading] = useState(true);
 
@@ -118,43 +122,57 @@ export const OrderPage: React.FC = () => {
       .finally(() => setMenuLoading(false));
   }, []);
 
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  const fetchOrderData = useCallback(async (showToast = false) => {
+    if (!tableId) return;
+    if (showToast) setRefreshing(true);
+    else setOrderLoading(true);
+
+    try {
+      const orders = await getOrdersByTable(Number(tableId));
+      if (orders.length === 0) {
+        setOrderId(null);
+        setOrderStatus(null);
+        setOrderItems([]);
+        if (showToast) toast.success("Bàn chưa có order nào");
+        return;
+      }
+      const latest = orders[0];
+      setOrderId(latest.id);
+      setOrderStatus(latest.status);
+      const items = await getOrderItems(latest.id);
+      setOrderItems(
+        items.map((i) => ({
+          id: i.id,
+          menuItemId: i.menu_item_id,
+          name: i.item_name,
+          price: Number(i.unit_price),
+          quantity: i.quantity,
+          status: i.status as OrderItemStatus, // Lấy đúng status từ DB
+          kitchenNote: i.kitchen_note,
+          held: Boolean(i.is_held),
+        })),
+      );
+      // Cập nhật deposit_amount
+      setTable((prev: any) => ({
+        ...prev,
+        deposit_amount: latest.deposit_amount || 0,
+      }));
+      if (showToast) toast.success("Đã làm mới dữ liệu gọi món");
+    } catch {
+      setOrderItems([]);
+      if (showToast) toast.error("Lỗi khi tải lại dữ liệu");
+    } finally {
+      if (showToast) setRefreshing(false);
+      else setOrderLoading(false);
+    }
+  }, [tableId]);
+
   // Tải order hiện tại của bàn
   useEffect(() => {
-    if (!tableId) return;
-    setOrderLoading(true);
-    getOrdersByTable(Number(tableId))
-      .then(async (orders) => {
-        if (orders.length === 0) {
-          setOrderId(null);
-          setOrderItems([]);
-          return;
-        }
-        const latest = orders[0];
-        setOrderId(latest.id);
-        const items = await getOrderItems(latest.id);
-        setOrderItems(
-          items.map((i) => ({
-            id: i.id,
-            menuItemId: i.menu_item_id,
-            name: i.item_name,
-            price: Number(i.unit_price),
-            quantity: i.quantity,
-            status: i.status as OrderItemStatus, // Lấy đúng status từ DB
-            kitchenNote: i.kitchen_note,
-            held: Boolean(i.is_held),
-          })),
-        );
-        // Lưu trữ thông tin deposit amount nếu có
-        setTable((prev: any) => ({
-          ...prev,
-          deposit_amount: latest.deposit_amount || 0,
-        }));
-      })
-      .catch(() => {
-        setOrderItems([]);
-      })
-      .finally(() => setOrderLoading(false));
-  }, [tableId]);
+    fetchOrderData(false);
+  }, [fetchOrderData]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
@@ -169,7 +187,22 @@ export const OrderPage: React.FC = () => {
   const pendingCount = orderItems.filter((i) => i.status === "pending" && !i.held).length;
   const heldCount = orderItems.filter((i) => i.status === "pending" && i.held).length;
 
+  const isOrderLocked =
+    table?.status === "pending_payment" ||
+    orderStatus === "pending_payment" ||
+    orderStatus === "completed" ||
+    orderStatus === "paid" ||
+    orderStatus === "cancelled";
+
   const handleAddItemToOrder = async (targetItem: WaiterMenuItem, qty: number, note?: string) => {
+    if (isOrderLocked) {
+      if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
+        toast.error("⚠️ Bàn đang yêu cầu thanh toán (Chờ thanh toán). Hệ thống đã khóa gọi thêm món để tránh sai lệch hóa đơn!");
+      } else {
+        toast.error("⚠️ Đơn hàng đã hoàn tất hoặc đã hủy, không thể gọi thêm món!");
+      }
+      return false;
+    }
     try {
       let currentOrderId = orderId;
       // Nếu chưa có order, tạo mới
@@ -296,7 +329,7 @@ export const OrderPage: React.FC = () => {
       await sendItemsToKitchen(orderId, toSend.map((i) => i.id));
       setOrderItems((prev) =>
         prev.map((i) =>
-          i.status === "pending" && i.held ? { ...i, status: "cooking" as OrderItemStatus, held: false } : i,
+          i.status === "pending" && i.held ? { ...i, status: "waiting_kitchen" as OrderItemStatus, held: false } : i,
         ),
       );
       toast.success(`Đã gửi ${toSend.length} món hold xuống bếp`);
@@ -322,7 +355,7 @@ export const OrderPage: React.FC = () => {
       await sendItemsToKitchen(orderId, toSend.map((i) => i.id));
       setOrderItems((prev) =>
         prev.map((i) =>
-          i.status === "pending" && !i.held ? { ...i, status: "cooking" as OrderItemStatus } : i,
+          i.status === "pending" && !i.held ? { ...i, status: "waiting_kitchen" as OrderItemStatus } : i,
         ),
       );
       toast.success(`Đã gửi ${toSend.length} món xuống bếp`);
@@ -348,7 +381,7 @@ export const OrderPage: React.FC = () => {
 
   const handleRequestPayment = async () => {
     if (!tableId || activeItems.length === 0) return;
-    const unfinishedItems = orderItems.filter((i) => i.status === "pending" || i.status === "cooking");
+    const unfinishedItems = orderItems.filter((i) => i.status === "pending" || i.status === "waiting_kitchen" || i.status === "cooking");
     if (unfinishedItems.length > 0) {
       setUnfinishedPaymentModal(unfinishedItems);
       return;
@@ -461,7 +494,16 @@ export const OrderPage: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => fetchOrderData(true)}
+            disabled={refreshing || orderLoading}
+            className="flex items-center gap-2 px-3.5 py-2 bg-sky-100 text-blue-700 hover:bg-blue-600 hover:text-white rounded-xl font-bold text-sm transition-all duration-200 shadow-2xs cursor-pointer disabled:opacity-50"
+            title="Làm mới dữ liệu bàn và món ăn"
+          >
+            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+            <span>Làm mới</span>
+          </button>
           <button
             onClick={handleSendToKitchen}
             disabled={pendingCount === 0 || sending}
@@ -501,6 +543,25 @@ export const OrderPage: React.FC = () => {
             ))}
           </div>
 
+          {/* Status banner when order is locked */}
+          {isOrderLocked && (
+            <div className="mb-4 bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-3.5 flex items-center gap-3 shadow-sm">
+              <span className="text-xl">⚠️</span>
+              <div className="text-xs">
+                <p className="font-bold">
+                  {table?.status === "pending_payment" || orderStatus === "pending_payment"
+                    ? "Bàn đang yêu cầu thanh toán (Chờ thanh toán)"
+                    : "Đơn hàng đã hoàn tất / hủy"}
+                </p>
+                <p className="mt-0.5">
+                  {table?.status === "pending_payment" || orderStatus === "pending_payment"
+                    ? "Hệ thống đã khóa gọi thêm món khi bàn đang ở trạng thái Chờ thanh toán để tránh sai lệch hóa đơn."
+                    : "Đơn hàng này không còn chấp nhận gọi thêm món."}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
@@ -523,11 +584,21 @@ export const OrderPage: React.FC = () => {
               {filteredMenu.map((item) => (
                 <div
                   key={item.id}
-                  onClick={() => item.is_active && setAddItemTarget(item)}
-                  className={`flex flex-col rounded-xl border text-left transition-all hover:shadow-md relative ${
-                    item.is_active
-                      ? "border-sky-100 hover:border-blue-200 cursor-pointer group"
-                      : "border-sky-50 opacity-50 cursor-not-allowed"
+                  onClick={() => {
+                    if (isOrderLocked) {
+                      if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
+                        toast.error("⚠️ Bàn đang yêu cầu thanh toán (Chờ thanh toán). Hệ thống đã khóa gọi thêm món để tránh sai lệch hóa đơn!");
+                      } else {
+                        toast.error("⚠️ Đơn hàng đã hoàn tất hoặc đã hủy, không thể gọi thêm món!");
+                      }
+                      return;
+                    }
+                    if (item.is_active) setAddItemTarget(item);
+                  }}
+                  className={`flex flex-col rounded-xl border text-left transition-all relative ${
+                    !item.is_active || isOrderLocked
+                      ? "border-sky-50 opacity-50 cursor-not-allowed"
+                      : "border-sky-100 hover:border-blue-200 hover:shadow-md cursor-pointer group"
                   }`}
                 >
                   <div className="w-full h-24 overflow-hidden rounded-t-xl shrink-0 relative">
@@ -588,7 +659,9 @@ export const OrderPage: React.FC = () => {
             ) : orderItems.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-10 italic">Chưa có món trong order</p>
             ) : (
-              orderItems.map((item) => (
+              orderItems.map((item) => {
+                const constituents = getComboConstituents(item.name);
+                return (
                 <div
                   key={item.id}
                   className={`p-4 rounded-xl border border-sky-50 ${item.status === "voided" ? "opacity-60" : ""}`}
@@ -597,6 +670,19 @@ export const OrderPage: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-base text-slate-700">{item.name}</p>
                       <p className="text-sm text-slate-400 mt-0.5">×{item.quantity}</p>
+                      {constituents && (
+                        <div className="mt-1.5 bg-blue-50/60 rounded-lg px-2.5 py-2 border border-blue-100/60">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 block mb-1">Gồm có:</span>
+                          <div className="flex flex-col gap-1">
+                            {constituents.map((sub, idx) => (
+                              <div key={idx} className="text-xs text-slate-600 font-semibold flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 shrink-0"></span>
+                                {sub}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {item.kitchenNote && (
                         <p className="text-xs text-amber-600 mt-1">📝 {item.kitchenNote}</p>
                       )}
@@ -614,8 +700,9 @@ export const OrderPage: React.FC = () => {
                         {/* Nút Đã mang ra — chỉ hiện khi bếp xong (done) */}
                         {item.status === "done" && (
                           <button
-                            disabled={servingItemId === item.id}
+                            disabled={servingItemId === item.id || isOrderLocked}
                             onClick={async () => {
+                              if (isOrderLocked) return;
                               if (!orderId) return;
                               setServingItemId(item.id);
                               try {
@@ -630,7 +717,7 @@ export const OrderPage: React.FC = () => {
                                 setServingItemId(null);
                               }
                             }}
-                            className="text-xs text-blue-600 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 hover:text-blue-800 transition-colors disabled:opacity-50 cursor-pointer"
+                            className="text-xs text-blue-600 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 hover:text-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                           >
                             {servingItemId === item.id
                               ? <Loader2 size={13} className="animate-spin" />
@@ -640,8 +727,9 @@ export const OrderPage: React.FC = () => {
                         {/* Nút Hủy — không hiện khi đã served hoặc voided */}
                         {item.status !== "voided" && item.status !== "served" && (
                           <button
-                            onClick={() => setVoidTarget(item)}
-                            className="text-xs text-red-500 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors cursor-pointer"
+                            disabled={isOrderLocked}
+                            onClick={() => !isOrderLocked && setVoidTarget(item)}
+                            className="text-xs text-red-500 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                           >
                             <XCircle size={13} /> Hủy
                           </button>
@@ -650,15 +738,40 @@ export const OrderPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
 
           <div className="border-t border-sky-50 pt-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-base text-slate-400">Tổng cộng</span>
-              <span className="text-3xl font-black text-slate-800">{total.toLocaleString("vi-VN")}₫</span>
-            </div>
+            {(() => {
+              const subtotal = total;
+              const depositAmt = Number(table?.deposit_amount || 0);
+              const taxAmt = Math.round(subtotal * 0.10);
+              const finalAmt = Math.max(0, subtotal + taxAmt - depositAmt);
+              return (
+                <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100 text-sm">
+                  <div className="flex justify-between items-center text-slate-500">
+                    <span>Tạm tính (món):</span>
+                    <span className="font-bold text-slate-700">{subtotal.toLocaleString("vi-VN")}₫</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-500">
+                    <span>VAT (10%):</span>
+                    <span className="font-bold text-slate-700">+{taxAmt.toLocaleString("vi-VN")}₫</span>
+                  </div>
+                  {depositAmt > 0 && (
+                    <div className="flex justify-between items-center text-amber-600">
+                      <span>Tiền cọc đặt bàn:</span>
+                      <span className="font-bold">-{depositAmt.toLocaleString("vi-VN")}₫</span>
+                    </div>
+                  )}
+                  <div className="border-t border-slate-200 pt-2 flex justify-between items-center">
+                    <span className="font-bold text-slate-700">Tổng thanh toán dự kiến:</span>
+                    <span className="text-2xl font-black text-blue-600">{finalAmt.toLocaleString("vi-VN")}₫</span>
+                  </div>
+                </div>
+              );
+            })()}
             <button
               onClick={() => navigate("/waiter/tables", { state: { selectedTableId: tableId } })}
               className="w-full py-3.5 bg-gray-800 text-white rounded-xl font-bold text-base hover:bg-gray-900"
@@ -776,9 +889,9 @@ export const OrderPage: React.FC = () => {
                     <p className="text-gray-500">Số lượng: <span className="font-bold text-gray-700">{item.quantity}</span></p>
                   </div>
                   <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${
-                    item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                    item.status === "cooking" ? "bg-amber-100 text-amber-800" : item.status === "waiting_kitchen" ? "bg-purple-100 text-purple-800" : "bg-blue-100 text-blue-800"
                   }`}>
-                    {item.status === "cooking" ? "⏳ Đang nấu" : "📋 Chờ gửi bếp"}
+                    {item.status === "cooking" ? "🔥 Đang nấu" : item.status === "waiting_kitchen" ? "👨‍🍳 Chờ nấu" : "📋 Chờ gửi bếp"}
                   </span>
                 </div>
               ))}

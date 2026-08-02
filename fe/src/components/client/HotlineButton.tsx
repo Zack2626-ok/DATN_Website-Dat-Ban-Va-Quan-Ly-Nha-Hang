@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Phone, X } from "lucide-react";
+import { Phone, X, Send } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
 
 export const HotlineButton: React.FC = () => {
@@ -34,13 +34,27 @@ export const HotlineButton: React.FC = () => {
               <p className="font-semibold text-slate-700">{info.name}</p>
               <p className="text-xs text-slate-500 mt-0.5">{info.address}</p>
             </div>
-            <a
-              href={`tel:${hotlineDigits}`}
-              className="flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-blue-700 font-bold hover:bg-blue-100 transition-colors"
-            >
-              <Phone size={16} />
-              {info.hotline}
-            </a>
+            
+            <div className="flex flex-col gap-2">
+              <a
+                href={`tel:${hotlineDigits}`}
+                className="flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-2.5 text-blue-700 font-bold hover:bg-blue-100 transition-colors text-xs"
+              >
+                <Phone size={14} />
+                Gọi Hotline: {info.hotline}
+              </a>
+              
+              <a
+                href={`https://t.me/resmanager_customer_bot`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-indigo-700 font-bold hover:bg-indigo-100 transition-colors text-xs"
+              >
+                <Send size={14} />
+                Nhắn tin Telegram
+              </a>
+            </div>
+
             <p className="text-xs text-slate-400">{info.hotline_hours}</p>
             <div className="border-t border-slate-100 pt-2">
               <p className="text-xs text-slate-500">

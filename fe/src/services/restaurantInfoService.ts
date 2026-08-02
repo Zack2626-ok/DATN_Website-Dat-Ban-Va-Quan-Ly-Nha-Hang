@@ -14,6 +14,10 @@ export interface RestaurantInfo {
   service_fee_rate: number;
   default_payment_method: string;
   timezone: string;
+  bank_code: string;
+  bank_account: string;
+  bank_name: string;
+  bank_account_name: string;
 }
 
 export const getRestaurantInfo = async (): Promise<RestaurantInfo> => {

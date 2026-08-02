@@ -1,7 +1,4 @@
-/**
- * formatCurrency - Định dạng tiền VND theo UI Spec ResManager
- * formatCurrency(85000) → "85.000 ₫"
- */
-export function formatCurrency(amount: number): string {
-  return `${amount.toLocaleString("vi-VN")} ₫`;
+export function formatCurrency(amount: any): string {
+  const num = typeof amount === "string" ? parseFloat(amount) : Number(amount || 0);
+  return `${(num || 0).toLocaleString("vi-VN")} ₫`;
 }

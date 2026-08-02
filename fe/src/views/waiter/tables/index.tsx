@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { io } from "socket.io-client";
 import {
   RefreshCw,
   LayoutGrid,
@@ -10,8 +11,6 @@ import {
   Printer,
   ArrowRightLeft,
   GitMerge,
-  Users,
-  Clock,
   Wrench,
   CheckCircle,
   Phone,
@@ -19,6 +18,7 @@ import {
   XCircle,
   FileText,
   Loader2,
+  Copy,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -56,6 +56,9 @@ type TableAction = "transfer" | "merge" | "split" | null;
 interface ActiveOrderInfo {
   id: number;
   items: WaiterOrderItem[];
+  subtotal?: number;
+  depositAmount?: number;
+  tax?: number;
   totalAmount: number;
   status: string;
 }
@@ -135,6 +138,7 @@ const STATUS_CONFIG: Record<
 
 const ITEM_STATUS_LABELS: Record<string, { label: string; badge: string }> = {
   pending: { label: "⏳ Chờ gửi", badge: "bg-sky-100 text-slate-600" },
+  waiting_kitchen: { label: "📋 Chờ bếp", badge: "bg-amber-100 text-amber-700" },
   cooking: { label: "🔥 Đang nấu", badge: "bg-orange-100 text-orange-700" },
   done: { label: "✅ Hoàn thành", badge: "bg-green-100 text-green-700" },
   served: { label: "🛎 Đã mang ra", badge: "bg-blue-100 text-blue-700" },
@@ -142,7 +146,11 @@ const ITEM_STATUS_LABELS: Record<string, { label: string; badge: string }> = {
   cancelled: { label: "✗ Đã hủy", badge: "bg-red-100 text-red-600 line-through" },
 };
 
-export const WaiterTableMap: React.FC = () => {
+interface WaiterTableMapProps {
+  isManager?: boolean;
+}
+
+export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = false }) => {
   const [tables, setTables] = useState<ResmanagerTable[]>([]);
   const [areas, setAreas] = useState<TableArea[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
@@ -216,6 +224,50 @@ export const WaiterTableMap: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
+  // Real-time socket synchronization
+  useEffect(() => {
+    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socket.on("connect", () => {
+      console.log("⚡ Connected to Socket.io Server for Waiter Table Map");
+    });
+
+    socket.on("table:status_changed", (data: { tableId: number; status: any; guest_name?: string }) => {
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === Number(data.tableId)
+            ? { ...t, status: data.status, guest_name: data.guest_name || null }
+            : t
+        )
+      );
+      if (selectedTableId?.toString() === data.tableId.toString()) {
+        fetchData();
+      }
+    });
+
+    socket.on("table:transferred", () => {
+      fetchData();
+    });
+
+    socket.on("table:merged", () => {
+      fetchData();
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("table:status_changed");
+      socket.off("table:transferred");
+      socket.off("table:merged");
+      socket.disconnect();
+      console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
+    };
+  }, [fetchData, selectedTableId]);
+
   // Load integrated Order khi chọn bàn phục vụ / đặt trước / chờ thanh toán
   const loadActiveOrder = useCallback(async (tableId: number | string) => {
     const t = tables.find((item) => item.id.toString() === tableId.toString());
@@ -233,11 +285,17 @@ export const WaiterTableMap: React.FC = () => {
       const latestOrder = orders[0];
       const items = await getOrderItems(latestOrder.id);
       const validItems = items.filter((i) => i.status !== "voided" && i.status !== "cancelled");
-      const total = validItems.reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0);
+      const subtotal = validItems.reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0);
+      const depositAmount = Number((latestOrder as any).depositAmount || (latestOrder as any).deposit_amount || (t as any).deposit_amount || 0);
+      const tax = Number((latestOrder as any).tax !== undefined ? (latestOrder as any).tax : Math.round(subtotal * 0.10));
+      const totalAmount = Number((latestOrder as any).totalAmount !== undefined ? (latestOrder as any).totalAmount : Math.max(0, subtotal + tax - depositAmount));
       setActiveOrder({
         id: latestOrder.id,
         items,
-        totalAmount: total,
+        subtotal,
+        depositAmount,
+        tax,
+        totalAmount,
         status: t.status,
       });
     } catch (err) {
@@ -306,6 +364,7 @@ export const WaiterTableMap: React.FC = () => {
             quantity: data.guestCount,
             unit_price: wetTissue.price,
             kitchen_note: "Mặc định theo số khách",
+            created_by: userId,
           });
         }
       } catch (err) {
@@ -316,13 +375,13 @@ export const WaiterTableMap: React.FC = () => {
         prev.map((t) =>
           t.id.toString() === selectedTableId.toString()
             ? ({
-                ...t,
-                status: "serving" as const,
-                guest_name: data.customerName,
-                guest_phone: data.customerPhone,
-                guest_count: data.guestCount,
-                start_time: new Date().toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }),
-              } as any)
+              ...t,
+              status: "serving" as const,
+              guest_name: data.customerName,
+              guest_phone: data.customerPhone,
+              guest_count: data.guestCount,
+              start_time: new Date().toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }),
+            } as any)
             : t,
         ),
       );
@@ -338,10 +397,32 @@ export const WaiterTableMap: React.FC = () => {
   // Thêm bàn nhanh
   const handleAddTableConfirm = async (data: { name: string; capacity: number; area_id: number }) => {
     try {
+      // Tự động tìm kiếm tọa độ trống kế tiếp trong khu vực để tránh trùng lặp vị trí
+      let selectedRow = "A";
+      let selectedCol = 1;
+      let found = false;
+
+      const areaTables = tables.filter((t) => t.area_id === data.area_id);
+      for (let rCode = 65; rCode <= 90; rCode++) { // Hàng từ A đến Z
+        const row = String.fromCharCode(rCode);
+        for (let col = 1; col <= 12; col++) { // Cột từ 1 đến 12
+          const isOccupied = areaTables.some(
+            (t) => t.row_pos.toUpperCase() === row && Number(t.col_pos) === col
+          );
+          if (!isOccupied) {
+            selectedRow = row;
+            selectedCol = col;
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+
       await createResmanagerTable({
         ...data,
-        row_pos: "A",
-        col_pos: 1,
+        row_pos: selectedRow,
+        col_pos: selectedCol,
       });
       toast.success(`✅ Đã thêm bàn mới: ${data.name}`);
       fetchData();
@@ -368,10 +449,10 @@ export const WaiterTableMap: React.FC = () => {
     if (!selectedTableId) return;
     let orderId = activeOrder?.id;
     if (!orderId) {
-      const userId = getCurrentUserId();
+      const currentUserId = getCurrentUserId();
       const newOrder = await createOrder({
         table_id: Number(selectedTableId),
-        created_by: userId,
+        created_by: currentUserId,
         order_type: "dine_in",
       });
       orderId = newOrder.id;
@@ -381,6 +462,7 @@ export const WaiterTableMap: React.FC = () => {
       quantity,
       unit_price: item.price,
       kitchen_note: note,
+      created_by: getCurrentUserId(),
     });
     toast.success(`✅ Đã thêm ${quantity} x ${item.name}`);
     setIsAddDishOpen(false);
@@ -503,17 +585,19 @@ export const WaiterTableMap: React.FC = () => {
         <div>
           <h1 className="text-2xl font-black text-slate-700 font-display flex items-center gap-2.5">
             <LayoutGrid className="text-sky-600" />
-            Sơ đồ bàn & Phục vụ nhanh
+            {isManager ? "Sơ đồ bàn & Tiền sảnh" : "Sơ đồ bàn & Phục vụ nhanh"}
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Giao diện Phục vụ: Chọn bàn trên lưới để thao tác mở bàn, gọi món trực tiếp và in phiếu tạm tính.
+            {isManager
+              ? "Giao diện Quản lý: Theo dõi, phân phối chỗ ngồi và điều khiển dòng phục vụ của bàn ăn theo thời gian thực (Real-time)."
+              : "Giao diện Phục vụ: Chọn bàn trên lưới để thao tác mở bàn, gọi món trực tiếp và in phiếu tạm tính."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setIsAddTableOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-sky-600 transition-all shadow-md cursor-pointer"
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
           >
             <Plus size={15} />
             Thêm bàn ăn
@@ -552,11 +636,10 @@ export const WaiterTableMap: React.FC = () => {
               <button
                 key={area.id}
                 onClick={() => setSelectedAreaId(area.id)}
-                className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-t border-x cursor-pointer whitespace-nowrap ${
-                  isActive
-                    ? "bg-white border-sky-100 text-sky-600 border-b-white z-10"
-                    : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
-                }`}
+                className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-t border-x cursor-pointer whitespace-nowrap ${isActive
+                  ? "bg-white border-sky-100 text-sky-600 border-b-white z-10"
+                  : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
+                  }`}
               >
                 {area.name}
               </button>
@@ -582,68 +665,84 @@ export const WaiterTableMap: React.FC = () => {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3.5">
                 {filteredTables.map((t) => {
-                  const cfg = STATUS_CONFIG[t.status] || STATUS_CONFIG.empty;
                   const isSelected = selectedTableId?.toString() === t.id.toString();
 
                   return (
                     <div
                       key={t.id}
                       onClick={() => setSelectedTableId(t.id)}
-                      className={`relative flex flex-col justify-between rounded-2xl border-2 p-3.5 transition-all cursor-pointer select-none min-h-[120px] ${
-                        isSelected
-                          ? "border-sky-500 ring-4 ring-sky-500/15 shadow-md scale-[1.01]"
-                          : `${cfg.border} ${cfg.bg} hover:shadow-md`
-                      }`}
+                      className={`relative flex items-center justify-center p-8 transition-all cursor-pointer select-none rounded-2xl border-2 ${isSelected
+                        ? "border-sky-500 bg-sky-500/5 ring-4 ring-sky-500/15"
+                        : "border-transparent bg-slate-50/50 hover:bg-slate-100/30"
+                        }`}
                     >
-                      {/* Top Header Card */}
-                      <div className="flex items-start justify-between gap-1">
-                        <div>
-                          <p className="text-base font-black text-slate-700 leading-none">{t.name}</p>
-                          <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-                            <Users size={12} /> {t.status !== "empty" ? `Khách: ${t.guest_count || "?"}/${t.capacity} người` : `${t.capacity} chỗ`}
-                          </p>
-                        </div>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${cfg.text} bg-white/80 shadow-2xs`}
-                        >
-                          {cfg.label}
-                        </span>
+                      {/* Main Table Shape */}
+                      <div
+                        className={`relative w-28 h-16 rounded-full border-2 flex flex-col items-center justify-center z-10 shadow-xs hover:scale-105 transition-transform ${t.status === "serving"
+                          ? "bg-red-50 border-red-300 text-red-700"
+                          : t.status === "reserved"
+                            ? "bg-amber-50 border-amber-300 text-amber-700"
+                            : t.status === "pending_payment"
+                              ? "bg-purple-50 border-purple-300 text-purple-700"
+                              : t.status === "cleaning"
+                                ? "bg-blue-50 border-blue-300 text-blue-700"
+                                : t.status === "maintenance"
+                                  ? "bg-purple-50 border-purple-300 text-purple-700"
+                                  : "bg-white border-slate-300 text-slate-700"
+                          }`}
+                      >
+                        <span className="font-extrabold text-sm tracking-wide">{t.name}</span>
+                        {t.status !== "empty" && (
+                          <span className="text-[10px] opacity-90 mt-0.5 leading-none font-bold">
+                            {t.status === "serving"
+                              ? "Có khách"
+                              : t.status === "reserved"
+                                ? "Đã đặt"
+                                : t.status === "pending_payment"
+                                  ? "Chờ TT"
+                                  : t.status === "cleaning"
+                                    ? "Đang dọn"
+                                    : "Bảo trì"}
+                          </span>
+                        )}
                       </div>
 
-                      {/* Customer Info inside Card */}
-                      {(t.status === "serving" || t.status === "reserved" || t.status === "pending_payment" || t.status === "cleaning") && (
-                        <div className="mt-3 border-t border-sky-100/60 pt-2 text-[11px] text-slate-600 space-y-0.5">
-                          {t.guest_name && (
-                            <p className="font-bold text-slate-800 truncate">Khách: {t.guest_name}</p>
-                          )}
-                          <p className="text-slate-400 truncate flex items-center gap-1">
-                            <Phone size={10} />
-                            {t.guest_phone || <span className="italic text-gray-400">Không ghi</span>}
-                          </p>
-                          {t.start_time && (
-                            <p className="text-slate-400 flex items-center gap-1">
-                              <Clock size={11} /> Đến: {t.start_time}
-                            </p>
-                          )}
-                          {((t.pre_ordered_items && t.pre_ordered_items.length > 0) || (t.guest_note && t.guest_note.includes("Món đặt trước"))) && (
-                            <p className="text-amber-700 font-extrabold truncate flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mt-1">
-                              🍳 {t.pre_ordered_items && t.pre_ordered_items.length > 0
-                                ? `Món đặt trước: ${t.pre_ordered_items.map((i: any) => `${i.quantity}x ${i.name}`).join(", ")}`
-                                : `Có món đặt trước`}
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      {/* Chairs arranged around the table */}
+                      {Array.from({ length: t.capacity }).map((_, i) => {
+                        const angle = (2 * Math.PI * i) / t.capacity;
+                        const rx = 64; // horizontal spacing radius
+                        const ry = 40; // vertical spacing radius
+                        const x = rx * Math.cos(angle);
+                        const y = ry * Math.sin(angle);
 
-                      {t.status === "maintenance" && (
-                        <div className="mt-3 border-t border-purple-200 pt-2 text-[11px] text-purple-700 space-y-0.5">
-                          <p className="font-bold flex items-center gap-1">
-                            <Wrench size={13} /> Đang bảo trì
-                          </p>
-                          {t.maintenance_note && (
-                            <p className="text-[10px] text-purple-500 italic truncate">↳ {t.maintenance_note}</p>
-                          )}
-                        </div>
+                        return (
+                          <span
+                            key={i}
+                            className={`absolute w-3.5 h-3.5 rounded-full border shadow-2xs z-0 transition-colors ${t.status === "serving"
+                              ? "bg-red-200 border-red-300"
+                              : t.status === "reserved"
+                                ? "bg-amber-200 border-amber-300"
+                                : t.status === "pending_payment"
+                                  ? "bg-purple-200 border-purple-300"
+                                  : t.status === "cleaning"
+                                    ? "bg-blue-200 border-blue-300"
+                                    : t.status === "maintenance"
+                                      ? "bg-purple-200 border-purple-300"
+                                      : "bg-slate-200 border-slate-300"
+                              }`}
+                            style={{
+                              left: `calc(50% + ${x}px - 7px)`,
+                              top: `calc(50% + ${y}px - 7px)`,
+                            }}
+                          />
+                        );
+                      })}
+
+                      {/* Warning🍳 indicator for pre-ordered items */}
+                      {((t.pre_ordered_items && t.pre_ordered_items.length > 0) || (t.guest_note && t.guest_note.includes("Món đặt trước"))) && (
+                        <span className="absolute top-2.5 right-2.5 text-xs bg-amber-100 text-amber-800 border border-amber-200 rounded-full p-1 leading-none font-bold" title="Có món đặt trước">
+                          🍳
+                        </span>
                       )}
                     </div>
                   );
@@ -667,9 +766,8 @@ export const WaiterTableMap: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                      (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
-                    } bg-white border border-sky-100 shadow-2xs`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${(STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
+                      } bg-white border border-sky-100 shadow-2xs`}
                   >
                     {(STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
                   </span>
@@ -741,264 +839,294 @@ export const WaiterTableMap: React.FC = () => {
                 {(selectedTable.status === "serving" ||
                   selectedTable.status === "pending_payment" ||
                   selectedTable.status === "reserved") && (
-                  <>
-                    {/* Customer details card */}
-                    <div className="rounded-xl bg-sky-50/50 p-3.5 border border-sky-100 text-xs space-y-1.5">
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Khách hàng:</span>
-                        <span className="font-bold text-slate-800">
-                          {selectedTable.guest_name || "Khách tại bàn"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400 flex items-center gap-1"><Phone size={11} /> SĐT:</span>
-                        <span className="font-medium text-slate-700">
-                          {selectedTable.guest_phone || <span className="italic text-gray-400">Không ghi</span>}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Thời gian đến / đặt:</span>
-                        <span className="font-semibold text-slate-700">
-                          {selectedTable.start_time || "Vừa đến"}
-                        </span>
-                      </div>
-                      {true && (
+
+                    <>
+                      {/* Customer details card */}
+                      <div className="rounded-xl bg-sky-50/50 p-3.5 border border-sky-100 text-xs space-y-1.5">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Khách hàng:</span>
+                          <span className="font-bold text-slate-800">
+                            {selectedTable.guest_name || "Khách tại bàn"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400 flex items-center gap-1"><Phone size={11} /> SĐT:</span>
+                          <span className="font-medium text-slate-700">
+                            {selectedTable.guest_phone || <span className="italic text-gray-400">Không ghi</span>}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Thời gian đến / đặt:</span>
+                          <span className="font-semibold text-slate-700">
+                            {selectedTable.start_time || "Vừa đến"}
+                          </span>
+                        </div>
+
+
                         <div className="flex justify-between">
                           <span className="text-gray-500">Số khách đặt/đang ngồi:</span>
                           <span className="font-bold text-emerald-700">
                             {selectedTable.guest_count || "?"} / {selectedTable.capacity} người
                           </span>
                         </div>
-                      )}
-                      {selectedTable.booking_code && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Mã đặt bàn:</span>
-                          <span className="font-mono font-bold text-amber-700">
-                            {selectedTable.booking_code}
-                          </span>
+                        {selectedTable.booking_code && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Mã đặt bàn:</span>
+                            <span className="font-mono font-bold text-amber-700">
+                              {selectedTable.booking_code}
+                            </span>
+                          </div>
+                        )}
+                        {((selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0) || (selectedTable.guest_note && selectedTable.guest_note.includes("Món đặt trước"))) && (
+                          <div className="mt-2.5 pt-2 border-t border-amber-200/80 bg-amber-50/80 p-2 rounded-lg">
+                            <span className="font-extrabold text-amber-900 block flex items-center gap-1 mb-1">
+                              🍳 Món ăn đã đặt trước:
+                            </span>
+                            {selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0 ? (
+                              <ul className="list-disc list-inside text-amber-800 font-semibold space-y-0.5 ml-1">
+                                {selectedTable.pre_ordered_items.map((item: any, idx: number) => (
+                                  <li key={idx}>
+                                    {item.name} <span className="text-amber-950 font-black">x{item.quantity}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-amber-800 font-medium whitespace-pre-line">
+                                {selectedTable.guest_note}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* NÚT KHÁCH ĐÃ ĐẾN & HỦY BOOKING — chỉ hiện khi bàn là reserved */}
+                      {selectedTable.status === "reserved" && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const userId = getCurrentUserId();
+                                const newOrder = await createOrder({
+                                  table_id: Number(selectedTable.id),
+                                  created_by: userId,
+                                  order_type: "dine_in",
+                                  guest_name: selectedTable.guest_name || undefined,
+                                  guest_phone: selectedTable.guest_phone || undefined,
+                                  guest_count: selectedTable.guest_count || undefined,
+                                });
+
+                                try {
+                                  if (selectedTable.guest_count && selectedTable.guest_count > 0) {
+                                    const menuItems = await getWaiterMenuItems();
+                                    const wetTissue = menuItems.find(
+                                      (m) =>
+                                        m.name.toLowerCase().includes("khăn ướt") ||
+                                        m.name.toLowerCase().includes("khăn lạnh")
+                                    );
+                                    if (wetTissue) {
+                                      await addOrderItem(newOrder.id, {
+                                        menu_item_id: wetTissue.id,
+                                        quantity: selectedTable.guest_count,
+                                        unit_price: wetTissue.price,
+                                        kitchen_note: "Mặc định theo số khách",
+                                        created_by: userId,
+                                      });
+                                    }
+                                  }
+                                } catch (err) {
+                                  console.warn("Lỗi thêm khăn ướt mặc định:", err);
+                                }
+
+                                toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
+                                navigate(`/waiter/orders/${selectedTable.id}`);
+                              } catch {
+                                toast.error("Không thể xác nhận khách đến");
+                              }
+                            }}
+                            className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name });
+                              setCancelBookingReason("");
+                            }}
+                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                            title="Hủy booking"
+                          >
+                            <XCircle size={14} /> Hủy
+                          </button>
                         </div>
                       )}
-                      {((selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0) || (selectedTable.guest_note && selectedTable.guest_note.includes("Món đặt trước"))) && (
-                        <div className="mt-2.5 pt-2 border-t border-amber-200/80 bg-amber-50/80 p-2 rounded-lg">
-                          <span className="font-extrabold text-amber-900 block flex items-center gap-1 mb-1">
-                            🍳 Món ăn đã đặt trước:
-                          </span>
-                          {selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0 ? (
-                            <ul className="list-disc list-inside text-amber-800 font-semibold space-y-0.5 ml-1">
-                              {selectedTable.pre_ordered_items.map((item: any, idx: number) => (
-                                <li key={idx}>
-                                  {item.name} <span className="text-amber-950 font-black">x{item.quantity}</span>
-                                </li>
-                              ))}
-                            </ul>
+
+                      {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
+                      {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
+                        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-bold text-amber-800">
+                                Bàn phát sinh thêm người ({selectedTable.guest_count}/{selectedTable.capacity} khách)
+                              </p>
+                              <p className="text-[11px] text-amber-700 mt-0.5">
+                                Bạn có thể chuyển sang bàn lớn hơn hoặc gộp bàn để phục vụ thuận tiện.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              onClick={() => setActiveAction("transfer")}
+                              className="flex-1 rounded-lg bg-white border border-amber-300 px-3 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <ArrowRightLeft size={12} /> Chuyển bàn
+                            </button>
+                            <button
+                              onClick={() => setActiveAction("merge")}
+                              className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <GitMerge size={12} /> Gộp bàn
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* DANH SÁCH MÓN ĐÃ GỌI (chỉ hiển khi đang phục vụ / chờ thanh toán) */}
+                      {(selectedTable.status === "serving" || selectedTable.status === "pending_payment") && (
+                        <div className="border-t border-sky-50 pt-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Utensils size={15} className="text-sky-600" />
+                              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                                Món ăn đã gọi
+                              </h4>
+                            </div>
+                            {selectedTable.status === "serving" && (
+                              <button
+                                onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
+                                className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
+                              >
+                                <Plus size={13} /> Thêm món
+                              </button>
+                            )}
+                          </div>
+
+                          {loadingOrder ? (
+                            <div className="py-8 text-center text-xs text-gray-400">
+                              Đang tải danh sách món...
+                            </div>
+                          ) : !activeOrder || activeOrder.items.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-sky-100 py-8 text-center text-xs text-gray-400">
+                              Chưa có món ăn nào trong order. Nhấn &ldquo;Thêm món&rdquo; để gọi món.
+                            </div>
                           ) : (
-                            <p className="text-amber-800 font-medium whitespace-pre-line">
-                              {selectedTable.guest_note}
-                            </p>
+                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                              {activeOrder.items
+                                .filter((i) => i.status !== "voided" && i.status !== "cancelled")
+                                .map((item) => {
+                                  const st = ITEM_STATUS_LABELS[item.status] || ITEM_STATUS_LABELS.pending;
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className="flex items-center justify-between p-2.5 rounded-xl border border-sky-50 bg-sky-50/50/50 text-xs"
+                                    >
+                                      <div className="min-w-0 flex-1 pr-2">
+                                        <p className="font-bold text-slate-700 truncate">{item.item_name}</p>
+                                        <p className="text-[11px] text-slate-400">
+                                          {item.quantity} x {Number(item.unit_price).toLocaleString()}đ
+                                        </p>
+                                        {item.kitchen_note && (
+                                          <p className="text-[10px] text-amber-600 italic">
+                                            📝 {item.kitchen_note}
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      <div className="flex items-center shrink-0">
+                                        <span
+                                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
+                                        >
+                                          {st.label}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          )}
+
+                          {/* TỔNG TIỀN VÀ IN PHIẾU TẠM TÍNH — chỉ hiển thị khi có món */}
+                          {activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                            <div className="rounded-xl bg-gray-900 p-3.5 text-white space-y-2 mt-3">
+                              <div className="flex justify-between items-center text-xs text-gray-300">
+                                <span>Tạm tính (món):</span>
+                                <span className="font-bold">{(activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount || 0).toLocaleString("vi-VN")} đ</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs text-gray-300">
+                                <span>VAT (10%):</span>
+                                <span className="font-bold">+{(activeOrder.tax !== undefined ? activeOrder.tax : Math.round((activeOrder.subtotal || activeOrder.totalAmount || 0) * 0.10)).toLocaleString("vi-VN")} đ</span>
+                              </div>
+                              {(activeOrder.depositAmount || 0) > 0 && (
+                                <div className="flex justify-between items-center text-xs text-amber-400">
+                                  <span>Tiền cọc đặt bàn:</span>
+                                  <span className="font-bold">-{(activeOrder.depositAmount || 0).toLocaleString("vi-VN")} đ</span>
+                                </div>
+                              )}
+                              <div className="border-t border-gray-700 pt-2 flex items-center justify-between">
+                                <div>
+                                  <p className="text-[10px] text-gray-400 uppercase font-bold">Tổng thanh toán dự kiến:</p>
+                                  <p className="text-base font-black text-sky-400">
+                                    {(activeOrder.totalAmount || 0).toLocaleString("vi-VN")} đ
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => setIsPrintBillOpen(true)}
+                                  className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-sky-100 transition-colors cursor-pointer shadow-md"
+                                >
+                                  <Printer size={14} /> In phiếu tạm tính
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Nút thao tác chuyển/gộp/tách — CHỈ HIỂN THỊ khi bàn đang ở trạng thái phục vụ (serving) */}
+                          {selectedTable.status === "serving" && (
+                            <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
+                              <button
+                                onClick={() => setActiveAction("transfer")}
+                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                <ArrowRightLeft size={13} /> Chuyển bàn
+                              </button>
+                              <button
+                                onClick={() => setActiveAction("merge")}
+                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                              >
+                                <GitMerge size={13} /> Gộp bàn
+                              </button>
+                              {((selectedTable.guest_count || 0) > 1) && (
+                                <button
+                                  onClick={() => setActiveAction("split")}
+                                  className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                                >
+                                  <Copy size={13} className="text-pink-600" /> Tách bàn
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {selectedTable.status === "serving" && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                            <button
+                              onClick={handleRequestPaymentFromTable}
+                              className="w-full rounded-xl border-2 border-purple-200 bg-purple-50/60 px-3 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 shadow-2xs"
+                            >
+                              <FileText size={14} className="text-purple-600" /> Yêu cầu thanh toán (Thu ngân)
+                            </button>
                           )}
                         </div>
                       )}
-                    </div>
-
-                    {/* NÚT KHÁCH ĐÃ ĐẾN & HỦY BOOKING — chỉ hiện khi bàn là reserved */}
-                    {selectedTable.status === "reserved" && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={async () => {
-                            try {
-                              const userId = getCurrentUserId();
-                              const newOrder = await createOrder({
-                                table_id: Number(selectedTable.id),
-                                created_by: userId,
-                                order_type: "dine_in",
-                                guest_name: selectedTable.guest_name || undefined,
-                                guest_phone: selectedTable.guest_phone || undefined,
-                                guest_count: selectedTable.guest_count || undefined,
-                              });
-
-                              try {
-                                if (selectedTable.guest_count && selectedTable.guest_count > 0) {
-                                  const menuItems = await getWaiterMenuItems();
-                                  const wetTissue = menuItems.find(
-                                    (m) =>
-                                      m.name.toLowerCase().includes("khăn ướt") ||
-                                      m.name.toLowerCase().includes("khăn lạnh")
-                                  );
-                                  if (wetTissue) {
-                                    await addOrderItem(newOrder.id, {
-                                      menu_item_id: wetTissue.id,
-                                      quantity: selectedTable.guest_count,
-                                      unit_price: wetTissue.price,
-                                      kitchen_note: "Mặc định theo số khách",
-                                    });
-                                  }
-                                }
-                              } catch (err) {
-                                console.warn("Lỗi thêm khăn ướt mặc định:", err);
-                              }
-
-                              toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
-                              navigate(`/waiter/orders/${selectedTable.id}`);
-                            } catch {
-                              toast.error("Không thể xác nhận khách đến");
-                            }
-                          }}
-                          className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
-                        >
-                          <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
-                        </button>
-                        <button
-                          onClick={() => {
-                            setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name });
-                            setCancelBookingReason("");
-                          }}
-                          className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                          title="Hủy booking"
-                        >
-                          <XCircle size={14} /> Hủy
-                        </button>
-                      </div>
-                    )}
-
-                    {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
-                    {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
-                      <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 space-y-2">
-                        <div className="flex items-start gap-2">
-                          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="font-bold text-amber-800">
-                              Bàn phát sinh thêm người ({selectedTable.guest_count}/{selectedTable.capacity} khách)
-                            </p>
-                            <p className="text-[11px] text-amber-700 mt-0.5">
-                              Bạn có thể chuyển sang bàn lớn hơn hoặc gộp bàn để phục vụ thuận tiện.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-1">
-                          <button
-                            onClick={() => setActiveAction("transfer")}
-                            className="flex-1 rounded-lg bg-white border border-amber-300 px-3 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer flex items-center justify-center gap-1"
-                          >
-                            <ArrowRightLeft size={12} /> Chuyển bàn
-                          </button>
-                          <button
-                            onClick={() => setActiveAction("merge")}
-                            className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
-                          >
-                            <GitMerge size={12} /> Gộp bàn
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* DANH SÁCH MÓN ĐÃ GỌI (chỉ hiển khi đang phục vụ / chờ thanh toán) */}
-                    {(selectedTable.status === "serving" || selectedTable.status === "pending_payment") && (
-                      <div className="border-t border-sky-50 pt-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Utensils size={15} className="text-sky-600" />
-                            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                              Món ăn đã gọi
-                            </h4>
-                          </div>
-                          <button
-                            onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
-                            className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
-                          >
-                            <Plus size={13} /> Thêm món
-                          </button>
-                        </div>
-
-                        {loadingOrder ? (
-                          <div className="py-8 text-center text-xs text-gray-400">
-                            Đang tải danh sách món...
-                          </div>
-                        ) : !activeOrder || activeOrder.items.length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-sky-100 py-8 text-center text-xs text-gray-400">
-                            Chưa có món ăn nào trong order. Nhấn &ldquo;Thêm món&rdquo; để gọi món.
-                          </div>
-                        ) : (
-                          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                            {activeOrder.items
-                              .filter((i) => i.status !== "voided" && i.status !== "cancelled")
-                              .map((item) => {
-                                const st = ITEM_STATUS_LABELS[item.status] || ITEM_STATUS_LABELS.pending;
-                                return (
-                                  <div
-                                    key={item.id}
-                                    className="flex items-center justify-between p-2.5 rounded-xl border border-sky-50 bg-sky-50/50/50 text-xs"
-                                  >
-                                    <div className="min-w-0 flex-1 pr-2">
-                                      <p className="font-bold text-slate-700 truncate">{item.item_name}</p>
-                                      <p className="text-[11px] text-slate-400">
-                                        {item.quantity} x {Number(item.unit_price).toLocaleString()}đ
-                                      </p>
-                                      {item.kitchen_note && (
-                                        <p className="text-[10px] text-amber-600 italic">
-                                          📝 {item.kitchen_note}
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    <div className="flex items-center shrink-0">
-                                      <span
-                                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
-                                      >
-                                        {st.label}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        )}
-
-                        {/* TỔNG TIỀN VÀ IN PHIẾU TẠM TÍNH — chỉ hiển thị khi có món */}
-                        {activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
-                          <div className="rounded-xl bg-gray-900 p-3.5 text-white flex items-center justify-between mt-3">
-                            <div>
-                              <p className="text-[10px] text-gray-400 uppercase font-bold">Tạm tính order:</p>
-                              <p className="text-base font-black text-sky-600">
-                                {(activeOrder?.totalAmount || 0).toLocaleString("vi-VN")} đ
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => setIsPrintBillOpen(true)}
-                              className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-sky-100 transition-colors cursor-pointer shadow-md"
-                            >
-                              <Printer size={14} /> In phiếu tạm tính
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Nút thao tác chuyển/gộp & Yêu cầu thanh toán */}
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <button
-                            onClick={() => setActiveAction("transfer")}
-                            className="rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <ArrowRightLeft size={13} /> Chuyển bàn
-                          </button>
-                          <button
-                            onClick={() => setActiveAction("merge")}
-                            className="rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <GitMerge size={13} /> Gộp bàn
-                          </button>
-                        </div>
-
-                        {selectedTable.status === "serving" && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
-                          <button
-                            onClick={handleRequestPaymentFromTable}
-                            className="w-full rounded-xl border-2 border-purple-200 bg-purple-50/60 px-3 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 shadow-2xs"
-                          >
-                            <FileText size={14} className="text-purple-600" /> Yêu cầu thanh toán (Thu ngân)
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
+                    </>
+                  )}
               </div>
             </div>
           ) : (
@@ -1059,6 +1187,10 @@ export const WaiterTableMap: React.FC = () => {
           tableName={selectedTable.name}
           orderId={activeOrder?.id}
           items={activeOrder?.items || []}
+          subtotal={activeOrder?.subtotal}
+          tax={activeOrder?.tax}
+          depositAmount={activeOrder?.depositAmount ?? selectedTable.deposit_amount ?? undefined}
+          totalAmount={activeOrder?.totalAmount}
           waiterName={userInfo.name}
           employeeCode={userInfo.code}
           guestName={selectedTable.guest_name}
@@ -1230,9 +1362,8 @@ export const WaiterTableMap: React.FC = () => {
                     <p className="font-bold text-gray-800">{item.item_name}</p>
                     <p className="text-gray-500">Số lượng: <span className="font-bold text-gray-700">{item.quantity}</span></p>
                   </div>
-                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${
-                    item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-                  }`}>
+                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                    }`}>
                     {item.status === "cooking" ? "⏳ Đang nấu" : "📋 Chờ gửi bếp"}
                   </span>
                 </div>
@@ -1240,7 +1371,7 @@ export const WaiterTableMap: React.FC = () => {
             </div>
 
             {(() => {
-              const servedOrDoneCount = activeOrder?.items.filter((i) => i.status === "done").length || 0;
+              const servedOrDoneCount = activeOrder?.items.filter((i) => i.status === "served" || i.status === "done").length || 0;
               if (servedOrDoneCount === 0) {
                 return (
                   <div className="space-y-3">

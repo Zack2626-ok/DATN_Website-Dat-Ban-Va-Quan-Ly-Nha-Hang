@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { toast } from "react-hot-toast";
-import { TrendingUp } from "lucide-react";
 import { DateFilterBar } from "./components/DateFilterBar";
 import { KpiCards } from "./components/KpiCards";
 import { CustomCharts } from "./components/CustomCharts";
@@ -92,6 +91,7 @@ export const AnalyticsView: React.FC = () => {
   }, [filter, fetchAnalyticsData]);
 
   const handleRefresh = () => {
+    analyticsService.clearCache();
     fetchAnalyticsData(filter);
     toast.success("Đã làm mới dữ liệu báo cáo thành công!");
   };
@@ -121,13 +121,12 @@ export const AnalyticsView: React.FC = () => {
       </div>
 
       {/* Tiêu đề trang (Ẩn khi in) */}
-      <div className="flex flex-col gap-1 border-b border-sky-100 pb-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs print:hidden">
         <div>
-          <h1 className="text-2xl font-black text-slate-700 flex items-center gap-2 font-display">
-            <TrendingUp size={24} className="text-sky-600" />
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
             Báo cáo & Phân tích kinh doanh
           </h1>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
             Theo dõi tổng quan doanh thu món lẻ, sự kiện, dòng tiền thu chi và hiệu quả thanh toán
           </p>
         </div>

@@ -10,8 +10,11 @@ import {
   Wallet,
   Clock,
   CheckCircle2,
+  Printer,
 } from "lucide-react";
-import { getPaymentHistoryApi } from "../../../services/invoiceService";
+import { getPaymentHistoryApi, getInvoiceByIdApi } from "../../../services/invoiceService";
+import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
+import { printCashierInvoice } from "../../../utils/printBill";
 
 interface PaymentRecord {
   id: string;
@@ -37,7 +40,7 @@ const METHOD_LABELS: Record<string, { label: string; icon: React.ReactNode; colo
   wallet: { label: "Ví điện tử", icon: <Wallet size={14} />, color: "text-amber-600 bg-amber-50 border-amber-200" },
 };
 
-const formatVnd = (amount: number) => amount.toLocaleString("vi-VN");
+const formatVnd = (amount: number) => Number(amount).toLocaleString("vi-VN");
 
 const formatTime = (dateStr: string) => {
   if (!dateStr) return "-";
@@ -58,6 +61,29 @@ export const PaymentHistoryPage: React.FC = () => {
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  const [printingId, setPrintingId] = useState<string | null>(null);
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+
+  useEffect(() => {
+    getRestaurantInfo().then(setRestaurantInfo).catch(console.error);
+  }, []);
+
+  const handlePrint = async (orderId: string) => {
+    try {
+      setPrintingId(orderId);
+      const invoice = await getInvoiceByIdApi(orderId);
+      printCashierInvoice(invoice, restaurantInfo?.name, restaurantInfo);
+    } catch (error) {
+      console.error("Failed to print invoice:", error);
+      alert("Không thể tải chi tiết hóa đơn để in.");
+    } finally {
+      setPrintingId(null);
+    }
+  };
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -80,6 +106,11 @@ export const PaymentHistoryPage: React.FC = () => {
     fetchPayments();
   }, [fetchPayments]);
 
+  // Reset page when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, dateFrom, dateTo, methodFilter]);
+
   const totalAmount = useMemo(
     () => payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + p.amount, 0),
     [payments],
@@ -89,6 +120,13 @@ export const PaymentHistoryPage: React.FC = () => {
     () => payments.filter((p) => p.status === "completed").length,
     [payments],
   );
+
+  const totalPages = Math.ceil(payments.length / ITEMS_PER_PAGE);
+
+  const paginatedPayments = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return payments.slice(start, start + ITEMS_PER_PAGE);
+  }, [payments, currentPage]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -167,11 +205,10 @@ export const PaymentHistoryPage: React.FC = () => {
             <button
               key={opt.value}
               onClick={() => setMethodFilter(opt.value)}
-              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                methodFilter === opt.value
+              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${methodFilter === opt.value
                   ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
-              }`}
+                }`}
             >
               {opt.label}
             </button>
@@ -180,7 +217,7 @@ export const PaymentHistoryPage: React.FC = () => {
       </div>
 
       {/* Payment list */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden p-4">
         {loading ? (
           <div className="flex items-center justify-center h-40 text-xs text-slate-400">Đang tải...</div>
         ) : payments.length === 0 ? (
@@ -189,63 +226,137 @@ export const PaymentHistoryPage: React.FC = () => {
             <p className="text-xs">Không có giao dịch nào</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Mã GD</th>
-                  <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Đơn hàng</th>
-                  <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Bàn</th>
-                  <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Khách</th>
-                  <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Phương thức</th>
-                  <th className="text-right px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Số tiền</th>
-                  <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Thời gian</th>
-                  <th className="text-center px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {payments.map((p) => {
-                  const method = METHOD_LABELS[p.paymentMethod] || { label: p.paymentMethod, icon: <CreditCard size={14} />, color: "text-slate-600 bg-slate-50 border-slate-200" };
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-4 py-3 font-black text-slate-900">#{String(p.id).slice(-8).toUpperCase()}</td>
-                      <td className="px-4 py-3 font-bold text-slate-700">#{String(p.orderId).slice(-6)}</td>
-                      <td className="px-4 py-3">
-                        {p.table_name ? (
-                          <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold text-[10px] border border-blue-200">
-                            {p.table_name}
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Mã GD</th>
+                    <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Đơn hàng</th>
+                    <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Bàn</th>
+                    <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Khách</th>
+                    <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Phương thức</th>
+                    <th className="text-right px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Số tiền</th>
+                    <th className="text-left px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Thời gian</th>
+                    <th className="text-center px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                    <th className="text-right px-4 py-3 font-bold text-slate-500 uppercase tracking-wider">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedPayments.map((p) => {
+                    const method = METHOD_LABELS[p.paymentMethod] || { label: p.paymentMethod, icon: <CreditCard size={14} />, color: "text-slate-600 bg-slate-50 border-slate-200" };
+                    return (
+                      <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 font-black text-slate-900">#{String(p.id).slice(-8).toUpperCase()}</td>
+                        <td className="px-4 py-3 font-bold text-slate-700">#{String(p.orderId).slice(-6)}</td>
+                        <td className="px-4 py-3">
+                          {p.table_name ? (
+                            <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold text-[10px] border border-blue-200">
+                              {p.table_name}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {p.guest_name || <span className="text-slate-400">Khách lẻ</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${method.color}`}>
+                            {method.icon} {method.label}
                           </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {p.guest_name || <span className="text-slate-400">Khách lẻ</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${method.color}`}>
-                          {method.icon} {method.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-black text-slate-900">{formatVnd(p.amount)} vnđ</td>
-                      <td className="px-4 py-3 text-slate-500">{formatTime(p.completedAt || p.createdAt)}</td>
-                      <td className="px-4 py-3 text-center">
-                        {p.status === "completed" ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 size={11} /> Thành công
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Clock size={11} /> {p.status}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right font-black text-slate-900">{formatVnd(p.amount)} vnđ</td>
+                        <td className="px-4 py-3 text-slate-500">{formatTime(p.completedAt || p.createdAt)}</td>
+                        <td className="px-4 py-3 text-center">
+                          {p.status === "completed" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 size={11} /> Thành công
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <Clock size={11} /> {p.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handlePrint(p.orderId)}
+                            disabled={printingId === p.orderId}
+                            title="In lại hóa đơn"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <Printer size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-slate-100 bg-white px-4 py-3 sm:px-6 mt-4">
+                <div className="flex flex-1 justify-between sm:hidden">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Trước
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Sau
+                  </button>
+                </div>
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs text-slate-500">
+                      Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
+                      <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, payments.length)}</span> trong tổng số{" "}
+                      <span className="font-semibold text-slate-700">{payments.length}</span> giao dịch
+                    </p>
+                  </div>
+                  <div>
+                    <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                      >
+                        Trước
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${currentPage === page
+                              ? "z-10 bg-blue-600 text-white"
+                              : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
+                            }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                      >
+                        Sau
+                      </button>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -153,9 +153,13 @@ const invoiceSlice = createSlice({
       .addCase(processInvoicePayment.fulfilled, (state, action) => {
         state.actionLoading = false;
         const { order } = action.payload;
-        const idx = state.invoices.findIndex((inv) => inv.id === order.id);
+        const idx = state.invoices.findIndex((inv) => inv.id === String(order.id));
         if (idx !== -1) {
-          state.invoices[idx] = { ...state.invoices[idx], ...order, invoiceStatus: "paid" as InvoiceStatus };
+          state.invoices[idx] = {
+            ...state.invoices[idx],
+            status: order.status || "completed",
+            invoiceStatus: "paid" as InvoiceStatus,
+          };
         }
       })
       .addCase(processInvoicePayment.rejected, (state, action) => {

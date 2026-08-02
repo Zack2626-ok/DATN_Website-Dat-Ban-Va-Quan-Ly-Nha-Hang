@@ -3,7 +3,7 @@ import { Modal } from "../../../components/Modal";
 import { AlertTriangle, Flame, Send } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-export type OrderItemStatus = "pending" | "cooking" | "done" | "served" | "voided";
+export type OrderItemStatus = "pending" | "waiting_kitchen" | "cooking" | "done" | "served" | "voided";
 
 export interface VoidableOrderItem {
   id: string;
@@ -29,7 +29,7 @@ const VOID_REASONS = [
 ];
 
 /**
- * Hủy / Hoàn trả món — extend: gửi thông báo void lên KDS khi status = cooking
+ * Hủy / Hoàn trả món — extend: gửi thông báo void lên KDS khi status = cooking / waiting_kitchen
  */
 export const VoidItemModal: React.FC<VoidItemModalProps> = ({
   isOpen,
@@ -56,7 +56,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
       toast.error("Vui lòng nhập lý do hủy món");
       return;
     }
-    const shouldNotifyKds = item.status === "cooking" && notifyKds;
+    const shouldNotifyKds = (item.status === "cooking" || item.status === "waiting_kitchen") && notifyKds;
     onConfirm(item.id, finalReason, shouldNotifyKds);
     if (shouldNotifyKds) {
       toast.success(`Đã gửi thông báo void lên KDS — Bàn ${tableName}`);
@@ -68,7 +68,7 @@ export const VoidItemModal: React.FC<VoidItemModalProps> = ({
 
   if (!item) return null;
 
-  const isCooking = item.status === "cooking";
+  const isCooking = item.status === "cooking" || item.status === "waiting_kitchen";
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Hủy / Hoàn trả món" size="md" theme="light">

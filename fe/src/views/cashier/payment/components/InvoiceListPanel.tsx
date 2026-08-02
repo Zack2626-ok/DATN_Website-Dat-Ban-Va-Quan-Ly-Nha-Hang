@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, Filter, X, FileText, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { Search, Filter, X, FileText, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
 import type { Invoice, InvoiceStatus } from "../../../../interfaces/invoice";
 
 interface Props {
@@ -16,13 +16,14 @@ interface Props {
 const STATUS_OPTIONS: { value: InvoiceStatus | "all"; label: string }[] = [
   { value: "all", label: "Tất cả" },
   { value: "unpaid", label: "Chưa thanh toán" },
-  { value: "paid", label: "Đã thanh toán" },
+  { value: "pending", label: "Chờ thanh toán" },
   { value: "cancelled", label: "Đã hủy" },
 ];
 
 const statusBadge = (status: InvoiceStatus) => {
   const map: Record<InvoiceStatus, { bg: string; text: string; icon: React.ReactNode; label: string }> = {
     unpaid: { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", icon: <Clock size={12} />, label: "Chưa TT" },
+    pending: { bg: "bg-orange-50 border-orange-200", text: "text-orange-700", icon: <Hourglass size={12} />, label: "Chờ TT" },
     paid: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", icon: <CheckCircle2 size={12} />, label: "Đã TT" },
     cancelled: { bg: "bg-red-50 border-red-200", text: "text-red-700", icon: <XCircle size={12} />, label: "Đã hủy" },
   };
@@ -38,10 +39,10 @@ const timeAgo = (dateStr: string) => {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "Vừa xong";
-  if (mins < 60) return `${mins}p`;
+  if (mins < 60) return `${mins} phút trước`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
+  if (hrs < 24) return `${hrs} giờ trước`;
+  return `${Math.floor(hrs / 24)} ngày trước`;
 };
 
 export const InvoiceListPanel: React.FC<Props> = ({
@@ -54,7 +55,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
   onStatusFilterChange,
   loading,
 }) => {
-  const unpaidCount = invoices.filter((i) => i.invoiceStatus === "unpaid").length;
+  const unpaidCount = invoices.filter((i) => i.invoiceStatus === "unpaid" || i.invoiceStatus === "pending").length;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -139,7 +140,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs font-black text-slate-900">
-                      {(inv.totalAmount * 1000).toLocaleString("vi-VN")}
+                      {Number(inv.totalAmount).toLocaleString("vi-VN")}
                     </p>
                     <p className="text-[10px] text-slate-500">{timeAgo(inv.createdAt)}</p>
                   </div>

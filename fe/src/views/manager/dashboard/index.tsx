@@ -51,7 +51,7 @@ export const ManagerDashboard: React.FC = () => {
           </div>
           <div className="flex flex-col gap-0.5 mt-1">
             <span className="text-2xl font-black">
-              {(stats.totalRevenue * 1000).toLocaleString("vi-VN")} vnđ
+              {Number(stats.totalRevenue || 0).toLocaleString("vi-VN")} vnđ
             </span>
             <span className="text-emerald-500 text-[10px] font-bold">
               +12.5%
@@ -342,7 +342,7 @@ export const ManagerDashboard: React.FC = () => {
           <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 text-xs font-semibold">
             <div className="flex justify-between items-center">
               <span className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#0f62fe]" /> Gỏi
+                <span className="w-2.5 h-2.5 rounded-full bg-admin-primary" /> Gỏi
                 hải sản
               </span>
               <span className="font-extrabold text-slate-800">245</span>

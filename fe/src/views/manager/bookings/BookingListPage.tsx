@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Plus,
@@ -36,6 +36,7 @@ import { CancelledBookings } from "./components/CancelledBookings";
  */
 export const BookingListPage: React.FC = () => {
   const { user } = useAppSelector((state: any) => state.auth);
+  console.log("LOGGED IN USER PROFILE:", user);
   const [activeMainTab, setActiveMainTab] = useState<"active" | "cancelled">("active");
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -52,6 +53,9 @@ export const BookingListPage: React.FC = () => {
     now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
     return now.toISOString().slice(0, 16);
   };
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const [formData, setFormData] = useState({
     guest_name: "",
@@ -80,6 +84,11 @@ export const BookingListPage: React.FC = () => {
     fetchData();
   }, [formData.start_time]); // Fetch lại khi start_time thay đổi
 
+  // Reset page when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus]);
+
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
       b.guest_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -88,6 +97,13 @@ export const BookingListPage: React.FC = () => {
     const matchesStatus = filterStatus === "all" || b.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
+
+  const totalPages = Math.ceil(filteredBookings.length / ITEMS_PER_PAGE);
+
+  const paginatedBookings = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredBookings.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredBookings, currentPage]);
 
   const handleStatusChange = async (id: number, newStatus: Booking["status"]) => {
     try {
@@ -176,87 +192,92 @@ export const BookingListPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8 space-y-6 animate-fade-in">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
       {/* ── Header ── */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-admin-text-main font-display">Đặt bàn</h1>
-          <p className="text-sm text-admin-text-sub mt-0.5">Quản lý lịch đặt bàn hệ thống</p>
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
+            Quản lý đặt bàn
+          </h1>
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
+            Theo dõi danh sách đặt chỗ, gán bàn và xử lý booking khách hàng
+          </p>
         </div>
         <button
+          type="button"
           onClick={() => setIsAddModalOpen(true)}
-          className="px-5 py-2.5 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover transition-all flex items-center gap-2 shadow-sm"
+          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
         >
-          <Plus size={16} /> Tạo booking
+          <Plus size={18} /> Tạo booking mới
         </button>
       </div>
 
-      {/* ── Role-based Main Tabs (Manager/Admin Only) ── */}
-      {(user?.role === "manager" || user?.role === "admin") && (
-        <div className="flex border-b border-admin-border gap-6 mb-2">
-          <button
-            onClick={() => setActiveMainTab("active")}
-            className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-              activeMainTab === "active" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
-            }`}
-          >
-            Lịch đặt hiện tại
-            {activeMainTab === "active" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveMainTab("cancelled")}
-            className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-              activeMainTab === "cancelled" ? "text-[#FF5A5F]" : "text-admin-text-sub hover:text-[#FF5A5F]"
-            }`}
-          >
-            Lịch sử khách hủy bàn
-            {activeMainTab === "cancelled" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF5A5F] rounded-full" />
-            )}
-          </button>
-        </div>
-      )}
+      {/* ── Main Tabs (Hiện tại vs Đã hủy) ── */}
+      <div className="bg-[#FFFFFF] p-3 rounded-3xl border border-slate-200/70 shadow-xs flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setActiveMainTab("active")}
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+            activeMainTab === "active"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
+          }`}
+        >
+          Lịch đặt hiện tại
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab("cancelled")}
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+            activeMainTab === "cancelled"
+              ? "bg-rose-600 text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
+          }`}
+        >
+          Lịch sử khách hủy bàn
+        </button>
+      </div>
 
       {activeMainTab === "cancelled" ? (
         <CancelledBookings />
       ) : (
         <>
           {/* ── Toolbar ── */}
-          <div className="bg-admin-card rounded-2xl border border-admin-border p-4 flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-text-sub" size={15} />
-          <input
-            placeholder="Tìm mã, tên, SĐT..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-lg text-sm outline-none border border-admin-border focus:ring-2 focus:ring-admin-primary/20"
-          />
-        </div>
-        {/* Status filter tabs */}
-        <div className="flex gap-1 flex-wrap">
-          {[
-            { key: "all", label: "Tất cả" },
-            { key: "pending", label: "Chờ xác nhận" },
-            { key: "confirmed", label: "Đã xác nhận" },
-            { key: "completed", label: "Hoàn thành" },
-            { key: "cancelled", label: "Đã hủy" },
-          ].map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setFilterStatus(s.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === s.key
-                ? "bg-admin-primary text-white"
-                : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
-                }`}
-            >
-              {s.label}
-              <span className="ml-1 opacity-70">({statusCount[s.key as keyof typeof statusCount]})</span>
-            </button>
-          ))}
-        </div>
-      </div>
+          <div className="bg-[#FFFFFF] p-3.5 rounded-3xl border border-slate-200/70 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8A8A8A]" size={17} />
+              <input
+                placeholder="Tìm mã, tên, SĐT..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-11 pr-4 py-2 bg-[#F8F6F2] rounded-full text-xs font-bold text-[#1A1A1A] placeholder-[#8A8A8A] focus:outline-none focus:ring-2 focus:ring-[#3E2016]/30 transition-all border-0"
+              />
+            </div>
+            {/* Status filter tabs */}
+            <div className="flex gap-1 flex-wrap shrink-0">
+              {[
+                { key: "all", label: "Tất cả" },
+                { key: "pending", label: "Chờ xác nhận" },
+                { key: "confirmed", label: "Đã xác nhận" },
+                { key: "completed", label: "Hoàn thành" },
+                { key: "cancelled", label: "Đã hủy" },
+              ].map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setFilterStatus(s.key)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+                    filterStatus === s.key
+                      ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+                      : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
+                  }`}
+                >
+                  {s.label}
+                  <span className="ml-1 opacity-70">({statusCount[s.key as keyof typeof statusCount]})</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
       {/* ── Table ── */}
       <div className="bg-admin-card rounded-2xl border border-admin-border shadow-sm overflow-hidden">
@@ -274,7 +295,7 @@ export const BookingListPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-admin-border">
-            {filteredBookings.length === 0 ? (
+            {paginatedBookings.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-6 py-12 text-center text-admin-text-sub">
                   <CalendarDays className="mx-auto mb-2 opacity-30" size={32} />
@@ -282,7 +303,7 @@ export const BookingListPage: React.FC = () => {
                 </td>
               </tr>
             ) : (
-              filteredBookings.map((b) => {
+              paginatedBookings.map((b) => {
                 const dt = formatDateTime(b.start_time);
                 return (
                   <tr
@@ -358,6 +379,68 @@ export const BookingListPage: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {filteredBookings.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4 mt-4 rounded-xl shadow-xs">
+          <div className="flex flex-1 justify-between sm:hidden">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Trước
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Sau
+            </button>
+          </div>
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs text-slate-500">
+                Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
+                <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredBookings.length)}</span> trong tổng số{" "}
+                <span className="font-semibold text-slate-700">{filteredBookings.length}</span> lượt đặt bàn
+              </p>
+            </div>
+            <div>
+              <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                >
+                  Trước
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                      currentPage === page
+                        ? "z-10 bg-blue-600 text-white"
+                        : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                >
+                  Sau
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )}
 

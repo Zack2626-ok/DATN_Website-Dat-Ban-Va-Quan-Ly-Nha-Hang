@@ -37,17 +37,17 @@ export const UserTable: React.FC<UserTableProps> = ({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-sky-100">
+    <div className="bg-[#FFFFFF] rounded-3xl border border-slate-200/70 shadow-xs overflow-hidden">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="bg-sky-50/50">
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Avatar</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Họ và tên</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Email</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Số điện thoại</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Vai trò</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Trạng thái</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Hành động</th>
+          <tr className="border-b border-slate-100 bg-[#FFFFFF]">
+            <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">Avatar</th>
+            <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">Họ và tên</th>
+            <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">Email</th>
+            <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">Số điện thoại</th>
+            <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">Vai trò</th>
+            <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">Trạng thái</th>
+            <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider text-right">Hành động</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
@@ -84,22 +84,28 @@ export const UserTable: React.FC<UserTableProps> = ({
                 </span>
               </td>
               <td className="px-4 py-4">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => onEdit(user)}
-                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Sửa"
-                  >
-                    <Edit size={16} />
-                  </button>
-                  <button
-                    onClick={() => onDelete(user)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Xóa"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                {user.role?.name === "admin" ? (
+                  <span className="text-xs text-slate-400 italic font-semibold flex items-center gap-1 select-none">
+                    🔒 Hệ thống
+                  </span>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onEdit(user)}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                      title="Sửa"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(user)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                      title="Xóa"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
               </td>
             </tr>
           ))}

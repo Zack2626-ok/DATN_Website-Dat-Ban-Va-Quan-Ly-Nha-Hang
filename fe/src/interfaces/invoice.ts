@@ -1,6 +1,6 @@
 import type { OrderItem } from "./index";
 
-export type InvoiceStatus = "unpaid" | "paid" | "cancelled";
+export type InvoiceStatus = "unpaid" | "pending" | "paid" | "cancelled";
 
 export interface Invoice {
   id: string;
@@ -12,17 +12,24 @@ export interface Invoice {
   guestCount: number;
   items: OrderItem[];
   totalAmount: number;
+  subtotal?: number;
+  tax?: number;
+  discount?: number;
+  vatRate?: number;
   depositAmount?: number;
   status: string;
   invoiceStatus: InvoiceStatus;
   createdAt: string;
   orderType?: string;
+  paymentMethod?: string;
+  staffName?: string;
 }
 
 export interface PaymentBreakdown {
   subtotal: number;
   vat: number;
   vatRate: number;
+  depositAmount?: number;
   serviceFee: number;
   serviceFeeRate: number;
   voucher: number;
@@ -33,13 +40,14 @@ export interface PaymentBreakdown {
 }
 
 export interface PaymentRequest {
-  paymentMethod: "cash" | "transfer" | "card" | "wallet";
+  paymentMethod: "cash" | "transfer" | "card" | "wallet" | "momo" | "vnpay";
   vatRate?: number;
   serviceFeeRate?: number;
   voucherCode?: string;
   voucherAmount?: number;
   tipAmount?: number;
   notes?: string;
+  pointsUsed?: number;
 }
 
 export interface SplitBillEqualRequest {

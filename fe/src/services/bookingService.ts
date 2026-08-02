@@ -16,12 +16,20 @@ export interface Booking {
   guest_note?: string;
   note?: string;
   cancel_reason?: string | null;
+  pre_order_total?: number;
+  deposit_amount?: number;
+  deposit_status?: "unpaid" | "paid" | "refunded" | "none";
+  pre_ordered_items?: any[];
   created_at: string;
 }
 
 export const getBookings = async (status?: string): Promise<Booking[]> => {
   const response = await api.get("/v1/bookings", { params: { status } });
   return response.data.data || [];
+};
+
+export const payBookingDeposit = async (id: number): Promise<void> => {
+  await api.patch(`/v1/bookings/${id}/pay-deposit`);
 };
 
 export const getBookingById = async (id: number): Promise<Booking | null> => {
@@ -35,6 +43,7 @@ export const createBooking = async (data: {
   promotion_id?: number | null;
   guest_name: string;
   guest_phone: string;
+  guest_email?: string;
   party_size: number;
   start_time: string;
   end_time: string;

@@ -3,7 +3,6 @@ export const TABLE_STATUS = {
   RESERVED: "reserved",
   OCCUPIED: "serving",
   PENDING_PAYMENT: "pending_payment",
-  CLEANING: "cleaning",
   MAINTENANCE: "maintenance",
 } as const;
 

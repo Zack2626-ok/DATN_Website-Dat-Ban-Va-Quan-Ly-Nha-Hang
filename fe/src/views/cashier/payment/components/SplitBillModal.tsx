@@ -12,7 +12,7 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (n: number) => (n * 1000).toLocaleString("vi-VN");
+const formatVnd = (n: number) => Number(n).toLocaleString("vi-VN");
 
 export const SplitBillModal: React.FC<Props> = ({
   isOpen,

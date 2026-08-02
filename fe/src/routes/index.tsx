@@ -7,12 +7,17 @@ import { WaiterRoutes } from "./waiter.routes";
 import { CashierRoutes } from "./cashier.routes";
 import { ChefRoutes } from "./chef.routes";
 import { SalesRoutes } from "./sales.routes";
+import { AccessDeniedPage } from "../views/auth/AccessDeniedPage";
+import CheckInPage from "../views/auth/CheckInPage";
 
 export const AppRoutes: React.FC = () => {
   return (
     <Routes>
       {/* Customer Client Side Routes */}
       {ClientRoutes()}
+
+      {/* Check-in (chấm công) page — no ProtectedRoute wrapper needed */}
+      <Route path="/checkin" element={<CheckInPage />} />
 
       {/* Staff Admin Workspace Routes for each Actor */}
       {AdminRoutes()}
@@ -21,6 +26,9 @@ export const AppRoutes: React.FC = () => {
       {CashierRoutes()}
       {ChefRoutes()}
       {SalesRoutes()}
+
+      {/* Access Denied Route */}
+      <Route path="/403" element={<AccessDeniedPage />} />
 
       {/* Route Fallback (Non-existent routes redirect back to client landing) */}
       <Route path="*" element={<Navigate to="/" replace />} />

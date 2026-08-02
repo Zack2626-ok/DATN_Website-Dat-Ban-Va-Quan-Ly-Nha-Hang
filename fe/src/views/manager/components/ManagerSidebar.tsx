@@ -2,202 +2,357 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
-  Settings,
-  ChevronDown,
-  ChevronRight,
-  Users,
-  Utensils,
-  Database,
   Grid,
   CalendarDays,
   Clock,
+  Users,
+  Utensils,
+  UtensilsCrossed,
+  BadgeCheck,
   LineChart,
   Percent,
+  CircleDollarSign,
+  TrendingDown,
+  Building2,
+  Database,
+  ChevronDown,
+  Minus,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
-import { ROLE_LABELS } from "../../../constants/roles";
 
 /**
- * ManagerSidebar - Sidebar riêng cho Manager role với accordion menu
+ * ManagerSidebar - Recreated Two-Column Neumorphic Soft-UI Sidebar
+ * Adheres strictly to the monochrome grayscale specification & hex color palette.
  */
 export const ManagerSidebar: React.FC = () => {
   const location = useLocation();
   const { user } = useAppSelector((state) => state.auth);
-  const [isSystemMenuOpen, setIsSystemMenuOpen] = useState(true);
+  const normalizedRole = (user?.role || "manager").toLowerCase();
+  const isAdmin = normalizedRole === "admin";
+  const isManager = normalizedRole === "manager";
+  const canAccessOperations = isAdmin || isManager;
+  const canViewReports = isAdmin || isManager;
+  const canManageSystem = isAdmin;
 
-  // Check if route is active
+  // Accordion section states
+  const [openOps, setOpenOps] = useState(true);
+  const [openManagement, setOpenManagement] = useState(true);
+  const [openReports, setOpenReports] = useState(true);
+
+  // Active status helpers
   const isRouteActive = (to: string) => {
     return location.pathname === to || location.pathname.startsWith(`${to}/`);
   };
 
+  const isOpsActive =
+    location.pathname.startsWith("/manager/tables") ||
+    location.pathname.startsWith("/manager/bookings") ||
+    location.pathname.startsWith("/manager/shifts");
+
+  const isManagementActive =
+    location.pathname.startsWith("/manager/staff") ||
+    location.pathname.startsWith("/manager/menu") ||
+    location.pathname.startsWith("/manager/crm");
+
+  const isReportsActive =
+    location.pathname.startsWith("/manager/analytics") ||
+    location.pathname.startsWith("/manager/finance-report") ||
+    location.pathname.startsWith("/manager/loss-debt-report");
+
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-sky-100 bg-gray-900 md:w-64 md:border-b-0 md:border-r">
-      {/* Header */}
-      <div className="border-b border-gray-800 p-5">
-        <Link to="/manager/dashboard" className="text-lg font-bold text-white hover:text-gray-200">
-          ResManager
-        </Link>
-        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-          {ROLE_LABELS[user?.role || "manager"]}
-        </p>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {/* Dashboard - Top Level Item */}
-        <Link
-          to="/manager/dashboard"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/dashboard")
-              ? "bg-sky-500 text-white"
-              : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <LayoutDashboard size={16} />
-            Tổng quan ca
+    <aside className="flex w-full shrink-0 flex-col md:w-72 p-2 font-sans select-none">
+      {/* Expanded Menu Panel */}
+      <div className="flex flex-1 flex-col rounded-[24px] bg-gradient-to-b from-[#F0F0F0] to-[#EAEAEA] border border-white/80 shadow-xs p-4 w-full">
+        {/* Header - ResManager + UtensilsCrossed */}
+        <div className="flex items-center gap-2.5 pb-3.5 border-b border-[#8A8A8A]/20">
+          <UtensilsCrossed size={20} strokeWidth={1.8} className="text-[#1A1A1A]" />
+          <span className="text-lg font-black text-[#1A1A1A] tracking-tight font-sans">
+            ResManager
           </span>
-        </Link>
-
-        {/* Sơ đồ bàn - Top Level Item */}
-        <Link
-          to="/manager/tables"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/tables")
-              ? "bg-sky-500 text-white"
-              : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <Grid size={16} />
-            Sơ đồ bàn
+          <span className="ml-auto text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#FFFFFF] border border-[#8A8A8A]/20">
+            {isAdmin ? "Admin" : "Manager"}
           </span>
-        </Link>
-
-        {/* Đặt bàn - Top Level Item */}
-        <Link
-          to="/manager/bookings"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/bookings")
-              ? "bg-sky-500 text-white"
-              : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <CalendarDays size={16} />
-            Đặt bàn
-          </span>
-        </Link>
-
-        {/* Ca làm việc - Top Level Item */}
-        <Link
-          to="/manager/shifts"
-          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-            isRouteActive("/manager/shifts")
-              ? "bg-sky-500 text-white"
-              : "text-gray-300 hover:bg-gray-800 hover:text-white"
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <Clock size={16} />
-            Ca làm việc
-          </span>
-        </Link>
-
-        {/* Quản trị hệ thống - Accordion */}
-        <div className="space-y-1">
-          <button
-            onClick={() => setIsSystemMenuOpen(!isSystemMenuOpen)}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-          >
-            <span className="flex items-center gap-2.5">
-              <Settings size={16} />
-              Quản Lý
-            </span>
-            {isSystemMenuOpen ? (
-              <ChevronDown size={16} className="text-gray-400" />
-            ) : (
-              <ChevronRight size={16} className="text-gray-400" />
-            )}
-          </button>
-
-          {/* Accordion Content */}
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              isSystemMenuOpen ? "max-h-64" : "max-h-0"
-            }`}
-          >
-            <div className="ml-4 space-y-1 py-1">
-              {/* Quản lý Nhân sự */}
-              <Link
-                to="/manager/staff"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/staff")
-                    ? "bg-sky-500 text-white"
-                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Users size={14} />
-                  Quản lý Nhân sự
-                </span>
-              </Link>
-
-              {/* Quản lý Thực đơn */}
-              <Link
-                to="/manager/menu"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/menu")
-                    ? "bg-sky-500 text-white"
-                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Utensils size={14} />
-                  Quản lý Thực đơn
-                </span>
-              </Link>
-
-              {/* Quản lý Ưu đãi */}
-              <Link
-                to="/manager/promotions"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/promotions")
-                    ? "bg-sky-500 text-white"
-                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Percent size={14} />
-                  Quản lý Ưu đãi
-                </span>
-              </Link>
-              {/* Báo cáo & Phân tích */}
-              <Link
-                to="/manager/analytics"
-                className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isRouteActive("/manager/analytics")
-                    ? "bg-sky-500 text-white"
-                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <LineChart size={14} />
-                  Báo cáo & Phân tích
-                </span>
-              </Link>
-            </div>
-          </div>
         </div>
-      </nav>
 
+        {/* Navigation List */}
+        <nav className="flex-1 space-y-3 overflow-y-auto py-3.5 scrollbar-none">
+          {!canAccessOperations ? null : (
+            <>
+              {/* Dashboard Item */}
+              <Link
+                to="/manager/dashboard"
+                className={`group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 ${
+                  isRouteActive("/manager/dashboard")
+                    ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                    : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <LayoutDashboard
+                    size={18}
+                    strokeWidth={1.5}
+                    className={
+                      isRouteActive("/manager/dashboard")
+                        ? "text-[#FFFFFF]"
+                        : "text-[#1A1A1A]"
+                    }
+                  />
+                  Dashboard
+                </span>
+              </Link>
 
-      {/* Footer */}
-      <div className="hidden border-t border-gray-800 p-4 text-xs text-gray-400 md:flex md:items-center md:gap-2">
-        <Database size={12} className="text-green-400" />
-        Hệ thống online
-        <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-green-400" />
+              {/* Vận Hành Section (Parent item + Tree sub-items) */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setOpenOps(!openOps)}
+                  className={`w-full group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 cursor-pointer ${
+                    isOpsActive
+                      ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                      : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Grid
+                      size={18}
+                      strokeWidth={1.5}
+                      className={isOpsActive ? "text-[#FFFFFF]" : "text-[#1A1A1A]"}
+                    />
+                    Vận Hành
+                  </span>
+                  {openOps ? (
+                    <Minus size={16} strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown size={16} strokeWidth={1.5} />
+                  )}
+                </button>
+
+                {/* Sub-items tree with vertical guide line */}
+                {openOps && (
+                  <div className="ml-5 border-l border-[#8A8A8A]/30 pl-4 space-y-1.5 py-1">
+                    <Link
+                      to="/manager/tables"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/tables")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <Grid size={16} strokeWidth={1.5} />
+                      Quản lý bàn
+                    </Link>
+
+                    <Link
+                      to="/manager/bookings"
+                      className={`flex items-center justify-between gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/bookings")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <CalendarDays size={16} strokeWidth={1.5} />
+                        Quản lý đặt bàn
+                      </span>
+                      <span className="h-2 w-2 rounded-full bg-[#EC4899]" />
+                    </Link>
+
+                    <Link
+                      to="/manager/shifts"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/shifts")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <Clock size={16} strokeWidth={1.5} />
+                      Ca làm việc
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Quản Lý Section (Parent item + Tree sub-items) */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setOpenManagement(!openManagement)}
+                  className={`w-full group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 cursor-pointer ${
+                    isManagementActive
+                      ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                      : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Utensils
+                      size={18}
+                      strokeWidth={1.5}
+                      className={
+                        isManagementActive ? "text-[#FFFFFF]" : "text-[#1A1A1A]"
+                      }
+                    />
+                    Quản Lý
+                  </span>
+                  {openManagement ? (
+                    <Minus size={16} strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown size={16} strokeWidth={1.5} />
+                  )}
+                </button>
+
+                {/* Sub-items tree with vertical guide line */}
+                {openManagement && (
+                  <div className="ml-5 border-l border-[#8A8A8A]/30 pl-4 space-y-1.5 py-1">
+                    <Link
+                      to="/manager/staff"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/staff")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <Users size={16} strokeWidth={1.5} />
+                      Quản lý nhân viên
+                    </Link>
+
+                    <Link
+                      to="/manager/menu"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/menu")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <Utensils size={16} strokeWidth={1.5} />
+                      Quản lý thực đơn
+                    </Link>
+
+                    <Link
+                      to="/manager/crm"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/crm")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <BadgeCheck size={16} strokeWidth={1.5} />
+                      Quản lý khách hàng
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Báo Cáo Section (Parent item + Tree sub-items) */}
+              {canViewReports && (
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOpenReports(!openReports)}
+                    className={`w-full group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 cursor-pointer ${
+                      isReportsActive
+                        ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                        : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <LineChart
+                        size={18}
+                        strokeWidth={1.5}
+                        className={
+                          isReportsActive ? "text-[#FFFFFF]" : "text-[#1A1A1A]"
+                        }
+                      />
+                      Báo Cáo
+                    </span>
+                    {openReports ? (
+                      <Minus size={16} strokeWidth={1.5} />
+                    ) : (
+                      <ChevronDown size={16} strokeWidth={1.5} />
+                    )}
+                  </button>
+
+                  {/* Sub-items tree with vertical guide line */}
+                  {openReports && (
+                    <div className="ml-5 border-l border-[#8A8A8A]/30 pl-4 space-y-1.5 py-1">
+                      <Link
+                        to="/manager/analytics"
+                        className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                          isRouteActive("/manager/analytics")
+                            ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                            : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                        }`}
+                      >
+                        <LineChart size={16} strokeWidth={1.5} />
+                        Báo cáo & thống kê
+                      </Link>
+
+                      <Link
+                        to="/manager/finance-report"
+                        className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                          isRouteActive("/manager/finance-report")
+                            ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                            : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                        }`}
+                      >
+                        <CircleDollarSign size={16} strokeWidth={1.5} />
+                        Báo cáo tài chính
+                      </Link>
+
+                      <Link
+                        to="/manager/loss-debt-report"
+                        className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                          isRouteActive("/manager/loss-debt-report")
+                            ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                            : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                        }`}
+                      >
+                        <TrendingDown size={16} strokeWidth={1.5} />
+                        Hao hụt & Công nợ
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Admin Settings */}
+              {canManageSystem && (
+                <Link
+                  to="/admin/settings"
+                  className={`group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 ${
+                    isRouteActive("/admin/settings")
+                      ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                      : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Building2
+                      size={18}
+                      strokeWidth={1.5}
+                      className={
+                        isRouteActive("/admin/settings")
+                          ? "text-[#FFFFFF]"
+                          : "text-[#1A1A1A]"
+                      }
+                    />
+                    Cài đặt nhà hàng
+                  </span>
+                  <span className="rounded-full bg-[#FFFFFF] px-2 py-0.5 text-[10px] font-bold text-[#8A8A8A] border border-[#8A8A8A]/20">
+                    Admin
+                  </span>
+                </Link>
+              )}
+            </>
+          )}
+        </nav>
+
+        {/* Footer Indicator */}
+        <div className="pt-3 mt-auto border-t border-[#8A8A8A]/20 flex items-center gap-2 text-[12px] font-medium text-[#8A8A8A]">
+          <Database size={14} strokeWidth={1.5} className="text-[#1A1A1A]" />
+          <span>Hệ thống thời gian thực</span>
+          <span className="ml-auto h-2 w-2 rounded-full bg-[#EC4899]" />
+        </div>
       </div>
     </aside>
   );
 };
+

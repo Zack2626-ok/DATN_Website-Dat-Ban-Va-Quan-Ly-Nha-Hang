@@ -6,7 +6,7 @@ import { HotlineButton } from "../../components/client/HotlineButton";
 const navLinks = [
   { to: "/", label: "Trang chủ", end: true },
   { to: "/menu", label: "Thực đơn" },
-  { to: "/promotions", label: "Ưu đãi" },
+  { to: "/promotions", label: "Tin tức" },
   { to: "/booking", label: "Đặt bàn" },
 ];
 
@@ -28,18 +28,22 @@ export const ClientLayout: React.FC = () => {
   }
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `text-sm font-medium transition-colors ${isActive ? "text-blue-700" : "text-slate-500 hover:text-blue-700"}`;
+    `text-sm font-semibold tracking-wide transition-colors relative py-1 ${
+      isActive
+        ? "text-client-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-client-primary after:rounded-full"
+        : "text-client-muted hover:text-client-primary"
+    }`;
 
   return (
-    <div className="flex min-h-screen flex-col bg-sky-50/50 text-slate-600">
+    <div className="flex min-h-screen flex-col bg-client-bg text-client-text font-sans">
       {/* Navbar */}
-      <header className="sticky top-0 z-40 border-b border-sky-100 bg-white shadow-sm">
+      <header className="sticky top-0 z-40 border-b border-client-accent bg-client-bg/95 backdrop-blur-md shadow-xs">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-700 text-white">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-client-primary text-white shadow-md">
               <UtensilsCrossed size={18} />
             </span>
-            <span className="text-xl font-bold text-slate-600">ResManager</span>
+            <span className="text-xl font-bold tracking-tight font-display text-client-primary">Restro</span>
           </Link>
 
           <nav className="hidden items-center gap-8 md:flex">
@@ -56,30 +60,24 @@ export const ClientLayout: React.FC = () => {
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
-            <Link
-              to="/admin"
-              className="rounded-lg border border-sky-100 px-4 py-2 text-sm font-semibold text-slate-400 hover:text-slate-600 hover:bg-sky-50/50 transition-colors"
-            >
-              Nhân viên
-            </Link>
             {customerToken ? (
               <Link
                 to="/account"
-                className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
+                className="rounded-lg border border-client-primary/30 px-4 py-2 text-sm font-semibold text-client-primary hover:bg-client-primary/5 transition-colors"
               >
                 Xin chào, {customerName}
               </Link>
             ) : (
               <Link
                 to="/customer/login"
-                className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
+                className="rounded-lg border border-client-primary/30 px-4 py-2 text-sm font-semibold text-client-primary hover:bg-client-primary/5 transition-colors"
               >
                 Đăng nhập
               </Link>
             )}
             <Link
               to="/booking"
-              className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
+              className="rounded-lg bg-client-primary px-4 py-2 text-sm font-bold text-white shadow-md hover:bg-client-primary-hover hover:shadow-lg transition-all transform hover:-translate-y-0.5"
             >
               Đặt bàn ngay
             </Link>
@@ -88,7 +86,7 @@ export const ClientLayout: React.FC = () => {
           <button
             type="button"
             onClick={() => setMobileOpen((v) => !v)}
-            className="rounded-lg p-2 text-slate-500 hover:bg-sky-100 md:hidden"
+            className="rounded-lg p-2 text-client-muted hover:bg-client-accent md:hidden"
             aria-label="Mở menu"
           >
             {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -96,7 +94,7 @@ export const ClientLayout: React.FC = () => {
         </div>
 
         {mobileOpen && (
-          <div className="border-t border-sky-100 bg-white px-4 py-4 md:hidden">
+          <div className="border-t border-client-accent bg-client-bg px-4 py-4 md:hidden animate-fade-in">
             <nav className="flex flex-col gap-1">
               {navLinks.map((link) => (
                 <NavLink
@@ -105,7 +103,8 @@ export const ClientLayout: React.FC = () => {
                   end={link.end}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-sky-50/50"
+                    `rounded-lg px-3 py-2.5 text-sm font-semibold ${
+                      isActive ? "bg-client-primary/10 text-client-primary" : "text-client-muted hover:bg-client-accent"
                     }`
                   }
                 >
@@ -117,7 +116,8 @@ export const ClientLayout: React.FC = () => {
                   to="/account"
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-sky-50/50"
+                    `rounded-lg px-3 py-2.5 text-sm font-semibold ${
+                      isActive ? "bg-client-primary/10 text-client-primary" : "text-client-muted hover:bg-client-accent"
                     }`
                   }
                 >
@@ -128,18 +128,11 @@ export const ClientLayout: React.FC = () => {
                 <Link
                   to="/customer/login"
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-lg px-3 py-2.5 text-sm font-medium text-blue-700 hover:bg-sky-50/50"
+                  className="rounded-lg px-3 py-2.5 text-sm font-semibold text-client-primary hover:bg-client-primary/10"
                 >
                   Đăng nhập khách hàng
                 </Link>
               )}
-              <Link
-                to="/admin"
-                onClick={() => setMobileOpen(false)}
-                className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-sky-50/50"
-              >
-                Nhân viên đăng nhập
-              </Link>
             </nav>
           </div>
         )}
@@ -150,74 +143,74 @@ export const ClientLayout: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-sky-100 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <footer className="border-t border-client-accent bg-[#2a221c] text-[#f0eae1] py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-700 text-white">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-client-primary text-white">
                   <UtensilsCrossed size={16} />
                 </span>
-                <span className="font-bold text-slate-600">ResManager</span>
+                <span className="font-bold text-white font-display text-lg">Restro</span>
               </div>
-              <p className="mt-3 text-sm text-slate-400">
-                Hệ thống quản lý nhà hàng & đặt bàn trực tuyến — trải nghiệm ẩm thực hiện đại.
+              <p className="mt-3 text-sm text-[#c9bfae]">
+                Restro — Không gian ẩm thực di sản mang tinh hoa hương vị Việt Nam truyền thống đến trải nghiệm hiện đại.
               </p>
             </div>
 
             <div>
-              <h4 className="font-semibold text-slate-600">Liên kết</h4>
-              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+              <h4 className="font-semibold text-white uppercase tracking-wider text-xs font-display">Liên kết nhanh</h4>
+              <ul className="mt-4 space-y-2 text-sm text-[#c9bfae]">
                 <li>
-                  <Link to="/menu" className="hover:text-blue-700">
-                    Thực đơn
+                  <Link to="/menu" className="hover:text-client-secondary transition-colors">
+                    Thực đơn nhà hàng
                   </Link>
                 </li>
                 <li>
-                  <Link to="/promotions" className="hover:text-blue-700">
-                    Ưu đãi & Combo
+                  <Link to="/promotions" className="hover:text-client-secondary transition-colors">
+                    Chương trình ưu đãi
                   </Link>
                 </li>
                 <li>
-                  <Link to="/booking" className="hover:text-blue-700">
-                    Đặt bàn online
+                  <Link to="/booking" className="hover:text-client-secondary transition-colors">
+                    Đặt bàn trực tuyến
                   </Link>
                 </li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold text-slate-600">Liên hệ</h4>
-              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+              <h4 className="font-semibold text-white uppercase tracking-wider text-xs font-display">Liên hệ</h4>
+              <ul className="mt-4 space-y-3 text-sm text-[#c9bfae]">
                 <li className="flex items-center gap-2">
-                  <Phone size={14} className="shrink-0 text-blue-700" />
+                  <Phone size={14} className="shrink-0 text-client-secondary" />
                   028 3829 4000
                 </li>
                 <li className="flex items-center gap-2">
-                  <Mail size={14} className="shrink-0 text-blue-700" />
-                  contact@resmanager.vn
+                  <Mail size={14} className="shrink-0 text-client-secondary" />
+                  contact@restro.vn
                 </li>
                 <li className="flex items-start gap-2">
-                  <MapPin size={14} className="mt-0.5 shrink-0 text-blue-700" />
+                  <MapPin size={14} className="mt-0.5 shrink-0 text-client-secondary" />
                   123 Nguyễn Huệ, Quận 1, TP.HCM
                 </li>
               </ul>
             </div>
 
             <div>
-              <h4 className="font-semibold text-slate-600">Giờ mở cửa</h4>
-              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+              <h4 className="font-semibold text-white uppercase tracking-wider text-xs font-display">Giờ hoạt động</h4>
+              <ul className="mt-4 space-y-2 text-sm text-[#c9bfae]">
                 <li className="flex items-center gap-2">
-                  <Clock size={14} className="shrink-0 text-blue-700" />
-                  T2 – CN: 10:00 – 22:00
+                  <Clock size={14} className="shrink-0 text-client-secondary" />
+                  Hàng ngày: 10:00 – 22:00
                 </li>
-                <li className="pl-6">Happy Hour: 17:00 – 19:00</li>
+                <li className="pl-6 text-xs text-[#9d8f7e] italic">Giờ vàng ưu đãi: 17:00 – 19:00</li>
               </ul>
             </div>
           </div>
 
-          <div className="mt-10 border-t border-sky-100 pt-6 text-center text-sm text-gray-400">
-            © 2026 ResManager. Mọi quyền được bảo lưu.
+          <div className="mt-12 border-t border-[#3d3229] pt-6 text-center text-xs text-[#9d8f7e]">
+            © {new Date().getFullYear()} Restro
           </div>
         </div>
       </footer>

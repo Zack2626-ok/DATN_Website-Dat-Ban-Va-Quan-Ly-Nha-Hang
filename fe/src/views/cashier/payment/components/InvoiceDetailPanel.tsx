@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   FileText,
   User,
@@ -6,14 +6,15 @@ import {
   Users,
   Clock,
   CreditCard,
-  Scissors,
-  GitMerge,
-  XCircle,
   Printer,
   Banknote,
   ArrowRightLeft,
+  UserCheck,
+  Hourglass,
 } from "lucide-react";
+import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
+import { getComboConstituents } from "../../../../utils/comboHelper";
 
 interface Props {
   invoice: Invoice | null;
@@ -25,22 +26,20 @@ interface Props {
   loading: boolean;
 }
 
-const formatVnd = (amount: number) => (amount * 1000).toLocaleString("vi-VN");
+const formatVnd = (amount: number) => Number(amount).toLocaleString("vi-VN");
 
 const formatTime = (dateStr: string) => {
   const d = new Date(dateStr);
   return d.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
 };
 
-export const InvoiceDetailPanel: React.FC<Props> = ({
-  invoice,
-  onPay,
-  onSplit,
-  onMerge,
-  onCancel,
-  onPrint,
-  loading,
-}) => {
+export const InvoiceDetailPanel: React.FC<Props> = (props) => {
+  const { invoice, onPay, onPrint, loading } = props;
+
+  useEffect(() => {
+    getRestaurantInfo().catch(() => { });
+  }, []);
+
   if (!invoice) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white rounded-2xl border border-slate-200 text-slate-500 gap-3">
@@ -53,7 +52,10 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
 
   const isPaid = invoice.invoiceStatus === "paid";
   const isCancelled = invoice.invoiceStatus === "cancelled";
+  const isPendingPayment = invoice.status === "pending_payment";
   const canAct = !isPaid && !isCancelled;
+
+  const finalAmount = invoice.totalAmount;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -74,42 +76,29 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
                   {invoice.tableName}
                 </span>
               )}
+              {isPendingPayment && (
+                <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                  <Hourglass size={10} /> Chờ thanh toán
+                </span>
+              )}
+              {invoice.staffName && (
+                <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                  <UserCheck size={10} /> {invoice.staffName}
+                </span>
+              )}
             </div>
           </div>
 
           {/* Action buttons */}
-          {canAct && (
-            <div className="flex gap-1.5 flex-wrap justify-end">
-              <button
-                onClick={onPrint}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                title="In hóa đơn"
-              >
-                <Printer size={14} />
-              </button>
-              <button
-                onClick={onSplit}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                title="Tách hóa đơn"
-              >
-                <Scissors size={14} />
-              </button>
-              <button
-                onClick={onMerge}
-                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
-                title="Gộp hóa đơn"
-              >
-                <GitMerge size={14} />
-              </button>
-              <button
-                onClick={onCancel}
-                className="p-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 cursor-pointer transition-all"
-                title="Hủy hóa đơn"
-              >
-                <XCircle size={14} />
-              </button>
-            </div>
-          )}
+          <div className="flex gap-1.5 flex-wrap justify-end">
+            <button
+              onClick={onPrint}
+              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-all"
+              title="In hóa đơn"
+            >
+              <Printer size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Customer info */}
@@ -138,40 +127,76 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
           Chi tiết món ({invoice.items.length})
         </h4>
         <div className="space-y-2">
-          {invoice.items.map((item, idx) => (
-            <div
-              key={idx}
-              className="flex justify-between items-center py-2.5 px-3.5 bg-slate-50 rounded-xl border border-slate-100"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
-                  {item.quantity}x
-                </span>
-                <span className="text-xs font-bold text-slate-800">{item.name}</span>
+          {invoice.items.map((item, idx) => {
+            const constituents = getComboConstituents(item.name);
+            return (
+              <div
+                key={idx}
+                className="flex flex-col py-2.5 px-3.5 bg-slate-50 rounded-xl border border-slate-100 gap-2"
+              >
+                <div className="flex justify-between items-center w-full">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
+                      {item.quantity}x
+                    </span>
+                    <span className="text-xs font-bold text-slate-800">{item.name}</span>
+                  </div>
+                  <span className="text-xs font-black text-slate-900">{formatVnd(item.price * item.quantity)} vnđ</span>
+                </div>
+                {constituents && (
+                  <div className="pl-9 flex flex-col gap-1 border-t border-slate-200/50 pt-1.5 w-full">
+                    <span className="text-[9px] uppercase tracking-wider font-extrabold text-blue-600 block">
+                      Chi tiết món trong combo:
+                    </span>
+                    <div className="grid grid-cols-1 gap-1 pl-1">
+                      {constituents.map((sub, sIdx) => (
+                        <div key={sIdx} className="text-[10px] text-slate-500 font-bold flex items-center gap-1.5">
+                          <span className="h-1 w-1 rounded-full bg-blue-400"></span>
+                          {sub}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <span className="text-xs font-black text-slate-900">{formatVnd(item.price * item.quantity)} vnđ</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
+
+
       </div>
 
       {/* Footer: Total & Pay button */}
       <div className="border-t border-slate-100 p-5">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-bold text-slate-600">Tạm tính</span>
-          <span className="text-sm font-bold text-slate-900">{formatVnd(invoice.totalAmount)} vnđ</span>
-        </div>
-        {invoice.depositAmount && invoice.depositAmount > 0 ? (
-          <div className="flex justify-between items-center mb-2 text-amber-600">
-            <span className="text-sm font-bold">Trừ tiền đặt cọc</span>
-            <span className="text-sm font-bold">- {formatVnd(invoice.depositAmount / 1000)} vnđ</span>
+        <div className="space-y-2 mb-4">
+          <div className="flex justify-between items-center text-xs text-slate-500">
+            <span>Tạm tính</span>
+            <span className="font-semibold text-slate-800">
+              {formatVnd(invoice.subtotal !== undefined ? invoice.subtotal : invoice.items.reduce((sum, item) => sum + item.price * item.quantity, 0))} vnđ
+            </span>
           </div>
-        ) : null}
-        <div className="flex justify-between items-center mb-4 pt-2 border-t border-slate-100">
-          <span className="text-base font-black text-slate-800">Khách cần thanh toán</span>
-          <span className="text-xl font-black text-blue-600 font-display">
-            {formatVnd(Math.max(0, invoice.totalAmount - ((invoice.depositAmount || 0) / 1000)))} vnđ
-          </span>
+          {Boolean(invoice.tax && invoice.tax > 0) && (
+            <div className="flex justify-between items-center text-xs text-slate-500">
+              <span>VAT ({invoice.vatRate || 10}%)</span>
+              <span className="font-semibold text-slate-800">+{formatVnd(invoice.tax || 0)} vnđ</span>
+            </div>
+          )}
+          {Boolean(invoice.discount && invoice.discount > 0) && (
+            <div className="flex justify-between items-center text-xs text-slate-500">
+              <span>Giảm giá/Voucher</span>
+              <span className="font-semibold text-emerald-600">-{formatVnd(invoice.discount || 0)} vnđ</span>
+            </div>
+          )}
+          {Boolean(invoice.depositAmount && invoice.depositAmount > 0) && (
+            <div className="flex justify-between items-center text-xs text-rose-600 font-medium">
+              <span>Tiền cọc đặt bàn</span>
+              <span className="font-semibold">-{formatVnd(invoice.depositAmount || 0)} vnđ</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+            <span className="text-sm font-bold text-slate-700">Tổng thanh toán</span>
+            <span className="text-lg font-black text-blue-600 font-display">{formatVnd(finalAmount)} vnđ</span>
+          </div>
         </div>
 
         {canAct && (
@@ -204,8 +229,15 @@ export const InvoiceDetailPanel: React.FC<Props> = ({
         )}
 
         {isPaid && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex justify-between items-center">
             <span className="text-xs font-bold text-emerald-700">Đã thanh toán</span>
+            <button
+              onClick={onPrint}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Printer size={13} />
+              In hóa đơn
+            </button>
           </div>
         )}
         {isCancelled && (

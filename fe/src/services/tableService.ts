@@ -18,6 +18,10 @@ export interface ResmanagerTable {
   start_time?: string | null;
   guest_note?: string | null;
   booking_code?: string | null;
+  booking_id?: number | null;
+  deposit_amount?: number | null;
+  active_order_id?: number | null;
+  active_order_type?: string | null;
   pre_ordered_items?: {
     id?: number;
     menu_item_id?: number;

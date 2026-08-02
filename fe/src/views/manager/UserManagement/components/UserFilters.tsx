@@ -21,16 +21,16 @@ export const UserFilters: React.FC<UserFiltersProps> = ({
   roles,
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-6">
+    <div className="bg-[#FFFFFF] p-3.5 rounded-3xl border border-slate-200/70 shadow-xs flex flex-col md:flex-row gap-3">
       {/* Search Input */}
-      <div className="relative flex-1 w-full sm:w-80">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      <div className="relative flex-1">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8A8A8A]" size={17} />
         <input
           type="text"
           placeholder="Tìm kiếm theo tên hoặc email..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
+          className="w-full pl-11 pr-4 py-2 bg-[#F8F6F2] rounded-full text-xs font-bold text-[#1A1A1A] placeholder-[#8A8A8A] focus:outline-none focus:ring-2 focus:ring-[#3E2016]/30 transition-all border-0"
         />
       </div>
 
@@ -38,7 +38,7 @@ export const UserFilters: React.FC<UserFiltersProps> = ({
       <select
         value={roleFilter ?? ""}
         onChange={(e) => onRoleFilterChange(e.target.value ? Number(e.target.value) : null)}
-        className="w-full sm:w-auto px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500 bg-white"
+        className="px-4 py-2 bg-[#F8F6F2] rounded-full text-xs font-bold text-[#1A1A1A] cursor-pointer focus:outline-none border-0"
       >
         <option value="">Tất cả vai trò</option>
         {roles.map((role) => (

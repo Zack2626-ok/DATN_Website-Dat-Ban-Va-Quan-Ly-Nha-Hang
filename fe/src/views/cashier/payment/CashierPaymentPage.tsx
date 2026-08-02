@@ -10,6 +10,8 @@ import {
   mergeBills as mergeBillsAction,
   clearInvoiceError,
 } from "../../../store/invoiceSlice";
+import { fetchTables } from "../../../store/tableSlice";
+import { fetchOrders } from "../../../store/orderSlice";
 import type { InvoiceStatus, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
 import { InvoiceListPanel } from "./components/InvoiceListPanel";
 import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
@@ -18,6 +20,7 @@ import { SplitBillModal } from "./components/SplitBillModal";
 import { MergeBillModal } from "./components/MergeBillModal";
 import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
+import { printCashierInvoice } from "../../../utils/printBill";
 
 export const CashierPaymentPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -35,8 +38,12 @@ export const CashierPaymentPage: React.FC = () => {
 
   useEffect(() => {
     dispatch(fetchInvoices());
+    dispatch(fetchTables());
+    dispatch(fetchOrders());
     const interval = setInterval(() => {
       dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
     }, 15000);
     return () => clearInterval(interval);
   }, [dispatch]);
@@ -54,22 +61,70 @@ export const CashierPaymentPage: React.FC = () => {
     }
   }, [error, dispatch]);
 
+  const activeUnpaidInvoices = useMemo(() => {
+    return invoices
+      .filter((inv) => inv.invoiceStatus === "unpaid" && inv.items && inv.items.length > 0 && inv.totalAmount > 0 && inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName))
+      .sort((a, b) => {
+        const pA = a.status === "pending_payment" ? 1 : 2;
+        const pB = b.status === "pending_payment" ? 1 : 2;
+        if (pA !== pB) return pA - pB;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  }, [invoices]);
+
   const filteredInvoices = useMemo(() => {
     let result = [...invoices];
-    if (statusFilter !== "all") {
+    if (statusFilter === "pending") {
+      result = result.filter((inv) => inv.status === "pending_payment");
+    } else if (statusFilter !== "all") {
       result = result.filter((inv) => inv.invoiceStatus === statusFilter);
     }
+    if (statusFilter === "unpaid") {
+      result = result.filter((inv) => inv.totalAmount > 0);
+    }
+    // Lọc bỏ hóa đơn đã thanh toán khỏi màn hình Active
+    result = result.filter((inv) => inv.invoiceStatus !== "paid");
+    // Loại bỏ "Mang về" theo yêu cầu người dùng
+    result = result.filter((inv) => inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
         (inv) =>
           inv.id.toLowerCase().includes(q) ||
           (inv.tableName || "").toLowerCase().includes(q) ||
-          (inv.customerName || "").toLowerCase().includes(q),
+          (inv.customerName || "").toLowerCase().includes(q) ||
+          (inv.staffName || "").toLowerCase().includes(q),
       );
     }
+
+    // Ưu tiên hiển thị theo yêu cầu người dùng:
+    // 1. Chờ thanh toán (pending_payment) - ưu tiên cao nhất
+    // 2. Đang phục vụ / Chưa thanh toán (unpaid - open/serving)
+    // 3. Đã thanh toán (paid)
+    // 4. Đã hủy (cancelled)
+    result.sort((a, b) => {
+      const getPriority = (inv: typeof a) => {
+        if (inv.status === "pending_payment") return 1;
+        if (inv.invoiceStatus === "unpaid") return 2;
+        if (inv.invoiceStatus === "paid") return 3;
+        return 4;
+      };
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
     return result;
   }, [invoices, statusFilter, searchQuery]);
+
+  useEffect(() => {
+    if (filteredInvoices.length > 0) {
+      if (!selectedInvoiceId || !filteredInvoices.some((i) => i.id === selectedInvoiceId)) {
+        dispatch(selectInvoice(filteredInvoices[0].id));
+      }
+    }
+  }, [filteredInvoices, selectedInvoiceId, dispatch]);
 
   const selectedInvoice = useMemo(
     () => invoices.find((inv) => inv.id === selectedInvoiceId) || null,
@@ -102,12 +157,38 @@ export const CashierPaymentPage: React.FC = () => {
         ).unwrap();
         setPaymentOpen(false);
         showSuccess("Thanh toán thành công!");
+        
+        const subtotal = selectedInvoice.subtotal !== undefined ? selectedInvoice.subtotal : selectedInvoice.totalAmount;
+        const vat = Math.round(subtotal * ((data.vatRate || 10) / 100));
+        const depositAmount = selectedInvoice.depositAmount || 0;
+        const voucherDiscount = data.voucherAmount || 0;
+        const pointsDiscount = data.pointsUsed ? data.pointsUsed * 100 : 0;
+        const finalDiscount = voucherDiscount + pointsDiscount;
+        const tipAmount = data.tipAmount || 0;
+        const finalAmount = Math.max(0, subtotal + vat + tipAmount - depositAmount - finalDiscount);
+
+        printCashierInvoice(
+          { 
+            ...selectedInvoice, 
+            paymentMethod: data.paymentMethod,
+            discount: finalDiscount,
+            voucherDiscount: voucherDiscount,
+            pointsDiscount: pointsDiscount,
+            tax: vat,
+            vatRate: data.vatRate || 10,
+            totalAmount: finalAmount
+          },
+          restaurantInfo?.name,
+          restaurantInfo
+        );
         dispatch(fetchInvoices());
+        dispatch(fetchTables());
+        dispatch(fetchOrders());
       } catch {
         // error shown via Redux state
       }
     },
-    [dispatch, selectedInvoice, showSuccess],
+    [dispatch, selectedInvoice, showSuccess, restaurantInfo],
   );
 
   const handleCancel = useCallback(async () => {
@@ -174,21 +255,8 @@ export const CashierPaymentPage: React.FC = () => {
 
   const handlePrint = useCallback(() => {
     if (!selectedInvoice) return;
-    const printContent = `
-      <h2>Hóa đơn #${selectedInvoice.id.slice(-8).toUpperCase()}</h2>
-      <p>Bàn: ${selectedInvoice.tableName || "Mang về"}</p>
-      <p>Khách: ${selectedInvoice.customerName || "Khách lẻ"}</p>
-      <hr/>
-      ${selectedInvoice.items.map((item) => `<p>${item.quantity}x ${item.name} - ${(item.price * item.quantity * 1000).toLocaleString("vi-VN")} vnđ</p>`).join("")}
-      <hr/>
-      <p><strong>Tổng: ${(selectedInvoice.totalAmount * 1000).toLocaleString("vi-VN")} vnđ</strong></p>
-    `;
-    const win = window.open("", "_blank");
-    if (win) {
-      win.document.write(printContent);
-      win.print();
-    }
-  }, [selectedInvoice]);
+    printCashierInvoice(selectedInvoice, restaurantInfo?.name, restaurantInfo);
+  }, [selectedInvoice, restaurantInfo]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] gap-4">
@@ -208,11 +276,58 @@ export const CashierPaymentPage: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => dispatch(fetchInvoices())}
+            onClick={() => {
+              dispatch(fetchInvoices());
+              dispatch(fetchTables());
+              dispatch(fetchOrders());
+            }}
             className="px-3 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white hover:bg-slate-50 cursor-pointer transition-all"
           >
             Làm mới
           </button>
+        </div>
+      </div>
+
+      {/* Horizontal Table & Active Order Picker */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex-shrink-0">
+          <h3 className="text-sm font-black font-display text-slate-900">
+            Bàn Đang Phục Vụ / Chờ TT
+          </h3>
+          <p className="text-[11px] text-slate-500">Chọn nhanh bàn bên dưới để xem hoặc thanh toán bill</p>
+        </div>
+        <div className="flex flex-wrap gap-2 overflow-x-auto py-1">
+          {activeUnpaidInvoices.length === 0 ? (
+            <span className="text-xs text-slate-400 font-medium px-2 py-1">Không có hóa đơn đang mở</span>
+          ) : (
+            activeUnpaidInvoices.map((inv) => {
+              const isSelected = selectedInvoiceId === inv.id;
+              const isPendingPayment = inv.status === "pending_payment";
+                return (
+                  <button
+                    key={inv.id}
+                    onClick={() => handleSelectInvoice(inv.id)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold font-display border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                        : isPendingPayment
+                          ? "bg-red-50 border-red-400 text-red-900 animate-pulse hover:bg-red-100"
+                          : "bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100"
+                    }`}
+                  >
+                    <span className="font-black">{inv.tableName || "Khách lẻ"}</span>
+                    {isPendingPayment && (
+                      <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wide">Chờ TT</span>
+                    )}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                      isSelected ? "bg-white/20 text-white" : isPendingPayment ? "bg-red-200 text-red-900" : "bg-amber-200/80 text-amber-800"
+                    }`}>
+                      {Number(inv.totalAmount).toLocaleString("vi-VN")}đ
+                    </span>
+                  </button>
+                );
+              })
+          )}
         </div>
       </div>
 

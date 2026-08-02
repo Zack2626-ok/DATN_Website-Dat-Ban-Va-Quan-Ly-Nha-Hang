@@ -1,7 +1,63 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
-import { isValidPhoneNumber } from "../utils/validation";
+import { getPhoneNumberValidationError } from "../utils/validation";
+import { sendBookingConfirmationEmail } from "../utils/email";
+import { notifyWaitersAboutBooking } from "../utils/telegram";
+import { BOOKING_DURATION_MINUTES, MAX_BOOKING_PARTY_SIZE, PUBLIC_BOOKING_HOURS } from "../constants/booking";
+
+/** Builds a Vietnam-local booking datetime string from a date and time query. */
+const buildBookingDateTime = (date: string, time: string): string => `${date} ${time}:00`;
+
+/** Adds the configured booking duration to a local booking start time. */
+const calculateBookingEndTime = (startTime: string): string => {
+  const start = new Date(`${startTime.replace(" ", "T")}+07:00`);
+  const end = new Date(start.getTime() + BOOKING_DURATION_MINUTES * 60 * 1000);
+  const vietnamTime = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(end);
+  return vietnamTime.replace("T", " ");
+};
+
+/** Checks whether a clock value is valid and falls within public booking hours. */
+const isWithinPublicBookingHours = (time: string): boolean =>
+  /^\d{2}:\d{2}$/.test(time) && time >= PUBLIC_BOOKING_HOURS.OPEN && time <= PUBLIC_BOOKING_HOURS.CLOSE;
+
+/** Returns tables available for a requested booking interval. */
+export const getAvailableTablesHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const date = typeof req.query.date === "string" ? req.query.date : "";
+    const time = typeof req.query.time === "string" ? req.query.time : "";
+    const guests = Number(req.query.guests);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+      sendError(res, "date phải là YYYY-MM-DD và time phải là HH:mm", 400);
+      return;
+    }
+    if (!isWithinPublicBookingHours(time)) {
+      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
+      return;
+    }
+    if (!Number.isInteger(guests) || guests < 1 || guests > MAX_BOOKING_PARTY_SIZE) {
+      sendError(res, `guests phải từ 1 đến ${MAX_BOOKING_PARTY_SIZE}`, 400);
+      return;
+    }
+
+    const startTime = buildBookingDateTime(date, time);
+    const endTime = calculateBookingEndTime(startTime);
+    const tables = await db.getAvailableBookingTables(guests, startTime, endTime);
+    sendSuccess(res, { start_time: startTime, end_time: endTime, tables }, "Lấy bàn trống thành công");
+  } catch (error) {
+    console.error("Error fetching available booking tables:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -30,7 +86,7 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, guest_note, note, items } =
+    const { table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email, email, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
       req.body;
 
     if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
@@ -38,23 +94,37 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       return;
     }
 
-    if (!isValidPhoneNumber(guest_phone)) {
-      sendError(res, "Số điện thoại không hợp lệ (phải từ 10-11 chữ số)", 400);
+    const phoneError = getPhoneNumberValidationError(guest_phone);
+    if (phoneError) {
+      sendError(res, phoneError, 400);
       return;
     }
 
     const partySizeNum = Number(party_size);
-    if (isNaN(partySizeNum) || partySizeNum < 1 || partySizeNum > 30) {
-      sendError(res, "Số lượng khách phải từ 1 đến 30 người", 400);
+    if (isNaN(partySizeNum) || partySizeNum < 1 || partySizeNum > MAX_BOOKING_PARTY_SIZE) {
+      sendError(res, `Số lượng khách phải từ 1 đến ${MAX_BOOKING_PARTY_SIZE} người`, 400);
       return;
     }
 
-    const bookingStart = new Date(start_time);
+    // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
+    const normalizedStart = start_time.trim().replace(' ', 'T');
+    const bookingStart = new Date(normalizedStart.includes('+') || normalizedStart.endsWith('Z')
+      ? normalizedStart
+      : normalizedStart + '+07:00'
+    );
     const now = new Date();
-    if (bookingStart < now) {
+    if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
       sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
       return;
     }
+
+    const requestedTime = normalizedStart.slice(11, 16);
+    if (!isWithinPublicBookingHours(requestedTime)) {
+      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
+      return;
+    }
+
+    const targetEmail = (guest_email || email || "").trim();
 
     const booking = await db.createBooking({
       table_id: Number(table_id),
@@ -62,21 +132,40 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       promotion_id: promotion_id ? Number(promotion_id) : null,
       guest_name,
       guest_phone,
+      guest_email: targetEmail || null,
       party_size: Number(party_size),
       start_time,
       end_time,
       guest_note,
       note,
-      items: Array.isArray(items) ? items : undefined,
+      pre_ordered_items: pre_ordered_items || items,
     });
 
-    sendSuccess(res, booking, "Tạo đặt bàn thành công", 201);
+    // Send Confirmation Email to Customer & generate local preview URL
+    let emailPreviewUrl = null;
+    try {
+      const fullBooking = await db.getBookingById(booking.id);
+      if (fullBooking) {
+        // Gửi thông báo Telegram tới nhóm Waiter
+        notifyWaitersAboutBooking(fullBooking).catch((tgErr) => {
+          console.error("⚠️ Lỗi khi gửi Telegram cho nhóm Waiter:", (tgErr as Error).message);
+        });
+
+        emailPreviewUrl = await sendBookingConfirmationEmail({
+          ...fullBooking,
+          guest_email: targetEmail || fullBooking.guest_email || undefined,
+        });
+      }
+    } catch (emailErr) {
+      console.error("Lỗi khi gửi email xác nhận đặt bàn:", emailErr);
+    }
+
+    sendSuccess(res, { ...booking, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
   } catch (error) {
     const msg = (error as Error).message;
     sendError(res, msg, msg.includes("trùng") ? 400 : 500);
   }
 };
-
 
 export const updateBookingStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -107,10 +196,24 @@ export const deleteBookingHandler = async (req: Request, res: Response): Promise
     const { id } = req.params;
     const success = await db.deleteCancelledBooking(Number(id));
     if (!success) {
-      sendError(res, "Chỉ xóa được booking đã hủy", 400);
+      sendError(res, "Không tìm thấy đặt bàn đã hủy hoặc không thể xóa", 404);
       return;
     }
-    sendSuccess(res, { id: Number(id) }, "Đã xóa booking");
+    sendSuccess(res, null, "Xóa đặt bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const payBookingDepositHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const success = await db.payBookingDeposit(Number(id));
+    if (!success) {
+      sendError(res, "Không tìm thấy đặt bàn hoặc trạng thái cọc không hợp lệ", 404);
+      return;
+    }
+    sendSuccess(res, { id }, "Thanh toán tiền cọc thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

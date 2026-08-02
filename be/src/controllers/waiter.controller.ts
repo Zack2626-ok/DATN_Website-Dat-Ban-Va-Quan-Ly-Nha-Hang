@@ -78,6 +78,8 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
     if (table_id) {
       await db.updateResmanagerTableStatus(Number(table_id), "serving");
+      // Tự động chuyển món đặt trước (nếu có) sang order_items
+      await db.transferBookingItemsToOrder(Number(table_id), order.id);
       await db.completeActiveBookingForTable(Number(table_id));
     }
 
@@ -92,7 +94,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
 export const addOrderItemHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { orderId } = req.params;
-    const { menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note } = req.body;
+    const { menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, created_by } = req.body;
 
     if (!menu_item_id || !quantity || unit_price === undefined) {
       sendError(res, "menu_item_id, quantity, unit_price là bắt buộc", 400);
@@ -107,17 +109,17 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
       seat_number: seat_number ? Number(seat_number) : null,
       course_number: course_number ? Number(course_number) : 1,
       kitchen_note,
+      created_by: created_by ? Number(created_by) : null,
     });
-
-    // Tạo thông báo món ăn mới cho đầu bếp
-    await db.createNewDishNotification(Number(orderId), menu_item_id, Number(quantity));
 
     // Báo Socket.IO có món mới thêm
     req.app.get("io")?.emit("order:new_item", item);
 
     sendSuccess(res, item, "Thêm món thành công", 201);
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const msg = (error as Error).message || "Lỗi khi thêm món";
+    const statusCode = msg.includes("không thể") || msg.includes("khóa") || msg.includes("Vui lòng") ? 400 : 500;
+    sendError(res, msg, statusCode);
   }
 };
 
@@ -212,6 +214,101 @@ export const markItemServedHandler = async (req: Request, res: Response): Promis
       return;
     }
     sendSuccess(res, { itemId: Number(itemId), status: "served" }, "Đã xác nhận mang ra bàn");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Waiter gửi yêu cầu thanh toán cho thu ngân
+export const requestPaymentHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId } = req.params;
+    const { note } = req.body;
+
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === orderId);
+    if (!order) {
+      sendError(res, "Không tìm thấy đơn hàng", 404);
+      return;
+    }
+    if (order.status === "completed" || order.status === "paid" || order.status === "cancelled") {
+      sendError(res, "Đơn hàng đã thanh toán hoặc đã hủy", 400);
+      return;
+    }
+
+    await db.updateOrderStatus(orderId, "pending_payment");
+
+    if (order.table_id) {
+      await db.updateResmanagerTableStatus(Number(order.table_id), "pending_payment");
+    }
+
+    const waiterName = req.user?.email || "Phục vụ";
+    await db.createNotification(
+      "Yêu cầu thanh toán",
+      `${waiterName} yêu cầu thanh toán đơn #${orderId} - Bàn ${order.table_name || "?"}`,
+      "payment_request",
+      "cashier"
+    );
+
+    req.app.get("io")?.emit("payment:request", {
+      orderId: Number(orderId),
+      tableId: order.table_id,
+      tableName: order.table_name,
+      waiterName,
+      totalAmount: order.totalAmount,
+      note,
+    });
+
+    sendSuccess(res, { orderId, status: "pending_payment", waiterName }, "Đã gửi yêu cầu thanh toán");
+  } catch (error) {
+    console.error("Error requesting payment:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// QR Order - khách tự đặt món qua QR (không cần auth)
+export const createQROrderHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { table_id, items, guest_name, guest_phone, guest_count, note } = req.body;
+
+    if (!table_id || !items || !Array.isArray(items) || items.length === 0) {
+      sendError(res, "table_id và items là bắt buộc", 400);
+      return;
+    }
+
+    const order = await db.createResmanagerOrder({
+      table_id: Number(table_id),
+      customer_id: null,
+      created_by: 1,
+      order_type: "dine_in",
+      note: note || "QR Order",
+      guest_name: guest_name || null,
+      guest_phone: guest_phone || null,
+      guest_count: guest_count ? Number(guest_count) : null,
+    });
+
+    if (table_id) {
+      await db.updateResmanagerTableStatus(Number(table_id), "serving");
+    }
+
+    for (const item of items) {
+      const orderItem = await db.addResmanagerOrderItem({
+        order_id: order.id,
+        menu_item_id: Number(item.menu_item_id),
+        quantity: Number(item.quantity),
+        unit_price: Number(item.unit_price),
+        seat_number: null,
+        course_number: 1,
+        kitchen_note: undefined,
+      });
+
+      await db.sendResmanagerOrderItemsToKitchen([orderItem.id]);
+      orderItem.status = "waiting_kitchen";
+
+      req.app.get("io")?.emit("order:new_item", orderItem);
+    }
+
+    sendSuccess(res, order, "Tạo order QR thành công", 201);
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

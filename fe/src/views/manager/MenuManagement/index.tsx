@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Plus, Edit, Trash2, Search, Eye, RefreshCw, Layers } from "lucide-react";
 import toast from "react-hot-toast";
 import { menuService } from "../../../services/menuService";
 import { MenuDrawer } from "./components/MenuDrawer";
 import { MenuDetailModal } from "./components/MenuDetailModal";
+import { RecipeModal } from "./components/RecipeModal";
 import type { MenuItem, Category } from "../../../interfaces";
 
 /**
@@ -16,10 +17,15 @@ const MenuManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [viewingItem, setViewingItem] = useState<MenuItem | null>(null);
+  const [recipeItem, setRecipeItem] = useState<MenuItem | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   // Fetch data from backend service
   const fetchData = async () => {
@@ -43,6 +49,11 @@ const MenuManagement: React.FC = () => {
     fetchData();
   }, []);
 
+  // Reset page when filters or search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory]);
+
   // Filter items: search term, selected category, and absolutely exclude soft-deleted items
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -51,6 +62,13 @@ const MenuManagement: React.FC = () => {
     const isNotDeleted = !item.is_deleted;
     return matchesSearch && matchesCategory && isNotDeleted;
   });
+
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredItems.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredItems, currentPage]);
 
   // Handle create or update menu item
   const handleSave = async (data: Omit<MenuItem, "id" | "created_at" | "updated_at">) => {
@@ -119,56 +137,62 @@ const MenuManagement: React.FC = () => {
   };
 
   return (
-    <div className="p-6 bg-sky-50/50 min-h-screen">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
+      {/* Page Title & Top Actions */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-slate-700">Quản lý thực đơn</h1>
-          <p className="text-slate-500 mt-1">Thiết lập món ăn, giá cả và các nhóm tùy chọn modifier</p>
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
+            Quản lý thực đơn
+          </h1>
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
+            Thiết lập danh sách món ăn, quy định trạm bếp, giá bán và nhóm món kèm
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={fetchData}
             disabled={loading}
-            className="p-2.5 bg-white border border-sky-100 rounded-lg text-slate-500 hover:bg-gray-150 transition-colors shadow-sm focus:outline-none disabled:opacity-50"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-[#1A1A1A] transition-colors shadow-2xs focus:outline-none disabled:opacity-50 cursor-pointer"
             title="Làm mới dữ liệu"
           >
-            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={17} className={loading ? "animate-spin text-[#3E2016]" : ""} />
           </button>
           <button
+            type="button"
             onClick={() => {
               setEditingItem(null);
               setIsDrawerOpen(true);
             }}
-            className="px-5 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-semibold flex items-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95"
           >
-            <Plus size={20} />
+            <Plus size={18} />
             Thêm món mới
           </button>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-sky-100 shadow-sm mb-6 flex flex-col md:flex-row gap-4">
+      <div className="bg-[#FFFFFF] p-3.5 rounded-3xl border border-slate-200/70 shadow-xs flex flex-col md:flex-row gap-3">
         {/* Search */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8A8A8A]" size={17} />
           <input
             type="text"
             placeholder="Tìm kiếm món ăn theo tên..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-shadow text-sm"
+            className="w-full pl-11 pr-4 py-2 bg-[#F8F6F2] rounded-full text-xs font-bold text-[#1A1A1A] placeholder-[#8A8A8A] focus:outline-none focus:ring-2 focus:ring-[#3E2016]/30 transition-all border-0"
           />
         </div>
 
         {/* Category Filter */}
         <div className="flex items-center gap-2">
-          <Layers size={18} className="text-gray-400" />
+          <Layers size={17} className="text-[#8A8A8A] ml-2" />
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white text-sm"
+            className="px-4 py-2 bg-[#F8F6F2] rounded-full text-xs font-bold text-[#1A1A1A] cursor-pointer focus:outline-none border-0"
           >
             <option value="all">Tất cả danh mục</option>
             {categories.map((cat) => (
@@ -180,48 +204,48 @@ const MenuManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-xl border border-sky-100 shadow-sm overflow-hidden">
+      {/* Main Table Container */}
+      <div className="bg-[#FFFFFF] rounded-3xl border border-slate-200/70 shadow-xs overflow-hidden">
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3">
-            <div className="w-10 h-10 border-4 border-sky-100 border-t-[#FF5A5F] rounded-full animate-spin" />
-            <p className="text-sm font-medium text-slate-400">Đang tải danh sách món ăn...</p>
+            <div className="w-9 h-9 border-3 border-amber-100 border-t-[#3E2016] rounded-full animate-spin" />
+            <p className="text-xs font-extrabold text-[#8A8A8A]">Đang tải dữ liệu thực đơn...</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-sky-50/50 border-b border-sky-100">
+            <table className="w-full text-left">
+              <thead className="border-b border-slate-100 bg-[#FFFFFF]">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Món ăn
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Danh mục
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Giá bán
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Nhóm tùy chọn
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Trạm bếp
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Trạng thái
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-right text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Hành động
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-sky-50/50/50 transition-colors">
+              <tbody className="divide-y divide-slate-100 bg-[#FFFFFF]">
+                {paginatedItems.map((item) => (
+                  <tr key={item.id} className="hover:bg-[#FAF8F5] transition-colors">
                     {/* Image & Name */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-sky-100 rounded-lg overflow-hidden border border-sky-100 flex-shrink-0 flex items-center justify-center">
+                    <td className="px-6 py-3.5 whitespace-nowrap">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-11 h-11 bg-slate-100 rounded-2xl overflow-hidden border border-slate-200/60 flex-shrink-0 flex items-center justify-center">
                           {item.image_url ? (
                             <img
                               src={item.image_url}
@@ -229,20 +253,20 @@ const MenuManagement: React.FC = () => {
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <span className="text-2xl">🍽️</span>
+                            <span className="text-xl">🍽️</span>
                           )}
                         </div>
                         <div>
-                          <div className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                          <div className="text-xs font-black text-[#1A1A1A] flex items-center gap-2">
                             {item.name}
                             {item.is_featured ? (
-                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-[9px] font-black bg-[#3E2016]/10 text-[#3E2016] border border-[#3E2016]/20 uppercase">
                                 Hot
                               </span>
                             ) : null}
                           </div>
                           {item.description && (
-                            <div className="text-xs text-gray-400 max-w-[200px] truncate">
+                            <div className="text-[11px] font-medium text-[#8A8A8A] max-w-[200px] truncate mt-0.5">
                               {item.description}
                             </div>
                           )}
@@ -251,43 +275,44 @@ const MenuManagement: React.FC = () => {
                     </td>
 
                     {/* Category */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                    <td className="px-6 py-3.5 whitespace-nowrap text-xs font-bold text-[#1A1A1A]">
                       {item.category_name || "Món chính"}
                     </td>
 
                     {/* Price */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-bold text-slate-800">
-                        {item.price.toLocaleString("vi-VN")}₫
+                    <td className="px-6 py-3.5 whitespace-nowrap">
+                      <span className="text-xs font-black text-[#1A1A1A]">
+                        {Number(item.price).toLocaleString("vi-VN")}₫
                       </span>
                     </td>
 
                     {/* Modifier Count */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-3.5 whitespace-nowrap">
                       {item.modifier_groups && item.modifier_groups.length > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 bg-sky-100 px-2.5 py-0.5 rounded-full border border-gray-250">
-                          {item.modifier_groups.length} nhóm tùy chọn
+                        <span className="inline-flex items-center text-[11px] font-bold text-[#1A1A1A] bg-slate-100 px-3 py-1 rounded-full">
+                          {item.modifier_groups.length} tùy chọn
                         </span>
                       ) : (
-                        <span className="text-xs text-gray-400 italic">Không có</span>
+                        <span className="text-[11px] text-[#8A8A8A] italic">Không</span>
                       )}
                     </td>
 
                     {/* Kitchen Station */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-150">
+                    <td className="px-6 py-3.5 whitespace-nowrap">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold bg-[#3E2016]/10 text-[#3E2016] border border-[#3E2016]/20">
                         {getKitchenStationLabel(item.kitchen_station)}
                       </span>
                     </td>
 
                     {/* Status Toggle Button */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-3.5 whitespace-nowrap">
                       <button
+                        type="button"
                         onClick={() => handleToggleActive(item)}
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold transition-colors cursor-pointer ${
                           item.is_active
-                            ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                            : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                            ? "bg-[#3E2016]/10 text-[#3E2016] hover:bg-[#3E2016]/20 border border-[#3E2016]/20"
+                            : "bg-slate-100 text-[#8A8A8A] hover:bg-slate-200"
                         }`}
                       >
                         {item.is_active ? "Đang bán" : "Ngừng bán"}
@@ -295,34 +320,48 @@ const MenuManagement: React.FC = () => {
                     </td>
 
                     {/* Actions */}
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="px-6 py-3.5 whitespace-nowrap text-right text-xs font-medium">
+                      <div className="flex items-center justify-end gap-1">
                         <button
+                          type="button"
                           onClick={() => {
                             setViewingItem(item);
                             setIsDetailModalOpen(true);
                           }}
-                          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-sky-100 rounded-lg transition-colors focus:outline-none"
+                          className="p-1.5 text-[#8A8A8A] hover:text-[#1A1A1A] hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
                           title="Xem chi tiết"
                         >
-                          <Eye size={18} />
+                          <Eye size={16} />
                         </button>
                         <button
+                          type="button"
+                          onClick={() => {
+                            setRecipeItem(item);
+                            setIsRecipeModalOpen(true);
+                          }}
+                          className="p-1.5 text-[#3E2016] hover:bg-[#3E2016]/10 rounded-full transition-colors cursor-pointer"
+                          title="Định lượng món ăn"
+                        >
+                          <Layers size={16} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             setEditingItem(item);
                             setIsDrawerOpen(true);
                           }}
-                          className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none"
+                          className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-full transition-colors cursor-pointer"
                           title="Chỉnh sửa món"
                         >
-                          <Edit size={18} />
+                          <Edit size={16} />
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleDelete(item)}
-                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors focus:outline-none"
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-full transition-colors cursor-pointer"
                           title="Xóa món ăn"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -333,14 +372,81 @@ const MenuManagement: React.FC = () => {
           </div>
         )}
 
+        {/* Pagination Controls */}
+        {!loading && filteredItems.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 bg-[#FFFFFF] px-6 py-3.5">
+            <div className="flex flex-1 justify-between sm:hidden">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="relative inline-flex items-center rounded-full border border-slate-200 bg-[#FFFFFF] px-4 py-2 text-xs font-bold text-[#1A1A1A] hover:bg-slate-50 disabled:opacity-50"
+              >
+                Trước
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="relative ml-3 inline-flex items-center rounded-full border border-slate-200 bg-[#FFFFFF] px-4 py-2 text-xs font-bold text-[#1A1A1A] hover:bg-slate-50 disabled:opacity-50"
+              >
+                Sau
+              </button>
+            </div>
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold text-[#8A8A8A]">
+                  Hiển thị <span className="text-[#1A1A1A] font-extrabold">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> -{" "}
+                  <span className="text-[#1A1A1A] font-extrabold">{Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length)}</span> /{" "}
+                  <span className="text-[#1A1A1A] font-extrabold">{filteredItems.length}</span> món
+                </p>
+              </div>
+              <div>
+                <nav className="isolate inline-flex rounded-full gap-1" aria-label="Pagination">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="relative inline-flex items-center rounded-full bg-slate-100 px-3 py-1.5 text-xs font-extrabold text-[#1A1A1A] hover:bg-slate-200 disabled:opacity-40 cursor-pointer transition-colors"
+                  >
+                    Trước
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      type="button"
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`relative inline-flex items-center rounded-full px-3.5 py-1.5 text-xs font-black transition-all cursor-pointer ${
+                        currentPage === page
+                          ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+                          : "text-[#1A1A1A] hover:bg-slate-100"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="relative inline-flex items-center rounded-full bg-slate-100 px-3 py-1.5 text-xs font-extrabold text-[#1A1A1A] hover:bg-slate-200 disabled:opacity-40 cursor-pointer transition-colors"
+                  >
+                    Sau
+                  </button>
+                </nav>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Empty State */}
         {!loading && filteredItems.length === 0 && (
-          <div className="px-6 py-16 text-center bg-white">
-            <div className="text-gray-300 mb-3">
-              <Search size={48} className="mx-auto opacity-40" />
+          <div className="px-6 py-16 text-center bg-[#FFFFFF]">
+            <div className="text-[#8A8A8A] mb-3">
+              <Search size={44} className="mx-auto opacity-40 text-[#3E2016]" />
             </div>
-            <h4 className="text-slate-600 font-semibold text-base">Không tìm thấy món ăn nào</h4>
-            <p className="text-gray-400 text-xs mt-1">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm</p>
+            <h4 className="text-[#1A1A1A] font-black text-base">Không tìm thấy món ăn nào</h4>
+            <p className="text-[#8A8A8A] text-xs mt-1 font-medium">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm</p>
           </div>
         )}
       </div>
@@ -365,6 +471,13 @@ const MenuManagement: React.FC = () => {
           setViewingItem(null);
         }}
         menuItem={viewingItem}
+      />
+
+      {/* Recipe Modal */}
+      <RecipeModal
+        isOpen={isRecipeModalOpen}
+        onClose={() => setIsRecipeModalOpen(false)}
+        item={recipeItem}
       />
     </div>
   );

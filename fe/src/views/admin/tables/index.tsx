@@ -151,7 +151,7 @@ export const WaiterTableMap: React.FC = () => {
 
             const order = orders.find((o) => o.id === table.currentOrderId);
             const priceLabel = order
-              ? `${(order.totalAmount * 1000).toLocaleString("vi-VN")} vnđ`
+              ? `${(order.totalAmount).toLocaleString("vi-VN")} vnđ`
               : null;
             const VietnameseLabels: { [key: string]: string } = {
               available: "Trống",
@@ -316,8 +316,7 @@ export const WaiterTableMap: React.FC = () => {
                             <span className="font-bold text-admin-text-main">
                               {(
                                 item.price *
-                                item.quantity *
-                                1000
+                                item.quantity
                               ).toLocaleString("vi-VN")}{" "}
                               vnđ
                             </span>
@@ -329,7 +328,7 @@ export const WaiterTableMap: React.FC = () => {
                     <div className="flex justify-between items-center text-sm font-bold border-t border-sky-100 pt-3 text-admin-text-main">
                       <span>Tổng tiền:</span>
                       <span className="text-admin-primary">
-                        {(activeOrder.totalAmount * 1000).toLocaleString(
+                        {(activeOrder.totalAmount).toLocaleString(
                           "vi-VN",
                         )}{" "}
                         vnđ
@@ -359,7 +358,7 @@ export const WaiterTableMap: React.FC = () => {
               </div>
             )}
 
-            {selectedTable.status === TABLE_STATUS.CLEANING && (
+            {selectedTable.status === TABLE_STATUS.PENDING_PAYMENT && (
               <div className="flex flex-col gap-4 text-center py-6">
                 <RefreshCw
                   size={36}
@@ -432,8 +431,8 @@ export const WaiterTableMap: React.FC = () => {
                     <span className="text-xs font-bold text-admin-text-main truncate">
                       {item.name}
                     </span>
-                    <span className="text-[10px] text-admin-text-sub font-semibold">
-                      {(item.price * 1000).toLocaleString("vi-VN")} vnđ
+                     <span className="text-[10px] text-admin-text-sub font-semibold">
+                      {Number(item.price).toLocaleString("vi-VN")} vnđ
                     </span>
                   </div>
                   {inStock ? (
@@ -476,7 +475,7 @@ export const WaiterTableMap: React.FC = () => {
                           {item.name}
                         </span>
                         <span className="text-[10px] text-admin-text-sub">
-                          {(item.price * 1000).toLocaleString("vi-VN")} vnđ/món
+                          {Number(item.price).toLocaleString("vi-VN")} vnđ/món
                         </span>
                       </div>
                       <span className="font-bold text-admin-primary">

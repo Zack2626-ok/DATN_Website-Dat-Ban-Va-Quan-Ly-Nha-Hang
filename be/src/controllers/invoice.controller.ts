@@ -1,12 +1,13 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
+import { addLoyaltyPoints } from "./crm.controller";
 
 export const getAllInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status, search, dateFrom, dateTo } = req.query;
 
-    const orders = await db.getAllResmanagerOrders(status as string);
+    const orders = await db.getAllResmanagerOrders();
 
     let invoices = orders.map((o: any) => ({
       id: String(o.id),
@@ -16,28 +17,42 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       customerPhone: o.guest_phone || o.customer_phone || undefined,
       customerEmail: o.customer_email || undefined,
       guestCount: o.guest_count || o.items?.length || 0,
+      staffName: o.staff_name || undefined,
       items: (o.items || []).map((item: any) => ({
         menuItemId: String(item.menu_item_id),
         name: item.item_name || `Món #${item.menu_item_id}`,
         price: Number(item.unit_price),
         quantity: item.quantity,
+        status: item.status,
       })),
+      depositAmount: o.depositAmount || 0,
       totalAmount: o.totalAmount || 0,
       depositAmount: Number(o.deposit_amount) || 0,
-      status: o.status,
+      subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
+      tax: o.tax || 0,
+      discount: o.discount || 0,
+      vatRate: o.vatRate || 0,
+      status: o.table_status === "pending_payment" || o.status === "pending_payment" ? "pending_payment" : o.status,
       invoiceStatus:
         o.status === "completed" || o.status === "paid"
           ? "paid"
           : o.status === "cancelled"
             ? "cancelled"
-            : "unpaid",
+            : o.status === "pending_payment"
+              ? "pending"
+              : "unpaid",
       createdAt: o.created_at,
       orderType: o.order_type,
+      paymentMethod: o.paymentMethod || undefined,
     }));
+
+    // Nếu không có món nào (0 món) thì không đưa vào thu ngân
+    invoices = invoices.filter((inv: any) => inv.items && inv.items.length > 0);
 
     if (status && status !== "all") {
       const statusMap: Record<string, string[]> = {
-        unpaid: ["open", "serving", "pending_payment"],
+        unpaid: ["open", "serving"],
+        pending: ["pending_payment"],
         paid: ["completed", "paid"],
         cancelled: ["cancelled"],
       };
@@ -89,14 +104,14 @@ export const getInvoiceById = async (req: Request, res: Response): Promise<void>
 export const processPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { paymentMethod, vatRate, serviceFeeRate, voucherCode, voucherAmount, tipAmount, notes } = req.body;
+    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed } = req.body;
 
     if (!paymentMethod) {
       sendError(res, "Phương thức thanh toán là bắt buộc", 400);
       return;
     }
 
-    const validMethods = ["cash", "transfer", "card", "wallet"];
+    const validMethods = ["cash", "transfer", "card", "wallet", "momo", "vnpay"];
     if (!validMethods.includes(paymentMethod)) {
       sendError(res, `Phương thức phải là: ${validMethods.join(", ")}`, 400);
       return;
@@ -117,14 +132,75 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const subtotal = order.totalAmount;
-    const depositAmount = Number(order.deposit_amount) || 0;
-    const vat = vatRate !== undefined ? subtotal * (vatRate / 100) : subtotal * 0.1;
-    const serviceFee = serviceFeeRate !== undefined ? subtotal * (serviceFeeRate / 100) : 0;
-    const voucher = voucherAmount || 0;
+    // Lấy depositAmount từ Quoc_dev (DB)
+    let depositAmount = Number(order.deposit_amount) || 0;
+    let linkedBookingId: number | null = null;
+
+    const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
+    const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
+    
+    // Validate and calculate voucher discount dynamically
+    let calculatedVoucherAmount = Number(voucherAmount || 0);
+    let dbVoucherId: number | null = null;
+    let customerVoucherRecordId: number | null = null;
+
+    if (voucherCode) {
+      const vRows = await db.query(
+        "SELECT * FROM vouchers WHERE code = ? AND is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())",
+        [voucherCode]
+      );
+      if (!vRows || vRows.length === 0) {
+        sendError(res, "Mã voucher không hợp lệ hoặc đã hết hạn.", 400);
+        return;
+      }
+      const voucherRecord = vRows[0];
+      dbVoucherId = voucherRecord.id;
+
+      // Check max uses
+      if (voucherRecord.max_uses !== null && voucherRecord.used_count >= voucherRecord.max_uses) {
+        sendError(res, "Mã voucher đã hết lượt sử dụng.", 400);
+        return;
+      }
+
+      // Check min order subtotal
+      if (subtotal < Number(voucherRecord.min_order)) {
+        sendError(res, `Đơn hàng chưa đạt giá trị tối thiểu để áp dụng voucher này (Tối thiểu: ${Number(voucherRecord.min_order).toLocaleString("vi-VN")}đ).`, 400);
+        return;
+      }
+
+      // Check points cost ownership
+      if (Number(voucherRecord.points_cost || 0) > 0) {
+        if (!order.customer_id) {
+          sendError(res, "Voucher này yêu cầu thông tin thành viên đã đổi điểm.", 400);
+          return;
+        }
+        const cvRows = await db.query(
+          "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? AND is_used = 0 LIMIT 1",
+          [order.customer_id, voucherRecord.id]
+        );
+        if (!cvRows || cvRows.length === 0) {
+          sendError(res, "Mã voucher này chưa được đổi bằng điểm hoặc đã được sử dụng.", 400);
+          return;
+        }
+        customerVoucherRecordId = cvRows[0].id;
+      }
+
+      // Re-calculate / verify voucher amount based on voucher type
+      if (voucherRecord.type === "percent") {
+        calculatedVoucherAmount = Math.round(subtotal * (Number(voucherRecord.value) / 100));
+      } else {
+        calculatedVoucherAmount = Number(voucherRecord.value);
+      }
+    }
+
+    const voucher = calculatedVoucherAmount;
     const tip = tipAmount || 0;
-    // Calculate finalAmount but make sure it doesn't go below 0
-    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher + tip - depositAmount);
+    const pointsToUse = pointsUsed || 0;
+    const pointsDiscount = pointsToUse * 100; // 1 point = 100 VND
+    
+    // Khấu trừ tiền cọc và điểm từ tổng số tiền cần thanh toán (kết hợp cả serviceFee nếu có)
+    const serviceFee = serviceFeeRate !== undefined ? Math.round(subtotal * (serviceFeeRate / 100)) : 0;
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher - depositAmount + tip - pointsDiscount);
 
     const payment = await db.createPayment({
       orderId: id,
@@ -136,14 +212,15 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       notes: JSON.stringify({
         subtotal,
         vat,
-        serviceFee,
         voucher,
         voucherCode,
         depositAmount,
         tip,
+        depositAmount,
+        pointsUsed: pointsToUse,
+        pointsDiscount,
         finalAmount,
         vatRate: vatRate ?? 10,
-        serviceFeeRate: serviceFeeRate ?? 0,
         rawNotes: notes,
       }),
       completedAt: new Date().toISOString(),
@@ -151,8 +228,59 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     await db.updateOrderStatus(id, "completed");
 
+    if (voucherCode) {
+      try {
+        await db.query(
+          "UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?",
+          [voucherCode]
+        );
+      } catch (err) {
+        console.error("Error updating voucher used_count:", err);
+      }
+    }
     if (order.table_id) {
       await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+    }
+
+    // Tích điểm loyalty nếu có khách hàng thành viên liên kết
+    if (order.customer_id) {
+      try {
+        const invRows = await db.query(
+          "SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+          [id]
+        );
+        const invoiceId = invRows && invRows.length > 0 ? invRows[0].id : null;
+        if (invoiceId) {
+          // Trừ điểm tích lũy nếu có sử dụng
+          if (pointsToUse > 0) {
+            await db.query(
+              "UPDATE customers SET loyalty_points = GREATEST(0, loyalty_points - ?) WHERE id = ?",
+              [pointsToUse, order.customer_id]
+            );
+            await db.query(
+              "INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note) VALUES (?, ?, 'redeem', ?, ?)",
+              [order.customer_id, pointsToUse, invoiceId, `Quy đổi ${pointsToUse} điểm để giảm ${pointsDiscount}đ cho đơn #${invoiceId}`]
+            );
+          }
+          // Đánh dấu voucher đã sử dụng nếu có
+          if (customerVoucherRecordId) {
+            await db.query(
+              "UPDATE customer_vouchers SET is_used = 1, used_at = NOW() WHERE id = ?",
+              [customerVoucherRecordId]
+            );
+          }
+          if (dbVoucherId) {
+            await db.query(
+              "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
+              [dbVoucherId]
+            );
+          }
+          // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)
+          await addLoyaltyPoints(Number(order.customer_id), finalAmount, invoiceId);
+        }
+      } catch (errLoyalty: any) {
+        console.warn("[processPayment] Loyalty points processing failed:", errLoyalty.message);
+      }
     }
 
     const updatedOrder = { ...order, status: "completed" };
@@ -244,6 +372,7 @@ export const splitBillEqual = async (req: Request, res: Response): Promise<void>
             seat_number: item.seat_number || null,
             course_number: item.course_number || 1,
             kitchen_note: item.kitchen_note || undefined,
+            bypass_status_check: true,
           });
           if (item.status && addedItem?.id) {
             await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
@@ -311,6 +440,7 @@ export const splitBillByItems = async (req: Request, res: Response): Promise<voi
           seat_number: item.seat_number || null,
           course_number: item.course_number || 1,
           kitchen_note: item.kitchen_note || undefined,
+          bypass_status_check: true,
         });
         if (item.status && addedItem?.id) {
           await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
@@ -390,6 +520,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
         seat_number: item.seat_number || null,
         course_number: item.course_number || 1,
         kitchen_note: item.kitchen_note || undefined,
+        bypass_status_check: true,
       });
       if (item.status && addedItem?.id) {
         await db.query("UPDATE order_items SET status = ? WHERE id = ?", [item.status, addedItem.id]);
@@ -411,7 +542,7 @@ export const mergeBills = async (req: Request, res: Response): Promise<void> => 
 export const payPartial = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { paymentMethod, amount, vatRate, serviceFeeRate, tipAmount, notes } = req.body;
+    const { paymentMethod, amount, vatRate, tipAmount, notes } = req.body;
 
     if (!paymentMethod || !amount) {
       sendError(res, "Phương thức thanh toán và số tiền là bắt buộc", 400);
@@ -437,7 +568,6 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
       notes: JSON.stringify({
         partialPayment: true,
         vatRate,
-        serviceFeeRate,
         tipAmount,
         rawNotes: notes,
       }),
