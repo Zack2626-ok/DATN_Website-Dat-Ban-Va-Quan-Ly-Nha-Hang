@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Search, Trash2, ArrowLeft, Save, UploadCloud, X, Check, Printer } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi } from "../../../services/api";
 import * as XLSX from "xlsx";
