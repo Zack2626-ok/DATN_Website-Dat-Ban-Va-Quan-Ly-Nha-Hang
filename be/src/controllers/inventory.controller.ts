@@ -40,7 +40,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           so.note as note,
           so.created_at as timestamp,
           si.batch_code as batchNo,
-          si.expiry_date as expiryDate
+          si.expiry_date as expiryDate,
+          so.reason as reasonType
         FROM stock_out so
         JOIN ingredients i ON so.ingredient_id = i.id
         LEFT JOIN stock_in si ON so.stock_in_id = si.id
@@ -58,7 +59,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           si.note as note,
           si.created_at as timestamp,
           si.batch_code as batchNo,
-          si.expiry_date as expiryDate
+          si.expiry_date as expiryDate,
+          'import' as reasonType
         FROM stock_in si
         JOIN ingredients i ON si.ingredient_id = i.id
         LEFT JOIN suppliers s ON si.supplier_id = s.id
@@ -98,6 +100,7 @@ export const getIngredientBatches = async (req: Request, res: Response): Promise
          si.remaining_quantity, 
          si.expiry_date, 
          si.unit_cost, 
+         s.id as supplier_id,
          s.name as supplierName,
          si.note,
          si.created_at
@@ -569,5 +572,26 @@ export const deleteSupplier = async (req: Request, res: Response): Promise<void>
   } catch (error) {
     console.error("Error deleting supplier:", error);
     sendError(res, "Lỗi: " + (error as Error).message, 500);
+  }
+};
+
+export const getAllBatches = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const batches = await db.query(
+      `SELECT 
+         si.id, 
+         si.batch_code as batchNo, 
+         si.remaining_quantity as quantity, 
+         si.expiry_date as expiryDate, 
+         i.name as ingredientName,
+         i.unit
+       FROM stock_in si
+       JOIN ingredients i ON si.ingredient_id = i.id
+       WHERE si.remaining_quantity > 0
+       ORDER BY si.expiry_date ASC`
+    );
+    sendSuccess(res, batches, "Lấy tất cả lô hàng thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };

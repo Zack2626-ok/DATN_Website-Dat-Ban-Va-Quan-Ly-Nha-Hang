@@ -5,6 +5,7 @@ import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi, getIngr
 
 interface ReturnGoodsProps {
   onBack: () => void;
+  initialReturnData?: any;
 }
 
 interface ReturnItem {
@@ -17,7 +18,7 @@ interface ReturnItem {
   availableBatches: any[];
 }
 
-export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack }) => {
+export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnData }) => {
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -29,9 +30,33 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack }) => {
   const [paymentStatus, setPaymentStatus] = useState("refund"); // "refund" or "deduct_credit"
 
   useEffect(() => {
-    getIngredientsApi().then(setIngredients).catch(console.error);
-    getSuppliersApi().then(setSuppliers).catch(console.error);
-  }, []);
+    Promise.all([getIngredientsApi(), getSuppliersApi()]).then(async ([ings, supps]) => {
+      setIngredients(ings);
+      setSuppliers(supps);
+      
+      if (initialReturnData) {
+        const ing = ings.find((i: any) => i.id === initialReturnData.ingId);
+        if (ing) {
+            const batches = await getIngredientBatchesApi(ing.id);
+            const validBatches = batches.filter((b: any) => b.remaining_quantity > 0);
+            
+            if (initialReturnData.supplier_id) {
+                setSelectedSupplier(initialReturnData.supplier_id.toString());
+            }
+
+            setReturnItems([{
+                ingredientId: ing.id,
+                ingredientName: ing.name,
+                code: `SP${ing.id.toString().padStart(6, '0')}`,
+                quantity: initialReturnData.maxQty > 0 ? initialReturnData.maxQty : 1,
+                unitCost: validBatches.find((b: any) => b.batch_code === initialReturnData.batchNo)?.unit_cost || 0,
+                batchNo: initialReturnData.batchNo,
+                availableBatches: validBatches
+            }]);
+        }
+      }
+    }).catch(console.error);
+  }, [initialReturnData]);
 
   const handleAddItem = async (ing: any) => {
     try {

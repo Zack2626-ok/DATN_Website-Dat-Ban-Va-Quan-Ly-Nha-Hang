@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, ArrowLeft, Save, UploadCloud, CheckCircle } from "lucide-react";
+import { Search, ArrowLeft, Save, UploadCloud, CheckCircle, ClipboardCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, updateInventoryQuantityApi } from "../../../services/api";
 
@@ -123,9 +123,11 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
     item.ingredientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
     item.code.includes(searchTerm)
   );
+  const isCompleted = draftData?.status === "completed";
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800">
+    <>
+    <div className="flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800 print:hidden">
       <div className="flex items-center justify-between pb-4 border-b border-slate-200">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer">
@@ -133,19 +135,27 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
           </button>
           <div>
             <h2 className="text-2xl font-black text-slate-800 tracking-tight">Phiếu Kiểm kê Kho</h2>
-            <p className="text-xs text-slate-600 font-medium">Kiểm đếm và cân đối tồn kho thực tế</p>
+            <p className="text-xs text-slate-600 font-medium">{isCompleted ? "Xem lại lịch sử phiếu kiểm kê" : "Kiểm đếm và cân đối tồn kho thực tế"}</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <UploadCloud size={16} /> Nhập từ Excel
-          </button>
-          <button onClick={handleSaveDraft} className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <Save size={16} /> Lưu (Đang kiểm)
-          </button>
-          <button onClick={handleBalance} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <CheckCircle size={16} /> Cân bằng kho
-          </button>
+          {isCompleted ? (
+            <button onClick={() => window.print()} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+              <ClipboardCheck size={16} /> In phiếu
+            </button>
+          ) : (
+            <>
+              <button className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+                <UploadCloud size={16} /> Nhập từ Excel
+              </button>
+              <button onClick={handleSaveDraft} className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+                <Save size={16} /> Lưu (Đang kiểm)
+              </button>
+              <button onClick={handleBalance} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+                <CheckCircle size={16} /> Cân bằng kho
+              </button>
+            </>
+          )}
         </div>
       </div>
       
@@ -189,12 +199,18 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                         </td>
                         <td className="px-4 py-3 flex justify-center">
                           <div className="flex items-center gap-2">
-                            <input 
-                              type="number" 
-                              value={item.actualStock} 
-                              onChange={(e) => handleUpdateItem(checkItems.findIndex(i => i.ingredientId === item.ingredientId), Number(e.target.value))}
-                              className="w-24 p-2 border rounded-lg text-center font-black text-admin-primary focus:border-blue-500 outline-none shadow-inner" 
-                            />
+                            {isCompleted ? (
+                              <div className="w-24 p-2 text-center font-black text-admin-primary">
+                                {item.actualStock}
+                              </div>
+                            ) : (
+                              <input 
+                                type="number" 
+                                value={item.actualStock} 
+                                onChange={(e) => handleUpdateItem(checkItems.findIndex(i => i.ingredientId === item.ingredientId), Number(e.target.value))}
+                                className="w-24 p-2 border rounded-lg text-center font-black text-admin-primary focus:border-blue-500 outline-none shadow-inner" 
+                              />
+                            )}
                             <span className="text-xs font-bold text-slate-500">{item.unit}</span>
                           </div>
                         </td>
@@ -230,12 +246,13 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                   type="text" 
                   value={ticketName}
                   onChange={(e) => setTicketName(e.target.value)}
-                  className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm font-bold bg-slate-50" 
+                  readOnly={isCompleted}
+                  className={`w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm font-bold ${isCompleted ? 'bg-slate-100 text-slate-600' : 'bg-slate-50'}`}
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Người kiểm kê</label>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Người lập</label>
                 <input 
                   type="text" 
                   defaultValue="Bếp Trưởng (Mặc định)"
@@ -250,22 +267,92 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                   rows={4} 
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm" 
+                  readOnly={isCompleted}
+                  className={`w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm ${isCompleted ? 'bg-slate-100 text-slate-600' : ''}`}
                   placeholder="Kiểm kê định kỳ tháng..."
                 ></textarea>
               </div>
 
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="text-[10px] font-black text-blue-800 uppercase mb-1">Hướng dẫn</h4>
-                <ul className="text-[11px] text-blue-700 font-medium list-disc pl-4 space-y-1">
-                  <li><strong>Lưu (Đang kiểm):</strong> Lưu nháp tiến độ kiểm kê, kho chưa bị ảnh hưởng.</li>
-                  <li><strong>Cân bằng kho:</strong> Chốt số liệu. Hệ thống sẽ cộng/trừ vào tồn kho thực tế lập tức.</li>
-                </ul>
-              </div>
+              {!isCompleted && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="text-[10px] font-black text-blue-800 uppercase mb-1">Hướng dẫn</h4>
+                  <ul className="text-[11px] text-blue-700 font-medium list-disc pl-4 space-y-1">
+                    <li><strong>Lưu (Đang kiểm):</strong> Lưu nháp tiến độ kiểm kê, kho chưa bị ảnh hưởng.</li>
+                    <li><strong>Cân bằng kho:</strong> Chốt số liệu. Hệ thống sẽ cộng/trừ vào tồn kho thực tế lập tức.</li>
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    {/* GIAO DIỆN IN */}
+    <div className="hidden print:block bg-white text-black p-0 font-sans w-full max-w-[210mm] mx-auto text-[13px]">
+      <div className="flex justify-between items-start mb-2 border-b-2 border-black pb-2">
+        <div>
+          <h1 className="text-lg font-black uppercase">NHÀ HÀNG DATN</h1>
+          <p>Chi nhánh: Cơ sở 1</p>
+          <p>Điện thoại: 0386636706</p>
+        </div>
+        <div className="text-right">
+          <p className="text-slate-500 italic">Phần mềm quản lý bán hàng SUNO.vn</p>
+        </div>
+      </div>
+
+      <div className="text-center mb-6 mt-4">
+        <h2 className="text-2xl font-black uppercase tracking-wider">PHIẾU KIỂM KÊ</h2>
+        <p className="font-bold">{ticketName}</p>
+      </div>
+
+      <div className="flex justify-between mb-2">
+        <div>
+          <p><span className="font-bold">Ngày tạo:</span> {draftData?.date ? new Date(draftData.date).toLocaleString("vi-VN") : new Date().toLocaleString("vi-VN")}</p>
+          <p><span className="font-bold">Người lập:</span> Quản lý kho</p>
+        </div>
+        <div>
+          <p><span className="font-bold">Ngày duyệt:</span> {isCompleted ? (draftData?.date ? new Date(draftData.date).toLocaleString("vi-VN") : new Date().toLocaleString("vi-VN")) : ""}</p>
+          <p><span className="font-bold">Người duyệt:</span> {isCompleted ? "Bếp Trưởng" : ""}</p>
+        </div>
+      </div>
+
+      <table className="w-full border-collapse border-2 border-black mb-2">
+        <thead>
+          <tr>
+            <th className="border border-black p-1.5 font-bold w-12 text-center">STT</th>
+            <th className="border border-black p-1.5 font-bold w-24 text-center">Mã hàng</th>
+            <th className="border border-black p-1.5 font-bold text-left">Hàng hóa</th>
+            <th className="border border-black p-1.5 font-bold w-16 text-center leading-tight">SL<br/>sổ</th>
+            <th className="border border-black p-1.5 font-bold w-16 text-center leading-tight">SL<br/>thực</th>
+            <th className="border border-black p-1.5 font-bold w-20 text-center leading-tight">Chênh<br/>lệch</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredItems.map((item, idx) => {
+            const diff = Number(item.actualStock) - Number(item.systemStock);
+            return (
+              <tr key={item.ingredientId}>
+                <td className="border border-black p-1.5 text-center">{idx + 1}</td>
+                <td className="border border-black p-1.5 text-center">{item.code}</td>
+                <td className="border border-black p-1.5">{item.ingredientName}</td>
+                <td className="border border-black p-1.5 text-right">{item.systemStock}</td>
+                <td className="border border-black p-1.5 text-right font-bold">{item.actualStock}</td>
+                <td className="border border-black p-1.5 text-right">{diff}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      <div className="text-right font-bold mb-8">
+        <p>Tổng số lượng: <span className="text-base">{filteredItems.reduce((acc, item) => acc + Number(item.actualStock), 0)}</span></p>
+      </div>
+
+      <div className="">
+        <span className="font-bold">Ghi chú:</span> {note}
+      </div>
+    </div>
+    </>
   );
 };

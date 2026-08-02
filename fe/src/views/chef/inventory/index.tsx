@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi } from "../../../services/api";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
 import { ImportGoods } from "./ImportGoods";
@@ -31,9 +31,9 @@ import {
   UploadCloud,
   FileText,
   Pencil,
-  PackageMinus,
   CheckCircle,
-  Save
+  Save,
+  Printer
 } from "lucide-react";
 
 // Types for local interactive states
@@ -45,16 +45,6 @@ interface Category {
 }
 
 
-
-interface ExpiryBatch {
-  id: string;
-  ingredientName: string;
-  quantity: number;
-  unit: string;
-  batchNo: string;
-  expiryDate: string; // YYYY-MM-DD
-}
-
 interface StockTransaction {
   id: string;
   type: "import" | "export" | "adjust";
@@ -65,6 +55,7 @@ interface StockTransaction {
   timestamp: string;
   batchNo?: string;
   expiryDate?: string;
+  reasonType?: string;
 }
 
 export const InventoryControl: React.FC = () => {
@@ -83,11 +74,13 @@ export const InventoryControl: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"ingredients" | "categories_suppliers" | "import_export" | "stocktake" | "expiry" | "reports">("ingredients");
   const [currentView, setCurrentView] = useState<"main" | "importGoods" | "returnGoods" | "inventoryCheck">("main");
   const [selectedDraft, setSelectedDraft] = useState<any>(null);
+  const [initialImportData, setInitialImportData] = useState<any[] | null>(null);
 
   // Local Search & Category filters for Ingredient Tab
   const [ingSearch, setIngSearch] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("all");
   const [stockStatusFilter, setStockStatusFilter] = useState("all"); // all, low, normal
+  const [expiryFilter, setExpiryFilter] = useState("all"); // all, expired, near
 
   // Local Mock Data States (so users can add/delete/update for rich demo)
   const [categories, setCategories] = useState<Category[]>([
@@ -101,13 +94,28 @@ export const InventoryControl: React.FC = () => {
   const [showEditSupplierModal, setShowEditSupplierModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
 
-  const [expiryBatches, setExpiryBatches] = useState<ExpiryBatch[]>([
-    { id: "b1", ingredientName: "Trứng cá tầm", quantity: 150, unit: "g", batchNo: "LOT-TCT-0701", expiryDate: "2026-07-12" }, // 3 days left
-    { id: "b2", ingredientName: "Thịt bò Mỹ", quantity: 5.0, unit: "kg", batchNo: "LOT-BOM-0705", expiryDate: "2026-07-10" }, // 1 day left
-    { id: "b3", ingredientName: "Cá hồi", quantity: 6.0, unit: "kg", batchNo: "LOT-CAH-0708", expiryDate: "2026-07-16" }, // safe
-    { id: "b4", ingredientName: "Tôm sú", quantity: 2.0, unit: "kg", batchNo: "LOT-TOM-0702", expiryDate: "2026-07-08" }, // Expired
-    { id: "b5", ingredientName: "Nấm tươi", quantity: 100, unit: "g", batchNo: "LOT-NAM-0708", expiryDate: "2026-07-11" } // 2 days left
-  ]);
+  const [expiryBatches, setExpiryBatches] = useState<any[]>([]);
+
+  const fetchAllBatchesData = async () => {
+    try {
+      const data = await getAllBatchesApi();
+      const mapped = data.map((b: any) => ({
+        id: b.id,
+        ingredientName: b.ingredientName,
+        quantity: b.quantity,
+        unit: b.unit,
+        batchNo: b.batchNo,
+        expiryDate: b.expiryDate ? b.expiryDate.split("T")[0] : ""
+      }));
+      setExpiryBatches(mapped);
+    } catch (err) {
+      console.error("Failed to load batches", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllBatchesData();
+  }, []);
 
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
 
@@ -124,14 +132,16 @@ export const InventoryControl: React.FC = () => {
   // Modals / Input States
   const [showAddIngModal, setShowAddIngModal] = useState(false);
   const [newIngForm, setNewIngForm] = useState({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
-  const [showBatchesModal, setShowBatchesModal] = useState(false);
-  const [selectedIngredientNameForBatches, setSelectedIngredientNameForBatches] = useState("");
-  const [ingredientBatches, setIngredientBatches] = useState<any[]>([]);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [batchData, setBatchData] = useState<Record<string, any[]>>({});
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
+  const [returnBatchData, setReturnBatchData] = useState<{ingId: string, batchNo: string, maxQty: number, unit: string, name: string, supplier_id?: string} | null>(null);
+  const [returnQty, setReturnQty] = useState<number | "">("");
+  const [returnNote, setReturnNote] = useState("");
+  const [printReturnData, setPrintReturnData] = useState<any>(null);
 
   const [showImportExportModal, setShowImportExportModal] = useState(false);
+  const [showAlertsPanel, setShowAlertsPanel] = useState(false);
 
   // Debt Payment State
   const [showPayDebtModal, setShowPayDebtModal] = useState(false);
@@ -290,12 +300,11 @@ export const InventoryControl: React.FC = () => {
     if (!ing) return;
 
     try {
-      await updateInventoryQuantityApi(
-        ing.id,
-        transactionForm.quantity,
-        transactionForm.type,
-        transactionForm.reasonOrSupplier
-      );
+      await updateInventoryQuantityApi(ing.id, {
+        quantity: transactionForm.quantity,
+        type: transactionForm.type,
+        reasonOrSupplier: transactionForm.reasonOrSupplier
+      });
       toast.success("Cập nhật kho thành công");
       getIngredientsApi().then((data) => setReduxIngredients(data));
       getInventoryTransactionsApi().then(data => setTransactions(data));
@@ -483,6 +492,47 @@ export const InventoryControl: React.FC = () => {
   };
 
 
+  const handleReturnBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!returnBatchData || !returnQty || !returnNote) return;
+
+    try {
+      await updateInventoryQuantityApi(returnBatchData.ingId, {
+        quantity: returnQty,
+        type: "return_supplier",
+        batchNo: returnBatchData.batchNo,
+        reasonOrSupplier: returnNote
+      });
+      alert("Trả hàng thành công!");
+      
+      // Setup data for printing before resetting the form
+      setPrintReturnData({
+        ...returnBatchData,
+        qty: returnQty,
+        note: returnNote,
+        date: new Date().toLocaleString("vi-VN")
+      });
+
+      setReturnBatchData(null);
+      setReturnQty("");
+      setReturnNote("");
+
+      // Reload
+      const ingBatches = await getIngredientBatchesApi(returnBatchData.ingId);
+      setBatchData(prev => ({ ...prev, [returnBatchData.ingId]: ingBatches }));
+      
+      const [ingRes, txRes] = await Promise.all([
+        getIngredientsApi(),
+        getInventoryTransactionsApi()
+      ]);
+      setReduxIngredients(ingRes);
+      setTransactions(txRes);
+      fetchAllBatchesData();
+    } catch (err: any) {
+      alert("Lỗi khi trả hàng: " + (err.response?.data?.message || err.message));
+    }
+  };
+
   const handleToggleRow = async (ing: any) => {
     const isExpanded = expandedRows[ing.id];
     if (isExpanded) {
@@ -659,12 +709,11 @@ export const InventoryControl: React.FC = () => {
 
         if (discrepancy !== 0) {
           try {
-            await updateInventoryQuantityApi(
-              ing.id,
-              Math.abs(discrepancy),
-              discrepancy > 0 ? "import" : "adjust",
-              `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`
-            );
+            await updateInventoryQuantityApi(ing.id, {
+              quantity: Math.abs(discrepancy),
+              type: discrepancy > 0 ? "import" : "adjust",
+              reasonOrSupplier: `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`
+            });
             changed = true;
           } catch (e) {
             console.error("Lỗi cập nhật", e);
@@ -685,6 +734,9 @@ export const InventoryControl: React.FC = () => {
 
   // Check how many days until expiry
   const getExpiryLabel = (expiryDateStr: string) => {
+    if (!expiryDateStr || expiryDateStr === "N/A" || expiryDateStr === "") {
+      return { text: "Không có hạn", status: "good" };
+    }
     const diffTime = new Date(expiryDateStr).getTime() - new Date().getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -797,16 +849,38 @@ export const InventoryControl: React.FC = () => {
   }, [transactions]);
 
   if (currentView === "importGoods") {
-    return <ImportGoods onBack={() => setCurrentView("main")} />;
+    return <ImportGoods onBack={() => { 
+      setCurrentView("main"); 
+      setInitialImportData(null); 
+      getIngredientsApi().then(setReduxIngredients).catch(console.error);
+      getInventoryTransactionsApi().then(setTransactions).catch(console.error);
+      fetchAllBatchesData();
+    }} initialData={initialImportData || undefined} onAddSupplier={() => setShowAddSupplierModal(true)} />;
   }
   
   if (currentView === "returnGoods") {
-    return <ReturnGoods onBack={() => setCurrentView("main")} />;
+    return <ReturnGoods onBack={() => {
+      setCurrentView("main");
+      setReturnBatchData(null);
+      getIngredientsApi().then(setReduxIngredients).catch(console.error);
+      getInventoryTransactionsApi().then(setTransactions).catch(console.error);
+      fetchAllBatchesData();
+    }} initialReturnData={returnBatchData} />;
   }
 
   if (currentView === "inventoryCheck") {
-    return <InventoryCheck onBack={() => setCurrentView("main")} draftData={selectedDraft} />;
+    return <InventoryCheck onBack={() => {
+      setCurrentView("main");
+      getIngredientsApi().then(setReduxIngredients).catch(console.error);
+      getInventoryTransactionsApi().then(setTransactions).catch(console.error);
+      fetchAllBatchesData();
+    }} draftData={selectedDraft} />;
   }
+
+  const lowStockCount = reduxIngredients.filter((ing) => ing.stock <= ing.threshold).length;
+  const expiryAlertBatches = expiryBatches.filter((b) => getExpiryLabel(b.expiryDate).status !== "good");
+  const expiryAlertCount = expiryAlertBatches.length;
+  const alertCount = (lowStockCount > 0 ? 1 : 0) + (expiryAlertCount > 0 ? 1 : 0);
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800">
@@ -822,31 +896,45 @@ export const InventoryControl: React.FC = () => {
             Quản lý nguyên liệu, nhà cung cấp, nhập xuất kho, kiểm kê và theo dõi hạn sử dụng thời gian thực.
           </p>
         </div>
-      </div>
 
-      {/* 2. Top-level Alert Banners */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print-hide">
-        {reduxIngredients.some((ing) => ing.stock <= ing.threshold) && (
-          <div className="bg-rose-50 border border-rose-200/80 text-rose-800 rounded-xl p-4 flex items-center gap-3 text-xs font-semibold shadow-2xs animate-pulse">
-            <AlertTriangle size={18} className="text-rose-500 shrink-0" />
-            <div>
-              <p className="font-extrabold text-rose-900">CẢNH BÁO TỒN KHO THẤP!</p>
-              <p className="text-[11px] text-rose-700 font-medium mt-0.5">
-                Có {reduxIngredients.filter((ing) => ing.stock <= ing.threshold).length} nguyên liệu sắp hết hàng. Vui lòng kiểm tra và lên đơn nhập.
-              </p>
-            </div>
-          </div>
-        )}
+        {alertCount > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setShowAlertsPanel(!showAlertsPanel)}
+              className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-black text-xs hover:bg-rose-100 transition-colors shadow-sm cursor-pointer"
+            >
+              <AlertTriangle size={16} className={showAlertsPanel ? "" : "animate-pulse"} />
+              Cảnh báo hệ thống ({alertCount})
+            </button>
+            
+            {showAlertsPanel && (
+              <div className="absolute top-full right-0 mt-3 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-4 flex flex-col gap-3 animate-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center mb-1">
+                  <h4 className="font-black text-slate-800 text-sm">Trung tâm cảnh báo</h4>
+                  <button onClick={() => setShowAlertsPanel(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <X size={16} />
+                  </button>
+                </div>
+                
+                {lowStockCount > 0 && (
+                  <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg p-3 flex flex-col gap-1 text-xs">
+                    <p className="font-extrabold text-rose-900 flex items-center gap-1.5"><AlertTriangle size={14}/> TỒN KHO THẤP!</p>
+                    <p className="text-[11px] text-rose-700 font-medium">
+                      Có {lowStockCount} nguyên liệu sắp hết hàng. Vui lòng kiểm tra và lên đơn nhập.
+                    </p>
+                  </div>
+                )}
 
-        {expiryBatches.some((b) => getExpiryLabel(b.expiryDate).status !== "good") && (
-          <div className="bg-amber-50 border border-amber-250 text-amber-800 rounded-xl p-4 flex items-center gap-3 text-xs font-semibold shadow-2xs">
-            <CalendarRange size={18} className="text-amber-500 shrink-0" />
-            <div>
-              <p className="font-extrabold text-amber-900">CẢNH BÁO HẠN SỬ DỤNG!</p>
-              <p className="text-[11px] text-amber-700 font-medium mt-0.5">
-                Phát hiện nguyên liệu đã hết hạn hoặc cận ngày hết hạn (trong vòng 3 ngày). Hãy ưu tiên sử dụng hoặc tiêu hủy.
-              </p>
-            </div>
+                {expiryAlertCount > 0 && (
+                  <div className="bg-amber-50 border border-amber-250 text-amber-800 rounded-lg p-3 flex flex-col gap-1 text-xs">
+                    <p className="font-extrabold text-amber-900 flex items-center gap-1.5"><CalendarRange size={14}/> HẠN SỬ DỤNG!</p>
+                    <p className="text-[11px] text-amber-700 font-medium">
+                      Có {expiryAlertCount} nguyên liệu đã hết hoặc cận hạn. Hãy ưu tiên tiêu hủy hoặc sử dụng.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -876,106 +964,56 @@ export const InventoryControl: React.FC = () => {
       </div>
 
       {/* 4. Tab Contents */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-5 min-h-112.5">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-5 min-h-[800px]">
 
         {/* Tab 1: Nguyên liệu */}
         {activeTab === "ingredients" && (
           <div className="flex flex-col gap-4">
-            {/* Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-              <div className="text-xs font-black text-slate-650 uppercase tracking-wider flex items-center gap-1.5">
-                <Layers size={14} className="text-admin-primary" /> Thao tác dữ liệu nguyên liệu
-              </div>
-              <div className="flex flex-wrap gap-2">
+            {/* Category Pills Navigation */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide print-hide">
+              <button
+                onClick={() => setSelectedCategoryFilter("all")}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  selectedCategoryFilter === "all"
+                    ? "bg-slate-800 text-white shadow-md"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                }`}
+              >
+                Tất cả danh mục
+              </button>
+              {categories.map((c) => (
                 <button
-                  onClick={() => setShowAddIngModal(true)}
-                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                  key={c.id}
+                  onClick={() => setSelectedCategoryFilter(c.name)}
+                  className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    selectedCategoryFilter === c.name
+                      ? "bg-blue-600 text-white shadow-md border border-blue-600"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                  }`}
                 >
-                  <Plus size={12} /> Nhập bằng tay
+                  {c.name}
                 </button>
-                <button
-                  onClick={handleWasteExpiredBatches}
-                  className="px-3 py-1.5 bg-linear-to-r from-rose-600 to-red-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
-                >
-                  <Trash2 size={12} /> Hủy hàng hết hạn
-                </button>
-                <button
-                  onClick={() => {
-                    setImportFileTarget("ingredients");
-                    setImportFile(null);
-                    setImportFileError(null);
-                    setShowImportFileModal(true);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
-                </button>
-                <button
-                  onClick={() => {
-                    const headers = ["Mã số", "Tên nguyên liệu", "Danh mục", "Tồn kho", "Đơn vị", "Ngưỡng an toàn"];
-                    const colX = [15, 30, 85, 120, 140, 155];
-                    const rows = reduxIngredients.map(i => [
-                      String(i.id),
-                      i.name,
-                      getIngredientCategory(i.name),
-                      i.stock.toString(),
-                      i.unit,
-                      i.threshold.toString()
-                    ]);
-                    handleExportPdfShared("DANH SACH NGUYEN LIEU KHO HANG", headers, colX, rows, `Danh_Sach_Nguyen_Lieu_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileText size={12} className="text-red-500" /> Xuất PDF
-                </button>
-                <button
-                  onClick={() => {
-                    const headers = ["Mã số", "Tên nguyên liệu", "Danh mục", "Tồn kho", "Đơn vị", "Ngưỡng an toàn"];
-                    const rows = reduxIngredients.map(i => [
-                      String(i.id),
-                      i.name,
-                      getIngredientCategory(i.name),
-                      i.stock.toString(),
-                      i.unit,
-                      i.threshold.toString()
-                    ]);
-                    handleExportExcelShared("DANH SÁCH NGUYÊN LIỆU KHO HÀNG", headers, rows, `Danh_Sach_Nguyen_Lieu_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
-                </button>
-              </div>
+              ))}
             </div>
+
             {/* Search & Filters */}
-            <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/60">
-              <div className="relative w-full md:w-80">
-                <Search className="absolute left-3 top-2.5 text-slate-600" size={14} />
+            <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-white p-2 rounded-xl border border-slate-200 shadow-sm print-hide">
+              <div className="relative w-full md:w-96">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
                 <input
                   type="text"
                   placeholder="Tìm kiếm nguyên liệu..."
                   value={ingSearch}
                   onChange={(e) => setIngSearch(e.target.value)}
-                  className="pl-9 pr-4 py-2 w-full text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-semibold"
+                  className="pl-9 pr-4 py-2 w-full text-sm bg-slate-50 border-transparent rounded-lg focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all font-medium"
                 />
               </div>
 
               <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
                 <select
-                  value={selectedCategoryFilter}
-                  onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                  className="px-2.5 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-extrabold cursor-pointer"
-                >
-                  <option value="all">Tất cả danh mục</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-
-                <select
                   value={stockStatusFilter}
                   onChange={(e) => setStockStatusFilter(e.target.value)}
-                  className="px-2.5 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-extrabold cursor-pointer"
+                  className="px-4 py-2 text-sm bg-slate-50 border-transparent rounded-lg focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 font-semibold cursor-pointer text-slate-700 transition-all hover:bg-slate-100"
                 >
                   <option value="all">Tất cả mức tồn</option>
                   <option value="low">Tồn kho thấp</option>
@@ -1058,14 +1096,19 @@ export const InventoryControl: React.FC = () => {
                   ) : (
                     filteredIngredients.map((ing) => {
                       const isLow = Number(ing.stock) <= Number(ing.threshold);
+                      const hasExpired = expiryBatches.some(b => b.ingredientName === ing.name && getExpiryLabel(b.expiryDate).status === "expired");
+                      const hasNear = expiryBatches.some(b => b.ingredientName === ing.name && getExpiryLabel(b.expiryDate).status === "near");
                       const percentage = Math.min(100, Math.max(0, (Number(ing.stock) / (Number(ing.threshold) * 3)) * 100));
                       const isExpanded = expandedRows[ing.id];
                       const batches = batchData[ing.id] || [];
 
                       return (
                         <React.Fragment key={ing.id}>
-                          <tr className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? "bg-slate-50/50" : ""} ${selectedIngredients.includes(ing.id) ? "bg-blue-50/30" : ""}`}>
-                            <td className="px-4 py-4">
+                          <tr 
+                            onClick={() => handleToggleRow(ing)}
+                            className={`hover:bg-slate-50/50 transition-colors cursor-pointer ${isExpanded ? "bg-slate-50/50" : ""} ${selectedIngredients.includes(ing.id) ? "bg-blue-50/30" : ""}`}
+                          >
+                            <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                               <input 
                                 type="checkbox" 
                                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -1096,17 +1139,25 @@ export const InventoryControl: React.FC = () => {
                               </div>
                             </td>
                             <td className="px-5 py-4 text-center">
-                              {isLow ? (
-                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
-                                  <AlertTriangle size={10} /> TỒN THẤP (Dưới {ing.threshold} {ing.unit})
+                              {hasExpired ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse uppercase">
+                                  <AlertTriangle size={10} /> CÓ LÔ HẾT HẠN
+                                </span>
+                              ) : hasNear ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-250 uppercase">
+                                  <AlertTriangle size={10} /> CÓ LÔ CẬN HẠN
+                                </span>
+                              ) : isLow ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse uppercase">
+                                  <AlertTriangle size={10} /> TỒN THẤP
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250 uppercase">
                                   <Check size={10} /> AN TOÀN
                                 </span>
                               )}
                             </td>
-                            <td className="px-5 py-4 text-right">
+                            <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                                <div className="flex justify-end gap-1.5 items-center">
                                 <button
                                   onClick={() => handleToggleRow(ing)}
@@ -1137,9 +1188,11 @@ export const InventoryControl: React.FC = () => {
                                           <tr>
                                             <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Số Lô</th>
                                             <th className="px-4 py-2 text-center text-[10px] font-bold text-slate-600 uppercase">Tồn lô</th>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Ngày nhập</th>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Nhà cung cấp</th>
                                             <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Hạn sử dụng</th>
                                             <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Trạng thái</th>
-                                            <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-600 uppercase">Ngày nhập</th>
+                                            <th className="px-4 py-2 text-right text-[10px] font-bold text-slate-600 uppercase">Thao tác</th>
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -1150,6 +1203,12 @@ export const InventoryControl: React.FC = () => {
                                                 <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">{b.batch_code}</td>
                                                 <td className="px-4 py-2 text-center font-bold text-admin-primary text-[11px]">
                                                   {Number(b.remaining_quantity).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                                </td>
+                                                <td className="px-4 py-2 text-[11px] text-slate-700">
+                                                  {new Date(b.created_at).toLocaleDateString("vi-VN")}
+                                                </td>
+                                                <td className="px-4 py-2 text-[11px] text-slate-700 font-medium">
+                                                  {b.supplierName || "-"}
                                                 </td>
                                                 <td className="px-4 py-2 text-[11px] text-slate-700">
                                                   {b.expiry_date ? new Date(b.expiry_date).toLocaleDateString("vi-VN") : "N/A"}
@@ -1163,8 +1222,27 @@ export const InventoryControl: React.FC = () => {
                                                     <span className="text-emerald-600 font-bold">{label.text}</span>
                                                   )}
                                                 </td>
-                                                <td className="px-4 py-2 text-right text-[11px] text-slate-500">
-                                                  {new Date(b.created_at).toLocaleDateString("vi-VN")}
+                                                <td className="px-4 py-2 text-right">
+                                                  {Number(b.remaining_quantity) > 0 && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setReturnBatchData({
+                                                          ingId: ing.id,
+                                                          batchNo: b.batch_code,
+                                                          maxQty: Number(b.remaining_quantity),
+                                                          unit: ing.unit,
+                                                          name: ing.name,
+                                                          supplier_id: b.supplier_id
+                                                        });
+                                                        setCurrentView("returnGoods");
+                                                      }}
+                                                      className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-extrabold uppercase rounded border border-purple-200 transition-colors"
+                                                    >
+                                                      Trả hàng
+                                                    </button>
+                                                  )}
                                                 </td>
                                               </tr>
                                             );
@@ -1173,8 +1251,11 @@ export const InventoryControl: React.FC = () => {
                                       </table>
                                     </div>
                                   ) : (
-                                    <div className="text-center py-4 text-xs font-semibold text-slate-500">
-                                      Nguyên liệu này chưa có lô hàng nào.
+                                    <div className="text-center py-8 text-xs font-bold text-slate-500 bg-slate-50 border border-dashed border-slate-300 rounded-lg">
+                                      <div className="flex flex-col items-center justify-center gap-2">
+                                        <Layers size={24} className="text-slate-300" />
+                                        <span>Không còn hàng nào trong kho</span>
+                                      </div>
                                     </div>
                                   )}
                                 </div>
@@ -1367,11 +1448,17 @@ export const InventoryControl: React.FC = () => {
 
                       <div className="mt-2 pt-2 border-t border-slate-200/50 flex flex-wrap gap-1 items-center">
                         <span className="text-[10px] font-extrabold text-slate-600">Nguyên liệu chính:</span>
-                        {(s.mainIngredients || "").split(",").map((ing: string, index: number) => {
-                          if (!ing.trim()) return null;
+                        {(s.mainIngredients || "").split(",").map((ingStr: string, index: number) => {
+                          const ingName = ingStr.trim();
+                          if (!ingName) return null;
+                          const isExists = reduxIngredients.some(i => i.name.toLowerCase() === ingName.toLowerCase());
                           return (
-                            <span key={index} className="text-[9px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/40">
-                              {ing.trim()}
+                            <span 
+                              key={index} 
+                              className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${isExists ? 'text-blue-700 bg-blue-50 border-blue-200/40' : 'text-slate-500 bg-slate-100 border-slate-300'}`}
+                              title={isExists ? '' : 'Nguyên liệu này không còn trong kho'}
+                            >
+                              {ingName} {!isExists && <span className="font-normal italic ml-0.5">(Đã xóa)</span>}
                             </span>
                           );
                         })}
@@ -1396,14 +1483,19 @@ export const InventoryControl: React.FC = () => {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => {
-                    setImportExportMode("manual");
-                    setFileError(null);
-                    setSelectedFile(null);
-                    setShowImportExportModal(true);
+                    setCurrentView("importGoods");
                   }}
                   className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
                 >
-                  <Plus size={12} /> Thực hiện Nhập/Xuất mới
+                  <Plus size={12} /> + Nhập Hàng
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView("returnGoods");
+                  }}
+                  className="px-3 py-1.5 bg-linear-to-r from-rose-600 to-red-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                >
+                  <Minus size={12} /> - Xuất Hàng
                 </button>
                 <button
                   onClick={() => {
@@ -1424,7 +1516,7 @@ export const InventoryControl: React.FC = () => {
                       t.timestamp,
                       t.type === "import" ? "NHAP KHO" : t.type === "export" ? "XUAT KHO" : "DIEU CHINH",
                       t.ingredientName,
-                      t.quantity.toString(),
+                      Number(t.quantity).toString(),
                       t.unit,
                       t.batchNo || "-",
                       t.expiryDate || "-",
@@ -1438,17 +1530,24 @@ export const InventoryControl: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Mã lô", "Hạn sử dụng", "Chi tiết / Nhà cung cấp"];
-                    const rows = transactions.map(t => [
-                      t.timestamp,
-                      t.type === "import" ? "NHẬP KHO" : t.type === "export" ? "XUẤT KHO" : "ĐIỀU CHỈNH",
-                      t.ingredientName,
-                      t.quantity.toString(),
-                      t.unit,
-                      t.batchNo || "-",
-                      t.expiryDate || "-",
-                      t.reasonOrSupplier
-                    ]);
+                    const headers = ["Thời gian", "Loại", "Nguyên liệu", "Số lượng", "Đơn vị", "Mã lô", "Hạn sử dụng", "Chi tiết / Nhà cung cấp", "Ghi chú"];
+                    const rows = transactions.map(t => {
+                      const reasonStr = t.reasonOrSupplier || "";
+                      const parts = reasonStr.split(" - Ghi chú: ");
+                      const detailText = parts[0] || "-";
+                      const noteText = parts.length > 1 && parts[1].trim() !== "" ? parts[1].trim() : "-";
+                      return [
+                        t.timestamp,
+                        t.type === "import" ? "NHẬP KHO" : t.reasonType === "return_supplier" ? "TRẢ HÀNG" : t.type === "export" ? "XUẤT KHO" : "ĐIỀU CHỈNH",
+                        t.ingredientName,
+                        Number(t.quantity).toString(),
+                        t.unit,
+                        t.batchNo || "-",
+                        t.expiryDate || "-",
+                        detailText,
+                        noteText
+                      ];
+                    });
                     handleExportExcelShared("LỊCH SỬ GIAO DỊCH NHẬP XUẤT KHO", headers, rows, `Lich_Su_Nhap_Xuat_Kho_${Date.now()}`);
                   }}
                   className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
@@ -1469,12 +1568,20 @@ export const InventoryControl: React.FC = () => {
                     <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
                     <th scope="col" className="px-5 py-3 text-left">Hạn sử dụng</th>
                     <th scope="col" className="px-5 py-3 text-left">Chi tiết / Nhà cung cấp</th>
+                    <th scope="col" className="px-5 py-3 text-left">Ghi chú</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
                   {transactions.map((tx) => {
                     const isImport = tx.type === "import";
-                    const isExport = tx.type === "export";
+                    const isReturn = tx.type === "export" && tx.reasonType === "return_supplier";
+                    const isExport = tx.type === "export" && !isReturn;
+                    
+                    const reasonStr = tx.reasonOrSupplier || "";
+                    const parts = reasonStr.split(" - Ghi chú: ");
+                    const detailText = parts[0] || "-";
+                    const noteText = parts.length > 1 && parts[1].trim() !== "" ? parts[1].trim() : "-";
+
                     return (
                       <tr key={tx.id} className="hover:bg-slate-50/50">
                         <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
@@ -1497,6 +1604,11 @@ export const InventoryControl: React.FC = () => {
                               <ArrowUpRight size={8} /> XUẤT KHO
                             </span>
                           )}
+                          {isReturn && (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-[9px] font-black uppercase">
+                              <ArrowUpRight size={8} /> TRẢ HÀNG
+                            </span>
+                          )}
                           {tx.type === "adjust" && (
                             <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-350 text-[9px] font-black uppercase">
                               <RefreshCw size={8} /> ĐIỀU CHỈNH
@@ -1505,8 +1617,8 @@ export const InventoryControl: React.FC = () => {
                         </td>
                         <td className="px-5 py-3 font-extrabold text-slate-800">{tx.ingredientName}</td>
                         <td className="px-5 py-3 text-center">
-                          <span className={`font-black ${isImport ? "text-blue-600" : isExport ? "text-amber-600" : "text-slate-650"}`}>
-                            {isImport ? "+" : isExport ? "-" : ""}{tx.quantity} {tx.unit}
+                          <span className={`font-black ${isImport ? "text-blue-600" : isReturn ? "text-purple-600" : isExport ? "text-amber-600" : "text-slate-650"}`}>
+                            {isImport ? "+" : isReturn || isExport ? "-" : ""}{Number(tx.quantity).toLocaleString("vi-VN")} {tx.unit}
                           </span>
                         </td>
                         <td className="px-5 py-3 font-semibold text-slate-700">
@@ -1515,7 +1627,8 @@ export const InventoryControl: React.FC = () => {
                         <td className="px-5 py-3 font-semibold text-slate-700">
                           {tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"}
                         </td>
-                        <td className="px-5 py-3 text-slate-700">{tx.reasonOrSupplier}</td>
+                        <td className="px-5 py-3 text-slate-700 font-medium">{detailText}</td>
+                        <td className="px-5 py-3 text-slate-500 italic max-w-[200px] truncate" title={noteText !== "-" ? noteText : ""}>{noteText}</td>
                       </tr>
                     );
                   })}
@@ -1623,9 +1736,20 @@ export const InventoryControl: React.FC = () => {
                             <h4 className="font-bold text-slate-700 text-sm line-through decoration-slate-300">{completed.ticketName}</h4>
                             <p className="text-[10px] text-slate-500 font-bold">{new Date(completed.date).toLocaleString('vi-VN')}</p>
                           </div>
-                          <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-200 uppercase">
-                            Đã cân bằng
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-200 uppercase">
+                              Đã cân bằng
+                            </span>
+                            <button
+                              onClick={() => {
+                                setSelectedDraft({ ...completed, status: 'completed' });
+                                setCurrentView("inventoryCheck");
+                              }}
+                              className="px-2 py-1 bg-white text-blue-600 border border-blue-200 rounded text-[9px] font-bold hover:bg-blue-50 transition-colors shadow-sm"
+                            >
+                              Xem phiếu in
+                            </button>
+                          </div>
                         </div>
                         <p className="text-xs text-slate-600 font-medium">{completed.note || "Không có ghi chú"}</p>
                       </div>
@@ -1657,9 +1781,47 @@ export const InventoryControl: React.FC = () => {
                     });
                     setShowAddExpiryModal(true);
                   }}
-                  className="px-3 py-1.5 bg-linear-to-r from-blue-600 to-indigo-650 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow hover:bg-blue-700"
                 >
                   <Plus size={12} /> Thêm lô hàng mới
+                </button>
+                <button
+                  onClick={async () => {
+                    const expired = expiryBatches.filter(b => getExpiryLabel(b.expiryDate).status === "expired");
+                    if (expired.length === 0) {
+                      toast.success("Không có lô hàng nào hết hạn.");
+                      return;
+                    }
+                    if (window.confirm(`Bạn có muốn tiêu hủy toàn bộ ${expired.length} lô hết hạn không?`)) {
+                      try {
+                        await wasteExpiredBatchesApi();
+                        toast.success(`Đã tiêu hủy thành công ${expired.length} lô hàng hết hạn!`);
+                        fetchAllBatchesData();
+                        getIngredientsApi().then((data) => setReduxIngredients(data));
+                      } catch (err) {
+                        toast.error("Có lỗi xảy ra khi tiêu hủy.");
+                      }
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-white text-rose-600 border border-rose-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow hover:bg-rose-50"
+                >
+                  <Trash2 size={12} /> Tiêu hủy tất cả lô hết hạn
+                </button>
+                <button
+                  onClick={() => {
+                    const expired = expiryBatches.filter(b => getExpiryLabel(b.expiryDate).status === "expired");
+                    if (expired.length === 0) {
+                      toast.success("Không có lô hàng nào hết hạn cần nhập thêm.");
+                      return;
+                    }
+                    const ingsToImport = expired.map(b => reduxIngredients.find(i => i.name === b.ingredientName)).filter(Boolean);
+                    const uniqueIngs = Array.from(new Set(ingsToImport.map((i: any) => i.id))).map(id => ingsToImport.find((i: any) => i.id === id));
+                    setInitialImportData(uniqueIngs);
+                    setCurrentView("importGoods");
+                  }}
+                  className="px-3 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow hover:bg-blue-50"
+                >
+                  <Search size={12} /> Nhập hàng bù lô hết hạn
                 </button>
                 <button
                   onClick={() => {
@@ -1672,47 +1834,34 @@ export const InventoryControl: React.FC = () => {
                 >
                   <UploadCloud size={12} className="text-blue-600" /> Nhập từ file
                 </button>
-                <button
-                  onClick={() => {
-                    const headers = ["So lo (Batch No)", "Ten nguyen lieu", "So luong", "Don vi", "Ngay het han", "Tinh trang"];
-                    const colX = [15, 60, 105, 125, 140, 170];
-                    const rows = expiryBatches.map((b) => [
-                      b.batchNo,
-                      b.ingredientName,
-                      b.quantity.toString(),
-                      b.unit,
-                      b.expiryDate,
-                      getExpiryLabel(b.expiryDate).text
-                    ]);
-                    handleExportPdfShared("DANH SACH LO HANG - THEO DOI HAN SU DUNG", headers, colX, rows, `Theo_Doi_Han_Su_Dung_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileText size={12} className="text-red-500" /> Xuất PDF
-                </button>
-                <button
-                  onClick={() => {
-                    const headers = ["Số lô (Batch No)", "Tên nguyên liệu", "Số lượng", "Đơn vị", "Ngày hết hạn", "Tình trạng hạn"];
-                    const rows = expiryBatches.map((b) => [
-                      b.batchNo,
-                      b.ingredientName,
-                      b.quantity.toString(),
-                      b.unit,
-                      b.expiryDate,
-                      getExpiryLabel(b.expiryDate).text
-                    ]);
-                    handleExportExcelShared("DANH SÁCH LÔ HÀNG - THEO DÕI HẠN SỬ DỤNG", headers, rows, `Theo_Doi_Han_Su_Dung_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
-                </button>
               </div>
             </div>
 
-            <div className="pb-2 border-b border-slate-100">
-              <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh sách Lô hàng & Theo dõi Hạn sử dụng</span>
-              <p className="text-[10px] text-slate-600 font-semibold mt-1">Cảnh báo nguyên liệu đã hết hạn hoặc sắp hết hạn cần ưu tiên tiêu thụ.</p>
+            <div className="pb-2 border-b border-slate-100 flex flex-col md:flex-row justify-between md:items-end gap-3">
+              <div>
+                <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Danh sách Lô hàng & Theo dõi Hạn sử dụng</span>
+                <p className="text-[10px] text-slate-600 font-semibold mt-1">Cảnh báo nguyên liệu đã hết hạn hoặc sắp hết hạn cần ưu tiên tiêu thụ.</p>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide print-hide">
+                {[
+                  { id: "all", label: "Tất cả" },
+                  { id: "near", label: "Cận hạn" },
+                  { id: "expired", label: "Đã hết hạn" }
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setExpiryFilter(f.id)}
+                    className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                      expiryFilter === f.id
+                        ? "bg-slate-800 text-white shadow-md"
+                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
@@ -1728,63 +1877,90 @@ export const InventoryControl: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                  {expiryBatches.map((b) => {
-                    const expiryInfo = getExpiryLabel(b.expiryDate);
-                    return (
-                      <tr key={b.id} className="hover:bg-slate-50/50">
-                        <td className="px-5 py-3 font-mono font-bold text-slate-700">{b.batchNo}</td>
-                        <td className="px-5 py-3 font-extrabold text-slate-800">{b.ingredientName}</td>
-                        <td className="px-5 py-3 text-center font-bold">{b.quantity} {b.unit}</td>
-                        <td className="px-5 py-3 whitespace-nowrap text-slate-600">{b.expiryDate}</td>
-                        <td className="px-5 py-3">
-                          {expiryInfo.status === "expired" && (
-                            <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
-                              <AlertTriangle size={10} /> ĐÃ HẾT HẠN
-                            </span>
-                          )}
-                          {expiryInfo.status === "near" && (
-                            <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-250">
-                              <AlertTriangle size={10} /> CẬN HẠN
-                            </span>
-                          )}
-                          {expiryInfo.status === "good" && (
-                            <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
-                              <Check size={10} /> AN TOÀN
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <button
-                            onClick={() => {
-                              // Filter out this batch
-                              setExpiryBatches(expiryBatches.filter((batch) => batch.id !== b.id));
-                              // Log transaction
-                              setTransactions([
-                                {
-                                  id: `t_${Date.now()}`,
-                                  type: "export",
-                                  ingredientName: b.ingredientName,
-                                  quantity: b.quantity,
-                                  unit: b.unit,
-                                  reasonOrSupplier: `Tiêu hủy lô hàng quá hạn / hỏng (${b.batchNo})`,
-                                  timestamp: new Date().toISOString().replace("T", " ").slice(0, 16)
-                                },
-                                ...transactions
-                              ]);
-                              // Deduct stock if necessary
-                              const ing = reduxIngredients.find(i => i.name === b.ingredientName);
-                              if (ing) {
-                                handleModifyStockDirect(ing.id as string, Math.max(0, ing.stock - b.quantity));
-                              }
-                            }}
-                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold cursor-pointer transition-colors border border-rose-200/50"
-                          >
-                            Tiêu hủy
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {expiryBatches.filter((b) => expiryFilter === "all" || getExpiryLabel(b.expiryDate).status === expiryFilter).length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12 text-center text-slate-500 italic">
+                        Không có lô hàng nào phù hợp với bộ lọc
+                      </td>
+                    </tr>
+                  ) : (
+                    expiryBatches
+                      .filter((b) => expiryFilter === "all" || getExpiryLabel(b.expiryDate).status === expiryFilter)
+                      .map((b) => {
+                      const expiryInfo = getExpiryLabel(b.expiryDate);
+                      return (
+                        <tr key={b.id} className="hover:bg-slate-50/50">
+                          <td className="px-5 py-3 font-mono font-bold text-slate-700">{b.batchNo}</td>
+                          <td className="px-5 py-3 font-extrabold text-slate-800">{b.ingredientName}</td>
+                          <td className="px-5 py-3 text-center font-bold">{b.quantity} {b.unit}</td>
+                          <td className="px-5 py-3 whitespace-nowrap text-slate-600">{b.expiryDate}</td>
+                          <td className="px-5 py-3">
+                            {expiryInfo.status === "expired" && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
+                                <AlertTriangle size={10} /> ĐÃ HẾT HẠN
+                              </span>
+                            )}
+                            {expiryInfo.status === "near" && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-250">
+                                <AlertTriangle size={10} /> CẬN HẠN
+                              </span>
+                            )}
+                            {expiryInfo.status === "good" && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
+                                <Check size={10} /> AN TOÀN
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <div className="flex justify-end gap-1.5 items-center">
+                              <button
+                                onClick={() => {
+                                  const ing = reduxIngredients.find(i => i.name === b.ingredientName);
+                                  if (ing) {
+                                    setInitialImportData([ing]);
+                                    setCurrentView("importGoods");
+                                  } else {
+                                    toast.error("Không tìm thấy nguyên liệu này trong danh sách để nhập.");
+                                  }
+                                }}
+                                className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-[10px] font-bold cursor-pointer transition-colors border border-blue-200"
+                              >
+                                Nhập hàng
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (window.confirm(`Bạn có muốn tiêu hủy ${b.quantity} ${b.unit} của lô ${b.batchNo}?`)) {
+                                    try {
+                                      const ing = reduxIngredients.find(i => i.name === b.ingredientName);
+                                      if (ing) {
+                                        await updateInventoryQuantityApi(ing.id as string, {
+                                          quantity: b.quantity,
+                                          type: "waste",
+                                          batchNo: b.batchNo,
+                                          reasonOrSupplier: `Tiêu hủy lô hàng hỏng/quá hạn (${b.batchNo})`,
+                                          isCredit: false
+                                        });
+                                        toast.success("Tiêu hủy thành công!");
+                                        fetchAllBatchesData();
+                                        getIngredientsApi().then((data) => setReduxIngredients(data));
+                                      } else {
+                                        toast.error("Không tìm thấy nguyên liệu trong danh sách!");
+                                      }
+                                    } catch (err) {
+                                      toast.error("Lỗi khi tiêu hủy lô hàng!");
+                                    }
+                                  }
+                                }}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[10px] font-bold cursor-pointer transition-colors border border-rose-200/50"
+                              >
+                                Tiêu hủy
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2101,80 +2277,166 @@ export const InventoryControl: React.FC = () => {
         )
       }
 
-      {/* Modal: Xem chi tiết Lô hàng */}
-      {
-        showBatchesModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
-              <button
-                onClick={() => setShowBatchesModal(false)}
-                className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
 
-              <div className="flex items-center gap-2.5 mb-5">
-                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
-                  <Layers size={18} />
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">Chi tiết các lô hàng</h3>
-                  <p className="text-slate-500 text-[10px] font-semibold mt-0.5">Nguyên liệu: <span className="font-bold text-blue-600">{selectedIngredientNameForBatches}</span></p>
+      {/* Modal: Xác nhận trả hàng theo lô */}
+      {returnBatchData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => {
+                setReturnBatchData(null);
+                setReturnQty("");
+                setReturnNote("");
+              }}
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-5">
+              <div className="p-2 bg-purple-100 text-purple-600 rounded-lg shrink-0">
+                <ArrowUpRight size={18} />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">Trả hàng nhà cung cấp</h3>
+                <p className="text-slate-500 text-[10px] font-semibold mt-0.5">Lô: <span className="font-bold text-purple-600">{returnBatchData.batchNo}</span></p>
+              </div>
+            </div>
+
+            <form onSubmit={handleReturnBatch} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-700">Nguyên liệu</label>
+                <input
+                  type="text"
+                  disabled
+                  value={returnBatchData.name}
+                  className="px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-semibold text-slate-500 text-sm"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-700">
+                  Số lượng trả <span className="text-rose-500">*</span> <span className="text-[10px] font-normal text-slate-500">(Tối đa: {returnBatchData.maxQty} {returnBatchData.unit})</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    min="0.1"
+                    step="0.1"
+                    max={returnBatchData.maxQty}
+                    value={returnQty}
+                    onChange={(e) => setReturnQty(e.target.value ? Number(e.target.value) : "")}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500 font-bold text-admin-primary pr-12"
+                    placeholder="VD: 5"
+                  />
+                  <span className="absolute right-3 top-2.5 text-xs font-black text-slate-400">{returnBatchData.unit}</span>
                 </div>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-inner max-h-[60vh] overflow-y-auto">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-wider sticky top-0 z-10">
-                    <tr>
-                      <th scope="col" className="px-4 py-3 text-left">Mã lô</th>
-                      <th scope="col" className="px-4 py-3 text-right">Còn lại</th>
-                      <th scope="col" className="px-4 py-3 text-center">Hạn sử dụng</th>
-                      <th scope="col" className="px-4 py-3 text-left">Nhà cung cấp</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-slate-200 text-[11px] font-semibold text-slate-700">
-                    {ingredientBatches.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-5 py-8 text-center text-slate-500 italic">Đang tải hoặc nguyên liệu này chưa có lô hàng nào...</td>
-                      </tr>
-                    ) : (
-                      ingredientBatches.map(b => {
-                        const isExpired = b.expiry_date && new Date(b.expiry_date) < new Date();
-                        return (
-                          <tr key={b.id} className={`hover:bg-slate-50 transition-colors ${isExpired ? 'bg-rose-50/30' : ''}`}>
-                            <td className="px-4 py-3 font-mono text-slate-600">{b.batch_code}</td>
-                            <td className="px-4 py-3 text-right font-black text-admin-primary">{b.remaining_quantity}</td>
-                            <td className="px-4 py-3 text-center">
-                              {b.expiry_date ? (
-                                <span className={isExpired ? "text-rose-600 font-bold" : "text-emerald-600"}>
-                                  {new Date(b.expiry_date).toLocaleDateString('vi-VN')}
-                                  {isExpired && <span className="ml-1 text-[9px] bg-rose-100 text-rose-700 px-1 py-0.5 rounded">HẾT HẠN</span>}
-                                </span>
-                              ) : <span className="text-slate-400 italic">Không có</span>}
-                            </td>
-                            <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]">{b.supplierName || 'N/A'}</td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-700">Ghi chú (Bắt buộc) <span className="text-rose-500">*</span></label>
+                <textarea
+                  required
+                  value={returnNote}
+                  onChange={(e) => setReturnNote(e.target.value)}
+                  placeholder="Lý do trả hàng (Hỏng, sai loại, ...)"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500 font-semibold text-sm min-h-[80px]"
+                />
               </div>
 
-              <div className="flex justify-end mt-5 pt-4 border-t border-slate-100">
+              <div className="flex justify-end gap-3 mt-4">
                 <button
                   type="button"
-                  onClick={() => setShowBatchesModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                  onClick={() => {
+                    setReturnBatchData(null);
+                    setReturnQty("");
+                    setReturnNote("");
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm"
                 >
-                  Đóng
+                  Hủy
                 </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm shadow-purple-200 flex gap-2 items-center"
+                >
+                  Xác nhận trả hàng
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Phiếu In Trả Hàng */}
+      {printReturnData && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 print:bg-white print:p-0">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl p-6 relative print:shadow-none print:p-0 print:border-none border border-slate-200">
+            {/* Các nút điều khiển hiển thị khi không in */}
+            <div className="flex justify-end gap-2 mb-4 print:hidden">
+              <button
+                onClick={() => setPrintReturnData(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold rounded-lg"
+              >
+                ĐÓNG
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white flex gap-2 items-center text-xs font-extrabold rounded-lg shadow-sm"
+              >
+                <Printer size={16} /> IN PHIẾU
+              </button>
+            </div>
+
+            {/* Nội dung phiếu in */}
+            <div className="text-black bg-white p-4" id="print-receipt">
+              <div className="text-center mb-6">
+                <h2 className="text-xl font-bold uppercase mb-1">Phiếu Xuất Trả</h2>
+                <p className="text-sm font-semibold">{printReturnData.date}</p>
+                <p className="text-xs mt-1">Người xuất: <span className="font-semibold">Quản trị viên</span></p>
+              </div>
+
+              <table className="w-full text-sm border-collapse border border-black mb-4">
+                <thead>
+                  <tr>
+                    <th className="border border-black px-2 py-1 text-left w-12">STT</th>
+                    <th className="border border-black px-2 py-1 text-left">Hàng hóa</th>
+                    <th className="border border-black px-2 py-1 text-left">Mã lô</th>
+                    <th className="border border-black px-2 py-1 text-right">SL Trả</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-black px-2 py-1">1</td>
+                    <td className="border border-black px-2 py-1 font-bold">{printReturnData.name}</td>
+                    <td className="border border-black px-2 py-1 font-mono text-xs">{printReturnData.batchNo}</td>
+                    <td className="border border-black px-2 py-1 text-right font-bold">
+                      {printReturnData.qty} {printReturnData.unit}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="mb-6">
+                <p className="text-sm font-bold">Ghi chú:</p>
+                <p className="text-sm border-b border-dotted border-black pb-1 min-h-[20px]">{printReturnData.note}</p>
+              </div>
+
+              <div className="grid grid-cols-2 text-center text-sm pt-4">
+                <div>
+                  <p className="font-bold">Người xuất trả</p>
+                  <p className="text-xs italic mt-1">(Ký, ghi rõ họ tên)</p>
+                </div>
+                <div>
+                  <p className="font-bold">Đại diện nhà cung cấp</p>
+                  <p className="text-xs italic mt-1">(Ký, xác nhận)</p>
+                </div>
               </div>
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
 
       {/* Modal A: Thêm nguyên liệu mới */}
       {
@@ -3133,3 +3395,4 @@ export const InventoryControl: React.FC = () => {
 };
 
 export default InventoryControl;
+
