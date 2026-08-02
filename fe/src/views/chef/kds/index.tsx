@@ -192,7 +192,13 @@ export const ChefKitchenQueue: React.FC = () => {
 
     loadData();
     const interval = setInterval(loadData, 3000);
-    return () => clearInterval(interval);
+    
+    window.addEventListener("refresh_staff_data", loadData);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("refresh_staff_data", loadData);
+    };
   }, [dispatch, stationFilter]);
 
   // Audio trigger on new active alerts

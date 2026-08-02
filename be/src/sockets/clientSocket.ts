@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { qrUtils } from "../utils/qr";
-import { cartUtils } from "../utils/redis";
+import { cartUtils, redisUtils } from "../utils/redis";
 import { query } from "../utils/db";
 
 export const setupClientSocket = (io: Server) => {
@@ -65,10 +65,37 @@ export const setupClientSocket = (io: Server) => {
 
     // Lắng nghe sự kiện Chốt Đơn (Checkout)
     socket.on("client_submit_order", async () => {
+      const lockKey = `lock:submit_order:${sessionId}`;
+      const acquired = await redisUtils.acquireLock(lockKey, 5000);
+      if (!acquired) {
+        return socket.emit("cart_error", { message: "Đang xử lý đơn hàng, vui lòng thử lại sau giây lát." });
+      }
+
       try {
         const cart = await cartUtils.getCart(sessionId);
         if (cart.items.length === 0) {
           return socket.emit("cart_error", { message: "Giỏ hàng trống" });
+        }
+
+        // 0. Kiểm tra tình trạng còn hàng (Task 5.1.2)
+        const itemIds = cart.items.map((i: any) => i.productId || i.menu_item_id);
+        if (itemIds.length > 0) {
+          const placeholders = itemIds.map(() => '?').join(',');
+          const menuItems = await query<any[]>(`SELECT id, name, available FROM menu_items WHERE id IN (${placeholders})`, itemIds);
+          
+          const unavailableItems = [];
+          for (const item of cart.items) {
+            const dbItem = menuItems.find(m => m.id === (item.productId || item.menu_item_id));
+            if (!dbItem || dbItem.available === 0) {
+              unavailableItems.push(dbItem ? dbItem.name : 'Món ăn không tồn tại');
+            }
+          }
+
+          if (unavailableItems.length > 0) {
+            return socket.emit("cart_error", { 
+              message: `Thật không may! Các món sau vừa hết hàng: ${unavailableItems.join(', ')}. Vui lòng tải lại trang và chọn món khác.` 
+            });
+          }
         }
 
         // Tạo order (hoặc cập nhật order hiện tại của bàn)
@@ -91,7 +118,7 @@ export const setupClientSocket = (io: Server) => {
         for (const item of cart.items) {
           await query(
             `INSERT INTO order_items (id, orderId, menuItemId, quantity, price, notes, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-            [`ITM-${Date.now()}-${Math.random().toString(36).substring(7)}`, orderId, item.productId, item.quantity, item.price, item.notes || '']
+            [`ITM-${Date.now()}-${Math.random().toString(36).substring(7)}`, orderId, item.productId || item.menu_item_id, item.quantity, item.price || item.unit_price, item.notes || '']
           );
         }
 
@@ -104,10 +131,15 @@ export const setupClientSocket = (io: Server) => {
 
         // 4. Phát sự kiện tới KDS (Nhà bếp)
         io.emit("kds_new_order", { tableId, orderId, items: cart.items }); // Thông báo cho KDS
+        
+        // 5. Phát sự kiện cập nhật trạng thái bàn cho Phục vụ
+        io.emit("table:status_changed", { tableId, status: 'serving' }); // Bàn đã chuyển sang serving nếu gọi món
 
       } catch (error) {
         console.error("Error submitting order:", error);
         socket.emit("cart_error", { message: "Không thể gửi đơn hàng" });
+      } finally {
+        await redisUtils.releaseLock(lockKey);
       }
     });
 

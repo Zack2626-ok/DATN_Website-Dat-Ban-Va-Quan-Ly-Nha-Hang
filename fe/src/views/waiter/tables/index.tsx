@@ -258,12 +258,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       fetchData();
     });
 
+    // Lắng nghe sự kiện refresh từ staffSocketService
+    const handleRefresh = () => fetchData();
+    window.addEventListener("refresh_staff_data", handleRefresh);
+
     return () => {
       socket.off("connect");
       socket.off("table:status_changed");
       socket.off("table:transferred");
       socket.off("table:merged");
       socket.disconnect();
+      window.removeEventListener("refresh_staff_data", handleRefresh);
       console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
     };
   }, [fetchData, selectedTableId]);
