@@ -32,8 +32,12 @@ import {
   Pencil,
   CheckCircle,
   Printer,
-  MoreHorizontal,
-  Filter
+  Filter,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  DollarSign,
+  CreditCard
 } from "lucide-react";
 
 // Types for local interactive states
@@ -57,6 +61,9 @@ interface StockTransaction {
   unit_cost?: number;
   note?: string;
   reasonType?: string;
+  isCredit?: boolean | number;
+  is_credit?: boolean | number;
+  supplierId?: number;
 }
 
 export const InventoryControl: React.FC = () => {
@@ -140,7 +147,7 @@ export const InventoryControl: React.FC = () => {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [batchData, setBatchData] = useState<Record<string, any[]>>({});
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
-  const [returnBatchData, setReturnBatchData] = useState<{ingId: string, batchNo: string, maxQty: number, unit: string, name: string, supplier_id?: string} | null>(null);
+  const [returnBatchData, setReturnBatchData] = useState<any>(null);
   const [returnQty, setReturnQty] = useState<number | "">("");
   const [returnNote, setReturnNote] = useState("");
   const [printReturnData, setPrintReturnData] = useState<any>(null);
@@ -155,7 +162,6 @@ export const InventoryControl: React.FC = () => {
   const [showStocktakePrintModal, setShowStocktakePrintModal] = useState<boolean>(false);
 
   const [showImportExportModal, setShowImportExportModal] = useState(false);
-  const [activeTxMenu, setActiveTxMenu] = useState<string | null>(null);
   const [showAlertsPanel, setShowAlertsPanel] = useState(false);
 
   // Debt Payment State
@@ -220,8 +226,7 @@ export const InventoryControl: React.FC = () => {
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
   const [newCategoryForm, setNewCategoryForm] = useState({ name: "", code: "", description: "" });
 
-  // State for Stocktake input quantities
-  const [stocktakeValues, setStocktakeValues] = useState<{ [id: string]: string }>({});
+
 
   // Helper to sync menu status with Redux ingredients stock
   const triggerInventoryMenuSync = (currentIngredients = reduxIngredients) => {
@@ -483,15 +488,7 @@ export const InventoryControl: React.FC = () => {
         toast.success(`Đã nạp thành công 2 giao dịch lịch sử từ file ${fileName}`);
         break;
       case "stocktake":
-        // Prefill actual quantities for stocktake values
-        const updatedStocktake: { [id: string]: string } = {};
-        reduxIngredients.forEach(ing => {
-          // Add a small discrepancy for mock demo
-          const randomDiscrepancy = Math.random() > 0.5 ? (Math.random() > 0.5 ? 1 : -1) * (ing.unit === "kg" ? 0.5 : 10) : 0;
-          updatedStocktake[ing.id] = Math.max(0, ing.stock + randomDiscrepancy).toFixed(ing.unit === "kg" ? 1 : 0);
-        });
-        setStocktakeValues(updatedStocktake);
-        toast.success(`Đã nhập dữ liệu thực tế kiểm kê từ file ${fileName}. Hãy nhấn Cân đối tồn kho để áp dụng.`);
+        toast.success(`Đã nhập dữ liệu thực tế kiểm kê từ file ${fileName}.`);
         break;
       case "expiry":
         setExpiryBatches([
@@ -714,8 +711,7 @@ export const InventoryControl: React.FC = () => {
   };
 
   // Perform Stocktake adjustment
-  // @ts-ignore
-  const _handleApplyStocktake = async () => {
+  const handleApplyStocktake = async () => {
     let changed = false;
 
     for (const ing of reduxIngredients) {
@@ -1288,91 +1284,246 @@ export const InventoryControl: React.FC = () => {
 
   const [printReceiptData, setPrintReceiptData] = useState<any>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
+
+  const groupedImportSlips = useMemo(() => {
+    const groups: { [key: string]: any } = {};
+
+    filteredImportTransactions.forEach((tx) => {
+      const reasonStr = tx.reasonOrSupplier || "";
+      const parts = reasonStr.split(" - Ghi chú: ");
+      const rawSupplierText = parts[0] || "Khác";
+      const cleanSupplier = rawSupplierText
+        .replace(/\[SLIP:[^\]]+\]\s*/g, "")
+        .replace("[LƯU TẠM] ", "")
+        .replace("Nhập hàng từ ", "")
+        .trim() || "Nhà cung cấp";
+      
+      const isDraft = reasonStr.includes("[LƯU TẠM]") || (tx as any).status === "draft" || (tx as any).note?.includes("[LƯU TẠM]");
+      const isCreditTx = Boolean(tx.isCredit || (tx as any).is_credit || reasonStr.includes("Công nợ") || reasonStr.includes("chịu"));
+      
+      const slipMatch = reasonStr.match(/\[SLIP:([^\]]+)\]/);
+      const dateMinuteStr = new Date(tx.timestamp).toISOString().slice(0, 16);
+      const groupKey = slipMatch ? slipMatch[1] : `${dateMinuteStr}_${cleanSupplier}_${isDraft ? 'draft' : 'done'}`;
+      const ticketCode = slipMatch ? slipMatch[1] : `PN${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}-${String(tx.id).slice(-4)}`;
+
+      const qty = Math.abs(Number(tx.quantity) || 0);
+      const price = Number(tx.unit_cost) || 0;
+      const total = qty * price;
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          id: groupKey,
+          ticketCode,
+          timestamp: tx.timestamp,
+          supplierName: cleanSupplier,
+          userName: "Nhân viên kho",
+          isDraft,
+          isCredit: isCreditTx,
+          note: parts[1] || "",
+          items: [],
+          totalAmount: 0,
+          paidAmount: 0,
+          debtAmount: 0,
+          rawTxList: []
+        };
+      }
+
+      groups[groupKey].rawTxList.push(tx);
+      groups[groupKey].items.push({
+        draftTxId: tx.id,
+        ingredientId: (tx as any).ingredient_id || tx.id,
+        ingredientName: tx.ingredientName,
+        code: `SP${String(tx.id).padStart(6, '0')}`,
+        unit: tx.unit || "kg",
+        quantity: qty,
+        unitCost: price,
+        total: total,
+        batchNo: tx.batchNo || "-",
+        expiryDate: tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"
+      });
+
+      groups[groupKey].totalAmount += total;
+      groups[groupKey].paidAmount += isCreditTx ? 0 : total;
+      groups[groupKey].debtAmount += isCreditTx ? total : 0;
+    });
+
+    return Object.values(groups);
+  }, [filteredImportTransactions]);
+
+  const groupedReturnSlips = useMemo(() => {
+    const groups: { [key: string]: any } = {};
+
+    filteredReturnTransactions.forEach((tx) => {
+      const reasonStr = tx.reasonOrSupplier || "";
+      const parts = reasonStr.split(" - Ghi chú: ");
+      const rawSupplierText = parts[0] || "Khác";
+      const cleanSupplier = rawSupplierText
+        .replace(/\[SLIP:[^\]]+\]\s*/g, "")
+        .replace("[LƯU TẠM] ", "")
+        .replace("Trả hàng cho ", "")
+        .trim() || "Nhà cung cấp";
+      
+      const isDraft = reasonStr.includes("[LƯU TẠM]") || (tx as any).status === "draft" || (tx as any).note?.includes("[LƯU TẠM]");
+      const isCreditTx = Boolean(tx.isCredit || (tx as any).is_credit || reasonStr.includes("Công nợ") || reasonStr.includes("trừ nợ"));
+      
+      const slipMatch = reasonStr.match(/\[SLIP:([^\]]+)\]/);
+      const dateMinuteStr = new Date(tx.timestamp).toISOString().slice(0, 16);
+      const groupKey = slipMatch ? slipMatch[1] : `${dateMinuteStr}_${cleanSupplier}_${isDraft ? 'draft' : 'done'}`;
+      const ticketCode = slipMatch ? slipMatch[1] : `TXT${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}-${String(tx.id).slice(-4)}`;
+
+      const qty = Math.abs(Number(tx.quantity) || 0);
+      const price = Number(tx.unit_cost) || 0;
+      const total = qty * price;
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          id: groupKey,
+          ticketCode,
+          timestamp: tx.timestamp,
+          supplierName: cleanSupplier,
+          userName: "Quản trị viên",
+          isDraft,
+          isCredit: isCreditTx,
+          note: parts[1] || "",
+          items: [],
+          totalAmount: 0,
+          paidAmount: 0,
+          debtAmount: 0,
+          rawTxList: []
+        };
+      }
+
+      groups[groupKey].rawTxList.push(tx);
+      groups[groupKey].items.push({
+        draftTxId: tx.id,
+        ingredientId: (tx as any).ingredient_id || tx.id,
+        ingredientName: tx.ingredientName,
+        code: `SP${String(tx.id).padStart(6, '0')}`,
+        unit: tx.unit || "kg",
+        quantity: qty,
+        unitCost: price,
+        total: total,
+        batchNo: tx.batchNo || "-",
+        expiryDate: tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"
+      });
+
+      groups[groupKey].totalAmount += total;
+      groups[groupKey].paidAmount += isCreditTx ? 0 : total;
+      groups[groupKey].debtAmount += isCreditTx ? total : 0;
+    });
+
+    return Object.values(groups);
+  }, [filteredReturnTransactions]);
+
+  useEffect(() => {
+    if (showPrintModal && printReceiptData) {
+      const timer = setTimeout(() => {
+        window.print();
+        setShowPrintModal(false);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [showPrintModal, printReceiptData]);
 
   const renderPrintModal = () => {
-    if (!showPrintModal || !printReceiptData) return null;
+    if (!printReceiptData) return null;
     const d = printReceiptData;
+    const totalItemsQty = d.items ? d.items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0), 0) : 0;
+    const isReturn = d.title === "PHIẾU XUẤT TRẢ";
+
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
-        <div className="bg-white rounded-2xl border border-slate-200 max-w-2xl w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
-          <button
-            onClick={() => setShowPrintModal(false)}
-            className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer print:hidden"
-          >
-            <X size={18} />
-          </button>
-          
-          {/* Printable Receipt Layout matching Image 3 */}
-          <div className="p-4 text-slate-900 text-sm font-sans" id="printable-receipt">
-            <div className="text-center mb-6 border-b border-slate-200 pb-4">
-              <div className="text-xs text-slate-500 font-semibold mb-1">Phần mềm quản lý bán hàng BISTRO</div>
-              <h2 className="text-xl font-black uppercase tracking-wider text-slate-900">{d.title || "PHIẾU XUẤT TRẢ"}</h2>
-              <div className="text-sm font-bold text-slate-700 mt-1">{d.ticketCode || "TXT202608020001"}</div>
-            </div>
+      <div id="sunolike-print-area" className="hidden print:block text-black bg-white font-sans text-xs">
+        <style>{`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            #sunolike-print-area, #sunolike-print-area * {
+              visibility: visible !important;
+            }
+            #sunolike-print-area {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              padding: 20px !important;
+              background: white !important;
+              color: black !important;
+              display: block !important;
+            }
+          }
+        `}</style>
 
-            <div className="grid grid-cols-2 gap-4 text-xs font-semibold mb-6 text-slate-700">
-              <div>
-                <div><span className="font-extrabold">Nhà cung cấp:</span> {d.supplierName || "(không nhập)"}</div>
-                <div><span className="font-extrabold">Ngày thực hiện:</span> {d.dateStr || new Date().toLocaleString("vi-VN")}</div>
-              </div>
-              <div>
-                <div><span className="font-extrabold">Người thực hiện:</span> {d.userName || "Nhân viên kho"}</div>
-                <div><span className="font-extrabold">Trạng thái:</span> {d.isDraft ? "LƯU TẠM (Nháp)" : "Hoàn thành"}</div>
-              </div>
-            </div>
+        {/* Top Header matching Image 2 */}
+        <div className="text-center text-[10px] text-black font-normal mb-6">
+          Phần mềm quản lý bán hàng BISTRO
+        </div>
 
-            <table className="w-full border-collapse border border-slate-900 text-xs mb-6">
-              <thead>
-                <tr className="bg-slate-100 font-extrabold text-slate-900 border-b border-slate-900">
-                  <th className="border border-slate-900 px-2 py-1.5 text-center w-10">STT</th>
-                  <th className="border border-slate-900 px-2 py-1.5 text-left">Hàng hóa</th>
-                  <th className="border border-slate-900 px-2 py-1.5 text-center w-16">SL</th>
-                  <th className="border border-slate-900 px-2 py-1.5 text-right w-24">Giá</th>
-                  <th className="border border-slate-900 px-2 py-1.5 text-right w-28">Thành tiền</th>
+        {/* Document Title & Ticket Code matching Image 2 */}
+        <div className="text-center mb-6">
+          <h2 className="text-base font-bold uppercase tracking-wider text-black">
+            {isReturn ? "PHIẾU XUẤT TRẢ" : "HOÁ ĐƠN NHẬP HÀNG"}
+          </h2>
+          <div className="text-xs font-bold text-black mt-0.5">
+            {d.ticketCode || "TN202681231311"}
+          </div>
+        </div>
+
+        {/* Metadata info section matching Image 2 */}
+        <div className="mb-4 text-xs font-semibold text-black space-y-0.5">
+          <div><span className="font-bold">Nhà cung cấp:</span> {d.supplierName || "(không nhập)"}</div>
+          <div><span className="font-bold">{isReturn ? "Ngày xuất trả:" : "Ngày nhập:"}</span> {d.dateStr || new Date().toLocaleString("vi-VN")}</div>
+          <div><span className="font-bold">{isReturn ? "Người xuất:" : "Người nhập:"}</span> {d.userName || "Quản trị viên"}</div>
+        </div>
+
+        {/* Table matching Image 2 */}
+        <table className="w-full border-collapse border border-black text-xs mb-4">
+          <thead>
+            <tr className="border-b border-black">
+              <th className="border border-black px-2 py-1 text-center w-10 font-bold">STT</th>
+              <th className="border border-black px-2 py-1 text-left font-bold">Hàng hóa</th>
+              <th className="border border-black px-2 py-1 text-center w-14 font-bold">SL</th>
+              <th className="border border-black px-2 py-1 text-right w-24 font-bold">{isReturn ? "Giá trả" : "Đơn giá"}</th>
+              <th className="border border-black px-2 py-1 text-right w-28 font-bold">Thành tiền</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.items && d.items.length > 0 ? (
+              d.items.map((it: any, idx: number) => (
+                <tr key={idx} className="border-b border-black">
+                  <td className="border border-black px-2 py-1 text-center font-bold">{idx + 1}</td>
+                  <td className="border border-black px-2 py-1 font-bold">{it.name}</td>
+                  <td className="border border-black px-2 py-1 text-center font-bold">{it.quantity}</td>
+                  <td className="border border-black px-2 py-1 text-right font-normal">{(it.price || 0).toLocaleString("vi-VN")}</td>
+                  <td className="border border-black px-2 py-1 text-right font-bold">{(it.total || 0).toLocaleString("vi-VN")}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {d.items && d.items.length > 0 ? (
-                  d.items.map((it: any, idx: number) => (
-                    <tr key={idx} className="border-b border-slate-300">
-                      <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{idx + 1}</td>
-                      <td className="border border-slate-900 px-2 py-1.5 font-bold text-slate-800">{it.name}</td>
-                      <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{it.quantity}</td>
-                      <td className="border border-slate-900 px-2 py-1.5 text-right font-medium">{(it.price || 0).toLocaleString()}</td>
-                      <td className="border border-slate-900 px-2 py-1.5 text-right font-bold">{(it.total || 0).toLocaleString()}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="border border-slate-900 px-2 py-4 text-center text-slate-500 italic">Không có danh sách mặt hàng</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="border border-black px-2 py-3 text-center italic">Không có danh sách mặt hàng</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
 
-            <div className="flex flex-col items-end gap-1 text-xs font-bold text-slate-800 mb-6">
-              <div>Tổng thanh toán: <span className="text-sm font-black">{Number(d.totalAmount || 0).toLocaleString()} đ</span></div>
-              <div>Đã đưa: <span className="font-extrabold">{Number(d.paidAmount || 0).toLocaleString()} đ</span></div>
-              <div>Còn nợ: <span className="font-extrabold text-rose-600">{Number(d.debtAmount || 0).toLocaleString()} đ</span></div>
-              {d.note && <div className="mt-2 text-slate-600 font-normal italic">Ghi chú: {d.note}</div>}
-            </div>
-
-            <div className="flex justify-end gap-3 print:hidden border-t border-slate-200 pt-4">
-              <button
-                type="button"
-                onClick={() => setShowPrintModal(false)}
-                className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-xs hover:bg-slate-50 cursor-pointer"
-              >
-                Đóng
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 cursor-pointer flex items-center gap-1.5 shadow-md shadow-blue-600/20"
-              >
-                <Printer size={14} /> In phiếu
-              </button>
-            </div>
+        {/* Summary Breakdown matching Image 2 */}
+        <div className="flex justify-between items-start text-xs text-black font-semibold mb-6">
+          <div>
+            {d.note && (
+              <div>
+                <div className="font-bold">Ghi chú:</div>
+                <div className="font-normal">{d.note}</div>
+              </div>
+            )}
+          </div>
+          <div className="text-right space-y-0.5">
+            <div>Tổng số lượng: <span className="font-bold ml-8">{totalItemsQty}</span></div>
+            <div>Tổng thanh toán: <span className="font-bold ml-8">{Number(d.totalAmount || 0).toLocaleString("vi-VN")}</span></div>
+            <div>{isReturn ? "Đã đưa:" : "Đã thanh toán:"} <span className="font-bold ml-8">{Number(d.paidAmount || 0).toLocaleString("vi-VN")}</span></div>
+            {Number(d.debtAmount || 0) > 0 && (
+              <div>Còn nợ: <span className="font-bold ml-8">{Number(d.debtAmount || 0).toLocaleString("vi-VN")}</span></div>
+            )}
           </div>
         </div>
       </div>
@@ -1440,7 +1591,7 @@ export const InventoryControl: React.FC = () => {
   const alertCount = (lowStockCount > 0 ? 1 : 0) + (expiryAlertCount > 0 ? 1 : 0);
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800">
+    <div className="w-full flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800">
 
       {/* 1. Header Area */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-5 border-b border-slate-200 gap-4 print-hide">
@@ -2025,12 +2176,9 @@ export const InventoryControl: React.FC = () => {
                   ))}
                 </div>
               </div>
-
             </div>
           </div>
         )}
-
-        {/* Tab 3: Nhập hàng */}
         {activeTab === "import_history" && (
           <div className="flex flex-col gap-4">
             {/* Header & Filter Bar matching Image 2 */}
@@ -2084,72 +2232,227 @@ export const InventoryControl: React.FC = () => {
                     <th scope="col" className="px-5 py-3 text-center">Số lượng</th>
                     <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
                     <th scope="col" className="px-5 py-3 text-left">Hạn sử dụng</th>
+                    <th scope="col" className="px-5 py-3 text-center">Trạng thái</th>
                     <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                  {filteredImportTransactions.length === 0 ? (
+                  {groupedImportSlips.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={9} className="px-5 py-8 text-center text-slate-400 font-medium">
                         Không tìm thấy phiếu nhập hàng nào.
                       </td>
                     </tr>
                   ) : (
-                    filteredImportTransactions.map((tx) => {
-                      const codeStr = `PN${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}${String(tx.id).slice(-4)}`;
-                      const reasonStr = tx.reasonOrSupplier || "";
-                      const parts = reasonStr.split(" - Ghi chú: ");
-                      const supplierText = parts[0] || "Khác";
+                    groupedImportSlips.map((slip: any) => {
+                      const firstItem = slip.items[0];
+                      const totalItemsCount = slip.items.length;
+                      const totalQtyVal = slip.items.reduce((s: number, i: any) => s + i.quantity, 0);
+                      const displayIngName = totalItemsCount > 1 
+                        ? `${firstItem.ingredientName} (+${totalItemsCount - 1} mặt hàng khác)`
+                        : firstItem.ingredientName;
+                      const displayBatch = totalItemsCount > 1 ? `${firstItem.batchNo}...` : firstItem.batchNo;
+                      const displayExpiry = firstItem.expiryDate || "-";
 
+                      const handleOpenSlip = () => {
+                        if (slip.isDraft) {
+                          setInitialImportData(slip.items.map((it: any) => {
+                            const matchIng = reduxIngredients.find(i => i.name === it.ingredientName);
+                            return {
+                              ticketCode: slip.ticketCode,
+                              draftTxId: it.draftTxId,
+                              ingredientId: matchIng ? matchIng.id : it.ingredientId,
+                              ingredientName: it.ingredientName,
+                              code: it.code,
+                              quantity: it.quantity,
+                              unitCost: it.unitCost,
+                              batchNo: it.batchNo,
+                              expiryDate: it.expiryDate,
+                              note: slip.note,
+                              isCredit: slip.isCredit,
+                              supplierId: suppliers.find(s => s.name === slip.supplierName)?.id
+                            };
+                          }));
+                          setCurrentView("importGoods");
+                        } else {
+                          setPrintReceiptData({
+                            title: "PHIẾU NHẬP HÀNG",
+                            ticketCode: slip.ticketCode,
+                            supplierName: slip.supplierName,
+                            dateStr: new Date(slip.timestamp).toLocaleString("vi-VN"),
+                            userName: slip.userName,
+                            isDraft: false,
+                            items: slip.items.map((i: any) => ({
+                              name: i.ingredientName,
+                              quantity: i.quantity,
+                              price: i.unitCost,
+                              total: i.total
+                            })),
+                            totalAmount: slip.totalAmount,
+                            paidAmount: slip.paidAmount,
+                            debtAmount: slip.debtAmount,
+                            note: slip.note
+                          });
+                          setShowPrintModal(true);
+                        }
+                      };
                       return (
-                        <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap">{codeStr}</td>
-                          <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
-                            {new Date(tx.timestamp).toLocaleString("vi-VN", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit"
-                            })}
-                          </td>
-                          <td className="px-5 py-3 text-slate-800 font-bold">{supplierText}</td>
-                          <td className="px-5 py-3 font-extrabold text-slate-800">{tx.ingredientName}</td>
-                          <td className="px-5 py-3 text-center">
-                            <span className="font-black text-blue-600">
-                              +{Number(tx.quantity).toLocaleString("vi-VN")} {tx.unit}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 font-semibold text-slate-700">{tx.batchNo || "-"}</td>
-                          <td className="px-5 py-3 font-semibold text-slate-700">
-                            {tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"}
-                          </td>
-                          <td className="px-5 py-3 text-center relative">
-                            <button
-                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors cursor-pointer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveTxMenu(activeTxMenu === tx.id.toString() ? null : tx.id.toString());
-                              }}
-                            >
-                              <MoreHorizontal size={16} />
-                            </button>
-                            {activeTxMenu === tx.id.toString() && (
-                              <div className="absolute right-8 top-10 bg-white border border-slate-200 shadow-xl rounded-xl py-1 z-50 min-w-[140px] text-left">
+                        <React.Fragment key={slip.id}>
+                          <tr 
+                            onClick={() => setExpandedTxId(expandedTxId === slip.id ? null : slip.id)}
+                            className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                          >
+                            <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap flex items-center gap-1.5">
+                              {expandedTxId === slip.id ? <ChevronDown size={14} className="text-blue-600" /> : <ChevronRight size={14} className="text-slate-400" />}
+                              {slip.ticketCode}
+                            </td>
+                            <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
+                              {new Date(slip.timestamp).toLocaleString("vi-VN", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </td>
+                            <td className="px-5 py-3 text-slate-800 font-bold">{slip.supplierName}</td>
+                            <td className="px-5 py-3 font-extrabold text-slate-800">{displayIngName}</td>
+                            <td className="px-5 py-3 text-center">
+                              <span className="font-black text-blue-600">
+                                {totalItemsCount > 1 ? `${totalItemsCount} món (${totalQtyVal} ${firstItem.unit})` : `+${totalQtyVal} ${firstItem.unit}`}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 font-semibold text-slate-700">{displayBatch}</td>
+                            <td className="px-5 py-3 font-semibold text-slate-700">{displayExpiry}</td>
+                            <td className="px-5 py-3 text-center">
+                              {slip.isDraft ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">
+                                  LƯU TẠM
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  HOÀN THÀNH
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                {slip.isDraft && (
+                                  <button
+                                    className="p-1 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
+                                    title="Chỉnh sửa phiếu lưu tạm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenSlip();
+                                    }}
+                                  >
+                                    <Pencil size={15} />
+                                  </button>
+                                )}
                                 <button
-                                  className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-2 cursor-pointer"
+                                  className="p-1 hover:bg-blue-100 rounded-lg text-blue-700 transition-colors cursor-pointer"
+                                  title="In phiếu"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setActiveTxMenu(null);
-                                    toast.success(`Xem chi tiết phiếu nhập ${codeStr}`);
+                                    setPrintReceiptData({
+                                      title: "PHIẾU NHẬP HÀNG",
+                                      ticketCode: slip.ticketCode,
+                                      supplierName: slip.supplierName,
+                                      dateStr: new Date(slip.timestamp).toLocaleString("vi-VN"),
+                                      userName: slip.userName,
+                                      isDraft: slip.isDraft,
+                                      items: slip.items.map((i: any) => ({
+                                        name: i.ingredientName,
+                                        quantity: i.quantity,
+                                        price: i.unitCost,
+                                        total: i.total
+                                      })),
+                                      totalAmount: slip.totalAmount,
+                                      paidAmount: slip.paidAmount,
+                                      debtAmount: slip.debtAmount,
+                                      note: slip.note
+                                    });
+                                    setShowPrintModal(true);
                                   }}
                                 >
-                                  <Eye size={14} className="text-blue-600" /> Xem chi tiết
+                                  <Printer size={15} />
                                 </button>
                               </div>
-                            )}
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
+
+                          {/* Accordion Expandable Detail Row matching Image 2 */}
+                          {expandedTxId === slip.id && (
+                            <tr className="bg-slate-50/90 border-b-2 border-slate-300">
+                              <td colSpan={9} className="p-4">
+                                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
+                                  {/* Left: Items Table */}
+                                  <div className="lg:col-span-2">
+                                    <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-blue-600"></span> Danh sách hàng hóa chi tiết ({slip.items.length} món)
+                                    </h4>
+                                    <table className="w-full border-collapse border border-slate-200 text-xs">
+                                      <thead>
+                                        <tr className="bg-slate-100 font-bold text-slate-700 border-b border-slate-200">
+                                          <th className="p-2 text-center w-8">#</th>
+                                          <th className="p-2 text-left">Tên hàng hoá</th>
+                                          <th className="p-2 text-center w-16">SL</th>
+                                          <th className="p-2 text-right w-24">Giá nhập</th>
+                                          <th className="p-2 text-right w-28">Thành tiền</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {slip.items.map((it: any, idx: number) => (
+                                          <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                                            <td className="p-2 text-center font-bold">{idx + 1}</td>
+                                            <td className="p-2">
+                                              <div className="font-bold text-slate-800">{it.ingredientName}</div>
+                                              <div className="text-[10px] text-slate-400">Mã: {it.code}</div>
+                                            </td>
+                                            <td className="p-2 text-center font-bold text-blue-700">{it.quantity} {it.unit}</td>
+                                            <td className="p-2 text-right">{it.unitCost.toLocaleString("vi-VN")} đ</td>
+                                            <td className="p-2 text-right font-bold text-slate-900">{it.total.toLocaleString("vi-VN")} đ</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+
+                                  {/* Right: Summary Breakdown */}
+                                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-center space-y-3">
+                                    <div className="flex justify-between items-center pb-2 border-b border-slate-200 text-slate-600 font-semibold">
+                                      <span className="flex items-center gap-1.5"><Package size={14} className="text-slate-500" /> Số món:</span>
+                                      <span className="font-bold text-slate-900">{slip.items.length} món ({totalQtyVal} {firstItem.unit})</span>
+                                    </div>
+                                    <div className="flex justify-between items-center pb-2 border-b border-slate-200 text-slate-600 font-semibold">
+                                      <span className="flex items-center gap-1.5"><DollarSign size={14} className="text-slate-500" /> Tổng tiền:</span>
+                                      <span className="font-extrabold text-slate-900 text-sm">{slip.totalAmount.toLocaleString("vi-VN")} đ</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-slate-600 font-semibold">
+                                      <span className="flex items-center gap-1.5"><CreditCard size={14} className="text-slate-500" /> Đã trả:</span>
+                                      <span className={`font-extrabold text-sm ${slip.isCredit ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                        {slip.paidAmount.toLocaleString("vi-VN")} đ {slip.isCredit && "(Ghi nợ NCC)"}
+                                      </span>
+                                    </div>
+                                    {slip.isDraft && (
+                                      <div className="pt-2 border-t border-slate-200 text-right">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenSlip();
+                                          }}
+                                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                                        >
+                                          <Pencil size={13} /> Chỉnh sửa phiếu lưu tạm
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -2260,67 +2563,196 @@ export const InventoryControl: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                    {filteredReturnTransactions.length === 0 ? (
+                    {groupedReturnSlips.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium">
                           Không tìm thấy phiếu xuất trả nhà cung cấp nào.
                         </td>
                       </tr>
                     ) : (
-                      filteredReturnTransactions.map((tx) => {
-                        const codeStr = `TXT${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}${String(tx.id).slice(-4)}`;
-                        const reasonStr = tx.reasonOrSupplier || "";
-                        const parts = reasonStr.split(" - Ghi chú: ");
-                        const supplierText = parts[0] || "(không nhập)";
+                      groupedReturnSlips.map((slip: any) => {
+                        const firstItem = slip.items[0];
+                        const totalItemsCount = slip.items.length;
+                        const totalQtyVal = slip.items.reduce((s: number, i: any) => s + i.quantity, 0);
+                        const displayIngName = totalItemsCount > 1 
+                          ? `${firstItem.ingredientName} (+${totalItemsCount - 1} mặt hàng khác)`
+                          : firstItem.ingredientName;
+                        const displayBatch = totalItemsCount > 1 ? `${firstItem.batchNo}...` : firstItem.batchNo;
+
+                        const handleOpenReturnSlip = () => {
+                          if (slip.isDraft) {
+                            setReturnBatchData({
+                              ticketCode: slip.ticketCode,
+                              draftTxId: firstItem.draftTxId,
+                              items: slip.items.map((it: any) => {
+                                const matchIng = reduxIngredients.find(i => i.name === it.ingredientName);
+                                return {
+                                  draftTxId: it.draftTxId,
+                                  ingredientId: matchIng ? matchIng.id : it.ingredientId,
+                                  ingredientName: it.ingredientName,
+                                  code: it.code,
+                                  quantity: it.quantity,
+                                  unitCost: it.unitCost,
+                                  batchNo: it.batchNo,
+                                  unit: it.unit
+                                };
+                              }),
+                              note: slip.note,
+                              isCredit: slip.isCredit,
+                              supplierId: suppliers.find(s => s.name === slip.supplierName)?.id
+                            });
+                            setCurrentView("returnGoods");
+                          } else {
+                            setPrintReceiptData({
+                              title: "PHIẾU XUẤT TRẢ",
+                              ticketCode: slip.ticketCode,
+                              supplierName: slip.supplierName,
+                              dateStr: new Date(slip.timestamp).toLocaleString("vi-VN"),
+                              userName: slip.userName,
+                              isDraft: false,
+                              items: slip.items.map((i: any) => ({
+                                name: i.ingredientName,
+                                quantity: i.quantity,
+                                price: i.unitCost,
+                                total: i.total
+                              })),
+                              totalAmount: slip.totalAmount,
+                              paidAmount: slip.paidAmount,
+                              debtAmount: slip.debtAmount,
+                              note: slip.note
+                            });
+                            setShowPrintModal(true);
+                          }
+                        };
 
                         return (
-                          <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap flex items-center gap-1.5">
-                              {codeStr}
-                              {(tx.reasonOrSupplier?.includes('[LƯU TẠM]') || tx.note?.includes('[LƯU TẠM]')) && (
-                                <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-black uppercase">LƯU TẠM</span>
-                              )}
-                            </td>
-                            <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
-                              {new Date(tx.timestamp).toLocaleString("vi-VN", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit"
-                              })}
-                            </td>
-                            <td className="px-5 py-3 text-slate-800 font-bold">{supplierText.replace("[LƯU TẠM] ", "")}</td>
-                            <td className="px-5 py-3 font-extrabold text-slate-800">{tx.ingredientName}</td>
-                            <td className="px-5 py-3 text-center">
-                              <span className="font-black text-rose-600">
-                                -{Math.abs(Number(tx.quantity)).toLocaleString("vi-VN")} {tx.unit}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3 font-semibold text-slate-700">{tx.batchNo || "-"}</td>
-                            <td className="px-5 py-3 text-slate-600 font-medium max-w-[200px] truncate">{parts[1] || tx.reasonType || "-"}</td>
-                            <td className="px-5 py-3 text-center relative">
-                              <button
-                                onClick={() => {
-                                  setPrintReturnData({
-                                    code: codeStr,
-                                    date: tx.timestamp,
-                                    supplier: supplierText.replace("[LƯU TẠM] ", ""),
-                                    items: [{ name: tx.ingredientName, quantity: Math.abs(tx.quantity), price: tx.unit_cost || 0, total: Math.abs(tx.quantity) * (tx.unit_cost || 0) }],
-                                    totalAmount: Math.abs(tx.quantity) * (tx.unit_cost || 0),
-                                    paidAmount: Math.abs(tx.quantity) * (tx.unit_cost || 0),
-                                    note: parts[1] || "",
-                                    isDraft: tx.reasonOrSupplier?.includes('[LƯU TẠM]') || tx.note?.includes('[LƯU TẠM]'),
-                                  });
-                                  setShowReturnReceiptModal(true);
-                                }}
-                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                title="In phiếu"
-                              >
-                                <Printer size={15} />
-                              </button>
-                            </td>
-                          </tr>
+                          <React.Fragment key={slip.id}>
+                            <tr 
+                              onClick={() => setExpandedTxId(expandedTxId === slip.id ? null : slip.id)}
+                              className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                            >
+                              <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap flex items-center gap-1.5">
+                                {expandedTxId === slip.id ? <ChevronDown size={14} className="text-blue-600" /> : <ChevronRight size={14} className="text-slate-400" />}
+                                {slip.ticketCode}
+                                {slip.isDraft && (
+                                  <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-black uppercase">LƯU TẠM</span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
+                                {new Date(slip.timestamp).toLocaleString("vi-VN", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit"
+                                })}
+                              </td>
+                              <td className="px-5 py-3 text-slate-800 font-bold">{slip.supplierName}</td>
+                              <td className="px-5 py-3 font-extrabold text-slate-800">{displayIngName}</td>
+                              <td className="px-5 py-3 text-center">
+                                <span className="font-black text-rose-600">
+                                  {totalItemsCount > 1 ? `${totalItemsCount} món (-${totalQtyVal} ${firstItem.unit})` : `-${totalQtyVal} ${firstItem.unit}`}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 font-semibold text-slate-700">{displayBatch}</td>
+                              <td className="px-5 py-3 text-slate-600 font-medium max-w-[200px] truncate">{slip.note || "-"}</td>
+                              <td className="px-5 py-3 text-center relative">
+                                <div className="flex items-center justify-center gap-2">
+                                  {slip.isDraft && (
+                                    <button
+                                      className="p-1 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
+                                      title="Chỉnh sửa phiếu lưu tạm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenReturnSlip();
+                                      }}
+                                    >
+                                      <Pencil size={15} />
+                                    </button>
+                                  )}
+                                  <button
+                                    className="p-1 hover:bg-blue-100 rounded-lg text-blue-700 transition-colors cursor-pointer"
+                                    title="In phiếu"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPrintReceiptData({
+                                        title: "PHIẾU XUẤT TRẢ",
+                                        ticketCode: slip.ticketCode,
+                                        supplierName: slip.supplierName,
+                                        dateStr: new Date(slip.timestamp).toLocaleString("vi-VN"),
+                                        userName: slip.userName,
+                                        isDraft: slip.isDraft,
+                                        items: slip.items.map((i: any) => ({
+                                          name: i.ingredientName,
+                                          quantity: i.quantity,
+                                          price: i.unitCost,
+                                          total: i.total
+                                        })),
+                                        totalAmount: slip.totalAmount,
+                                        paidAmount: slip.paidAmount,
+                                        debtAmount: slip.debtAmount,
+                                        note: slip.note
+                                      });
+                                      setShowPrintModal(true);
+                                    }}
+                                  >
+                                    <Printer size={15} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* Accordion Expandable Detail Row for Return Slip */}
+                            {expandedTxId === slip.id && (
+                              <tr className="bg-slate-50/90 border-b-2 border-slate-300">
+                                <td colSpan={8} className="p-4">
+                                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
+                                    <div className="lg:col-span-2">
+                                      <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-rose-600"></span> Danh sách hàng xuất trả chi tiết ({slip.items.length} món)
+                                      </h4>
+                                      <table className="w-full border-collapse border border-slate-200 text-xs">
+                                        <thead>
+                                          <tr className="bg-slate-100 font-bold text-slate-700 border-b border-slate-200">
+                                            <th className="p-2 text-center w-8">#</th>
+                                            <th className="p-2 text-left">Tên hàng hoá</th>
+                                            <th className="p-2 text-center w-16">SL trả</th>
+                                            <th className="p-2 text-right w-24">Giá trả</th>
+                                            <th className="p-2 text-right w-28">Thành tiền</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {slip.items.map((it: any, idx: number) => (
+                                            <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                                              <td className="p-2 text-center font-bold">{idx + 1}</td>
+                                              <td className="p-2">
+                                                <div className="font-bold text-slate-800">{it.ingredientName}</div>
+                                                <div className="text-[10px] text-slate-400">Mã: {it.code}</div>
+                                              </td>
+                                              <td className="p-2 text-center font-bold text-rose-700">{it.quantity} {it.unit}</td>
+                                              <td className="p-2 text-right">{it.unitCost.toLocaleString("vi-VN")} đ</td>
+                                              <td className="p-2 text-right font-bold text-slate-900">{it.total.toLocaleString("vi-VN")} đ</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-center space-y-3">
+                                      <div className="flex justify-between items-center pb-2 border-b border-slate-200 text-slate-600 font-semibold">
+                                        <span className="flex items-center gap-1.5"><Package size={14} className="text-slate-500" /> Số món:</span>
+                                        <span className="font-bold text-slate-900">{slip.items.length} món ({totalQtyVal} {firstItem.unit})</span>
+                                      </div>
+                                      <div className="flex justify-between items-center pb-2 border-b border-slate-200 text-slate-600 font-semibold">
+                                        <span className="flex items-center gap-1.5"><DollarSign size={14} className="text-slate-500" /> Tổng giá trị:</span>
+                                        <span className="font-extrabold text-slate-900 text-sm">{slip.totalAmount.toLocaleString("vi-VN")} đ</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })
                     )}
@@ -2639,23 +3071,7 @@ export const InventoryControl: React.FC = () => {
                   <Plus size={12} /> Thêm lô hàng mới
                 </button>
                 <button
-                  onClick={async () => {
-                    const expired = expiryBatches.filter(b => getExpiryLabel(b.expiryDate).status === "expired");
-                    if (expired.length === 0) {
-                      toast.success("Không có lô hàng nào hết hạn.");
-                      return;
-                    }
-                    if (window.confirm(`Bạn có muốn tiêu hủy toàn bộ ${expired.length} lô hết hạn không?`)) {
-                      try {
-                        await wasteExpiredBatchesApi();
-                        toast.success(`Đã tiêu hủy thành công ${expired.length} lô hàng hết hạn!`);
-                        fetchAllBatchesData();
-                        getIngredientsApi().then((data) => setReduxIngredients(data));
-                      } catch (err) {
-                        toast.error("Có lỗi xảy ra khi tiêu hủy.");
-                      }
-                    }
-                  }}
+                  onClick={handleWasteExpiredBatches}
                   className="px-3 py-1.5 bg-white text-rose-600 border border-rose-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow hover:bg-rose-50"
                 >
                   <Trash2 size={12} /> Tiêu hủy tất cả lô hết hạn
@@ -2780,34 +3196,40 @@ export const InventoryControl: React.FC = () => {
                               >
                                 Nhập hàng
                               </button>
-                              <button
-                                onClick={async () => {
-                                  if (window.confirm(`Bạn có muốn tiêu hủy ${b.quantity} ${b.unit} của lô ${b.batchNo}?`)) {
-                                    try {
-                                      const ing = reduxIngredients.find(i => i.name === b.ingredientName);
-                                      if (ing) {
-                                        await updateInventoryQuantityApi(ing.id as string, {
-                                          quantity: b.quantity,
-                                          type: "waste",
-                                          batchNo: b.batchNo,
-                                          reasonOrSupplier: `Tiêu hủy lô hàng hỏng/quá hạn (${b.batchNo})`,
-                                          isCredit: false
-                                        });
-                                        toast.success("Tiêu hủy thành công!");
-                                        fetchAllBatchesData();
-                                        getIngredientsApi().then((data) => setReduxIngredients(data));
-                                      } else {
-                                        toast.error("Không tìm thấy nguyên liệu trong danh sách!");
+                              {(expiryInfo.status === "expired" || expiryInfo.status === "near") && (
+                                <button
+                                  onClick={async () => {
+                                    if (window.confirm(`Bạn có muốn tiêu hủy ${b.quantity} ${b.unit} của lô ${b.batchNo}?`)) {
+                                      try {
+                                        const ing = reduxIngredients.find(i => i.name === b.ingredientName);
+                                        if (ing) {
+                                          await updateInventoryQuantityApi(ing.id as string, {
+                                            quantity: Number(b.quantity),
+                                            type: "waste",
+                                            batchNo: b.batchNo,
+                                            reasonType: "expired",
+                                            reasonOrSupplier: `Tiêu hủy lô hàng (${b.batchNo})`,
+                                            isCredit: false
+                                          });
+                                          toast.success("Tiêu hủy thành công!");
+                                          setExpiryBatches(prev => prev.filter(item => item.id !== b.id));
+                                          fetchAllBatchesData();
+                                          getIngredientsApi().then((data) => setReduxIngredients(data));
+                                          getInventoryTransactionsApi().then((data) => setTransactions(data));
+                                        } else {
+                                          toast.error("Không tìm thấy nguyên liệu trong danh sách!");
+                                        }
+                                      } catch (err: any) {
+                                        console.error("Waste batch error:", err);
+                                        toast.error(err?.response?.data?.message || "Lỗi khi tiêu hủy lô hàng!");
                                       }
-                                    } catch (err) {
-                                      toast.error("Lỗi khi tiêu hủy lô hàng!");
                                     }
-                                  }
-                                }}
-                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[10px] font-bold cursor-pointer transition-colors border border-rose-200/50"
-                              >
-                                Tiêu hủy
-                              </button>
+                                  }}
+                                  className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[10px] font-bold cursor-pointer transition-colors border border-rose-200/50"
+                                >
+                                  Tiêu hủy
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -3222,74 +3644,7 @@ export const InventoryControl: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Phiếu In Trả Hàng */}
-      {printReturnData && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 print:bg-white print:p-0">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl p-6 relative print:shadow-none print:p-0 print:border-none border border-slate-200">
-            {/* Các nút điều khiển hiển thị khi không in */}
-            <div className="flex justify-end gap-2 mb-4 print:hidden">
-              <button
-                onClick={() => setPrintReturnData(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold rounded-lg"
-              >
-                ĐÓNG
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white flex gap-2 items-center text-xs font-extrabold rounded-lg shadow-sm"
-              >
-                <Printer size={16} /> IN PHIẾU
-              </button>
-            </div>
 
-            {/* Nội dung phiếu in */}
-            <div className="text-black bg-white p-4" id="print-receipt">
-              <div className="text-center mb-6">
-                <h2 className="text-xl font-bold uppercase mb-1">Phiếu Xuất Trả</h2>
-                <p className="text-sm font-semibold">{printReturnData.date}</p>
-                <p className="text-xs mt-1">Người xuất: <span className="font-semibold">Quản trị viên</span></p>
-              </div>
-
-              <table className="w-full text-sm border-collapse border border-black mb-4">
-                <thead>
-                  <tr>
-                    <th className="border border-black px-2 py-1 text-left w-12">STT</th>
-                    <th className="border border-black px-2 py-1 text-left">Hàng hóa</th>
-                    <th className="border border-black px-2 py-1 text-left">Mã lô</th>
-                    <th className="border border-black px-2 py-1 text-right">SL Trả</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="border border-black px-2 py-1">1</td>
-                    <td className="border border-black px-2 py-1 font-bold">{printReturnData.name}</td>
-                    <td className="border border-black px-2 py-1 font-mono text-xs">{printReturnData.batchNo}</td>
-                    <td className="border border-black px-2 py-1 text-right font-bold">
-                      {printReturnData.qty} {printReturnData.unit}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div className="mb-6">
-                <p className="text-sm font-bold">Ghi chú:</p>
-                <p className="text-sm border-b border-dotted border-black pb-1 min-h-[20px]">{printReturnData.note}</p>
-              </div>
-
-              <div className="grid grid-cols-2 text-center text-sm pt-4">
-                <div>
-                  <p className="font-bold">Người xuất trả</p>
-                  <p className="text-xs italic mt-1">(Ký, ghi rõ họ tên)</p>
-                </div>
-                <div>
-                  <p className="font-bold">Đại diện nhà cung cấp</p>
-                  <p className="text-xs italic mt-1">(Ký, xác nhận)</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal A: Thêm nguyên liệu mới */}
       {
