@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { X, Search, Plus, Minus, Utensils, Check } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { getWaiterMenuItems, getWaiterCategories, type WaiterMenuItem, type WaiterCategory } from "../../../services/waiterService";
 
 interface AddDishModalProps {
@@ -192,28 +193,59 @@ export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tab
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {filteredItems.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => setSelectedItem(item)}
-                  className="flex items-center justify-between p-3 rounded-xl border border-sky-100 hover:border-sky-500 transition-all cursor-pointer bg-white shadow-xs hover:shadow-md"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src={getImageUrl(item)}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-700 truncate">{item.name}</p>
-                      <p className="text-xs font-semibold text-sky-600 mt-0.5">
-                        {Number(item.price).toLocaleString("vi-VN")} đ
-                      </p>
+              {filteredItems.map((item) => {
+                const isUnavailable = !item.is_active || item.available === false || item.out_of_stock || item.is_expired;
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      if (isUnavailable) {
+                        toast.error(item.stock_status_reason || `⚠️ Món "${item.name}" không thể thêm do nguyên liệu trong kho đã HẾT HÀNG hoặc HẾT HẠN sử dụng!`);
+                        return;
+                      }
+                      setSelectedItem(item);
+                    }}
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                      isUnavailable 
+                        ? "border-rose-100 bg-rose-50/20 opacity-70 cursor-not-allowed" 
+                        : "border-sky-100 hover:border-sky-500 cursor-pointer bg-white shadow-xs hover:shadow-md"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative shrink-0">
+                        <img
+                          src={getImageUrl(item)}
+                          alt=""
+                          className={`w-12 h-12 rounded-lg object-cover ${isUnavailable ? 'grayscale-[40%]' : ''}`}
+                        />
+                        {item.is_expired && (
+                          <span className="absolute -top-1 -left-1 bg-amber-600 text-white text-[8px] font-black px-1 py-0.2 rounded shadow-xs">
+                            HẾT HẠN
+                          </span>
+                        )}
+                        {(item.out_of_stock || !item.is_active) && !item.is_expired && (
+                          <span className="absolute -top-1 -left-1 bg-rose-600 text-white text-[8px] font-black px-1 py-0.2 rounded shadow-xs">
+                            HẾT HÀNG
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-700 truncate">{item.name}</p>
+                        <p className="text-xs font-semibold text-sky-600 mt-0.5">
+                          {Number(item.price).toLocaleString("vi-VN")} đ
+                        </p>
+                        {item.is_expired && (
+                          <span className="text-[9px] text-amber-600 font-bold block">Hết hạn kho</span>
+                        )}
+                        {(item.out_of_stock || !item.is_active) && !item.is_expired && (
+                          <span className="text-[9px] text-rose-500 font-bold block">Hết tồn kho</span>
+                        )}
+                      </div>
                     </div>
+                    {!isUnavailable && <Plus size={16} className="text-gray-400 shrink-0" />}
                   </div>
-                  <Plus size={16} className="text-gray-400 shrink-0" />
-                </div>
-              ))}
+                );
+              })}
               {filteredItems.length === 0 && (
                 <p className="col-span-2 text-center text-xs text-gray-400 py-8">
                   Không tìm thấy món ăn nào phù hợp.

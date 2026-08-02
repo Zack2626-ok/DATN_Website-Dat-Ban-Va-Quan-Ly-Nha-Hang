@@ -11,6 +11,10 @@ export interface WaiterMenuItem {
   kitchen_station: "hot_kitchen" | "bar" | "cold_kitchen";
   is_featured: number;
   is_active: number;
+  available?: boolean;
+  out_of_stock?: boolean;
+  is_expired?: boolean;
+  stock_status_reason?: string;
 }
 
 export interface WaiterCategory {
