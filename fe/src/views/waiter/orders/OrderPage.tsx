@@ -198,6 +198,12 @@ export const OrderPage: React.FC = () => {
       }
       return false;
     }
+
+    if (targetItem.out_of_stock || targetItem.is_expired || targetItem.available === false) {
+      toast.error(targetItem.stock_status_reason || `⚠️ Không thể thêm món "${targetItem.name}" do nguyên liệu trong kho đã HẾT HÀNG hoặc HẾT HẠN sử dụng!`);
+      return false;
+    }
+
     try {
       let currentOrderId = orderId;
       // Nếu chưa có order, tạo mới
@@ -265,8 +271,9 @@ export const OrderPage: React.FC = () => {
 
       toast.success(`Đã thêm ${qty} phần "${targetItem.name}" vào order`);
       return true;
-    } catch {
-      toast.error("Không thể thêm món. Vui lòng thử lại.");
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || "Không thể thêm món. Vui lòng thử lại.";
+      toast.error(msg);
       return false;
     }
   };
@@ -571,60 +578,80 @@ export const OrderPage: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto">
-              {filteredMenu.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    if (isOrderLocked) {
-                      if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
-                        toast.error("⚠️ Bàn đang yêu cầu thanh toán (Chờ thanh toán). Hệ thống đã khóa gọi thêm món để tránh sai lệch hóa đơn!");
-                      } else {
-                        toast.error("⚠️ Đơn hàng đã hoàn tất hoặc đã hủy, không thể gọi thêm món!");
+              {filteredMenu.map((item) => {
+                const isUnavailable = !item.is_active || item.available === false || item.out_of_stock || item.is_expired;
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      if (isOrderLocked) {
+                        if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
+                          toast.error("⚠️ Bàn đang yêu cầu thanh toán (Chờ thanh toán). Hệ thống đã khóa gọi thêm món để tránh sai lệch hóa đơn!");
+                        } else {
+                          toast.error("⚠️ Đơn hàng đã hoàn tất hoặc đã hủy, không thể gọi thêm món!");
+                        }
+                        return;
                       }
-                      return;
-                    }
-                    if (item.is_active) setAddItemTarget(item);
-                  }}
-                  className={`flex flex-col rounded-xl border text-left transition-all relative ${
-                    !item.is_active || isOrderLocked
-                      ? "border-sky-50 opacity-50 cursor-not-allowed"
-                      : "border-sky-100 hover:border-blue-200 hover:shadow-md cursor-pointer group"
-                  }`}
-                >
-                  <div className="w-full h-24 overflow-hidden rounded-t-xl shrink-0 relative">
-                    <img
-                      src={getImageUrl(item)}
-                      alt={item.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
-                      }}
-                    />
-                  </div>
-                  <div className="p-2.5 bg-white rounded-b-xl flex items-end justify-between gap-1.5 flex-1">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-700 leading-tight line-clamp-2">{item.name}</p>
-                      <p className="text-xs font-semibold text-blue-600 mt-1">
-                        {Number(item.price).toLocaleString("vi-VN")}₫
-                      </p>
-                      {!item.is_active && (
-                        <span className="text-[9px] text-red-500 font-bold block mt-0.5">Hết hàng</span>
+                      if (isUnavailable) {
+                        toast.error(item.stock_status_reason || `⚠️ Món "${item.name}" không thể thêm do nguyên liệu trong kho đã HẾT HÀNG hoặc HẾT HẠN sử dụng!`);
+                        return;
+                      }
+                      setAddItemTarget(item);
+                    }}
+                    className={`flex flex-col rounded-xl border text-left transition-all relative ${
+                      isUnavailable || isOrderLocked
+                        ? "border-rose-100 bg-rose-50/20 opacity-70 cursor-not-allowed"
+                        : "border-sky-100 hover:border-blue-200 hover:shadow-md cursor-pointer group"
+                    }`}
+                  >
+                    <div className="w-full h-24 overflow-hidden rounded-t-xl shrink-0 relative">
+                      <img
+                        src={getImageUrl(item)}
+                        alt={item.name}
+                        className={`w-full h-full object-cover transition-transform duration-300 ${isUnavailable ? 'grayscale-[40%]' : 'group-hover:scale-105'}`}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200";
+                        }}
+                      />
+                      {item.is_expired && (
+                        <div className="absolute top-1 left-1 bg-amber-600/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-1">
+                          ⚠️ HẾT HẠN KHO
+                        </div>
+                      )}
+                      {(item.out_of_stock || !item.is_active) && !item.is_expired && (
+                        <div className="absolute top-1 left-1 bg-rose-600/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-1">
+                          ❌ HẾT HÀNG
+                        </div>
                       )}
                     </div>
-                    {item.is_active && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleQuickAdd(e, item)}
-                        className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs shrink-0 active:scale-95"
-                        title="Thêm nhanh 1 phần"
-                      >
-                        <Plus size={18} className="stroke-[2.5]" />
-                      </button>
-                    )}
+                    <div className="p-2.5 bg-white rounded-b-xl flex items-end justify-between gap-1.5 flex-1">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-700 leading-tight line-clamp-2">{item.name}</p>
+                        <p className="text-xs font-semibold text-blue-600 mt-1">
+                          {Number(item.price).toLocaleString("vi-VN")}₫
+                        </p>
+                        {item.is_expired && (
+                          <span className="text-[9px] text-amber-600 font-bold block mt-0.5">Hết hạn kho</span>
+                        )}
+                        {(item.out_of_stock || !item.is_active) && !item.is_expired && (
+                          <span className="text-[9px] text-rose-500 font-bold block mt-0.5">Hết tồn kho</span>
+                        )}
+                      </div>
+                      {!isUnavailable && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleQuickAdd(e, item)}
+                          className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs shrink-0 active:scale-95"
+                          title="Thêm nhanh 1 phần"
+                        >
+                          <Plus size={18} className="stroke-[2.5]" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {filteredMenu.length === 0 && !menuLoading && (
                 <div className="col-span-3 py-10 text-center text-gray-400 text-sm">
                   Không tìm thấy món phù hợp

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { saveOrder, getOrders, updateOrderStatus, Order, createNotification } from "../utils/db";
+import { saveOrder, getOrders, updateOrderStatus, Order, createNotification, checkMenuItemAvailability } from "../utils/db";
 import { sendOrderReceiptEmail } from "../utils/email";
 import { sendSuccess, sendError } from "../utils/response";
 
@@ -33,6 +33,18 @@ export const createOrderHandler = async (req: Request, res: Response): Promise<v
     if (!customerName || !customerPhone) {
       sendError(res, "Họ tên và Số điện thoại khách hàng là bắt buộc!", 400);
       return;
+    }
+
+    // Kiểm tra kho (tồn kho & hết hạn) cho từng món trong đơn
+    for (const item of items) {
+      const menuItemId = item.menu_item_id || item.id;
+      if (menuItemId) {
+        const availCheck = await checkMenuItemAvailability(Number(menuItemId));
+        if (!availCheck.available) {
+          sendError(res, availCheck.reason || `Món '${item.name || menuItemId}' đã hết hàng hoặc hết hạn sử dụng!`, 400);
+          return;
+        }
+      }
     }
 
     const orderId = id || `ord_${orderType}_${Math.random().toString(36).substr(2, 9)}`;

@@ -835,51 +835,58 @@ INSERT INTO recipe_items (recipe_id, ingredient_id, quantity) VALUES
  (12, 9, 0.2000), (12,10, 0.0500);
 
 CREATE TABLE stock_in (
-    id            INT           NOT NULL AUTO_INCREMENT,
-    ingredient_id INT           NOT NULL,
-    quantity      DECIMAL(10,3) NOT NULL,
-    unit_cost     DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    supplier_id   INT           DEFAULT NULL,
-    note          TEXT          DEFAULT NULL,
-    created_by    INT           NOT NULL,
-    created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id                 INT           NOT NULL AUTO_INCREMENT,
+    ingredient_id      INT           NOT NULL,
+    batch_code         VARCHAR(50)   NOT NULL,
+    quantity           DECIMAL(10,3) NOT NULL,
+    remaining_quantity DECIMAL(10,3) NOT NULL,
+    unit_cost          DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    supplier_id        INT           DEFAULT NULL,
+    expiry_date        DATE          DEFAULT NULL,
+    note               TEXT          DEFAULT NULL,
+    created_by         INT           NOT NULL,
+    created_at         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     CONSTRAINT fk_stockin_ingredient FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE RESTRICT,
     CONSTRAINT fk_stockin_supplier   FOREIGN KEY (supplier_id)   REFERENCES suppliers(id)   ON DELETE SET NULL,
     CONSTRAINT fk_stockin_user       FOREIGN KEY (created_by)    REFERENCES users(id)       ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO stock_in (ingredient_id, quantity, unit_cost, supplier_id, note, created_by, created_at) VALUES
- (1, 50.000, 250000.00, 1, 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
- (2, 40.000, 120000.00, 1, 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
- (3, 20.000, 400000.00, 2, 'Nhập hàng tháng 7', 2, '2026-07-01 08:30:00'),
- (4, 30.000, 180000.00, 2, 'Nhập hàng tháng 7', 2, '2026-07-01 08:30:00'),
- (5, 25.000,  30000.00, 3, 'Nhập hàng tháng 7', 2, '2026-07-01 09:00:00'),
- (6,100.000,  20000.00, 3, 'Nhập gạo tháng 7',  2, '2026-07-01 09:00:00'),
- (9, 15.000,  80000.00, 3, 'Nhập trái cây',      2, '2026-07-10 09:00:00'),
- (10,30.000,  25000.00, 3, 'Nhập bột mì',        2, '2026-07-10 09:00:00');
+INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, created_at) VALUES
+ (1, 'LOT-TB-0701', 50.000, 47.500, 250000.00, 1, '2026-08-15', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
+ (2, 'LOT-TG-0701', 40.000, 39.700, 120000.00, 1, '2026-08-05', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
+ (3, 'LOT-CH-0701', 20.000, 20.000, 400000.00, 2, '2026-07-28', 'Cá hồi sắp hết hạn', 2, '2026-07-01 08:30:00'),
+ (4, 'LOT-TM-0701', 30.000, 29.100, 180000.00, 2, '2026-08-10', 'Nhập hàng tháng 7', 2, '2026-07-01 08:30:00'),
+ (5, 'LOT-RA-0701', 25.000, 24.750,  30000.00, 3, '2026-08-02', 'Nhập hàng tháng 7', 2, '2026-07-01 09:00:00'),
+ (6, 'LOT-GA-0701', 100.000, 100.000, 20000.00, 3, NULL, 'Gạo không hết hạn',  2, '2026-07-01 09:00:00'),
+ (9, 'LOT-TC-0710', 15.000, 15.000,  80000.00, 3, '2026-08-01', 'Nhập trái cây',      2, '2026-07-10 09:00:00'),
+ (10,'LOT-BM-0710', 30.000, 30.000,  25000.00, 3, '2027-07-10', 'Nhập bột mì',        2, '2026-07-10 09:00:00'),
+ (1, 'LOT-TB-0801', 10.000,  8.000, 260000.00, 1, '2026-09-01', 'Lô hàng có trả lại NCC', 2, '2026-08-01 08:00:00');
 
 CREATE TABLE stock_out (
     id             INT           NOT NULL AUTO_INCREMENT,
     ingredient_id  INT           NOT NULL,
+    stock_in_id    INT           DEFAULT NULL,
     quantity       DECIMAL(10,3) NOT NULL,
-    reason         ENUM('waste','internal_use','expired','sale_deduction','other') NOT NULL DEFAULT 'other',
+    reason         ENUM('waste','internal_use','expired','sale_deduction','return_to_supplier','other') NOT NULL DEFAULT 'other',
     ref_invoice_id INT           DEFAULT NULL,
     note           TEXT          DEFAULT NULL,
     created_by     INT           DEFAULT NULL,
     created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     CONSTRAINT fk_stockout_ingredient FOREIGN KEY (ingredient_id) REFERENCES ingredients(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_stockout_stockin    FOREIGN KEY (stock_in_id)   REFERENCES stock_in(id)    ON DELETE RESTRICT,
     CONSTRAINT fk_stockout_user       FOREIGN KEY (created_by)    REFERENCES users(id)       ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO stock_out (ingredient_id, quantity, reason, ref_invoice_id, note, created_by, created_at) VALUES
- (1, 2.500, 'sale_deduction', NULL, 'Trừ kho bán hàng các order hoàn thành',  NULL, '2026-07-30 19:00:00'),
- (2, 0.300, 'sale_deduction', NULL, 'Trừ kho gà nướng',                        NULL, '2026-07-30 19:00:00'),
- (3, 0.200, 'sale_deduction', NULL, 'Trừ kho cá hồi',                          NULL, '2026-07-30 19:00:00'),
- (4, 0.900, 'sale_deduction', NULL, 'Trừ kho tôm',                             NULL, '2026-07-30 19:00:00'),
- (5, 0.250, 'waste',          NULL, 'Rau sống hư không dùng được',              2,    '2026-07-30 07:30:00'),
- (8, 0.050, 'internal_use',   NULL, 'Dùng nội bộ vệ sinh bếp',                 2,    '2026-07-30 08:00:00');
+INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, ref_invoice_id, note, created_by, created_at) VALUES
+ (1, 1, 2.500, 'sale_deduction',     NULL, 'Trừ kho bán hàng các order hoàn thành',  NULL, '2026-07-30 19:00:00'),
+ (2, 2, 0.300, 'sale_deduction',     NULL, 'Trừ kho gà nướng',                        NULL, '2026-07-30 19:00:00'),
+ (3, 3, 0.200, 'sale_deduction',     NULL, 'Trừ kho cá hồi',                          NULL, '2026-07-30 19:00:00'),
+ (4, 4, 0.900, 'sale_deduction',     NULL, 'Trừ kho tôm',                             NULL, '2026-07-30 19:00:00'),
+ (5, 5, 0.250, 'waste',              NULL, 'Rau sống hư không dùng được',              2,    '2026-07-30 07:30:00'),
+ (8, NULL, 0.050, 'internal_use',    NULL, 'Dùng nội bộ vệ sinh bếp',                 2,    '2026-07-30 08:00:00'),
+ (1, 9, 2.000, 'return_to_supplier', NULL, 'Thịt bò bị hỏng lúc giao, trả lại NCC',    2,    '2026-08-01 08:30:00');
 
 CREATE TABLE stock_inventory (
     id            INT           NOT NULL AUTO_INCREMENT,

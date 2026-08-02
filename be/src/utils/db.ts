@@ -809,6 +809,38 @@ const runSchemaMigrations = async (): Promise<void> => {
     `);
     console.log("✅ Migration: recalculated all customer member_level with new tier thresholds");
 
+    // Migration: Add batch_code, expiry_date, remaining_quantity, is_credit, due_date to stock_in
+    const stockInCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_in' AND COLUMN_NAME = 'batch_code'`
+    );
+    if (stockInCols.length === 0) {
+      await query(`
+        ALTER TABLE stock_in 
+        ADD COLUMN batch_code VARCHAR(50) NOT NULL DEFAULT 'LOT-OLD' AFTER ingredient_id,
+        ADD COLUMN remaining_quantity DECIMAL(10,3) NOT NULL DEFAULT 0 AFTER quantity,
+        ADD COLUMN expiry_date DATE DEFAULT NULL AFTER supplier_id,
+        ADD COLUMN is_credit TINYINT(1) NOT NULL DEFAULT 0,
+        ADD COLUMN due_date DATE DEFAULT NULL
+      `);
+      await query(`UPDATE stock_in SET remaining_quantity = quantity WHERE remaining_quantity = 0`);
+      console.log("✅ Migration: added batch_code, expiry_date, remaining_quantity to stock_in table");
+    }
+
+    // Migration: Add stock_in_id and update reason ENUM in stock_out
+    const stockOutCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_out' AND COLUMN_NAME = 'stock_in_id'`
+    );
+    if (stockOutCols.length === 0) {
+      await query(`
+        ALTER TABLE stock_out 
+        ADD COLUMN stock_in_id INT DEFAULT NULL AFTER ingredient_id,
+        MODIFY COLUMN reason ENUM('waste','internal_use','expired','sale_deduction','return_to_supplier','other') NOT NULL DEFAULT 'other'
+      `);
+      console.log("✅ Migration: added stock_in_id to stock_out table");
+    }
+
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -3619,6 +3651,105 @@ export const splitResmanagerTable = async (
 };
 
 // ===== WAITER/MENU DATABASE OPERATIONS =====
+export const checkMenuItemAvailability = async (menuItemId: number): Promise<{ available: boolean; reason?: string; is_expired?: boolean; out_of_stock?: boolean }> => {
+  const menuCheck = await query<any[]>(`
+    SELECT id, name, is_active FROM menu_items WHERE id = ? AND is_deleted = 0
+  `, [menuItemId]).catch(() => []);
+
+  if (!menuCheck || menuCheck.length === 0) {
+    return { available: false, reason: "Món ăn không tồn tại hoặc đã bị xóa!" };
+  }
+
+  const menuItemName = menuCheck[0].name;
+
+  if (!menuCheck[0].is_active) {
+    return { available: false, reason: `Món '${menuItemName}' đang tạm ngưng phục vụ!` };
+  }
+
+  // 1. Kiểm tra nguyên liệu qua công thức recipe_items
+  const recipeIngredients = await query<any[]>(`
+    SELECT 
+      i.id as ingredient_id, 
+      i.name as ingredient_name, 
+      i.current_stock
+    FROM recipes r
+    JOIN recipe_items ri ON r.id = ri.recipe_id
+    JOIN ingredients i ON ri.ingredient_id = i.id
+    WHERE r.menu_item_id = ? AND i.is_deleted = 0
+  `, [menuItemId]).catch(() => []);
+
+  if (recipeIngredients && recipeIngredients.length > 0) {
+    for (const ing of recipeIngredients) {
+      if (Number(ing.current_stock) <= 0) {
+        return {
+          available: false,
+          out_of_stock: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.ingredient_name}' đã HẾT HÀNG trong kho (Tồn kho = 0)!`
+        };
+      }
+
+      const validBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND (expiry_date IS NULL OR expiry_date >= CURDATE())
+      `, [ing.ingredient_id]).catch(() => []);
+
+      const expiredBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND expiry_date IS NOT NULL AND expiry_date < CURDATE()
+      `, [ing.ingredient_id]).catch(() => []);
+
+      if (validBatches.length === 0 && expiredBatches.length > 0) {
+        return {
+          available: false,
+          is_expired: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.ingredient_name}' trong kho đã HẾT HẠN SỬ DỤNG!`
+        };
+      }
+    }
+  } else {
+    // 2. Fallback: đối chiếu từ khóa tên nguyên liệu với tên món ăn
+    const matchedIngredients = await query<any[]>(`
+      SELECT id, name, current_stock
+      FROM ingredients
+      WHERE is_deleted = 0 AND ? LIKE CONCAT('%', name, '%')
+    `, [menuItemName]).catch(() => []);
+
+    for (const ing of matchedIngredients) {
+      if (Number(ing.current_stock) <= 0) {
+        return {
+          available: false,
+          out_of_stock: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.name}' đã HẾT HÀNG trong kho!`
+        };
+      }
+
+      const validBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND (expiry_date IS NULL OR expiry_date >= CURDATE())
+      `, [ing.id]).catch(() => []);
+
+      const expiredBatches = await query<any[]>(`
+        SELECT id FROM stock_in
+        WHERE ingredient_id = ? AND remaining_quantity > 0
+          AND expiry_date IS NOT NULL AND expiry_date < CURDATE()
+      `, [ing.id]).catch(() => []);
+
+      if (validBatches.length === 0 && expiredBatches.length > 0) {
+        return {
+          available: false,
+          is_expired: true,
+          reason: `Không thể thêm món '${menuItemName}': Nguyên liệu '${ing.name}' trong kho đã HẾT HẠN SỬ DỤNG!`
+        };
+      }
+    }
+  }
+
+  return { available: true };
+};
+
 export const getResmanagerMenuItems = async (categoryId?: number): Promise<any[]> => {
   let sql = `
     SELECT m.*, c.name AS category_name
@@ -3631,7 +3762,17 @@ export const getResmanagerMenuItems = async (categoryId?: number): Promise<any[]
     sql += " AND m.category_id = ?";
     params.push(categoryId);
   }
-  return query(sql, params);
+  const items = await query<any[]>(sql, params);
+
+  for (const item of items) {
+    const avail = await checkMenuItemAvailability(item.id);
+    item.available = avail.available;
+    item.out_of_stock = avail.out_of_stock || false;
+    item.is_expired = avail.is_expired || false;
+    item.stock_status_reason = avail.reason || null;
+  }
+
+  return items;
 };
 
 export const getResmanagerCategories = async (): Promise<any[]> => {
@@ -3794,12 +3935,42 @@ export const deductInventoryForItem = async (orderItemId: string | number): Prom
         [totalUsed, recipe.ingredient_id]
       );
 
-      // 4. Update stock_out
-      await query(
-        `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
-         VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động khi bếp nấu xong', NOW())`,
-        [recipe.ingredient_id, totalUsed]
+      // 4. FEFO Deduction logic
+      let remainingToDeduct = totalUsed;
+      const batches = await query<any[]>(
+        `SELECT id, remaining_quantity FROM stock_in 
+         WHERE ingredient_id = ? AND remaining_quantity > 0 
+           AND (expiry_date >= CURDATE() OR expiry_date IS NULL)
+         ORDER BY expiry_date ASC, created_at ASC`,
+        [recipe.ingredient_id]
       );
+
+      for (const batch of batches) {
+        if (remainingToDeduct <= 0) break;
+        const deductQty = Math.min(batch.remaining_quantity, remainingToDeduct);
+        
+        await query(
+          `UPDATE stock_in SET remaining_quantity = remaining_quantity - ? WHERE id = ?`,
+          [deductQty, batch.id]
+        );
+
+        await query(
+          `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_at)
+           VALUES (?, ?, ?, 'sale_deduction', 'Trừ kho tự động theo FEFO (nấu món)', NOW())`,
+          [recipe.ingredient_id, batch.id, deductQty]
+        );
+
+        remainingToDeduct -= deductQty;
+      }
+
+      // If still remaining (negative stock theoretically), just record generic stock out
+      if (remainingToDeduct > 0) {
+        await query(
+          `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
+           VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động (âm kho/không rõ lô)', NOW())`,
+          [recipe.ingredient_id, remainingToDeduct]
+        );
+      }
     }
   } catch (error: any) {
     console.error(`❌ Error deducting inventory for item ${orderItemId}:`, error.message);
@@ -3974,6 +4145,13 @@ export const completeActiveBookingForTable = async (tableId: number): Promise<bo
 };
 
 export const addResmanagerOrderItem = async (data: any): Promise<any> => {
+  if (data.menu_item_id) {
+    const availCheck = await checkMenuItemAvailability(Number(data.menu_item_id));
+    if (!availCheck.available) {
+      throw new Error(availCheck.reason || "Món ăn đã hết hàng hoặc nguyên liệu trong kho đã hết hạn!");
+    }
+  }
+
   if (!data.bypass_status_check && data.order_id) {
     const orderCheck = await query<any[]>(`
       SELECT o.status as order_status, t.status as table_status
