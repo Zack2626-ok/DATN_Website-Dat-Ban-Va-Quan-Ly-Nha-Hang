@@ -9,7 +9,7 @@ import {
   ONLINE_BOOKING_LAST_ARRIVAL_TIME,
   RESTAURANT_HOURS,
 } from "../constants/booking";
-import { getBookingTimeValidationError } from "./bookingTime";
+import { getBookingDateValidationError, getBookingTimeValidationError } from "./bookingTime";
 import { sendBookingConfirmationEmail } from "./email";
 import { notifyWaitersAboutBooking } from "./telegram";
 import { getPhoneNumberValidationError } from "./validation";
@@ -25,6 +25,7 @@ const BOT_COMMAND = {
 const BOT_ACTION = {
   VIEW_MENU: "📋 Xem thực đơn",
   CREATE_BOOKING: "📅 Đặt bàn",
+  CHECK_TABLE_AVAILABILITY: "🔎 Kiểm tra bàn trống",
   HOURS: "🕐 Giờ mở cửa",
   CONTACT: "☎️ Liên hệ",
   SKIP_EMAIL: "Bỏ qua",
@@ -33,6 +34,19 @@ const BOT_ACTION = {
   CHANGE_DATE: "📅 Đổi ngày",
   CANCEL_BOOKING: "❌ Hủy",
 } as const;
+
+const BOOKING_OPTION_CALLBACK = {
+  SELECT: "option:",
+  PAGE: "option-page:",
+} as const;
+
+const TABLE_AVAILABILITY_CALLBACK = {
+  START: "action:table-availability",
+} as const;
+
+const BOOKING_OPTIONS_PER_PAGE = 10;
+const TABLE_CODE_PATTERN = /^B\d+$/i;
+const MINUTES_PER_HOUR = 60;
 
 /** Categories not shown in the customer-facing curated restaurant menu. */
 const CUSTOMER_MENU_HIDDEN_CATEGORIES = new Set(["Lẩu"]);
@@ -46,6 +60,8 @@ const BOOKING_BOT_STEP = {
   PHONE: "phone",
   EMAIL: "email",
   CONFIRMATION: "confirmation",
+  AVAILABILITY_TABLE: "availability_table",
+  AVAILABILITY_DATE: "availability_date",
 } as const;
 
 type BookingBotStep = (typeof BOOKING_BOT_STEP)[keyof typeof BOOKING_BOT_STEP];
@@ -79,6 +95,7 @@ interface BookingSession {
   guestName?: string;
   guestPhone?: string;
   guestEmail?: string;
+  availabilityTableName?: string;
 }
 
 let isPolling = false;
@@ -166,6 +183,7 @@ const getMainKeyboard = (): TelegramInlineKeyboard => ({
       { text: BOT_ACTION.HOURS, callback_data: "action:hours" },
       { text: BOT_ACTION.CONTACT, callback_data: "action:contact" },
     ],
+    [{ text: BOT_ACTION.CHECK_TABLE_AVAILABILITY, callback_data: TABLE_AVAILABILITY_CALLBACK.START }],
   ],
 });
 
@@ -191,6 +209,62 @@ const formatBookingOptionLabel = (option: BookingTableAllocationOption): string 
       ? "nhiều khu"
       : "một bàn";
   return `${tableNames} · ${option.totalCapacity} chỗ · ${kindLabel}`;
+};
+
+/** Builds one navigable page of all valid table allocation choices for a Telegram booking. */
+const getBookingOptionPageKeyboard = (
+  options: BookingTableAllocationOption[],
+  page: number,
+): TelegramInlineKeyboard => {
+  const pageCount = Math.ceil(options.length / BOOKING_OPTIONS_PER_PAGE);
+  const pageStart = page * BOOKING_OPTIONS_PER_PAGE;
+  const optionRows = options
+    .slice(pageStart, pageStart + BOOKING_OPTIONS_PER_PAGE)
+    .map((option, index) => [{
+      text: formatBookingOptionLabel(option),
+      callbackData: `${BOOKING_OPTION_CALLBACK.SELECT}${pageStart + index}`,
+    }]);
+  const navigationRow: Array<{ text: string; callbackData: string }> = [];
+
+  if (page > 0) {
+    navigationRow.push({ text: "⬅️ Trang trước", callbackData: `${BOOKING_OPTION_CALLBACK.PAGE}${page - 1}` });
+  }
+  if (page < pageCount - 1) {
+    navigationRow.push({ text: "Trang sau ➡️", callbackData: `${BOOKING_OPTION_CALLBACK.PAGE}${page + 1}` });
+  }
+
+  return getChoiceKeyboard([
+    ...optionRows,
+    ...(navigationRow.length > 0 ? [navigationRow] : []),
+    [
+      { text: BOT_ACTION.CHANGE_TIME, callbackData: "action:change-time" },
+      { text: BOT_ACTION.CHANGE_DATE, callbackData: "action:change-date" },
+    ],
+    [{ text: BOT_ACTION.CANCEL_BOOKING, callbackData: "action:cancel" }],
+  ]);
+};
+
+/** Sends a page of every valid allocation, keeping non-adjacent tables available as valid choices. */
+const showBookingOptionPage = async (
+  chatId: number,
+  session: BookingSession,
+  requestedPage: number,
+): Promise<void> => {
+  const options = session.availableOptions ?? [];
+  if (options.length === 0 || !session.partySize || !session.time) {
+    await sendCustomerMessage(chatId, "Không tìm thấy phương án bàn phù hợp. Vui lòng chọn lại giờ đặt.", getMainKeyboard());
+    return;
+  }
+
+  const pageCount = Math.ceil(options.length / BOOKING_OPTIONS_PER_PAGE);
+  const page = Math.min(Math.max(requestedPage, 0), pageCount - 1);
+  const rangeStart = page * BOOKING_OPTIONS_PER_PAGE + 1;
+  const rangeEnd = Math.min(rangeStart + BOOKING_OPTIONS_PER_PAGE - 1, options.length);
+  await sendCustomerMessage(
+    chatId,
+    `Có ${options.length} phương án xếp bàn cho ${session.partySize} khách lúc ${session.time}. Trang ${page + 1}/${pageCount}, hiển thị phương án ${rangeStart}-${rangeEnd}. Bạn có thể xem toàn bộ danh sách, kể cả các bàn ở khu vực xa.`,
+    getBookingOptionPageKeyboard(options, page),
+  );
 };
 
 /** Returns a SQL DATETIME-like string from a booking date and clock time. */
@@ -250,22 +324,107 @@ const parseBookingDate = (value: string): string | null => {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 };
 
-/** Checks a requested booking date is not earlier than today in Vietnam. */
-const isPastBookingDate = (date: string): boolean => {
-  const vietnamDate = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return date < vietnamDate;
-};
-
 /** Validates a 24-hour HH:mm time supplied by a customer. */
 const isValidBookingTime = (value: string): boolean => {
   const match = /^(\d{2}):(\d{2})$/.exec(value.trim());
   if (!match) return false;
   return Number(match[1]) < 24 && Number(match[2]) < 60;
+};
+
+interface TableArrivalRange {
+  start: string;
+  end: string;
+}
+
+/** Converts a valid HH:mm restaurant-local clock value into minutes since midnight. */
+const clockToMinutes = (clock: string): number => {
+  const [hours, minutes] = clock.split(":").map(Number);
+  return hours * MINUTES_PER_HOUR + minutes;
+};
+
+/** Formats a minute offset since midnight as a customer-readable restaurant-local clock. */
+const minutesToClock = (minutes: number): string => {
+  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+  const minutePart = minutes % MINUTES_PER_HOUR;
+  return `${String(hours).padStart(2, "0")}:${String(minutePart).padStart(2, "0")}`;
+};
+
+/** Calculates arrival-time ranges that retain the configured three-hour booking service window. */
+const getAvailableArrivalRanges = (
+  bookedIntervals: db.BookingTableBookedInterval[],
+): TableArrivalRange[] => {
+  const openingMinute = clockToMinutes(RESTAURANT_HOURS.OPEN);
+  const closingMinute = clockToMinutes(RESTAURANT_HOURS.CLOSE);
+  const lastOnlineArrivalMinute = clockToMinutes(ONLINE_BOOKING_LAST_ARRIVAL_TIME);
+  const sortedIntervals = bookedIntervals
+    .map((interval) => ({
+      start: clockToMinutes(interval.start_time),
+      end: clockToMinutes(interval.end_time),
+    }))
+    .filter((interval) => interval.end > openingMinute && interval.start < closingMinute && interval.end > interval.start)
+    .sort((first, second) => first.start - second.start);
+  const ranges: TableArrivalRange[] = [];
+  let freeFromMinute = openingMinute;
+
+  for (const interval of sortedIntervals) {
+    const blockedStartMinute = Math.max(interval.start, openingMinute);
+    const blockedEndMinute = Math.min(interval.end, closingMinute);
+    const latestArrivalMinute = Math.min(
+      blockedStartMinute - BOOKING_DURATION_MINUTES,
+      lastOnlineArrivalMinute,
+    );
+
+    if (latestArrivalMinute >= freeFromMinute) {
+      ranges.push({
+        start: minutesToClock(freeFromMinute),
+        end: minutesToClock(latestArrivalMinute),
+      });
+    }
+    freeFromMinute = Math.max(freeFromMinute, blockedEndMinute);
+  }
+
+  const latestArrivalMinute = Math.min(
+    closingMinute - BOOKING_DURATION_MINUTES,
+    lastOnlineArrivalMinute,
+  );
+  if (latestArrivalMinute >= freeFromMinute) {
+    ranges.push({
+      start: minutesToClock(freeFromMinute),
+      end: minutesToClock(latestArrivalMinute),
+    });
+  }
+  return ranges;
+};
+
+/** Shows one table's booked slots and all arrival ranges still available on a valid booking date. */
+const showTableAvailability = async (
+  chatId: number,
+  tableName: string,
+  date: string,
+): Promise<void> => {
+  const availability = await db.getBookingTableAvailabilityForDate(tableName, date);
+  if (!availability) {
+    await sendCustomerMessage(
+      chatId,
+      `Không tìm thấy bàn ${tableName}. Vui lòng kiểm tra lại mã bàn, ví dụ B01.`,
+      getMainKeyboard(),
+    );
+    return;
+  }
+
+  const bookedText = availability.bookedIntervals.length > 0
+    ? availability.bookedIntervals.map((interval) => `${interval.start_time}–${interval.end_time}`).join(", ")
+    : "Chưa có lịch đặt";
+  const freeRanges = getAvailableArrivalRanges(availability.bookedIntervals);
+  const freeText = freeRanges.length > 0
+    ? freeRanges.map((range) => range.start === range.end ? range.start : `${range.start}–${range.end}`).join(", ")
+    : "Không còn khung giờ đủ 3 giờ phục vụ";
+
+  await sendCustomerMessage(
+    chatId,
+    `🔎 LỊCH BÀN ${availability.name} — ${date}\nSức chứa: ${availability.capacity} khách\n\nĐã có khách: ${bookedText}\nCó thể nhận khách lúc: ${freeText}\n\nMỗi booking được giữ khung phục vụ ${BOOKING_DURATION_MINUTES / MINUTES_PER_HOUR} giờ.`,
+    getMainKeyboard(),
+  );
 };
 
 /** Shows available menu items from the same database used by the website. */
@@ -307,6 +466,16 @@ const startBookingConversation = async (chatId: number): Promise<void> => {
   await sendCustomerMessage(
     chatId,
     `Bạn đi bao nhiêu người? Hãy nhập số nguyên từ 1 đến ${MAX_BOOKING_PARTY_SIZE}.`,
+  );
+};
+
+/** Starts the customer flow for checking the calendar availability of a specific table. */
+const startTableAvailabilityConversation = async (chatId: number): Promise<void> => {
+  bookingSessions.set(chatId, { step: BOOKING_BOT_STEP.AVAILABILITY_TABLE });
+  await sendCustomerMessage(
+    chatId,
+    "Nhập mã bàn cần kiểm tra, ví dụ B01. Tôi sẽ cho biết các khung giờ còn trống theo ngày bạn chọn.",
+    getChoiceKeyboard([[{ text: BOT_ACTION.CANCEL_BOOKING, callbackData: "action:cancel" }]]),
   );
 };
 
@@ -398,6 +567,35 @@ const handleBookingInput = async (chatId: number, session: BookingSession, text:
     return;
   }
 
+  if (session.step === BOOKING_BOT_STEP.AVAILABILITY_TABLE) {
+    const tableName = text.trim().toUpperCase();
+    if (!TABLE_CODE_PATTERN.test(tableName)) {
+      await sendCustomerMessage(chatId, "Mã bàn chưa hợp lệ. Vui lòng nhập theo dạng B01, B25 hoặc B40.");
+      return;
+    }
+    session.availabilityTableName = tableName;
+    session.step = BOOKING_BOT_STEP.AVAILABILITY_DATE;
+    await sendCustomerMessage(chatId, "Bạn muốn kiểm tra ngày nào? Nhập theo DD/MM/YYYY hoặc YYYY-MM-DD.");
+    return;
+  }
+
+  if (session.step === BOOKING_BOT_STEP.AVAILABILITY_DATE) {
+    const date = parseBookingDate(text);
+    if (!date) {
+      await sendCustomerMessage(chatId, "Ngày chưa hợp lệ. Ví dụ: 05/08/2026.");
+      return;
+    }
+    const bookingDateError = getBookingDateValidationError(date);
+    if (bookingDateError) {
+      await sendCustomerMessage(chatId, bookingDateError);
+      return;
+    }
+    const tableName = session.availabilityTableName;
+    bookingSessions.delete(chatId);
+    await showTableAvailability(chatId, tableName ?? "", date);
+    return;
+  }
+
   if (session.step === BOOKING_BOT_STEP.GUEST_COUNT) {
     const partySize = Number(text);
     if (!Number.isInteger(partySize) || partySize < 1 || partySize > MAX_BOOKING_PARTY_SIZE) {
@@ -416,8 +614,9 @@ const handleBookingInput = async (chatId: number, session: BookingSession, text:
       await sendCustomerMessage(chatId, "Ngày chưa hợp lệ. Ví dụ: 05/08/2026.");
       return;
     }
-    if (isPastBookingDate(date)) {
-      await sendCustomerMessage(chatId, "Ngày đặt bàn không được ở quá khứ.");
+    const bookingDateError = getBookingDateValidationError(date);
+    if (bookingDateError) {
+      await sendCustomerMessage(chatId, bookingDateError);
       return;
     }
     session.date = date;
@@ -447,20 +646,7 @@ const handleBookingInput = async (chatId: number, session: BookingSession, text:
     }
     session.availableOptions = options;
     session.step = BOOKING_BOT_STEP.TABLE;
-    await sendCustomerMessage(
-      chatId,
-      `Có ${options.length} phương án xếp bàn cho ${session.partySize} khách lúc ${session.time}. Các bàn chỉ được phân bổ trước, chưa gộp vật lý:`,
-      getChoiceKeyboard([
-        ...options.slice(0, 10).map((option, index) => [
-          { text: formatBookingOptionLabel(option), callbackData: `option:${index}` },
-        ]),
-        [
-          { text: BOT_ACTION.CHANGE_TIME, callbackData: "action:change-time" },
-          { text: BOT_ACTION.CHANGE_DATE, callbackData: "action:change-date" },
-        ],
-        [{ text: BOT_ACTION.CANCEL_BOOKING, callbackData: "action:cancel" }],
-      ]),
-    );
+    await showBookingOptionPage(chatId, session, 0);
     return;
   }
 
@@ -547,6 +733,11 @@ const replyToCustomer = async (chatId: number, rawText: string): Promise<void> =
     return;
   }
 
+  if (text === BOT_ACTION.CHECK_TABLE_AVAILABILITY || normalizedText === "kiểm tra bàn trống") {
+    await startTableAvailabilityConversation(chatId);
+    return;
+  }
+
   if (normalizedText === BOT_COMMAND.HOURS || text === BOT_ACTION.HOURS) {
     await sendCustomerMessage(chatId, "Nhà hàng mở cửa hằng ngày từ 10:00 đến 22:00.", getMainKeyboard());
     return;
@@ -581,6 +772,10 @@ const handleCallbackQuery = async (
   }
   if (callbackData === "action:booking") {
     await startBookingConversation(chatId);
+    return;
+  }
+  if (callbackData === TABLE_AVAILABILITY_CALLBACK.START) {
+    await startTableAvailabilityConversation(chatId);
     return;
   }
   if (callbackData === "action:hours") {
@@ -629,8 +824,15 @@ const handleCallbackQuery = async (
     await handleBookingInput(chatId, session, callbackData.slice("time:".length));
     return;
   }
-  if (callbackData.startsWith("option:")) {
-    const optionIndex = Number(callbackData.slice("option:".length));
+  if (callbackData.startsWith(BOOKING_OPTION_CALLBACK.PAGE)) {
+    const requestedPage = Number(callbackData.slice(BOOKING_OPTION_CALLBACK.PAGE.length));
+    if (Number.isInteger(requestedPage)) {
+      await showBookingOptionPage(chatId, session, requestedPage);
+      return;
+    }
+  }
+  if (callbackData.startsWith(BOOKING_OPTION_CALLBACK.SELECT)) {
+    const optionIndex = Number(callbackData.slice(BOOKING_OPTION_CALLBACK.SELECT.length));
     const option = session.availableOptions?.[optionIndex];
     if (option) {
       session.selectedOption = option;

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { TABLE_STATUS, type TableStatus } from "../constants/table";
+import { BOOKING_SCHEDULE_MODE, type BookingScheduleMode } from "../constants/booking";
 
 // Lấy tất cả khu vực bàn (table_areas)
 export const getTableAreasHandler = async (_req: Request, res: Response): Promise<void> => {
@@ -71,10 +72,42 @@ export const getTableBookingScheduleHandler = async (req: Request, res: Response
       sendError(res, "Ngày lọc phải theo định dạng YYYY-MM-DD.", 400);
       return;
     }
-    const schedule = await db.getBookingSchedule({ tableId, startDate, endDate });
+    const requestedMode = typeof req.query.mode === "string" ? req.query.mode : BOOKING_SCHEDULE_MODE.CURRENT;
+    if (requestedMode !== BOOKING_SCHEDULE_MODE.CURRENT && requestedMode !== BOOKING_SCHEDULE_MODE.HISTORY) {
+      sendError(res, "Chế độ lịch đặt không hợp lệ.", 400);
+      return;
+    }
+    const schedule = await db.getBookingSchedule({
+      tableId,
+      startDate,
+      endDate,
+      mode: requestedMode as BookingScheduleMode,
+    });
     sendSuccess(res, { table, schedule }, "Lấy lịch đặt của bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+/** Checks a booked party in and opens its linked service order within the allowed time window. */
+export const checkInTableBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    const bookingId = Number(req.params.bookingId);
+    const createdBy = Number(req.body.created_by);
+    if (!Number.isInteger(tableId) || tableId <= 0 || !Number.isInteger(bookingId) || bookingId <= 0) {
+      sendError(res, "Bàn hoặc lịch đặt không hợp lệ.", 400);
+      return;
+    }
+    if (!Number.isInteger(createdBy) || createdBy <= 0) {
+      sendError(res, "Không xác định được nhân viên thực hiện check-in.", 400);
+      return;
+    }
+    const result = await db.checkInScheduledBooking(tableId, bookingId, createdBy);
+    req.app.get("io")?.emit("table:booking_checked_in", result);
+    sendSuccess(res, result, "Khách đã đến, bàn đang được phục vụ.", 201);
+  } catch (error) {
+    sendError(res, (error as Error).message, 400);
   }
 };
 

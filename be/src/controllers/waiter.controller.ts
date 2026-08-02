@@ -86,8 +86,6 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     if (primaryTableId) {
       await db.updateResmanagerTableStatus(primaryTableId, "serving");
       // Tự động chuyển món đặt trước (nếu có) sang order_items
-      await db.transferBookingItemsToOrder(primaryTableId, order.id);
-      await db.completeActiveBookingForTable(primaryTableId);
     }
 
     sendSuccess(res, order, "Tạo order thành công", 201);

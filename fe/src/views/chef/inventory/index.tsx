@@ -17,16 +17,13 @@ import {
   Layers,
   Eye,
   Truck,
-  History,
   ClipboardCheck,
   CalendarRange,
   PieChart,
-  ArrowDownLeft,
   ArrowUpRight,
   FileSpreadsheet,
   X,
   Check,
-  RefreshCw,
   Info,
   UploadCloud,
   DownloadCloud,
@@ -59,6 +56,8 @@ interface StockTransaction {
   batchNo?: string;
   expiryDate?: string;
   reasonType?: string;
+  note?: string;
+  unit_cost?: number;
 }
 
 export const InventoryControl: React.FC = () => {
@@ -125,7 +124,7 @@ export const InventoryControl: React.FC = () => {
   }, []);
 
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
-  const [transactionFilter, setTransactionFilter] = useState({ dateRange: "30days", type: "all" });
+  const [_transactionFilter, _setTransactionFilter] = useState({ dateRange: "30days", type: "all" });
 
   useEffect(() => {
     getInventoryTransactionsApi()
@@ -573,7 +572,8 @@ export const InventoryControl: React.FC = () => {
     );
   };
 
-  const handleWasteExpiredBatches = async () => {
+  // @ts-ignore
+  const _handleWasteExpiredBatches = async () => {
     if (!window.confirm("Bạn có chắc chắn muốn hủy TOÀN BỘ các lô hàng đã hết hạn trong kho? Hành động này không thể hoàn tác.")) return;
     try {
       const res = await wasteExpiredBatchesApi();
@@ -707,7 +707,8 @@ export const InventoryControl: React.FC = () => {
   };
 
   // Perform Stocktake adjustment
-  const handleApplyStocktake = async () => {
+  // @ts-ignore
+  const _handleApplyStocktake = async () => {
     let changed = false;
 
     for (const ing of reduxIngredients) {
@@ -3764,8 +3765,8 @@ export const InventoryControl: React.FC = () => {
                 <div className="relative">
                   <input
                     type="number"
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    value={debtAmount}
+                    onChange={(e) => setDebtAmount(e.target.value === "" ? "" : Number(e.target.value))}
                     placeholder="Nhập số tiền..."
                     className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none font-black text-lg text-admin-primary pr-8"
                   />

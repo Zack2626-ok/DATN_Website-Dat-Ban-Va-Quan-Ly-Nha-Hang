@@ -54,7 +54,11 @@ export interface BookingScheduleItem {
   table_names: string;
   table_ids: string;
   total_capacity: number;
+  check_in_open_at: string;
+  check_in_close_at: string;
 }
+
+export type BookingScheduleMode = "current" | "history";
 
 export const getBookings = async (status?: string): Promise<Booking[]> => {
   const response = await api.get("/v1/bookings", { params: { status } });

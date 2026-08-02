@@ -11,6 +11,17 @@ export type BookingStatus = (typeof BOOKING_STATUS)[keyof typeof BOOKING_STATUS]
 /** Default service duration used when a customer does not choose an end time. */
 export const BOOKING_DURATION_MINUTES = 180;
 
+/** Minutes before a reservation starts when staff may begin serving it. */
+export const BOOKING_CHECK_IN_EARLY_MINUTES = 5;
+
+/** Views used to keep operational bookings separate from completed booking history. */
+export const BOOKING_SCHEDULE_MODE = {
+  CURRENT: "current",
+  HISTORY: "history",
+} as const;
+
+export type BookingScheduleMode = (typeof BOOKING_SCHEDULE_MODE)[keyof typeof BOOKING_SCHEDULE_MODE];
+
 /** Longest future period that can be reserved through the booking calendar. */
 export const BOOKING_MAX_ADVANCE_DAYS = 30;
 

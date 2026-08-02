@@ -1,6 +1,6 @@
 import api from "./axiosInstance";
 import type { TableArea } from "../interfaces/table.interface";
-import type { BookingScheduleItem } from "./bookingService";
+import type { BookingScheduleItem, BookingScheduleMode } from "./bookingService";
 
 export interface ResmanagerTable {
   id: number;
@@ -71,6 +71,18 @@ export interface GroupSeatingResult {
   guestCount: number;
 }
 
+export interface TableBookingCheckInResult {
+  orderId: number;
+  bookingId: number;
+  primaryTableId: number;
+  updatedTableIds: number[];
+}
+
+type TableStatusUpdate = {
+  status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance";
+  maintenance_note?: string;
+};
+
 export const getTableAreas = async (): Promise<TableArea[]> => {
   const response = await api.get("/v1/tables/areas");
   return response.data.data || [];
@@ -87,10 +99,22 @@ export const getTablesV1 = getTables;
 /** Loads the scheduled bookings assigned to a physical table in a calendar range. */
 export const getTableBookingSchedule = async (
   tableId: number,
-  params: { startDate?: string; endDate?: string } = {},
+  params: { startDate?: string; endDate?: string; mode?: BookingScheduleMode } = {},
 ): Promise<{ table: ResmanagerTable; schedule: BookingScheduleItem[] }> => {
   const response = await api.get(`/v1/tables/${tableId}/booking-schedule`, {
-    params: { start_date: params.startDate, end_date: params.endDate },
+    params: { start_date: params.startDate, end_date: params.endDate, mode: params.mode },
+  });
+  return response.data.data;
+};
+
+/** Checks a scheduled booking in through the server-side arrival-window validation. */
+export const checkInTableBooking = async (
+  tableId: number,
+  bookingId: number,
+  createdBy: number,
+): Promise<TableBookingCheckInResult> => {
+  const response = await api.post(`/v1/tables/${tableId}/bookings/${bookingId}/check-in`, {
+    created_by: createdBy,
   });
   return response.data.data;
 };
@@ -114,7 +138,7 @@ export const updateTableStatus = async (
   status: "empty" | "reserved" | "serving" | "pending_payment" | "maintenance",
   maintenanceNote?: string,
 ): Promise<void> => {
-  const body: Record<string, any> = { status };
+  const body: TableStatusUpdate = { status };
   if (status === "maintenance" && maintenanceNote) {
     body.maintenance_note = maintenanceNote;
   }

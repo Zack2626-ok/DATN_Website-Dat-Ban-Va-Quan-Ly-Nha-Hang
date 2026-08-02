@@ -8,6 +8,8 @@ import {
   type BookingChannel,
 } from "../constants/booking";
 
+const BOOKING_CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Checks a value is an actual 24-hour clock in HH:mm format. */
 export const isValidBookingClock = (time: string): boolean => {
   const match = /^(\d{2}):(\d{2})$/.exec(time);
@@ -51,6 +53,31 @@ const addCalendarDays = (calendarDate: string, days: number): string => {
   return getVietnamCalendarDate(date);
 };
 
+/** Returns an error when a booking calendar day falls outside the permitted booking window. */
+export const getBookingDateValidationError = (
+  bookingDate: string,
+  now: Date = new Date(),
+): string | null => {
+  if (!BOOKING_CALENDAR_DATE_PATTERN.test(bookingDate)) {
+    return "Ngày đặt bàn không hợp lệ.";
+  }
+
+  const parsedDate = new Date(`${bookingDate}T00:00:00+07:00`);
+  if (Number.isNaN(parsedDate.getTime()) || getVietnamCalendarDate(parsedDate) !== bookingDate) {
+    return "Ngày đặt bàn không hợp lệ.";
+  }
+
+  const currentCalendarDate = getVietnamCalendarDate(now);
+  if (bookingDate < currentCalendarDate) {
+    return "Ngày đặt bàn không được ở quá khứ.";
+  }
+  if (bookingDate > addCalendarDays(currentCalendarDate, BOOKING_MAX_ADVANCE_DAYS)) {
+    return `Chỉ có thể đặt bàn trong vòng ${BOOKING_MAX_ADVANCE_DAYS} ngày kể từ hôm nay.`;
+  }
+
+  return null;
+};
+
 /** Gets the latest permitted arrival time for the given booking channel. */
 export const getBookingLastArrivalTime = (channel: BookingChannel): string =>
   channel === BOOKING_CHANNEL.DIRECT ? DIRECT_BOOKING_LAST_ARRIVAL_TIME : ONLINE_BOOKING_LAST_ARRIVAL_TIME;
@@ -62,6 +89,10 @@ export const getBookingTimeValidationError = (
   now: Date = new Date(),
 ): string | null => {
   const bookingStart = parseVietnamBookingDateTime(startTime);
+  if (Number.isNaN(bookingStart.getTime())) {
+    return "Thời gian đặt bàn không hợp lệ.";
+  }
+
   const clock = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Ho_Chi_Minh",
     hour: "2-digit",
@@ -69,17 +100,17 @@ export const getBookingTimeValidationError = (
     hourCycle: "h23",
   }).format(bookingStart);
 
-  if (Number.isNaN(bookingStart.getTime()) || !isValidBookingClock(clock)) {
+  if (!isValidBookingClock(clock)) {
     return "Thời gian đặt bàn không hợp lệ.";
   }
 
   const bookingCalendarDate = getVietnamCalendarDate(bookingStart);
-  const currentCalendarDate = getVietnamCalendarDate(now);
-  if (bookingCalendarDate < currentCalendarDate || bookingStart.getTime() < now.getTime()) {
-    return "Thời gian đặt bàn không được ở quá khứ.";
+  const bookingDateError = getBookingDateValidationError(bookingCalendarDate, now);
+  if (bookingDateError) {
+    return bookingDateError;
   }
-  if (bookingCalendarDate > addCalendarDays(currentCalendarDate, BOOKING_MAX_ADVANCE_DAYS)) {
-    return `Chỉ có thể đặt bàn trong vòng ${BOOKING_MAX_ADVANCE_DAYS} ngày kể từ hôm nay.`;
+  if (bookingStart.getTime() < now.getTime()) {
+    return "Thời gian đặt bàn không được ở quá khứ.";
   }
 
   const latestArrival = getBookingLastArrivalTime(channel);

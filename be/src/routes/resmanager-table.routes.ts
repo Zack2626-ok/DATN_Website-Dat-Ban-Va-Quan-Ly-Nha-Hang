@@ -5,6 +5,7 @@ import {
   getEmptyTablesHandler,
   getResmanagerTableHandler,
   getTableBookingScheduleHandler,
+  checkInTableBookingHandler,
   getActiveOrderForTableHandler,
   updateResmanagerTableStatusHandler,
   transferTableHandler,
@@ -38,6 +39,7 @@ router.post("/tab", openResmanagerTabHandler);
 // GET /api/v1/tables/:id
 router.get("/:id/active-order", getActiveOrderForTableHandler);
 router.get("/:id/booking-schedule", getTableBookingScheduleHandler);
+router.post("/:id/bookings/:bookingId/check-in", checkInTableBookingHandler);
 router.get("/:id", getResmanagerTableHandler);
 
 // PATCH /api/v1/tables/:id - Sửa bàn

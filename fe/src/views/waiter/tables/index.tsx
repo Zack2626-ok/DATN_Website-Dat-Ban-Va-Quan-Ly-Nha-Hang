@@ -14,7 +14,6 @@ import {
   Wrench,
   CheckCircle,
   Phone,
-  UserCheck,
   XCircle,
   FileText,
   Loader2,
@@ -39,9 +38,10 @@ import {
   createResmanagerTable,
   deleteResmanagerTable,
   getTableBookingSchedule,
+  checkInTableBooking,
   type ResmanagerTable,
 } from "../../../services/tableService";
-import type { BookingScheduleItem } from "../../../services/bookingService";
+import type { BookingScheduleItem, BookingScheduleMode } from "../../../services/bookingService";
 import {
   getOrdersByTable,
   getOrderItems,
@@ -58,6 +58,13 @@ import { ProvisionalBillModal } from "./ProvisionalBillModal";
 import { updateBookingStatus } from "../../../services/bookingService";
 
 type TableAction = "transfer" | "merge" | "groupSeating" | "split" | null;
+
+const TABLE_SCHEDULE_MODE: Record<"CURRENT" | "HISTORY", BookingScheduleMode> = {
+  CURRENT: "current",
+  HISTORY: "history",
+};
+
+const SCHEDULE_CLOCK_REFRESH_MS = 1_000;
 
 interface ActiveOrderInfo {
   id: number;
@@ -115,6 +122,26 @@ const formatScheduleTimestamp = (value: string): string => new Intl.DateTimeForm
   minute: "2-digit",
   hourCycle: "h23",
 }).format(new Date(value));
+
+/** Converts a SQL booking timestamp into an absolute instant in the restaurant timezone. */
+const parseScheduleTimestamp = (value: string): number =>
+  new Date(value.includes("T") ? value : `${value.replace(" ", "T")}+07:00`).getTime();
+
+/** Derives the client-side display state for a server-enforced booking check-in window. */
+const getScheduleCheckInState = (
+  booking: BookingScheduleItem,
+  nowMilliseconds: number,
+): { canCheckIn: boolean; message: string } => {
+  const opensAt = parseScheduleTimestamp(booking.check_in_open_at);
+  const closesAt = parseScheduleTimestamp(booking.check_in_close_at);
+  if (nowMilliseconds < opensAt) {
+    return { canCheckIn: false, message: `Mở lúc ${formatScheduleTimestamp(booking.check_in_open_at)}` };
+  }
+  if (nowMilliseconds > closesAt) {
+    return { canCheckIn: false, message: "Đã quá giờ nhận khách" };
+  }
+  return { canCheckIn: true, message: "Có thể mở bàn" };
+};
 
 const STATUS_CONFIG: Record<
   string,
@@ -187,12 +214,21 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   // Layout 2 cột: bàn đang được chọn bên phải
   const [selectedTableId, setSelectedTableId] = useState<number | string | null>(null);
   const [tableSchedule, setTableSchedule] = useState<BookingScheduleItem[]>([]);
+  const [tableScheduleMode, setTableScheduleMode] = useState<BookingScheduleMode>(TABLE_SCHEDULE_MODE.CURRENT);
   const [isTableScheduleOpen, setIsTableScheduleOpen] = useState(false);
   const [loadingTableSchedule, setLoadingTableSchedule] = useState(false);
+  const [checkingInBookingId, setCheckingInBookingId] = useState<number | null>(null);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
 
   const location = useLocation();
   const userInfo = getCurrentUserInfo();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isTableScheduleOpen) return undefined;
+    const intervalId = window.setInterval(() => setScheduleNow(Date.now()), SCHEDULE_CLOCK_REFRESH_MS);
+    return () => window.clearInterval(intervalId);
+  }, [isTableScheduleOpen]);
 
   // Auto-select bàn khi quay lại từ trang Gọi món
   useEffect(() => {
@@ -525,24 +561,54 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     }
   };
 
-  /** Opens the next 30-day booking calendar assigned to the selected physical table. */
-  const handleOpenTableSchedule = async (): Promise<void> => {
+  /** Loads one operational view of the selected table's booking calendar. */
+  const loadTableSchedule = async (mode: BookingScheduleMode): Promise<void> => {
     if (!selectedTable) return;
     const startDate = toDateInputValue(new Date());
     const endDateValue = new Date();
     endDateValue.setDate(endDateValue.getDate() + 30);
     try {
       setLoadingTableSchedule(true);
-      const result = await getTableBookingSchedule(selectedTable.id, {
-        startDate,
-        endDate: toDateInputValue(endDateValue),
-      });
+      const result = await getTableBookingSchedule(
+        selectedTable.id,
+        mode === TABLE_SCHEDULE_MODE.CURRENT
+          ? { startDate, endDate: toDateInputValue(endDateValue), mode }
+          : { mode },
+      );
       setTableSchedule(result.schedule);
-      setIsTableScheduleOpen(true);
+      setTableScheduleMode(mode);
     } catch {
       toast.error("Không thể tải lịch đặt của bàn này");
     } finally {
       setLoadingTableSchedule(false);
+    }
+  };
+
+  /** Opens the current booking list for the selected physical table. */
+  const handleOpenTableSchedule = async (): Promise<void> => {
+    setIsTableScheduleOpen(true);
+    await loadTableSchedule(TABLE_SCHEDULE_MODE.CURRENT);
+  };
+
+  /** Checks a scheduled party in after the backend verifies timing and table readiness. */
+  const handleCheckInScheduledBooking = async (booking: BookingScheduleItem): Promise<void> => {
+    if (!selectedTable) return;
+    try {
+      setCheckingInBookingId(booking.id);
+      const result = await checkInTableBooking(
+        Number(selectedTable.id),
+        booking.id,
+        getCurrentUserId(),
+      );
+      toast.success(`Khách ${booking.guest_name} đã đến — đã mở bàn ${selectedTable.name}`);
+      setIsTableScheduleOpen(false);
+      await fetchData();
+      navigate(`/waiter/orders/${result.primaryTableId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể mở bàn cho lịch đặt này";
+      toast.error(message);
+    } finally {
+      setCheckingInBookingId(null);
     }
   };
 
@@ -1043,7 +1109,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             </span>
                             {selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0 ? (
                               <ul className="list-disc list-inside text-amber-800 font-semibold space-y-0.5 ml-1">
-                                {selectedTable.pre_ordered_items.map((item: any, idx: number) => (
+                                {selectedTable.pre_ordered_items.map((item, idx) => (
                                   <li key={idx}>
                                     {item.name} <span className="text-amber-950 font-black">x{item.quantity}</span>
                                   </li>
@@ -1057,67 +1123,6 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                           </div>
                         )}
                       </div>
-
-                      {/* NÚT KHÁCH ĐÃ ĐẾN & HỦY BOOKING — chỉ hiện khi bàn là reserved */}
-                      {selectedTable.status === "reserved" && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              try {
-                                const userId = getCurrentUserId();
-                                const newOrder = await createOrder({
-                                  table_id: Number(selectedTable.id),
-                                  created_by: userId,
-                                  order_type: "dine_in",
-                                  guest_name: selectedTable.guest_name || undefined,
-                                  guest_phone: selectedTable.guest_phone || undefined,
-                                  guest_count: selectedTable.guest_count || undefined,
-                                });
-
-                                try {
-                                  if (selectedTable.guest_count && selectedTable.guest_count > 0) {
-                                    const menuItems = await getWaiterMenuItems();
-                                    const wetTissue = menuItems.find(
-                                      (m) =>
-                                        m.name.toLowerCase().includes("khăn ướt") ||
-                                        m.name.toLowerCase().includes("khăn lạnh")
-                                    );
-                                    if (wetTissue) {
-                                      await addOrderItem(newOrder.id, {
-                                        menu_item_id: wetTissue.id,
-                                        quantity: selectedTable.guest_count,
-                                        unit_price: wetTissue.price,
-                                        kitchen_note: "Mặc định theo số khách",
-                                        created_by: userId,
-                                      });
-                                    }
-                                  }
-                                } catch (err) {
-                                  console.warn("Lỗi thêm khăn ướt mặc định:", err);
-                                }
-
-                                toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
-                                navigate(`/waiter/orders/${selectedTable.id}`);
-                              } catch {
-                                toast.error("Không thể xác nhận khách đến");
-                              }
-                            }}
-                            className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
-                          >
-                            <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
-                          </button>
-                          <button
-                            onClick={() => {
-                              setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name });
-                              setCancelBookingReason("");
-                            }}
-                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                            title="Hủy booking"
-                          >
-                            <XCircle size={14} /> Hủy
-                          </button>
-                        </div>
-                      )}
 
                       {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
                       {isTableOverClusterCapacity(selectedTable) && (
@@ -1398,31 +1403,79 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <Modal
         isOpen={isTableScheduleOpen}
         onClose={() => setIsTableScheduleOpen(false)}
-        title={`Lịch đặt 30 ngày — Bàn ${selectedTable?.name ?? ""}`}
+        title={`Lịch đặt — Bàn ${selectedTable?.name ?? ""}`}
         size="lg"
         theme="light"
       >
+        <div className="mb-4 flex gap-2 border-b border-slate-100 pb-3">
+          <button
+            type="button"
+            onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.CURRENT)}
+            disabled={loadingTableSchedule}
+            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+              tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT
+                ? "bg-sky-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Lịch đặt hiện tại
+          </button>
+          <button
+            type="button"
+            onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.HISTORY)}
+            disabled={loadingTableSchedule}
+            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+              tableScheduleMode === TABLE_SCHEDULE_MODE.HISTORY
+                ? "bg-slate-700 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Lịch sử đặt bàn
+          </button>
+        </div>
         {tableSchedule.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm font-medium text-slate-400">
-            Bàn này chưa có lịch đặt nào trong 30 ngày tới.
+            {tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT
+              ? "Bàn này chưa có lịch đặt hiện tại nào trong 30 ngày tới."
+              : "Chưa có lịch sử booking đã hoàn tất hoặc đã hủy."}
           </p>
         ) : (
           <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
-            {tableSchedule.map((booking) => (
-              <div key={booking.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-black text-slate-800">#{booking.confirmation_code} · {booking.guest_name}</p>
-                    <p className="mt-1 text-xs font-medium text-slate-500">{booking.guest_phone} · {booking.party_size} khách</p>
+            {tableSchedule.map((booking) => {
+              const checkInState = getScheduleCheckInState(booking, scheduleNow);
+              const isCurrentSchedule = tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT;
+              const isCheckingIn = checkingInBookingId === booking.id;
+              return (
+                <div key={booking.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-black text-slate-800">#{booking.confirmation_code} · {booking.guest_name}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-500">{booking.guest_phone} · {booking.party_size} khách</p>
+                    </div>
+                    <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
+                      {formatScheduleTimestamp(booking.start_time)}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
-                    {formatScheduleTimestamp(booking.start_time)}
-                  </span>
+                  <p className="mt-3 text-xs text-slate-600">Bàn: <strong>{booking.table_names}</strong> · Sức chứa cụm: {booking.total_capacity}</p>
+                  {booking.guest_note && <p className="mt-1 text-xs italic text-slate-500">Ghi chú: {booking.guest_note}</p>}
+                  {isCurrentSchedule && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                      <span className={`text-xs font-semibold ${checkInState.canCheckIn ? "text-emerald-700" : "text-slate-500"}`}>
+                        {checkInState.message}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!checkInState.canCheckIn || isCheckingIn}
+                        onClick={() => void handleCheckInScheduledBooking(booking)}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        {isCheckingIn ? "Đang mở bàn..." : "Khách đã đến – Mở bàn"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <p className="mt-3 text-xs text-slate-600">Bàn: <strong>{booking.table_names}</strong> · Sức chứa cụm: {booking.total_capacity}</p>
-                {booking.guest_note && <p className="mt-1 text-xs italic text-slate-500">Ghi chú: {booking.guest_note}</p>}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Modal>
