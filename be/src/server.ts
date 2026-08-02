@@ -37,6 +37,7 @@ import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import crmRoutes from "./routes/crm.routes";
+import { setupClientSocket } from "./sockets/clientSocket";
  
 const app = express();
 const httpServer = http.createServer(app);
@@ -65,6 +66,9 @@ io.on("connection", (socket: any) => {
     console.log(`🔌 Socket.io client disconnected: ${socket.id}`);
   });
 });
+
+// Setup client socket for QR ordering
+setupClientSocket(io);
 
 console.log("Server configuration:", {
   port: startPort,
