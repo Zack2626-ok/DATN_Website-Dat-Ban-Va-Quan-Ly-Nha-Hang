@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
+import { formatVietnamBookingDateTime, getWalkInTimeValidationError } from "../utils/bookingTime";
 
 // Lấy menu items (resmanager schema)
 export const getResmanagerMenuItemsHandler = async (req: Request, res: Response): Promise<void> => {
@@ -55,8 +56,23 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       return;
     }
 
+    const requestedTableId = table_id ? Number(table_id) : null;
+    const primaryTableId = requestedTableId ? await db.resolveResmanagerPrimaryTableId(requestedTableId) : null;
+
+    if (primaryTableId && order_type !== "pre_order") {
+      const hasScheduledGuest = await db.hasBookingInProgressForTable(
+        primaryTableId,
+        formatVietnamBookingDateTime(),
+      );
+      const walkInTimeError = hasScheduledGuest ? null : getWalkInTimeValidationError();
+      if (walkInTimeError) {
+        sendError(res, walkInTimeError, 400);
+        return;
+      }
+    }
+
     const order = await db.createResmanagerOrder({
-      table_id: table_id ? Number(table_id) : null,
+      table_id: primaryTableId,
       customer_id: customer_id ? Number(customer_id) : null,
       created_by: Number(created_by),
       order_type: order_type || "dine_in",
@@ -67,11 +83,9 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     });
 
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
-    if (table_id) {
-      await db.updateResmanagerTableStatus(Number(table_id), "serving");
+    if (primaryTableId) {
+      await db.updateResmanagerTableStatus(primaryTableId, "serving");
       // Tự động chuyển món đặt trước (nếu có) sang order_items
-      await db.transferBookingItemsToOrder(Number(table_id), order.id);
-      await db.completeActiveBookingForTable(Number(table_id));
     }
 
     sendSuccess(res, order, "Tạo order thành công", 201);

@@ -208,8 +208,11 @@ CREATE TABLE tables (
     is_deleted       TINYINT(1)   NOT NULL DEFAULT 0,
     deleted_at       DATETIME     DEFAULT NULL,
     maintenance_note TEXT         DEFAULT NULL COMMENT 'Lý do bảo trì (nhân viên nhập khi chuyển trạng thái maintenance)',
+    merged_into_table_id INT          DEFAULT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT
+    INDEX idx_tables_merged_into (merged_into_table_id),
+    CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_tables_merged_into FOREIGN KEY (merged_into_table_id) REFERENCES tables(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tầng 1 (12 bàn) — Thể hiện đầy đủ 6 trạng thái bàn
@@ -356,13 +359,20 @@ INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest
 -- ─── GIỮ LẠI: table_merges & table_splits (không có data demo) ──────────
 
 CREATE TABLE table_merges (
-    id               INT      NOT NULL AUTO_INCREMENT,
-    primary_table_id INT      NOT NULL,
-    merged_table_id  INT      NOT NULL,
-    merged_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id               INT                       NOT NULL AUTO_INCREMENT,
+    primary_table_id INT                       NOT NULL,
+    merged_table_id  INT                       NOT NULL,
+    primary_order_id INT                       DEFAULT NULL,
+    merged_order_id  INT                       DEFAULT NULL,
+    merged_by        INT                       DEFAULT NULL,
+    status           ENUM('active','resolved') NOT NULL DEFAULT 'active',
+    merged_at        DATETIME                  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at      DATETIME                  DEFAULT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_merge_primary FOREIGN KEY (primary_table_id) REFERENCES tables(id) ON DELETE CASCADE,
-    CONSTRAINT fk_merge_merged  FOREIGN KEY (merged_table_id)  REFERENCES tables(id) ON DELETE CASCADE
+    INDEX idx_table_merges_primary_status (primary_table_id, status),
+    INDEX idx_table_merges_merged_status (merged_table_id, status),
+    CONSTRAINT fk_merge_primary FOREIGN KEY (primary_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_merge_merged  FOREIGN KEY (merged_table_id)  REFERENCES tables(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE table_splits (
@@ -550,16 +560,19 @@ CREATE TABLE orders (
     created_by  INT          NOT NULL,
     order_type  ENUM('dine_in','takeaway','delivery') NOT NULL DEFAULT 'dine_in',
     split_label VARCHAR(10)  DEFAULT NULL,
-    status      ENUM('open','serving','pending_payment','completed','cancelled') NOT NULL DEFAULT 'open',
+    status      ENUM('open','serving','pending_payment','completed','cancelled','merged') NOT NULL DEFAULT 'open',
     note        TEXT         DEFAULT NULL,
     guest_name  VARCHAR(100) DEFAULT NULL,
     guest_phone VARCHAR(20)  DEFAULT NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     closed_at   DATETIME     DEFAULT NULL,
+    merged_into_order_id INT DEFAULT NULL,
     PRIMARY KEY (id),
+    INDEX idx_orders_merged_into (merged_into_order_id),
     CONSTRAINT fk_orders_table    FOREIGN KEY (table_id)    REFERENCES tables(id)    ON DELETE SET NULL,
     CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
-    CONSTRAINT fk_orders_user     FOREIGN KEY (created_by)  REFERENCES users(id)     ON DELETE RESTRICT
+    CONSTRAINT fk_orders_user     FOREIGN KEY (created_by)  REFERENCES users(id)     ON DELETE RESTRICT,
+    CONSTRAINT fk_orders_merged_into FOREIGN KEY (merged_into_order_id) REFERENCES orders(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, created_at, closed_at) VALUES
@@ -601,6 +614,7 @@ INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_lab
 CREATE TABLE order_items (
     id            INT           NOT NULL AUTO_INCREMENT,
     order_id      INT           NOT NULL,
+    source_order_id INT         DEFAULT NULL,
     menu_item_id  INT           NOT NULL,
     quantity      INT           NOT NULL DEFAULT 1,
     unit_price    DECIMAL(10,2) NOT NULL,
@@ -614,9 +628,16 @@ CREATE TABLE order_items (
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     CONSTRAINT fk_orderitems_order FOREIGN KEY (order_id)     REFERENCES orders(id)     ON DELETE CASCADE,
+    CONSTRAINT fk_orderitems_source_order FOREIGN KEY (source_order_id) REFERENCES orders(id) ON DELETE SET NULL,
     CONSTRAINT fk_orderitems_menu  FOREIGN KEY (menu_item_id) REFERENCES menu_items(id) ON DELETE RESTRICT,
-    INDEX idx_orderitems_station (order_id, status)
+    INDEX idx_orderitems_station (order_id, status),
+    INDEX idx_orderitems_source_order (source_order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE table_merges
+    ADD CONSTRAINT fk_merge_primary_order FOREIGN KEY (primary_order_id) REFERENCES orders(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_merge_merged_order  FOREIGN KEY (merged_order_id)  REFERENCES orders(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_merge_user          FOREIGN KEY (merged_by)        REFERENCES users(id)  ON DELETE SET NULL;
 
 INSERT INTO order_items (id, order_id, menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, status, voided_at, void_reason) VALUES
  -- Order 1 (serving, B04, customer 1) — DEMO: done + cooking + pending

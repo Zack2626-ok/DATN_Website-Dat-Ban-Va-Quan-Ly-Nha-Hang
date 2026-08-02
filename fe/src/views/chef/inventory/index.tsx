@@ -31,7 +31,6 @@ import {
   FileText,
   Pencil,
   CheckCircle,
-  Save,
   Printer,
   MoreHorizontal,
   Filter
@@ -580,7 +579,8 @@ export const InventoryControl: React.FC = () => {
     );
   };
 
-  const handleWasteExpiredBatches = async () => {
+  // @ts-ignore
+  const _handleWasteExpiredBatches = async () => {
     if (!window.confirm("Bạn có chắc chắn muốn hủy TOÀN BỘ các lô hàng đã hết hạn trong kho? Hành động này không thể hoàn tác.")) return;
     try {
       const res = await wasteExpiredBatchesApi();
@@ -714,7 +714,8 @@ export const InventoryControl: React.FC = () => {
   };
 
   // Perform Stocktake adjustment
-  const handleApplyStocktake = async () => {
+  // @ts-ignore
+  const _handleApplyStocktake = async () => {
     let changed = false;
 
     for (const ing of reduxIngredients) {

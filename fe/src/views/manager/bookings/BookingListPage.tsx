@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   Plus,
@@ -22,19 +23,57 @@ import { Badge } from "../../../components/Badge";
 import {
   getBookings,
   updateBookingStatus,
-  createBooking,
+  createDirectBooking,
   deleteBooking,
   Booking,
 } from "../../../services/bookingService";
 import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
 import { useAppSelector } from "../../../store/hooks";
 import { CancelledBookings } from "./components/CancelledBookings";
+import { BOOKING_DURATION_MINUTES, BOOKING_MAX_ADVANCE_DAYS, MAX_BOOKING_PARTY_SIZE } from "../../../constants/booking";
+
+/** Calculates the fixed booking slot end time from a datetime-local input. */
+const calculateScheduledEndTime = (startTime: string): string => {
+  const start = new Date(`${startTime}:00+07:00`);
+  const end = new Date(start.getTime() + BOOKING_DURATION_MINUTES * 60 * 1000);
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(end).replace("T", " ");
+};
+
+/** Returns the latest datetime permitted in the advance-booking form. */
+const getMaximumBookingDateTime = (): string => {
+  const maximum = new Date();
+  maximum.setDate(maximum.getDate() + BOOKING_MAX_ADVANCE_DAYS);
+  maximum.setMinutes(maximum.getMinutes() - maximum.getTimezoneOffset());
+  return maximum.toISOString().slice(0, 16);
+};
+
+/** Checks whether a booking belongs to the restaurant's current calendar day. */
+const isBookingScheduledToday = (startTime: string): boolean => {
+  const normalized = startTime.replace(" ", "T");
+  const bookingDate = new Date(normalized.endsWith("Z") || normalized.includes("+") ? normalized : `${normalized}+07:00`);
+  const formatter = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(bookingDate) === formatter.format(new Date());
+};
 
 /**
  * BookingListPage — Quản lý đặt bàn
  * Redesigned: light modal, 2-column form, chỉ lấy bàn trống
  */
 export const BookingListPage: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAppSelector((state: any) => state.auth);
   console.log("LOGGED IN USER PROFILE:", user);
   const [activeMainTab, setActiveMainTab] = useState<"active" | "cancelled">("active");
@@ -47,6 +86,7 @@ export const BookingListPage: React.FC = () => {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  /** Formats the current local instant for a datetime-local input. */
   const getLocalNowString = () => {
     const now = new Date();
     // Adjust to local timezone offset for input[type="datetime-local"]
@@ -70,7 +110,7 @@ export const BookingListPage: React.FC = () => {
     try {
       const [bookingsData, tablesData] = await Promise.all([
         getBookings(),
-        getEmptyTables(formData.start_time), // Truyền start_time để lọc bàn trống thực sự
+        getEmptyTables(formData.start_time, calculateScheduledEndTime(formData.start_time)),
       ]);
       setBookings(bookingsData);
       setEmptyTables(tablesData);
@@ -146,16 +186,13 @@ export const BookingListPage: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const startDate = new Date(formData.start_time);
-      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000); // +2h
-
-      await createBooking({
+      await createDirectBooking({
         table_id: Number(formData.table_id),
         guest_name: formData.guest_name,
         guest_phone: formData.guest_phone,
         party_size: Number(formData.party_size),
-        start_time: startDate.toISOString(),
-        end_time: endDate.toISOString(),
+        start_time: formData.start_time,
+        end_time: calculateScheduledEndTime(formData.start_time),
         guest_note: formData.guest_note,
       });
 
@@ -318,7 +355,7 @@ export const BookingListPage: React.FC = () => {
                       <span className="font-medium text-admin-text-main">{dt.date}</span>
                       <span className="text-xs ml-1">{dt.time}</span>
                     </td>
-                    <td className="px-6 py-4 font-medium">{b.table_name || "—"}</td>
+                    <td className="px-6 py-4 font-medium">{b.table_names || b.table_name || "—"}</td>
                     <td className="px-6 py-4">{b.party_size} người</td>
                     <td className="px-6 py-4">
                       <Badge status={b.status as any} type="booking" theme="light" />
@@ -471,7 +508,7 @@ export const BookingListPage: React.FC = () => {
                   label: "Thời gian",
                   value: `${formatDateTime(selectedBooking.start_time).date} lúc ${formatDateTime(selectedBooking.start_time).time}`,
                 },
-                { icon: <MapPin size={15} className="text-admin-primary" />, label: "Bàn", value: selectedBooking.table_name || "Chưa gán bàn" },
+                { icon: <MapPin size={15} className="text-admin-primary" />, label: "Bàn", value: selectedBooking.table_names || selectedBooking.table_name || "Chưa gán bàn" },
                 { icon: <Users size={15} className="text-admin-primary" />, label: "Số người", value: `${selectedBooking.party_size} người` },
               ].map((item, i) => (
                 <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
@@ -494,6 +531,18 @@ export const BookingListPage: React.FC = () => {
             </div>
 
             <div className="flex gap-3 pt-2">
+              {isBookingScheduledToday(selectedBooking.start_time) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBooking(null);
+                    navigate(`/waiter/orders/${selectedBooking.table_id}`);
+                  }}
+                  className="flex-1 py-2.5 bg-blue-50 text-blue-700 rounded-xl font-bold text-sm hover:bg-blue-100"
+                >
+                  Mở order hôm nay
+                </button>
+              )}
               {selectedBooking.status === "pending" && (
                 <button
                   onClick={() => { handleStatusChange(selectedBooking.id, "confirmed"); setSelectedBooking(null); }}
@@ -567,7 +616,7 @@ export const BookingListPage: React.FC = () => {
                   <input
                     type="number"
                     min="1"
-                    max="50"
+                    max={MAX_BOOKING_PARTY_SIZE}
                     required
                     placeholder="2"
                     value={formData.party_size}
@@ -598,12 +647,14 @@ export const BookingListPage: React.FC = () => {
                   <input
                     type="datetime-local"
                     required
+                    min={getLocalNowString()}
+                    max={getMaximumBookingDateTime()}
                     value={formData.start_time}
                     onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                     className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800"
                   />
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1 ml-1">Vui lòng chọn ngày giờ TRƯỚC khi chọn bàn</p>
+                <p className="text-[10px] text-gray-400 mt-1 ml-1">Đặt trước tối đa 30 ngày, nhận khách từ 10:00 đến 19:00; mỗi lịch kéo dài 3 giờ.</p>
               </div>
 
               {/* Chọn bàn - chỉ bàn trống */}

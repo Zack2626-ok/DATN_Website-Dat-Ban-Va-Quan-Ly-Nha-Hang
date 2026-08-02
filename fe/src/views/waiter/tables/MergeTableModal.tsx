@@ -1,18 +1,43 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Modal } from "../../../components/Modal";
 import { Merge, CheckCircle2, X } from "lucide-react";
-import { Table } from "../../../interfaces/table.interface";
 import { toast } from "react-hot-toast";
-import { mergeTables, unmergeTables } from "../../../services/tableService";
+import {
+  mergeTables,
+  unmergeTables,
+  type ResmanagerTable,
+} from "../../../services/tableService";
 
 interface MergeTableModalProps {
   isOpen: boolean;
   onClose: () => void;
-  sourceTable: (Table & { is_merged_primary?: boolean; merged_tables?: { id: number; name: string }[] }) | null;
-  availableTables: Table[];
+  sourceTable: ResmanagerTable | null;
+  availableTables: ResmanagerTable[];
   onConfirm: (primaryId: string | number, mergeIds: (string | number)[]) => void;
   onSuccess?: () => void;
 }
+
+const ADJACENT_TABLE_GRID_DISTANCE = 1;
+
+/** Check whether two table cards share an edge on the same floor plan. */
+const areTablesPhysicallyAdjacent = (firstTable: ResmanagerTable, secondTable: ResmanagerTable): boolean => {
+  if (firstTable.area_id !== secondTable.area_id) {
+    return false;
+  }
+
+  const sameRow = firstTable.row_pos === secondTable.row_pos;
+  const sameColumn = firstTable.col_pos === secondTable.col_pos;
+  const rowDistance = Math.abs(firstTable.row_pos.charCodeAt(0) - secondTable.row_pos.charCodeAt(0));
+  const columnDistance = Math.abs(firstTable.col_pos - secondTable.col_pos);
+
+  return (sameRow && columnDistance === ADJACENT_TABLE_GRID_DISTANCE)
+    || (sameColumn && rowDistance === ADJACENT_TABLE_GRID_DISTANCE);
+};
+
+/** Return the physical seating capacity of a table cluster. */
+const getTableClusterCapacity = (table: ResmanagerTable): number => (
+  table.cluster_capacity ?? table.capacity
+);
 
 /**
  * Gộp bàn — gộp nhiều bàn đang phục vụ vào bàn chính
@@ -30,16 +55,50 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
   const [loading, setLoading] = useState(false);
 
   // Chỉ gộp bàn cùng khu vực/tầng với bàn chính
-  const servingTables = availableTables.filter(
-    (t) =>
-      (t.status === "serving" || t.status === "pending_payment") &&
-      t.id !== sourceTable?.id &&
-      t.area_id === sourceTable?.area_id &&
-      !(t as any).is_merged_child,
+  const mergeableTables = useMemo(() => availableTables.filter(
+    (table) =>
+      (table.status === "empty" || table.status === "serving")
+      && table.id !== sourceTable?.id
+      && table.area_id === sourceTable?.area_id
+      && !table.is_merged_child
+      && !table.is_merged_primary,
+  ), [availableTables, sourceTable]);
+
+  const existingClusterTables = useMemo(() => {
+    if (!sourceTable) {
+      return [];
+    }
+    const clusterTableIds = new Set([
+      sourceTable.id,
+      ...(sourceTable.merged_tables?.map((table) => table.id) ?? []),
+    ]);
+    return availableTables.filter((table) => clusterTableIds.has(table.id));
+  }, [availableTables, sourceTable]);
+
+  const selectedTables = useMemo(
+    () => mergeableTables.filter((table) => selectedIds.includes(table.id.toString())),
+    [mergeableTables, selectedIds],
   );
+
+  const resultingCapacity = useMemo(
+    () => (sourceTable ? getTableClusterCapacity(sourceTable) : 0)
+      + selectedTables.reduce((total, table) => total + table.capacity, 0),
+    [selectedTables, sourceTable],
+  );
+
+  /** Determine whether a newly selected table is connected to the physical cluster. */
+  const canAddTableToCluster = (candidateTable: ResmanagerTable): boolean => {
+    const connectedTables = [...existingClusterTables, ...selectedTables];
+    return connectedTables.some((table) => areTablesPhysicallyAdjacent(table, candidateTable));
+  };
 
   const toggleTable = (id: string | number) => {
     const strId = id.toString();
+    const candidateTable = mergeableTables.find((table) => table.id.toString() === strId);
+    if (candidateTable && !selectedIds.includes(strId) && !canAddTableToCluster(candidateTable)) {
+      toast.error("Chỉ có thể gộp bàn liền kề với cụm hiện tại. Bàn ở xa cần xếp theo đoàn riêng.");
+      return;
+    }
     setSelectedIds((prev) =>
       prev.includes(strId) ? prev.filter((i) => i !== strId) : [...prev, strId],
     );
@@ -59,16 +118,19 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
     try {
       await mergeTables(Number(sourceTable.id), selectedIds.map(Number));
       const mergedNames = selectedIds
-        .map((id) => servingTables.find((t) => t.id.toString() === id)?.name)
+        .map((id) => mergeableTables.find((t) => t.id.toString() === id)?.name)
         .filter(Boolean)
         .join(", ");
       toast.success(`✅ Đã gộp bàn ${mergedNames} vào ${sourceTable.name}`);
       onConfirm(sourceTable.id, selectedIds);
       onSuccess?.();
       handleClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const msg = err?.response?.data?.message || "Không thể gộp bàn. Vui lòng thử lại.";
+      const responseError = err as { response?: { data?: { message?: unknown } } };
+      const msg = typeof responseError.response?.data?.message === "string"
+        ? responseError.response.data.message
+        : "Không thể gộp bàn. Vui lòng thử lại.";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -105,9 +167,12 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
           </div>
           <div className="flex-1">
             <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
-              Bàn chính (giữ order) — {(sourceTable as any).area_name || "Cùng tầng"}
+              Bàn chính (giữ order) — {sourceTable.area_name || "Cùng tầng"}
             </p>
             <p className="font-black text-slate-800 text-xl">{sourceTable.name}</p>
+            <p className="mt-1 text-xs font-bold text-indigo-700">
+              Sức chứa cụm hiện tại: {getTableClusterCapacity(sourceTable)} khách
+            </p>
             {isMergedPrimary && (
               <div className="flex flex-wrap gap-1 mt-1">
                 <span className="text-xs text-indigo-600 font-bold">Đang gộp với:</span>
@@ -144,30 +209,41 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Chọn bàn cùng {(sourceTable as any).area_name || "tầng"} để gộp vào
+              Chọn bàn cùng {sourceTable.area_name || "tầng"} để gộp vào
             </label>
             <span className="text-xs text-gray-400">
-              {selectedIds.length > 0 ? `Đã chọn ${selectedIds.length} bàn` : `${servingTables.length} bàn có thể gộp`}
+              {selectedIds.length > 0 ? `Đã chọn ${selectedIds.length} bàn` : `${mergeableTables.length} bàn có thể gộp`}
             </span>
           </div>
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            Chỉ chọn các bàn kề cạnh theo sơ đồ. Bàn xa cần được xếp theo đoàn riêng, không gộp thành một bàn vật lý.
+          </p>
 
-          {servingTables.length === 0 ? (
+          {mergeableTables.length === 0 ? (
             <div className="py-8 text-center rounded-2xl bg-sky-50/50 border border-dashed border-sky-100">
-              <p className="text-sm text-gray-400 font-medium">Không có bàn đang phục vụ nào để gộp</p>
-              <p className="text-xs text-gray-300 mt-1">Chỉ gộp được với bàn đang phục vụ hoặc chờ thanh toán</p>
+              <p className="text-sm text-gray-400 font-medium">Không có bàn trống hoặc đang phục vụ để gộp</p>
+              <p className="text-xs text-gray-300 mt-1">Bàn chờ thanh toán, đang dọn hoặc bảo trì không thể gộp</p>
             </div>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {servingTables.map((t) => {
-                const tableExt = t as any;
+              {mergeableTables.map((t) => {
                 const isSelected = selectedIds.includes(t.id.toString());
+                const isConnected = canAddTableToCluster(t);
                 return (
                   <label
                     key={t.id}
-                    className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                    onClick={(event) => {
+                      if (!isSelected && !isConnected) {
+                        event.preventDefault();
+                        toast.error("Bàn này không liền kề với cụm đang gộp.");
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
                       isSelected
                         ? "border-indigo-400 bg-indigo-50 shadow-sm"
-                        : "border-sky-50 bg-white hover:border-indigo-200 hover:shadow-sm"
+                        : isConnected
+                          ? "cursor-pointer border-sky-50 bg-white hover:border-indigo-200 hover:shadow-sm"
+                          : "cursor-not-allowed border-slate-100 bg-slate-50 opacity-60"
                     }`}
                   >
                     <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${
@@ -179,35 +255,41 @@ export const MergeTableModal: React.FC<MergeTableModalProps> = ({
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleTable(t.id)}
+                      disabled={!isSelected && !isConnected}
                       className="hidden"
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-black text-slate-700">{t.name}</span>
                         <span className="text-[10px] text-gray-400">{t.capacity} chỗ</span>
-                        {tableExt.area_name && (
+                        {t.area_name && (
                           <span className="text-[10px] bg-sky-100 text-slate-400 rounded px-1.5 py-0.5 font-medium">
-                            {tableExt.area_name}
+                            {t.area_name}
                           </span>
                         )}
                       </div>
-                      {(tableExt.guest_name) && (
+                      {t.guest_name && (
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          👤 {tableExt.guest_name}
-                          {tableExt.guest_phone && ` — ${tableExt.guest_phone}`}
+                          👤 {t.guest_name}
+                          {t.guest_phone && ` — ${t.guest_phone}`}
                         </p>
                       )}
                     </div>
                     <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-lg ${
-                      t.status === "serving" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"
+                      t.status === "serving" ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-600"
                     }`}>
-                      {t.status === "serving" ? "Đang phục vụ" : "Chờ TT"}
+                      {t.status === "serving" ? "Đang phục vụ" : "Trống"}
                     </span>
                   </label>
                 );
               })}
             </div>
           )}
+
+          <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs">
+            <span className="font-semibold text-indigo-700">Sức chứa sau khi gộp</span>
+            <span className="font-black text-indigo-800">{resultingCapacity} khách</span>
+          </div>
         </div>
 
         {/* Actions */}

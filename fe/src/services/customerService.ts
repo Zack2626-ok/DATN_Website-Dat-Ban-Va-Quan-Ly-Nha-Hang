@@ -161,6 +161,8 @@ export const getAvailableTables = async (
 
 export const createBooking = async (data: {
   table_id: number;
+  table_ids?: number[];
+  booking_channel?: "online" | "direct";
   customer_id?: number | null;
   promotion_id?: number | null;
   guest_name: string;
