@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi } from "../../../services/api";
 import * as XLSX from "xlsx";
 
 interface ImportItem {
+  draftTxId?: string | number;
   ingredientId: string;
   ingredientName: string;
   code: string;
@@ -39,27 +40,44 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
     getIngredientsApi().then(data => {
       setIngredients(data);
       // Auto-populate initialData or low stock items
-      let itemsToPopulate = [];
       if (initialData && initialData.length > 0) {
-        itemsToPopulate = initialData;
-      } else {
-        itemsToPopulate = data.filter((ing: any) => Number(ing.stock) <= Number(ing.threshold));
-      }
-      
-      if (itemsToPopulate.length > 0) {
-        setImportItems(itemsToPopulate.map((ing: any) => ({
-          ingredientId: ing.id,
-          ingredientName: ing.name,
-          code: `SP${ing.id.toString().padStart(6, '0')}`,
-          quantity: 1,
-          unitCost: 0,
-          batchNo: `LOT-${ing.id}-${Date.now().toString().slice(-6)}`,
-          expiryDate: ""
+        setImportItems(initialData.map((ing: any) => ({
+          draftTxId: ing.draftTxId,
+          ingredientId: ing.ingredientId || ing.id,
+          ingredientName: ing.ingredientName || ing.name,
+          code: ing.code || `SP${(ing.ingredientId || ing.id).toString().padStart(6, '0')}`,
+          quantity: ing.quantity ?? 1,
+          unitCost: ing.unitCost ?? ing.unit_cost ?? 0,
+          batchNo: ing.batchNo || `LOT-${ing.id || Date.now().toString().slice(-4)}`,
+          expiryDate: (() => {
+            if (!ing.expiryDate) return "";
+            const s = String(ing.expiryDate).trim();
+            if (s.includes("/")) {
+              const p = s.split("/");
+              if (p.length === 3) return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+            }
+            return s.split("T")[0];
+          })()
         })));
+        if (initialData[0]?.note) setNote(initialData[0].note);
+        if (initialData[0]?.supplierId) setSelectedSupplier(initialData[0].supplierId);
+      } else {
+        const lowStockItems = data.filter((ing: any) => Number(ing.stock) <= Number(ing.threshold));
+        if (lowStockItems.length > 0) {
+          setImportItems(lowStockItems.map((ing: any) => ({
+            ingredientId: ing.id,
+            ingredientName: ing.name,
+            code: `SP${ing.id.toString().padStart(6, '0')}`,
+            quantity: 1,
+            unitCost: 0,
+            batchNo: `LOT-${ing.id}-${Date.now().toString().slice(-6)}`,
+            expiryDate: ""
+          })));
+        }
       }
     }).catch(console.error);
     getSuppliersApi().then(setSuppliers).catch(console.error);
-  }, []);
+  }, [initialData]);
 
   const handleAddItem = (ing: any) => {
     // Check if ingredient is already in list
@@ -117,7 +135,12 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
     
     try {
       const supplierName = suppliers.find(s => s.id == selectedSupplier)?.name || "NCC khác";
-      const reasonOrSupplier = note ? `Nhập hàng từ ${supplierName} - Ghi chú: ${note}` : `Nhập hàng từ ${supplierName}`;
+      const slipCode = initialData && initialData[0]?.ticketCode 
+        ? initialData[0].ticketCode 
+        : `PN${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}N-${Date.now().toString().slice(-4)}`;
+
+      const baseReason = `[SLIP:${slipCode}] Nhập hàng từ ${supplierName}`;
+      const reasonOrSupplier = note ? `${baseReason} - Ghi chú: ${note}` : baseReason;
       
       await Promise.all(importItems.map(item => 
         updateInventoryQuantityApi(item.ingredientId, {
@@ -130,7 +153,9 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
           isCredit: paymentStatus === "credit",
           expiryDate: item.expiryDate || undefined,
           batchNo: item.batchNo,
-          reasonOrSupplier: reasonOrSupplier
+          reasonOrSupplier: reasonOrSupplier,
+          ingredientName: item.ingredientName,
+          draftTxId: item.draftTxId
         })
       ));
 
@@ -457,6 +482,17 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                       const data = XLSX.utils.sheet_to_json(ws);
                       
                       const newItems = data.map((row: any) => {
+                        const supplierNameInRow = row["Nhà cung cấp"] || row["Supplier"] || row.supplier || "";
+                        if (supplierNameInRow) {
+                          const matchedSup = suppliers.find(s => 
+                            s.name.toLowerCase().includes(supplierNameInRow.toLowerCase()) || 
+                            supplierNameInRow.toLowerCase().includes(s.name.toLowerCase())
+                          );
+                          if (matchedSup) {
+                            setSelectedSupplier(matchedSup.id);
+                          }
+                        }
+
                         const name = row["Tên hàng"] || row["Tên nguyên liệu"] || row["Tên"] || row.Name || row.name || "";
                         const ing = ingredients.find(i => i.name.toLowerCase() === name.toLowerCase());
                         const id = ing ? ing.id : `TEMP_${Math.floor(Math.random() * 10000)}`;
@@ -482,12 +518,39 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                   reader.readAsBinaryString(file);
                 }} 
               />
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 rounded-xl p-12 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 hover:border-blue-400 transition-colors"
-              >
-                <UploadCloud size={48} className="text-slate-400 mb-4" />
-                <p className="text-lg font-bold text-slate-600">Kéo thả hoặc click vào để chọn file excel</p>
+              <div className="flex flex-col gap-3">
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 hover:border-blue-400 transition-colors"
+                >
+                  <UploadCloud size={40} className="text-slate-400 mb-2" />
+                  <p className="text-sm font-bold text-slate-700">Kéo thả hoặc click vào để chọn file Excel (.xlsx, .csv)</p>
+                  <p className="text-xs text-slate-400 mt-1">Tự động nhận diện Nhà cung cấp & Danh sách hàng hóa</p>
+                </div>
+                
+                <div className="flex justify-between items-center bg-blue-50 p-3 rounded-xl border border-blue-100 text-xs">
+                  <span className="font-semibold text-blue-900">Chưa có file mẫu nhập hàng?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const supObj = suppliers.find(s => s.id == selectedSupplier);
+                      const supName = supObj ? supObj.name : "Công ty TNHH Thực phẩm ABC";
+                      const sampleData = [
+                        { "Nhà cung cấp": supName, "Tên nguyên liệu": "Thịt bò Mỹ", "Số lượng": 15.5, "Đơn giá": 250000, "Số lô": "LOT-ABC-001", "Ngày hết hạn": "2026-12-31" },
+                        { "Nhà cung cấp": supName, "Tên nguyên liệu": "Thịt heo", "Số lượng": 25.0, "Đơn giá": 120000, "Số lô": "LOT-ABC-002", "Ngày hết hạn": "2026-11-30" },
+                        { "Nhà cung cấp": supName, "Tên nguyên liệu": "Thịt gà đùi", "Số lượng": 30.0, "Đơn giá": 85000, "Số lô": "LOT-ABC-003", "Ngày hết hạn": "2026-10-15" }
+                      ];
+                      const ws = XLSX.utils.json_to_sheet(sampleData);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, "NhapHang");
+                      XLSX.writeFile(wb, `Mau_Nhap_Hang_${supName.replace(/\s+/g, "_")}.xlsx`);
+                      toast.success(`Đã tải xuống file Excel mẫu cho ${supName}!`);
+                    }}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+                  >
+                    <DownloadCloud size={14} /> Tải file Excel mẫu
+                  </button>
+                </div>
               </div>
             </div>
           </div>

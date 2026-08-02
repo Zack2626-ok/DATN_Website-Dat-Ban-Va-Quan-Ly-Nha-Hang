@@ -10,6 +10,7 @@ interface ReturnGoodsProps {
 }
 
 interface ReturnItem {
+  draftTxId?: string | number;
   ingredientId: string;
   ingredientName: string;
   code: string;
@@ -36,24 +37,39 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
       setSuppliers(supps);
       
       if (initialReturnData) {
-        const ing = ings.find((i: any) => i.id === initialReturnData.ingId);
-        if (ing) {
+        if (initialReturnData.note) setNote(initialReturnData.note);
+        if (initialReturnData.supplierId || initialReturnData.supplier_id) {
+          setSelectedSupplier(String(initialReturnData.supplierId || initialReturnData.supplier_id));
+        }
+
+        if (initialReturnData.items && initialReturnData.items.length > 0) {
+          setReturnItems(initialReturnData.items.map((it: any) => ({
+            draftTxId: it.draftTxId,
+            ingredientId: it.ingredientId,
+            ingredientName: it.ingredientName,
+            code: it.code || `SP${it.ingredientId.toString().padStart(6, '0')}`,
+            quantity: it.quantity || 1,
+            unitCost: it.unitCost || 0,
+            batchNo: it.batchNo || "",
+            availableBatches: []
+          })));
+        } else {
+          const ing = ings.find((i: any) => i.id === initialReturnData.ingId);
+          if (ing) {
             const batches = await getIngredientBatchesApi(ing.id);
             const validBatches = batches.filter((b: any) => b.remaining_quantity > 0);
             
-            if (initialReturnData.supplier_id) {
-                setSelectedSupplier(initialReturnData.supplier_id.toString());
-            }
-
             setReturnItems([{
-                ingredientId: ing.id,
-                ingredientName: ing.name,
-                code: `SP${ing.id.toString().padStart(6, '0')}`,
-                quantity: initialReturnData.maxQty > 0 ? initialReturnData.maxQty : 1,
-                unitCost: validBatches.find((b: any) => b.batch_code === initialReturnData.batchNo)?.unit_cost || 0,
-                batchNo: initialReturnData.batchNo,
-                availableBatches: validBatches
+              draftTxId: initialReturnData.draftTxId,
+              ingredientId: ing.id,
+              ingredientName: ing.name,
+              code: `SP${ing.id.toString().padStart(6, '0')}`,
+              quantity: initialReturnData.maxQty > 0 ? initialReturnData.maxQty : 1,
+              unitCost: validBatches.find((b: any) => b.batch_code === initialReturnData.batchNo)?.unit_cost || 0,
+              batchNo: initialReturnData.batchNo,
+              availableBatches: validBatches
             }]);
+          }
         }
       }
     }).catch(console.error);
@@ -112,7 +128,12 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
     try {
       const supplierObj = suppliers.find(s => s.id == selectedSupplier);
       const supplierName = supplierObj ? supplierObj.name : "NCC khác";
-      const reasonOrSupplier = `Trả hàng cho ${supplierName} - Ghi chú: ${note}`;
+      const slipCode = initialReturnData?.ticketCode 
+        ? initialReturnData.ticketCode 
+        : `TXT${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}N-${Date.now().toString().slice(-4)}`;
+
+      const baseReason = `[SLIP:${slipCode}] Trả hàng cho ${supplierName}`;
+      const reasonOrSupplier = note ? `${baseReason} - Ghi chú: ${note}` : baseReason;
       
       await Promise.all(returnItems.map(item => 
         updateInventoryQuantityApi(item.ingredientId, {
@@ -124,7 +145,9 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
           supplierId: selectedSupplier || undefined,
           isCredit: paymentStatus === "deduct_credit",
           batchNo: item.batchNo,
-          reasonOrSupplier: reasonOrSupplier
+          reasonOrSupplier: reasonOrSupplier,
+          ingredientName: item.ingredientName,
+          draftTxId: item.draftTxId
         })
       ));
 
