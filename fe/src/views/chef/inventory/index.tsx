@@ -31,7 +31,7 @@ import {
   UploadCloud,
   FileText,
   Pencil,
-  PackageMinus,
+
   CheckCircle,
   Save
 } from "lucide-react";
@@ -126,7 +126,7 @@ export const InventoryControl: React.FC = () => {
   const [newIngForm, setNewIngForm] = useState({ name: "", category: "Thịt & Gia cầm", stock: 10, unit: "kg", threshold: 2.0 });
   const [showBatchesModal, setShowBatchesModal] = useState(false);
   const [selectedIngredientNameForBatches, setSelectedIngredientNameForBatches] = useState("");
-  const [ingredientBatches, setIngredientBatches] = useState<any[]>([]);
+  const [ingredientBatches] = useState<any[]>([]);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [batchData, setBatchData] = useState<Record<string, any[]>>({});
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);

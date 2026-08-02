@@ -25,9 +25,8 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
         quantity: item.quantity,
         status: item.status,
       })),
-      depositAmount: o.depositAmount || 0,
-      totalAmount: o.totalAmount || 0,
-      depositAmount: Number(o.deposit_amount) || 0,
+              totalAmount: o.totalAmount || 0,
+        depositAmount: Number(o.deposit_amount) || 0,
       subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
       tax: o.tax || 0,
       discount: o.discount || 0,
@@ -104,7 +103,7 @@ export const getInvoiceById = async (req: Request, res: Response): Promise<void>
 export const processPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed } = req.body;
+    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed, serviceFeeRate } = req.body;
 
     if (!paymentMethod) {
       sendError(res, "Phương thức thanh toán là bắt buộc", 400);
@@ -215,8 +214,7 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         voucher,
         voucherCode,
         depositAmount,
-        tip,
-        depositAmount,
+          tip,
         pointsUsed: pointsToUse,
         pointsDiscount,
         finalAmount,

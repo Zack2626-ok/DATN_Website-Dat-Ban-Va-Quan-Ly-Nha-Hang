@@ -18,7 +18,7 @@ interface CheckItem {
 }
 
 export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftData }) => {
-  const [ingredients, setIngredients] = useState<any[]>([]);
+  const [/*ingredients*/, setIngredients] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   
   const [checkItems, setCheckItems] = useState<CheckItem[]>([]);

@@ -10,7 +10,6 @@ import {
   UtensilsCrossed,
   BadgeCheck,
   LineChart,
-  Percent,
   CircleDollarSign,
   TrendingDown,
   Building2,

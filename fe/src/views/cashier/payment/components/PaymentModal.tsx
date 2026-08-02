@@ -37,6 +37,7 @@ const PAYMENT_METHODS = [
 export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConfirm, loading }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
   const [vatRate, setVatRate] = useState(10);
+  const [serviceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount] = useState(0);
@@ -184,10 +185,10 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
           </div>
 
           {/* Deposit */}
-          {breakdown.depositAmountK > 0 && (
+          {breakdown.depositAmount > 0 && (
             <div className="flex justify-between text-xs py-2 border-b border-slate-100 text-amber-600">
               <span className="font-bold">Trừ tiền đặt cọc</span>
-              <span className="font-bold">- {formatVnd(breakdown.depositAmountK)} vnđ</span>
+              <span className="font-bold">- {formatVnd(breakdown.depositAmount)} vnđ</span>
             </div>
           )}
 

@@ -34,7 +34,6 @@ export interface PaymentBreakdown {
   serviceFeeRate: number;
   voucher: number;
   voucherCode?: string;
-  depositAmount?: number;
   tip: number;
   finalAmount: number;
 }
