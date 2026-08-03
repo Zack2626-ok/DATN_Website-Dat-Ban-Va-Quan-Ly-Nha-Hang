@@ -143,3 +143,8 @@ export const requestPayment = async (orderId: number, note?: string, isEarlyPaym
   const response = await api.post(`/v1/waiter/orders/${orderId}/request-payment`, { note, isEarlyPayment });
   return response.data.data;
 };
+
+export const cancelPaymentRequest = async (orderId: number): Promise<{ orderId: number; status: string }> => {
+  const response = await api.post(`/v1/waiter/orders/${orderId}/cancel-payment-request`);
+  return response.data.data;
+};

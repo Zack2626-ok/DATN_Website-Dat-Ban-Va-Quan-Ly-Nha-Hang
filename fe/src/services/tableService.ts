@@ -65,6 +65,17 @@ export interface ActiveOrderResolution {
   } | null;
 }
 
+export interface TableTransferResult {
+  orderId: number;
+  bookingId: number | null;
+  sourceTableId: number;
+  targetTableId: number;
+  sourceTableName: string;
+  targetTableName: string;
+  sourceStatus: "cleaning";
+  targetStatus: "serving";
+}
+
 export interface GroupSeatingResult {
   primaryTableId: number;
   assignedTableIds: number[];
@@ -148,8 +159,12 @@ export const updateTableStatus = async (
 };
 
 /** Chuyển bàn: di chuyển order từ source sang target table */
-export const transferTable = async (sourceTableId: number, targetTableId: number): Promise<void> => {
-  await api.post(`/v1/tables/${sourceTableId}/transfer`, { target_table_id: targetTableId });
+export const transferTable = async (
+  sourceTableId: number,
+  targetTableId: number,
+): Promise<TableTransferResult> => {
+  const response = await api.post(`/v1/tables/${sourceTableId}/transfer`, { target_table_id: targetTableId });
+  return response.data.data;
 };
 
 /** Gộp bàn: gộp nhiều bàn vào bàn chính */
@@ -167,54 +182,42 @@ export const arrangeGroupSeating = async (
   });
   return response.data.data;
 };
+export interface SplitGroupParam {
+  guest_count: number;
+  item_allocations?: { order_item_id: number; quantity: number }[];
+}
 
-/** Bỏ gộp bàn */
-export const unmergeTables = async (primaryTableId: number): Promise<void> => {
-  await api.delete(`/v1/tables/${primaryTableId}/merge`);
-};
+export interface ActiveTableSplitsResponse {
+  splitSessionId: number;
+  subOrders?: any[];
+  splits?: any[];
+}
 
-/** Tách bàn: tách một phần order sang bàn mới */
-export const splitTable = async (
-  parentTableId: number,
-  targetTableId: number,
-  childLabel: string,
-  itemIds: number[],
-): Promise<{ newOrderId?: number }> => {
-  const response = await api.post(`/v1/tables/${parentTableId}/split`, {
-    target_table_id: targetTableId,
-    child_label: childLabel,
-    item_ids: itemIds,
-  });
-  return response.data.data || {};
-};
-
-export const createResmanagerTable = async (data: {
-  area_id: number;
-  name: string;
-  capacity: number;
-  row_pos: string;
-  col_pos: number;
-}): Promise<ResmanagerTable> => {
+export const createResmanagerTable = async (data: any): Promise<any> => {
   const response = await api.post("/v1/tables", data);
   return response.data.data;
 };
 
-export const updateResmanagerTable = async (
-  id: number,
-  data: {
-    area_id?: number;
-    name?: string;
-    capacity?: number;
-    row_pos?: string;
-    col_pos?: number;
-  }
-): Promise<ResmanagerTable> => {
-  const response = await api.patch(`/v1/tables/${id}`, data);
+export const deleteResmanagerTable = async (tableId: number): Promise<any> => {
+  const response = await api.patch(`/v1/tables/${tableId}/delete`);
   return response.data.data;
 };
 
-export const deleteResmanagerTable = async (id: number): Promise<void> => {
-  await api.patch(`/v1/tables/${id}/delete`);
+export const unmergeTables = async (primaryTableId: number): Promise<void> => {
+  await api.delete(`/v1/tables/${primaryTableId}/merge`);
+};
+
+export const getTableSplits = async (tableId: number): Promise<ActiveTableSplitsResponse> => {
+  const response = await api.get(`/v1/tables/${tableId}/splits`);
+  return response.data.data;
+};
+
+export const createTableSplit = async (
+  tableId: number,
+  groups: SplitGroupParam[],
+): Promise<ActiveTableSplitsResponse> => {
+  const response = await api.post(`/v1/tables/${tableId}/split`, { groups });
+  return response.data.data;
 };
 
 export const openResmanagerTab = async (data: {

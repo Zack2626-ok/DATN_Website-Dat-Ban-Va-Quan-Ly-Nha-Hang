@@ -13,6 +13,8 @@ import {
   arrangeGroupSeatingHandler,
   unmergeTableHandler,
   splitTableHandler,
+  getTableSplitsHandler,
+  moveSplitItemsHandler,
   createResmanagerTableHandler,
   updateResmanagerTableHandler,
   deleteResmanagerTableHandler,
@@ -63,7 +65,13 @@ router.post("/:id/group-seating", arrangeGroupSeatingHandler);
 // DELETE /api/v1/tables/:id/merge
 router.delete("/:id/merge", unmergeTableHandler);
 
+// GET /api/v1/tables/:id/splits
+router.get("/:id/splits", getTableSplitsHandler);
+
 // POST /api/v1/tables/:id/split
 router.post("/:id/split", splitTableHandler);
+
+// POST /api/v1/tables/:id/split/items/move
+router.post("/:id/split/items/move", moveSplitItemsHandler);
 
 export default router;

@@ -11,6 +11,7 @@ import {
   ONLINE_BOOKING_LAST_ARRIVAL_TIME,
   PUBLIC_BOOKING_HOURS,
 } from "../../constants/booking";
+import { getBookingValidationStatus } from "../../services/systemService";
 
 /** Returns a date input value offset by the configured booking horizon. */
 const getMaximumBookingDate = (): string => {
@@ -42,6 +43,11 @@ export const BookingPage: React.FC = () => {
   const [availableTables, setAvailableTables] = useState<any[]>([]);
 
   const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
+  }, []);
 
   // Bắt buộc đăng nhập tài khoản khách hàng trước khi đặt bàn
   useEffect(() => {
@@ -143,7 +149,7 @@ export const BookingPage: React.FC = () => {
       return;
     }
     
-    if (!isWithinPublicBookingHours(form.time)) {
+    if (bookingValidationEnabled && !isWithinPublicBookingHours(form.time)) {
       toast.error(`Nhà hàng nhận đặt bàn online từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${ONLINE_BOOKING_LAST_ARRIVAL_TIME}.`);
       return;
     }

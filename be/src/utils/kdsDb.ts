@@ -81,8 +81,14 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.kitchen_note AS kitchenNote,
        oi.status,
        oi.created_at  AS createdAt,
+<<<<<<< HEAD
+       oi.updated_at  AS updatedAt,
+       COALESCE(o.split_label, t.name) AS tableName,
+       o.split_label  AS splitLabel,
+=======
        oi.created_at  AS updatedAt,
        t.name         AS tableName,
+>>>>>>> d21c3cefae19c645657ea5538db7f2578cdc0776
        ta.name        AS areaName,
        o.order_type   AS orderType,
        oi.void_reason  AS voidReason,
