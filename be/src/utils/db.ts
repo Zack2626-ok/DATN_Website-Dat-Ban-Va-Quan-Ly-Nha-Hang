@@ -18,9 +18,17 @@ import {
   GROUP_SEATING_CODE_PREFIX,
   GROUP_SEATING_STATUS,
   MERGE_BOOKING_LOOKAHEAD_MINUTES,
+  ORDER_TYPE,
   ORDER_STATUS,
   TABLE_MERGE_STATUS,
 } from "../constants/order";
+import {
+  getMemberLevelFromPoints,
+  MEMBER_LEVEL_RANK,
+  normalizeMemberLevel,
+  TIER_REWARD_VOUCHERS,
+  type MemberLevel,
+} from "../constants/loyalty";
 import { formatVietnamBookingDateTime } from "./bookingTime";
 
 
@@ -706,6 +714,31 @@ const runSchemaMigrations = async (): Promise<void> => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
+    // A transfer changes where an active order is served, not the table stored on
+    // the booking calendar. Keep an immutable audit trail for operational review.
+    await query(`
+      CREATE TABLE IF NOT EXISTS table_transfer_logs (
+        id INT NOT NULL AUTO_INCREMENT,
+        order_id INT NOT NULL,
+        booking_id INT NULL,
+        from_table_id INT NOT NULL,
+        to_table_id INT NOT NULL,
+        transferred_by INT NULL,
+        reason VARCHAR(500) NULL,
+        transferred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_transfer_logs_order (order_id),
+        INDEX idx_transfer_logs_booking (booking_id),
+        INDEX idx_transfer_logs_from_table (from_table_id),
+        INDEX idx_transfer_logs_to_table (to_table_id),
+        CONSTRAINT fk_transfer_log_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_transfer_log_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL,
+        CONSTRAINT fk_transfer_log_from_table FOREIGN KEY (from_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_transfer_log_to_table FOREIGN KEY (to_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_transfer_log_user FOREIGN KEY (transferred_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
     // Future reservations use a separate allocation record. This must never be confused with a live merge.
     await query(`
       CREATE TABLE IF NOT EXISTS booking_table_assignments (
@@ -799,6 +832,31 @@ const runSchemaMigrations = async (): Promise<void> => {
       await query(`UPDATE vouchers SET points_cost = 250 WHERE code = 'GOLD25'`);
       await query(`UPDATE vouchers SET points_cost = 400 WHERE code = 'VIP30'`);
       console.log("✅ Migration: added points_cost column to vouchers table");
+    }
+
+    const voucherTierCol = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vouchers' AND COLUMN_NAME = 'required_member_level'`,
+    );
+    if (voucherTierCol.length === 0) {
+      await query(`ALTER TABLE vouchers ADD COLUMN required_member_level VARCHAR(20) NULL AFTER points_cost`);
+      console.log("✅ Migration: added required_member_level column to vouchers table");
+    }
+
+    for (const reward of TIER_REWARD_VOUCHERS) {
+      const existingReward = await query<TableIdRow[]>("SELECT id FROM vouchers WHERE code = ? LIMIT 1", [reward.code]);
+      if (existingReward.length === 0) {
+        await query(
+          `INSERT INTO vouchers (code, type, value, min_order, max_uses, used_count, points_cost, required_member_level, expired_at, is_active, created_at)
+           VALUES (?, ?, ?, ?, NULL, 0, ?, ?, NULL, 1, NOW())`,
+          [reward.code, reward.type, reward.value, reward.minOrder, reward.pointsCost, reward.requiredMemberLevel],
+        );
+      } else {
+        await query(
+          "UPDATE vouchers SET type = ?, value = ?, min_order = ?, points_cost = ?, required_member_level = ? WHERE id = ?",
+          [reward.type, reward.value, reward.minOrder, reward.pointsCost, reward.requiredMemberLevel, existingReward[0].id],
+        );
+      }
     }
 
     const customerVouchersTable = await query<any[]>(
@@ -1832,17 +1890,7 @@ export const updateResmanagerTableStatus = async (
          WHERE table_id = ? AND status = ?`,
         [ORDER_STATUS.SERVING, primaryTableId, ORDER_STATUS.PENDING_PAYMENT],
       );
-      await connection.query(
-        `UPDATE bookings SET status = ?
-         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
-        [BOOKING_STATUS.COMPLETED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
-      );
     } else if (status === TABLE_STATUS.EMPTY) {
-      await connection.query(
-        `UPDATE bookings SET status = ?
-         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
-        [BOOKING_STATUS.CANCELLED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
-      );
       await connection.query(
         `UPDATE table_merges
          SET status = ?, resolved_at = NOW()
@@ -1976,6 +2024,52 @@ interface ActiveTableBookingRow {
   id: number;
 }
 
+interface LoyaltyCustomerRow extends mysql.RowDataPacket {
+  id: number;
+  loyalty_points: number;
+  member_level: string;
+}
+
+interface TierVoucherRow extends mysql.RowDataPacket {
+  id: number;
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  min_order: number;
+  points_cost: number;
+  required_member_level: MemberLevel;
+  is_redeemed: number;
+}
+
+interface VoucherRedemptionRow extends mysql.RowDataPacket {
+  id: number;
+  code: string;
+  points_cost: number;
+  max_uses: number | null;
+  used_count: number;
+  required_member_level: MemberLevel | null;
+}
+
+interface CustomerVoucherRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+/** Represents a controlled business error returned by loyalty voucher redemption. */
+export class LoyaltyVoucherRedemptionError extends Error {
+  public readonly statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.name = "LoyaltyVoucherRedemptionError";
+    this.statusCode = statusCode;
+  }
+}
+
+interface WalkInBookingConflictRow {
+  id: number;
+  booking_clock: string;
+}
+
 /** Checks whether a table belongs to a booking whose three-hour service window is in progress. */
 export const hasBookingInProgressForTable = async (
   tableId: number,
@@ -2006,6 +2100,43 @@ export const hasBookingInProgressForTable = async (
     ],
   );
   return rows.length > 0;
+};
+
+/**
+ * Finds a scheduled booking that overlaps the full service window of a walk-in.
+ * A walk-in occupies the table for the standard booking duration, so a future
+ * booking in that period must be protected before an order is opened.
+ */
+export const getWalkInBookingConflictForTable = async (
+  tableId: number,
+  currentTime: string,
+): Promise<WalkInBookingConflictRow | null> => {
+  const rows = await query<WalkInBookingConflictRow[]>(
+    `SELECT b.id, DATE_FORMAT(b.start_time, '%H:%i') AS booking_clock
+     FROM bookings b
+     WHERE b.status IN (?, ?)
+       AND b.start_time < DATE_ADD(?, INTERVAL ${BOOKING_DURATION_MINUTES} MINUTE)
+       AND b.end_time > ?
+       AND (
+         b.table_id = ?
+         OR EXISTS (
+           SELECT 1
+           FROM booking_table_assignments bta
+           WHERE bta.booking_id = b.id AND bta.table_id = ?
+         )
+       )
+     ORDER BY b.start_time ASC, b.id ASC
+     LIMIT 1`,
+    [
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      currentTime,
+      currentTime,
+      tableId,
+      tableId,
+    ],
+  );
+  return rows[0] ?? null;
 };
 
 // ============================================================================
@@ -2056,7 +2187,7 @@ const getBookingTablesFreeForInterval = async (
          SELECT 1
          FROM bookings b
          WHERE b.table_id = t.id
-           AND b.status IN (?, ?, ?)
+           AND b.status IN (?, ?)
            AND b.start_time < ?
            AND b.end_time > ?
        )
@@ -2065,7 +2196,7 @@ const getBookingTablesFreeForInterval = async (
          FROM booking_table_assignments bta
          JOIN bookings b ON b.id = bta.booking_id
          WHERE bta.table_id = t.id
-           AND b.status IN (?, ?, ?)
+           AND b.status IN (?, ?)
            AND b.start_time < ?
            AND b.end_time > ?
        )
@@ -2074,12 +2205,10 @@ const getBookingTablesFreeForInterval = async (
       TABLE_STATUS.MAINTENANCE,
       BOOKING_STATUS.PENDING,
       BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.COMPLETED,
       endTime,
       startTime,
       BOOKING_STATUS.PENDING,
       BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.COMPLETED,
       endTime,
       startTime,
     ],
@@ -2418,7 +2547,7 @@ export const getBookingTableAvailabilityForDate = async (
     `SELECT DATE_FORMAT(GREATEST(b.start_time, ?), '%H:%i') AS start_time,
             DATE_FORMAT(LEAST(b.end_time, DATE_ADD(?, INTERVAL 1 DAY)), '%H:%i') AS end_time
      FROM bookings b
-     WHERE b.status IN (?, ?, ?)
+     WHERE b.status IN (?, ?)
        AND b.start_time < DATE_ADD(?, INTERVAL 1 DAY)
        AND b.end_time > ?
        AND (
@@ -2435,7 +2564,6 @@ export const getBookingTableAvailabilityForDate = async (
       dayStart,
       BOOKING_STATUS.PENDING,
       BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.COMPLETED,
       dayStart,
       dayStart,
       table.id,
@@ -2507,193 +2635,204 @@ export const createBooking = async (data: any): Promise<any> => {
     throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
   }
 
-  // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
-  const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
-  const overlaps = await query<any[]>(`
-    SELECT b.id FROM bookings b
-    WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?, ?)
-      AND b.start_time < ? AND b.end_time > ?
-    UNION
-    SELECT b.id FROM booking_table_assignments bta
-    JOIN bookings b ON b.id = bta.booking_id
-    WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?, ?)
-      AND b.start_time < ? AND b.end_time > ?
-    LIMIT 1
-  `, [
-    ...requestedTableIds,
-    BOOKING_STATUS.PENDING,
-    BOOKING_STATUS.CONFIRMED,
-    BOOKING_STATUS.COMPLETED,
-    data.end_time,
-    data.start_time,
-    ...requestedTableIds,
-    BOOKING_STATUS.PENDING,
-    BOOKING_STATUS.CONFIRMED,
-    BOOKING_STATUS.COMPLETED,
-    data.end_time,
-    data.start_time,
-  ]);
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
 
-  if (overlaps.length > 0) {
-    throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
-  }
+    // Lock requested tables to prevent concurrent bookings
+    const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
+    await connection.query(`SELECT id FROM tables WHERE id IN (${tablePlaceholders}) FOR UPDATE`, requestedTableIds);
 
-  // Validate customer_id to prevent foreign key constraint failure
-  let validCustomerId: number | null = null;
-  if (data.customer_id) {
-    const custRows = await query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
-    if (custRows.length > 0) {
-      validCustomerId = Number(custRows[0].id);
+    // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
+    const [overlaps] = await connection.query<any[]>(`
+      SELECT b.id FROM bookings b
+      WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+        AND b.start_time < ? AND b.end_time > ?
+      UNION
+      SELECT b.id FROM booking_table_assignments bta
+      JOIN bookings b ON b.id = bta.booking_id
+      WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+        AND b.start_time < ? AND b.end_time > ?
+      LIMIT 1
+    `, [
+      ...requestedTableIds,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      data.end_time,
+      data.start_time,
+      ...requestedTableIds,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      data.end_time,
+      data.start_time,
+    ]);
+
+    if (overlaps.length > 0) {
+      throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
     }
-  }
-  if (!validCustomerId && data.guest_phone) {
-    const custByPhone = await query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.guest_phone]);
-    if (custByPhone.length > 0) {
-      validCustomerId = Number(custByPhone[0].id);
+
+    // Validate customer_id to prevent foreign key constraint failure
+    let validCustomerId: number | null = null;
+    if (data.customer_id) {
+      const [custRows] = await connection.query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
+      if (custRows.length > 0) {
+        validCustomerId = Number(custRows[0].id);
+      }
     }
-  }
-
-  // Validate promotion_id to prevent foreign key constraint failure
-  let validPromotionId: number | null = null;
-  if (data.promotion_id) {
-    const promoRows = await query<any[]>("SELECT id FROM promotions WHERE id = ? LIMIT 1", [data.promotion_id]);
-    if (promoRows.length > 0) {
-      validPromotionId = Number(promoRows[0].id);
+    if (!validCustomerId && data.guest_phone) {
+      const [custByPhone] = await connection.query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.guest_phone]);
+      if (custByPhone.length > 0) {
+        validCustomerId = Number(custByPhone[0].id);
+      }
     }
-  }
 
-  const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
-  
-  let preOrderTotal = 0;
-  let depositAmount = 0;
-  let depositStatus = 'none';
-  const preOrderedItems = data.pre_ordered_items || data.items || [];
+    // Validate promotion_id to prevent foreign key constraint failure
+    let validPromotionId: number | null = null;
+    if (data.promotion_id) {
+      const [promoRows] = await connection.query<any[]>("SELECT id FROM promotions WHERE id = ? LIMIT 1", [data.promotion_id]);
+      if (promoRows.length > 0) {
+        validPromotionId = Number(promoRows[0].id);
+      }
+    }
 
-  if (preOrderedItems.length > 0) {
-    const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
-    const placeholders = itemIds.map(() => "?").join(",");
-    const menuItems = await query<any[]>(
-      `SELECT id, price FROM menu_items WHERE id IN (${placeholders})`,
-      itemIds
-    );
+    const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
     
-    const priceMap = new Map<string, number>();
-    menuItems.forEach((item) => {
-      priceMap.set(String(item.id), Number(item.price));
-    });
+    let preOrderTotal = 0;
+    let depositAmount = 0;
+    let depositStatus = 'none';
+    const preOrderedItems = data.pre_ordered_items || data.items || [];
 
-    preOrderedItems.forEach((item: any) => {
-      const price = priceMap.get(String(item.menu_item_id)) || 0;
-      preOrderTotal += price * item.quantity;
-    });
+    if (preOrderedItems.length > 0) {
+      const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
+      const placeholders = itemIds.map(() => "?").join(",");
+      const [menuItems] = await connection.query<any[]>(
+        `SELECT id, price FROM menu_items WHERE id IN (${placeholders})`,
+        itemIds
+      );
+      
+      const priceMap = new Map<string, number>();
+      menuItems.forEach((item: any) => {
+        priceMap.set(String(item.id), Number(item.price));
+      });
 
-    depositAmount = preOrderTotal * 0.20;
-    depositStatus = 'unpaid';
-  }
+      preOrderedItems.forEach((item: any) => {
+        const price = priceMap.get(String(item.menu_item_id)) || 0;
+        preOrderTotal += price * item.quantity;
+      });
 
-  const result = await query(`
-    INSERT INTO bookings (
-      table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email,
-      party_size, start_time, end_time, confirmation_code, status, 
-      guest_note, note, pre_order_total, deposit_amount, deposit_status
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
-  `, [
-    data.table_id,
-    validCustomerId,
-    validPromotionId,
-    data.guest_name,
-    data.guest_phone,
-    data.guest_email || data.email || null,
-    data.party_size,
-    data.start_time,
-    data.end_time,
-    code,
-    data.guest_note || null,
-    data.note || null,
-    preOrderTotal,
-    depositAmount,
-    depositStatus
-  ]);
-  const insertId = result.insertId;
+      depositAmount = preOrderTotal * 0.20;
+      depositStatus = 'unpaid';
+    }
 
-  const assignedTables = await query<AvailableBookingTable[]>(
-    `SELECT id, name, capacity, NULL AS area_name FROM tables WHERE id IN (${tablePlaceholders})`,
-    requestedTableIds,
-  );
-  const assignmentPlaceholders = assignedTables.map(() => "(?, ?, ?, ?)").join(",");
-  const assignmentValues: number[] = [];
-  for (const table of assignedTables) {
-    assignmentValues.push(
-      insertId,
-      Number(table.id),
-      Number(table.id) === requestedPrimaryTableId ? 1 : 0,
-      Number(table.capacity),
-    );
-  }
-  await query(
-    `INSERT INTO booking_table_assignments (booking_id, table_id, is_primary, allocated_capacity) VALUES ${assignmentPlaceholders}`,
-    assignmentValues,
-  );
-
-  if (preOrderedItems.length > 0) {
-    const placeholders = preOrderedItems.map(() => "(?, ?, ?, ?)").join(",");
-    const insertParams: any[] = [];
-    
-    const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
-    const menuItems = await query<any[]>(
-      `SELECT id, price FROM menu_items WHERE id IN (${itemIds.map(() => "?").join(",")})`,
-      itemIds
-    );
-    const priceMap = new Map<string, number>();
-    menuItems.forEach((item) => {
-      priceMap.set(String(item.id), Number(item.price));
-    });
-
-    preOrderedItems.forEach((item: any) => {
-      const price = priceMap.get(String(item.menu_item_id)) || 0;
-      insertParams.push(insertId, item.menu_item_id, item.quantity, price);
-    });
-
-    await query(
-      `INSERT INTO booking_menu_items (booking_id, menu_item_id, quantity, unit_price) VALUES ${placeholders}`,
-      insertParams
-    );
-
-    // Thêm logic của main branch: tạo ngay 1 đơn hàng pre_order và chi tiết order_items để chuyển xuống bếp
-    const orderResult = await query(`
-      INSERT INTO orders (table_id, booking_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
-      VALUES (?, ?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
+    const [result] = await connection.query<mysql.ResultSetHeader>(`
+      INSERT INTO bookings (
+        table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email,
+        party_size, start_time, end_time, confirmation_code, status, 
+        guest_note, note, pre_order_total, deposit_amount, deposit_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
     `, [
       data.table_id,
-      insertId,
-      validCustomerId || null,
-      1,
-      data.guest_note ? `[Booking ${code}] ${data.guest_note}` : `[Booking ${code}] Đơn đặt món trước`,
+      validCustomerId,
+      validPromotionId,
       data.guest_name,
       data.guest_phone,
-      data.party_size
+      data.guest_email || data.email || null,
+      data.party_size,
+      data.start_time,
+      data.end_time,
+      code,
+      data.guest_note || null,
+      data.note || null,
+      preOrderTotal,
+      depositAmount,
+      depositStatus
     ]);
-    const preOrderId = orderResult.insertId;
+    const insertId = result.insertId;
 
-    for (const item of preOrderedItems) {
-      if (!item.menu_item_id || !item.quantity) continue;
-      const price = priceMap.get(String(item.menu_item_id)) || 0;
-      await query(`
-        INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, kitchen_note, status)
-        VALUES (?, ?, ?, ?, ?, 'pre_order')
-      `, [
-        preOrderId,
-        item.menu_item_id,
-        item.quantity,
-        price,
-        data.note || `Món đặt trước - Booking ${code}`
-      ]);
+    const [assignedTables] = await connection.query<any[]>(
+      `SELECT id, name, capacity, NULL AS area_name FROM tables WHERE id IN (${tablePlaceholders})`,
+      requestedTableIds,
+    );
+    const assignmentPlaceholders = assignedTables.map(() => "(?, ?, ?, ?)").join(",");
+    const assignmentValues: number[] = [];
+    for (const table of assignedTables) {
+      assignmentValues.push(
+        insertId,
+        Number(table.id),
+        Number(table.id) === requestedPrimaryTableId ? 1 : 0,
+        Number(table.capacity),
+      );
     }
-  }
+    await connection.query(
+      `INSERT INTO booking_table_assignments (booking_id, table_id, is_primary, allocated_capacity) VALUES ${assignmentPlaceholders}`,
+      assignmentValues,
+    );
 
-  const bookingDetails = await getBookingById(insertId);
-  return bookingDetails;
+    if (preOrderedItems.length > 0) {
+      const placeholders = preOrderedItems.map(() => "(?, ?, ?, ?)").join(",");
+      const insertParams: any[] = [];
+      
+      const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
+      const [menuItems] = await connection.query<any[]>(
+        `SELECT id, price FROM menu_items WHERE id IN (${itemIds.map(() => "?").join(",")})`,
+        itemIds
+      );
+      const priceMap = new Map<string, number>();
+      menuItems.forEach((item: any) => {
+        priceMap.set(String(item.id), Number(item.price));
+      });
+
+      preOrderedItems.forEach((item: any) => {
+        const price = priceMap.get(String(item.menu_item_id)) || 0;
+        insertParams.push(insertId, item.menu_item_id, item.quantity, price);
+      });
+
+      await connection.query(
+        `INSERT INTO booking_menu_items (booking_id, menu_item_id, quantity, unit_price) VALUES ${placeholders}`,
+        insertParams
+      );
+
+      const [orderResult] = await connection.query<mysql.ResultSetHeader>(`
+        INSERT INTO orders (table_id, booking_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
+        VALUES (?, ?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
+      `, [
+        data.table_id,
+        insertId,
+        validCustomerId || null,
+        1,
+        data.guest_note ? `[Booking ${code}] ${data.guest_note}` : `[Booking ${code}] Đơn đặt món trước`,
+        data.guest_name,
+        data.guest_phone,
+        data.party_size
+      ]);
+      const preOrderId = orderResult.insertId;
+
+      for (const item of preOrderedItems) {
+        if (!item.menu_item_id || !item.quantity) continue;
+        const price = priceMap.get(String(item.menu_item_id)) || 0;
+        await connection.query(`
+          INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, kitchen_note, status)
+          VALUES (?, ?, ?, ?, ?, 'pre_order')
+        `, [
+          preOrderId,
+          item.menu_item_id,
+          item.quantity,
+          price,
+          data.note || `Món đặt trước - Booking ${code}`
+        ]);
+      }
+    }
+
+    await connection.commit();
+    const bookingDetails = await getBookingById(insertId);
+    return bookingDetails;
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
 };
 
 export const transferBookingItemsToOrder = async (tableId: number, orderId: string): Promise<void> => {
@@ -3145,15 +3284,211 @@ export const getEmptyTablesForBooking = async (startTime?: string, endTime?: str
 
 
 
-export const transferResmanagerOrder = async (sourceTableId: number, targetTableId: number): Promise<boolean> => {
-  const rows = await query("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving')", [sourceTableId]);
-  if (rows.length === 0) return false;
-  const orderId = rows[0].id;
+interface TableTransferTableRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  status: TableStatus;
+  merged_into_table_id: number | null;
+}
 
-  await query("UPDATE orders SET table_id = ? WHERE id = ?", [targetTableId, orderId]);
-  await query("UPDATE tables SET status = 'empty' WHERE id = ?", [sourceTableId]);
-  await query("UPDATE tables SET status = 'serving' WHERE id = ?", [targetTableId]);
-  return true;
+interface TableTransferOrderRow extends mysql.RowDataPacket {
+  id: number;
+  table_id: number;
+  booking_id: number | null;
+  status: string;
+}
+
+interface TableTransferBookingRow extends mysql.RowDataPacket {
+  start_time: Date;
+  table_name: string;
+}
+
+interface TableTransferClusterRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+export interface TableTransferResult {
+  orderId: number;
+  bookingId: number | null;
+  sourceTableId: number;
+  targetTableId: number;
+  sourceTableName: string;
+  targetTableName: string;
+  sourceStatus: TableStatus;
+  targetStatus: TableStatus;
+}
+
+/** Error raised when an operational table transfer violates a business rule. */
+export class TableTransferValidationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "TableTransferValidationError";
+  }
+}
+
+/** Return a printable time label for a conflicting scheduled booking. */
+const formatTransferBookingTime = (startTime: Date | string): string => new Date(startTime).toLocaleTimeString("vi-VN", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** Transfer one standalone active order while retaining booking data and an immutable audit record. */
+export const transferResmanagerOrder = async (
+  sourceTableId: number,
+  targetTableId: number,
+  transferredBy: number | null,
+  reason?: string,
+): Promise<TableTransferResult> => {
+  if (!Number.isInteger(sourceTableId) || sourceTableId <= 0
+    || !Number.isInteger(targetTableId) || targetTableId <= 0) {
+    throw new TableTransferValidationError("ID bàn nguồn và bàn đích phải hợp lệ.");
+  }
+  if (sourceTableId === targetTableId) {
+    throw new TableTransferValidationError("Bàn nguồn và bàn đích phải khác nhau.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [tableRows] = await connection.query<TableTransferTableRow[]>(
+      `SELECT id, name, status, merged_into_table_id
+       FROM tables
+       WHERE id IN (?, ?) AND is_deleted = 0
+       FOR UPDATE`,
+      [sourceTableId, targetTableId],
+    );
+    if (tableRows.length !== 2) {
+      throw new TableTransferValidationError("Không tìm thấy bàn nguồn hoặc bàn đích.");
+    }
+
+    const sourceTable = tableRows.find((table) => table.id === sourceTableId);
+    const targetTable = tableRows.find((table) => table.id === targetTableId);
+    if (!sourceTable || !targetTable) {
+      throw new TableTransferValidationError("Không thể xác định bàn nguồn hoặc bàn đích.");
+    }
+    if (targetTable.status !== TABLE_STATUS.EMPTY) {
+      throw new TableTransferValidationError(`Bàn ${targetTable.name} không trống, không thể chuyển khách vào.`);
+    }
+
+    const [mergeRows] = await connection.query<TableTransferClusterRow[]>(
+      `SELECT id
+       FROM table_merges
+       WHERE status = ?
+         AND (primary_table_id IN (?, ?) OR merged_table_id IN (?, ?))
+       FOR UPDATE`,
+      [TABLE_MERGE_STATUS.ACTIVE, sourceTableId, targetTableId, sourceTableId, targetTableId],
+    );
+    const [groupRows] = await connection.query<TableTransferClusterRow[]>(
+      `SELECT id
+       FROM table_group_seatings
+       WHERE status = ?
+         AND (primary_table_id IN (?, ?) OR assigned_table_id IN (?, ?))
+       FOR UPDATE`,
+      [GROUP_SEATING_STATUS.ACTIVE, sourceTableId, targetTableId, sourceTableId, targetTableId],
+    );
+    if (sourceTable.merged_into_table_id !== null || targetTable.merged_into_table_id !== null
+      || mergeRows.length > 0 || groupRows.length > 0) {
+      throw new TableTransferValidationError("Không thể chuyển bàn đang thuộc cụm gộp hoặc đoàn. Hãy tách/hoàn tất cụm trước.");
+    }
+
+    const [sourceOrders] = await connection.query<TableTransferOrderRow[]>(
+      `SELECT id, table_id, booking_id, status
+       FROM orders
+       WHERE table_id = ?
+         AND status IN (?, ?)
+         AND (order_type IS NULL OR order_type <> ?)
+       ORDER BY created_at DESC, id DESC
+       FOR UPDATE`,
+      [sourceTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING, ORDER_TYPE.PRE_ORDER],
+    );
+    if (sourceOrders.length === 0) {
+      throw new TableTransferValidationError(`Bàn ${sourceTable.name} không có order đang phục vụ để chuyển.`);
+    }
+    if (sourceOrders.length > 1) {
+      throw new TableTransferValidationError(`Bàn ${sourceTable.name} có nhiều order đang hoạt động, cần xử lý dữ liệu trước khi chuyển.`);
+    }
+
+    const [targetOrders] = await connection.query<TableTransferOrderRow[]>(
+      `SELECT id
+       FROM orders
+       WHERE table_id = ?
+         AND status IN (?, ?, ?)
+         AND (order_type IS NULL OR order_type <> ?)
+       FOR UPDATE`,
+      [targetTableId, ...ACTIVE_ORDER_STATUSES, ORDER_TYPE.PRE_ORDER],
+    );
+    if (targetOrders.length > 0) {
+      throw new TableTransferValidationError(`Bàn ${targetTable.name} đang có order hoạt động, không thể chuyển khách vào.`);
+    }
+
+    const bookingWindowEnd = new Date(Date.now() + MERGE_BOOKING_LOOKAHEAD_MINUTES * 60 * 1000);
+    const [upcomingBookings] = await connection.query<TableTransferBookingRow[]>(
+      `SELECT b.start_time, t.name AS table_name
+       FROM bookings b
+       JOIN tables t ON t.id = b.table_id
+       WHERE b.status IN (?, ?)
+         AND b.start_time >= NOW()
+         AND b.start_time < ?
+         AND (
+           b.table_id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM booking_table_assignments bta
+             WHERE bta.booking_id = b.id AND bta.table_id = ?
+           )
+         )
+       ORDER BY b.start_time ASC, b.id ASC
+       LIMIT 1
+       FOR UPDATE`,
+      [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED, bookingWindowEnd, targetTableId, targetTableId],
+    );
+    const blockingBooking = upcomingBookings[0];
+    if (blockingBooking) {
+      throw new TableTransferValidationError(
+        `Bàn ${blockingBooking.table_name} có lịch khách đặt lúc ${formatTransferBookingTime(blockingBooking.start_time)}.`,
+      );
+    }
+
+    const sourceOrder = sourceOrders[0];
+    if (!sourceOrder) {
+      throw new TableTransferValidationError("Không xác định được order cần chuyển.");
+    }
+    await connection.query(
+      `UPDATE orders SET table_id = ? WHERE id = ?`,
+      [targetTableId, sourceOrder.id],
+    );
+    await connection.query(
+      `UPDATE tables SET status = ? WHERE id = ?`,
+      [TABLE_STATUS.CLEANING, sourceTableId],
+    );
+    await connection.query(
+      `UPDATE tables SET status = ? WHERE id = ?`,
+      [TABLE_STATUS.SERVING, targetTableId],
+    );
+    await connection.query(
+      `INSERT INTO table_transfer_logs (
+        order_id, booking_id, from_table_id, to_table_id, transferred_by, reason
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [sourceOrder.id, sourceOrder.booking_id, sourceTableId, targetTableId, transferredBy, reason ?? null],
+    );
+
+    await connection.commit();
+    return {
+      orderId: sourceOrder.id,
+      bookingId: sourceOrder.booking_id,
+      sourceTableId,
+      targetTableId,
+      sourceTableName: sourceTable.name,
+      targetTableName: targetTable.name,
+      sourceStatus: TABLE_STATUS.CLEANING,
+      targetStatus: TABLE_STATUS.SERVING,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 };
 
 export const mergeResmanagerTables = async (primaryTableId: number, mergedTableIds: number[]): Promise<boolean> => {
@@ -4982,6 +5317,102 @@ export const getCustomerLoyaltyTransactions = async (customerId: number | string
 
 export const getCustomerVouchers = async (): Promise<any[]> => {
   return query("SELECT * FROM vouchers WHERE is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())");
+};
+
+/** Returns the tier reward catalogue, including the customer's unlock and redemption state. */
+export const getTierRewardVouchersForCustomer = async (customerId: number): Promise<TierVoucherRow[]> => {
+  return query<TierVoucherRow[]>(
+    `SELECT
+       v.id, v.code, v.type, v.value, v.min_order, v.points_cost, v.required_member_level,
+       MAX(cv.id IS NOT NULL) AS is_redeemed
+     FROM vouchers v
+     LEFT JOIN customer_vouchers cv ON cv.voucher_id = v.id AND cv.customer_id = ?
+     WHERE v.required_member_level IS NOT NULL
+       AND v.is_active = 1
+       AND (v.expired_at IS NULL OR v.expired_at > NOW())
+     GROUP BY v.id, v.code, v.type, v.value, v.min_order, v.points_cost, v.required_member_level`,
+    [customerId],
+  );
+};
+
+/** Atomically exchanges one tier reward voucher and records its single-use ownership. */
+export const redeemTierRewardVoucher = async (
+  customerId: number,
+  voucherId: number,
+): Promise<{ loyaltyPoints: number; memberLevel: MemberLevel }> => {
+  const connection = await ensurePool().getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [customerRows] = await connection.query<LoyaltyCustomerRow[]>(
+      "SELECT id, loyalty_points, member_level FROM customers WHERE id = ? AND is_deleted = 0 FOR UPDATE",
+      [customerId],
+    );
+    const customer = customerRows[0];
+    if (!customer) {
+      throw new LoyaltyVoucherRedemptionError("Không tìm thấy thông tin khách hàng.", 404);
+    }
+
+    const [voucherRows] = await connection.query<VoucherRedemptionRow[]>(
+      `SELECT id, code, points_cost, max_uses, used_count, required_member_level
+       FROM vouchers
+       WHERE id = ? AND is_active = 1 AND required_member_level IS NOT NULL
+         AND (expired_at IS NULL OR expired_at > NOW())
+       FOR UPDATE`,
+      [voucherId],
+    );
+    const voucher = voucherRows[0];
+    if (!voucher) {
+      throw new LoyaltyVoucherRedemptionError("Voucher không tồn tại, không thuộc quà theo hạng hoặc đã hết hạn.", 404);
+    }
+
+    const customerLevel = normalizeMemberLevel(customer.member_level);
+    const requiredLevel = normalizeMemberLevel(voucher.required_member_level);
+    if (MEMBER_LEVEL_RANK[customerLevel] < MEMBER_LEVEL_RANK[requiredLevel]) {
+      throw new LoyaltyVoucherRedemptionError("Hạng thành viên hiện tại chưa mở khóa voucher này.");
+    }
+    if (voucher.max_uses !== null && voucher.used_count >= voucher.max_uses) {
+      throw new LoyaltyVoucherRedemptionError("Voucher này đã hết lượt sử dụng.");
+    }
+
+    const [ownedVoucherRows] = await connection.query<CustomerVoucherRow[]>(
+      "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? LIMIT 1 FOR UPDATE",
+      [customer.id, voucher.id],
+    );
+    if (ownedVoucherRows.length > 0) {
+      throw new LoyaltyVoucherRedemptionError("Bạn đã đổi voucher quà tặng của hạng này rồi.");
+    }
+
+    const pointsCost = Number(voucher.points_cost);
+    if (customer.loyalty_points < pointsCost) {
+      throw new LoyaltyVoucherRedemptionError(
+        `Không đủ điểm thưởng. Bạn cần ${pointsCost} điểm để đổi voucher này (hiện có ${customer.loyalty_points} điểm).`,
+      );
+    }
+
+    const loyaltyPoints = customer.loyalty_points - pointsCost;
+    const memberLevel = getMemberLevelFromPoints(loyaltyPoints);
+    await connection.query(
+      "UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?",
+      [loyaltyPoints, memberLevel, customer.id],
+    );
+    await connection.query(
+      "INSERT INTO loyalty_transactions (customer_id, points, type, note) VALUES (?, ?, 'redeem', ?)",
+      [customer.id, pointsCost, `Đổi ${pointsCost} điểm nhận voucher ${voucher.code}`],
+    );
+    await connection.query(
+      "INSERT INTO customer_vouchers (customer_id, voucher_id, is_used) VALUES (?, ?, 0)",
+      [customer.id, voucher.id],
+    );
+
+    await connection.commit();
+    return { loyaltyPoints, memberLevel };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 };
 
 export const getPromotions = async (): Promise<any[]> => {

@@ -157,6 +157,7 @@ export const InventoryControl: React.FC = () => {
   const [returnSubTab, setReturnSubTab] = useState<"supplier_return" | "auto_deduction">("supplier_return");
   // Sub category filter for Kiểm kê
   const [stocktakeFilterCategory, setStocktakeFilterCategory] = useState<string>("all");
+  const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
   // Printable Stocktake Receipt state (Matching Image 5)
   const [printStocktakeData, setPrintStocktakeData] = useState<any>(null);
   const [showStocktakePrintModal, setShowStocktakePrintModal] = useState<boolean>(false);
@@ -576,8 +577,7 @@ export const InventoryControl: React.FC = () => {
     );
   };
 
-  // @ts-ignore
-  const _handleWasteExpiredBatches = async () => {
+  const handleWasteExpiredBatches = async () => {
     if (!window.confirm("Bạn có chắc chắn muốn hủy TOÀN BỘ các lô hàng đã hết hạn trong kho? Hành động này không thể hoàn tác.")) return;
     try {
       const res = await wasteExpiredBatchesApi();
@@ -711,6 +711,7 @@ export const InventoryControl: React.FC = () => {
   };
 
   // Perform Stocktake adjustment
+  // @ts-ignore
   const handleApplyStocktake = async () => {
     let changed = false;
 

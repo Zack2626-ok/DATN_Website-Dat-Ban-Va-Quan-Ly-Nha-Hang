@@ -1,18 +1,30 @@
 import React, { useState } from "react";
+import { isAxiosError } from "axios";
 import { Modal } from "../../../components/Modal";
 import { ArrowRightLeft, CheckCircle } from "lucide-react";
-import { Table } from "../../../interfaces/table.interface";
 import { toast } from "react-hot-toast";
-import { transferTable } from "../../../services/tableService";
+import { transferTable, type ResmanagerTable } from "../../../services/tableService";
 
 interface TransferTableModalProps {
   isOpen: boolean;
   onClose: () => void;
-  sourceTable: Table | null;
-  availableTables: Table[];
+  sourceTable: ResmanagerTable | null;
+  availableTables: ResmanagerTable[];
   onConfirm: (sourceId: string | number, targetId: string | number) => void;
   onSuccess?: () => void; // callback để reload data
 }
+
+interface TransferApiErrorResponse {
+  message?: string;
+}
+
+/** Extracts a safe Vietnamese message from an API failure. */
+const getTransferErrorMessage = (error: unknown): string => {
+  if (isAxiosError<TransferApiErrorResponse>(error)) {
+    return error.response?.data?.message || "Không thể chuyển bàn. Vui lòng thử lại.";
+  }
+  return "Không thể chuyển bàn. Vui lòng thử lại.";
+};
 
 /**
  * Chuyển bàn — chuyển toàn bộ order sang bàn trống khác
@@ -30,34 +42,45 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
 
   const emptyTables = availableTables.filter(
     (t) =>
-      t.status === "empty" &&
-      t.id !== sourceTable?.id &&
-      t.area_id === sourceTable?.area_id,
+      t.status === "empty"
+      && t.id !== sourceTable?.id
+      && !t.is_merged_primary
+      && !t.is_merged_child
+      && !t.is_group_seating_primary
+      && !t.is_group_seating_child,
   );
 
-  const handleClose = () => {
+  const isSourceInCluster = Boolean(
+    sourceTable?.is_merged_primary
+    || sourceTable?.is_merged_child
+    || sourceTable?.is_group_seating_primary
+    || sourceTable?.is_group_seating_child,
+  );
+
+  /** Clears local selection before closing the transfer dialog. */
+  const handleClose = (): void => {
     setTargetId("");
     onClose();
   };
 
-  const handleSubmit = async () => {
-    if (!sourceTable || !targetId) {
+  /** Sends the transfer request only for a standalone source table. */
+  const handleSubmit = async (): Promise<void> => {
+    if (!sourceTable || !targetId || isSourceInCluster) {
       toast.error("Vui lòng chọn bàn đích");
       return;
     }
     setLoading(true);
     try {
       // Gọi API thật
-      await transferTable(Number(sourceTable.id), Number(targetId));
+      const result = await transferTable(Number(sourceTable.id), Number(targetId));
       const targetTable = emptyTables.find((t) => t.id.toString() === targetId);
-      toast.success(`✅ Đã chuyển bàn ${sourceTable.name} → ${targetTable?.name}`);
+      toast.success(`✅ Đã chuyển bàn ${result.sourceTableName} → ${targetTable?.name ?? result.targetTableName}`);
       onConfirm(sourceTable.id, targetId);
       onSuccess?.();
       handleClose();
-    } catch (err: any) {
-      console.error(err);
-      const msg = err?.response?.data?.message || "Không thể chuyển bàn. Vui lòng thử lại.";
-      toast.error(msg);
+    } catch (error: unknown) {
+      console.error(error);
+      toast.error(getTransferErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -80,11 +103,17 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
           </div>
         </div>
 
+        {isSourceInCluster && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+            Bàn nguồn đang thuộc cụm gộp hoặc đoàn. Hãy tách/hoàn tất cụm trước khi chuyển bàn.
+          </div>
+        )}
+
         {/* Target table selection */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Chọn bàn đích (cùng {(sourceTable as any).area_name || "khu vực"} — đang trống)
+              Chọn bàn đích (có thể khác khu vực, đang trống)
             </label>
             <span className="text-xs text-gray-400">{emptyTables.length} bàn trống</span>
           </div>
@@ -111,7 +140,7 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
                   <span className="block text-base font-black">{t.name}</span>
                   <span className="block text-[10px] font-normal text-gray-400 mt-0.5">{t.capacity} chỗ</span>
                   <span className="block text-[9px] font-bold text-gray-300 mt-0.5">
-                    {(t as any).area_name || ""}
+                    {t.area_name || ""}
                   </span>
                 </button>
               ))}
@@ -140,7 +169,7 @@ export const TransferTableModal: React.FC<TransferTableModalProps> = ({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!targetId || loading}
+            disabled={!targetId || loading || isSourceInCluster}
             className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
           >
             {loading ? (

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { isAxiosError } from "axios";
 import { io } from "socket.io-client";
 import {
   RefreshCw,
@@ -75,6 +76,18 @@ interface ActiveOrderInfo {
   totalAmount: number;
   status: string;
 }
+
+interface OpenTableApiErrorResponse {
+  message?: string;
+}
+
+/** Extracts the server-side reason when a physical-table opening request is rejected. */
+const getOpenTableErrorMessage = (error: unknown): string => {
+  if (isAxiosError<OpenTableApiErrorResponse>(error)) {
+    return error.response?.data?.message || "Không thể mở bàn. Vui lòng thử lại.";
+  }
+  return "Không thể mở bàn. Vui lòng thử lại.";
+};
 
 const getCurrentUserId = (): number => {
   try {
@@ -414,6 +427,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     [tables, selectedTableId],
   );
 
+  const isSelectedTableInCluster = Boolean(
+    selectedTable?.is_merged_primary
+    || selectedTable?.is_merged_child
+    || selectedTable?.is_group_seating_primary
+    || selectedTable?.is_group_seating_child,
+  );
+
   // Mở bàn + tự động thêm Khăn ướt theo số khách
   const handleOpenTable = async (data: { guestCount: number; customerName: string; customerPhone: string }) => {
     if (!selectedTableId || !selectedTable) return;
@@ -466,9 +486,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
       navigate(`/waiter/orders/${selectedTableId}`);
-    } catch (err) {
-      toast.error("Không thể mở bàn. Vui lòng thử lại.");
-      console.error(err);
+    } catch (error: unknown) {
+      toast.error(getOpenTableErrorMessage(error));
+      console.error(error);
     }
   };
 
@@ -1264,7 +1284,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
                               <button
                                 onClick={() => setActiveAction("transfer")}
-                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                                disabled={isSelectedTableInCluster}
+                                title={isSelectedTableInCluster ? "Tách hoặc hoàn tất cụm trước khi chuyển bàn" : "Chuyển toàn bộ order sang bàn trống"}
+                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 disabled:cursor-not-allowed disabled:opacity-45 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                               >
                                 <ArrowRightLeft size={13} /> Chuyển bàn
                               </button>
@@ -1331,7 +1353,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         isOpen={isOpenTableModalOpen}
         onClose={() => setIsOpenTableModalOpen(false)}
         onConfirm={handleOpenTable}
-        table={selectedTable as any}
+        table={selectedTable}
       />
 
       <AddTableModal
@@ -1372,8 +1394,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <TransferTableModal
         isOpen={activeAction === "transfer"}
         onClose={() => setActiveAction(null)}
-        sourceTable={selectedTable as any}
-        availableTables={tables as any}
+        sourceTable={selectedTable}
+        availableTables={tables}
         onConfirm={async (_src, targetId) => {
           await fetchData();
           setSelectedTableId(targetId);

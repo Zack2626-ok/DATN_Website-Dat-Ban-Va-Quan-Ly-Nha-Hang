@@ -63,6 +63,17 @@ export interface ActiveOrderResolution {
   } | null;
 }
 
+export interface TableTransferResult {
+  orderId: number;
+  bookingId: number | null;
+  sourceTableId: number;
+  targetTableId: number;
+  sourceTableName: string;
+  targetTableName: string;
+  sourceStatus: "cleaning";
+  targetStatus: "serving";
+}
+
 export interface GroupSeatingResult {
   primaryTableId: number;
   assignedTableIds: number[];
@@ -146,8 +157,12 @@ export const updateTableStatus = async (
 };
 
 /** Chuyển bàn: di chuyển order từ source sang target table */
-export const transferTable = async (sourceTableId: number, targetTableId: number): Promise<void> => {
-  await api.post(`/v1/tables/${sourceTableId}/transfer`, { target_table_id: targetTableId });
+export const transferTable = async (
+  sourceTableId: number,
+  targetTableId: number,
+): Promise<TableTransferResult> => {
+  const response = await api.post(`/v1/tables/${sourceTableId}/transfer`, { target_table_id: targetTableId });
+  return response.data.data;
 };
 
 /** Gộp bàn: gộp nhiều bàn vào bàn chính */

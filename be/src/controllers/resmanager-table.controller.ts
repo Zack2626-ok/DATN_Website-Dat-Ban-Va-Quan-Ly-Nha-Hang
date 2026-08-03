@@ -167,28 +167,47 @@ export const updateResmanagerTableStatusHandler = async (req: Request, res: Resp
   }
 };
 
-// Chuyển bàn — POST /api/v1/tables/:id/transfer
+interface TransferTableRequestBody {
+  target_table_id?: unknown;
+  reason?: unknown;
+}
+
+/** Transfers one standalone active order to an empty physical table. */
 export const transferTableHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const sourceTableId = Number(req.params.id);
-    const { target_table_id } = req.body;
+    const { target_table_id, reason } = req.body as TransferTableRequestBody;
+    const targetTableId = Number(target_table_id);
 
-    if (!target_table_id) {
-      sendError(res, "target_table_id là bắt buộc", 400);
+    if (!Number.isInteger(sourceTableId) || sourceTableId <= 0
+      || !Number.isInteger(targetTableId) || targetTableId <= 0) {
+      sendError(res, "ID bàn nguồn và target_table_id phải hợp lệ", 400);
       return;
     }
 
-    const success = await db.transferResmanagerOrder(sourceTableId, Number(target_table_id));
-    if (!success) {
-      sendError(res, "Không thể chuyển bàn — bàn nguồn phải đang phục vụ hoặc chờ thanh toán", 400);
-      return;
-    }
+    const transferredByValue = req.user?.userId ? Number(req.user.userId) : null;
+    const transferredBy = Number.isInteger(transferredByValue) && Number(transferredByValue) > 0
+      ? Number(transferredByValue)
+      : null;
+    const transferReason = typeof reason === "string" ? reason.trim().slice(0, 500) : undefined;
+    const result = await db.transferResmanagerOrder(
+      sourceTableId,
+      targetTableId,
+      transferredBy,
+      transferReason || undefined,
+    );
 
-    // Emit socket event nếu có
-    req.app.get("io")?.emit("table:transferred", { sourceTableId, targetTableId: Number(target_table_id) });
-
-    sendSuccess(res, { sourceTableId, targetTableId: Number(target_table_id) }, "Chuyển bàn thành công");
+    const io = req.app.get("io");
+    io?.to("pos_lounge").emit("table:transferred", result);
+    io?.emit("table:transferred", result);
+    io?.emit("kds:order_table_transferred", result);
+    sendSuccess(res, result, "Chuyển bàn thành công");
+    return;
   } catch (error) {
+    if (error instanceof db.TableTransferValidationError) {
+      sendError(res, error.message, 400);
+      return;
+    }
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };

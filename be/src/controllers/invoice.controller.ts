@@ -225,15 +225,11 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     await db.updateOrderStatus(id, "completed");
 
-    if (voucherCode) {
-      try {
-        await db.query(
-          "UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?",
-          [voucherCode]
-        );
-      } catch (err) {
-        console.error("Error updating voucher used_count:", err);
-      }
+    if (dbVoucherId) {
+      await db.query(
+        "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
+        [dbVoucherId],
+      );
     }
     if (order.table_id) {
       const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
@@ -265,12 +261,6 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
             await db.query(
               "UPDATE customer_vouchers SET is_used = 1, used_at = NOW() WHERE id = ?",
               [customerVoucherRecordId]
-            );
-          }
-          if (dbVoucherId) {
-            await db.query(
-              "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
-              [dbVoucherId]
             );
           }
           // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)

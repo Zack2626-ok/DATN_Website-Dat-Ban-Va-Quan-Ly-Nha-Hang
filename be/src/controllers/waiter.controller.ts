@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { formatVietnamBookingDateTime, getWalkInTimeValidationError } from "../utils/bookingTime";
+import { ORDER_TYPE } from "../constants/order";
 
 // Lấy menu items (resmanager schema)
 export const getResmanagerMenuItemsHandler = async (req: Request, res: Response): Promise<void> => {
@@ -59,12 +60,19 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     const requestedTableId = table_id ? Number(table_id) : null;
     const primaryTableId = requestedTableId ? await db.resolveResmanagerPrimaryTableId(requestedTableId) : null;
 
-    if (primaryTableId && order_type !== "pre_order") {
-      const hasScheduledGuest = await db.hasBookingInProgressForTable(
-        primaryTableId,
-        formatVietnamBookingDateTime(),
-      );
-      const walkInTimeError = hasScheduledGuest ? null : getWalkInTimeValidationError();
+    if (primaryTableId && order_type !== ORDER_TYPE.PRE_ORDER) {
+      const currentTime = formatVietnamBookingDateTime();
+      const bookingConflict = await db.getWalkInBookingConflictForTable(primaryTableId, currentTime);
+      if (bookingConflict) {
+        sendError(
+          res,
+          `Bàn này có lịch đặt lúc ${bookingConflict.booking_clock}. Vui lòng chọn bàn khác hoặc nhận khách từ mục Lịch đặt đúng giờ.`,
+          409,
+        );
+        return;
+      }
+
+      const walkInTimeError = getWalkInTimeValidationError();
       if (walkInTimeError) {
         sendError(res, walkInTimeError, 400);
         return;
