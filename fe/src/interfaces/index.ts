@@ -62,6 +62,7 @@ export interface OrderItem {
   name: string;
   price: number;
   quantity: number;
+  status?: string;
 }
 
 export interface Order {

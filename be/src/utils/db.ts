@@ -598,14 +598,27 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("Migration: added orders.merged_into_order_id");
     }
 
-    const orderStatusColumn = await query<SchemaMetadataRow[]>(
-      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'status'`,
+    try {
+      const orderStatusColumn = await query<SchemaMetadataRow[]>(
+        `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'status'`,
+      );
+      if (orderStatusColumn.length > 0 && !String(orderStatusColumn[0].COLUMN_TYPE).includes(ORDER_STATUS.MERGED)) {
+        await query(`ALTER TABLE orders MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'open'`).catch(() => {});
+        console.log("Migration: updated orders.status to VARCHAR(50)");
+      }
+    } catch (err: any) {
+      console.warn("Schema migration warning for orders.status:", err.message);
+    }
+
+    const earlyPaymentColumn = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'is_early_payment'`,
     );
-    if (orderStatusColumn.length > 0 && !String(orderStatusColumn[0].COLUMN_TYPE).includes(ORDER_STATUS.MERGED)) {
-      await query(`ALTER TABLE orders MODIFY COLUMN status
-        ENUM('open','serving','pending_payment','completed','cancelled','merged') NOT NULL DEFAULT 'open'`);
-      console.log("Migration: added orders.status = merged");
+    if (earlyPaymentColumn.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN is_early_payment TINYINT(1) NOT NULL DEFAULT 0 AFTER status`);
+      await query(`ALTER TABLE orders ADD COLUMN is_early_paid TINYINT(1) NOT NULL DEFAULT 0 AFTER is_early_payment`);
+      console.log("Migration: added orders.is_early_payment and orders.is_early_paid");
     }
 
     const sourceOrderColumn = await query<SchemaMetadataRow[]>(
@@ -1812,6 +1825,12 @@ export const updateResmanagerTableStatus = async (
          WHERE id IN (${tablePlaceholders}) AND is_deleted = 0`,
         [status, ...updatedTableIds],
       );
+      await connection.query(
+        `UPDATE orders
+         SET is_early_payment = 0, is_early_paid = 0
+         WHERE table_id IN (${tablePlaceholders})`,
+        [...updatedTableIds],
+      ).catch(() => {});
     } else {
       await connection.query(
         `UPDATE tables SET status = ?
@@ -2978,8 +2997,28 @@ export const payBookingDeposit = async (id: number): Promise<boolean> => {
   return true;
 };
 
+let earlyPaymentColumnsEnsured = false;
+export const ensureEarlyPaymentColumns = async (): Promise<void> => {
+  if (earlyPaymentColumnsEnsured) return;
+  try {
+    const earlyPaymentColumn = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'is_early_payment'`,
+    ).catch(() => []);
+    if (!earlyPaymentColumn || earlyPaymentColumn.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN is_early_payment TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+      await query(`ALTER TABLE orders ADD COLUMN is_early_paid TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+      console.log("Migration: added orders.is_early_payment and orders.is_early_paid");
+    }
+    earlyPaymentColumnsEnsured = true;
+  } catch (err) {
+    console.error("Error ensuring early payment columns:", err);
+  }
+};
+
 // ===== RESMANAGER TABLE DATABASE OPERATIONS =====
 export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any[]> => {
+  await ensureEarlyPaymentColumns();
   let sql = `
     SELECT t.*, a.name AS area_name,
            COALESCE(o.guest_name, b.guest_name) AS guest_name,
@@ -2991,12 +3030,14 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
            b.id AS booking_id,
            COALESCE(b.deposit_amount, 0) AS deposit_amount,
            o.id AS active_order_id,
-           o.order_type AS active_order_type
+           o.order_type AS active_order_type,
+           COALESCE(o.is_early_payment, 0) AS is_early_payment,
+           COALESCE(o.is_early_paid, 0) AS is_early_paid
     FROM tables t
     LEFT JOIN table_areas a ON t.area_id = a.id
     LEFT JOIN orders o ON o.id = (
       SELECT id FROM orders
-      WHERE table_id = t.id AND status IN ('open', 'serving', 'pending_payment') AND order_type <> 'pre_order'
+      WHERE table_id = t.id AND (status IN ('open', 'serving', 'pending_payment') OR (status = 'completed' AND is_early_paid = 1)) AND order_type <> 'pre_order'
       ORDER BY created_at DESC, id DESC
       LIMIT 1
     )
@@ -3432,7 +3473,7 @@ export const getResmanagerActiveOrderForTable = async (tableId: number): Promise
   const orders = await query<MergeOrderRow[]>(
     `SELECT id, table_id, customer_id, created_by, order_type, status, note, guest_name, guest_phone, guest_count
      FROM orders
-     WHERE table_id = ? AND status IN (${statusPlaceholders})
+     WHERE table_id = ? AND (status IN (${statusPlaceholders}) OR (status = 'completed' AND is_early_paid = 1))
      ORDER BY created_at DESC, id DESC
      LIMIT 1`,
     [primaryTableId, ...ACTIVE_ORDER_STATUSES],
@@ -4141,7 +4182,7 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
   const statusPlaceholders = ACTIVE_ORDER_STATUSES.map(() => "?").join(", ");
   const orders = await query<any[]>(
     `SELECT * FROM orders
-     WHERE table_id = ? AND status IN (${statusPlaceholders})
+     WHERE table_id = ? AND (status IN (${statusPlaceholders}) OR (status = 'completed' AND is_early_paid = 1))
      ORDER BY id DESC`,
     [primaryTableId, ...ACTIVE_ORDER_STATUSES],
   );

@@ -81,7 +81,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.kitchen_note AS kitchenNote,
        oi.status,
        oi.created_at  AS createdAt,
-       oi.updated_at  AS updatedAt,
+       oi.created_at  AS updatedAt,
        t.name         AS tableName,
        ta.name        AS areaName,
        o.order_type   AS orderType,
@@ -96,9 +96,9 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      LEFT JOIN users u  ON oi.created_by   = u.id
      WHERE (oi.status IN ('pending', 'waiting_kitchen', 'cooking') 
-        OR (oi.status = 'done' AND oi.updated_at >= NOW() - INTERVAL 30 MINUTE)
+        OR oi.status = 'done'
         OR (oi.status IN ('cancelled', 'voided') AND oi.chef_dismissed = 0))
-       AND o.status IN ('open', 'serving')
+       AND (o.status IN ('open', 'serving') OR (o.status = 'completed' AND o.is_early_paid = 1))
      ORDER BY oi.created_at ASC`
   );
 

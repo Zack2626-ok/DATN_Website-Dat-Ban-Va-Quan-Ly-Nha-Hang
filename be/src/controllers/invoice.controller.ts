@@ -236,8 +236,13 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       }
     }
     if (order.table_id) {
-      const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
-      req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+      if (order.is_early_payment) {
+        await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
+        req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
+      } else {
+        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+        req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+      }
     }
 
     // Tích điểm loyalty nếu có khách hàng thành viên liên kết
@@ -578,8 +583,13 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
     if (totalPaid >= order.totalAmount) {
       await db.updateOrderStatus(id, "completed");
       if (order.table_id) {
-        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
-        req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+        if (order.is_early_payment) {
+          await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
+          req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
+        } else {
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+        }
       }
     }
 

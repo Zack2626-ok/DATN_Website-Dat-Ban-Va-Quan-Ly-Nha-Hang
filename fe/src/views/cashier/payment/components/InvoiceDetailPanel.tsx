@@ -11,6 +11,7 @@ import {
   ArrowRightLeft,
   UserCheck,
   Hourglass,
+  AlertTriangle,
 } from "lucide-react";
 import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
@@ -53,12 +54,25 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
   const isPaid = invoice.invoiceStatus === "paid";
   const isCancelled = invoice.invoiceStatus === "cancelled";
   const isPendingPayment = invoice.status === "pending_payment";
+  const isEarlyPayment = Boolean(invoice.is_early_payment) || (invoice.status === "serving" && invoice.items.some(
+    (item) => item.status && ["waiting_kitchen", "cooking", "done"].includes(item.status)
+  ));
   const canAct = !isPaid && !isCancelled;
 
   const finalAmount = invoice.totalAmount;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      {/* Early payment alert for Cashier */}
+      {isEarlyPayment && (
+        <div className="bg-amber-50 border-b border-amber-200 p-4 flex items-start gap-3 text-xs text-amber-800 animate-pulse">
+          <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-extrabold text-amber-900 text-sm">⚠️ YÊU CẦU THANH TOÁN SỚM</p>
+            <p className="mt-0.5 font-bold text-amber-700">Khách thanh toán trước toàn bộ món nhưng vẫn ăn tại bàn. Bếp & phục vụ sẽ tiếp tục phục vụ các món đang làm.</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="p-5 border-b border-slate-100">
         <div className="flex items-start justify-between">
@@ -140,6 +154,17 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
                       {item.quantity}x
                     </span>
                     <span className="text-xs font-bold text-slate-800">{item.name}</span>
+                    {item.status && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+                        item.status === "served" ? "bg-slate-200/80 text-slate-600" :
+                        item.status === "done" ? "bg-emerald-100 text-emerald-800 font-extrabold" :
+                        item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                      }`}>
+                        {item.status === "served" ? "Đã mang ra" :
+                         item.status === "done" ? "Bếp nấu xong" :
+                         item.status === "cooking" ? "Đang nấu" : "Chờ nấu"}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs font-black text-slate-900">{formatVnd(item.price * item.quantity)} vnđ</span>
                 </div>
