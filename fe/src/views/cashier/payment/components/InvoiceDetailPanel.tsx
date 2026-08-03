@@ -11,6 +11,8 @@ import {
   ArrowRightLeft,
   UserCheck,
   Hourglass,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
@@ -23,6 +25,7 @@ interface Props {
   onMerge: () => void;
   onCancel: () => void;
   onPrint: () => void;
+  onRefund?: () => void;
   loading: boolean;
 }
 
@@ -34,7 +37,7 @@ const formatTime = (dateStr: string) => {
 };
 
 export const InvoiceDetailPanel: React.FC<Props> = (props) => {
-  const { invoice, onPay, onPrint, loading } = props;
+  const { invoice, onPay, onPrint, onRefund, loading } = props;
 
   useEffect(() => {
     getRestaurantInfo().catch(() => { });
@@ -53,12 +56,25 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
   const isPaid = invoice.invoiceStatus === "paid";
   const isCancelled = invoice.invoiceStatus === "cancelled";
   const isPendingPayment = invoice.status === "pending_payment";
+  const isEarlyPayment = Boolean(invoice.is_early_payment) || (invoice.status === "serving" && invoice.items.some(
+    (item) => item.status && ["waiting_kitchen", "cooking", "done"].includes(item.status)
+  ));
   const canAct = !isPaid && !isCancelled;
 
   const finalAmount = invoice.totalAmount;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      {/* Early payment alert for Cashier */}
+      {isEarlyPayment && (
+        <div className="bg-amber-50 border-b border-amber-200 p-4 flex items-start gap-3 text-xs text-amber-800 animate-pulse">
+          <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-extrabold text-amber-900 text-sm">⚠️ YÊU CẦU THANH TOÁN SỚM</p>
+            <p className="mt-0.5 font-bold text-amber-700">Khách thanh toán trước toàn bộ món nhưng vẫn ăn tại bàn. Bếp & phục vụ sẽ tiếp tục phục vụ các món đang làm.</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="p-5 border-b border-slate-100">
         <div className="flex items-start justify-between">
@@ -139,7 +155,24 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
                     <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
                       {item.quantity}x
                     </span>
-                    <span className="text-xs font-bold text-slate-800">{item.name}</span>
+                    <span className={`text-xs font-bold ${item.is_refunded ? "line-through text-red-600 bg-red-50 px-1.5 py-0.5 rounded" : "text-slate-800"}`}>
+                      {item.name}
+                    </span>
+                    {item.is_refunded ? (
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-red-100 text-red-700 border border-red-200">
+                        Đã hoàn tiền
+                      </span>
+                    ) : item.status ? (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+                        item.status === "served" ? "bg-slate-200/80 text-slate-600" :
+                        item.status === "done" ? "bg-emerald-100 text-emerald-800 font-extrabold" :
+                        item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                      }`}>
+                        {item.status === "served" ? "Đã mang ra" :
+                         item.status === "done" ? "Bếp nấu xong" :
+                         item.status === "cooking" ? "Đang nấu" : "Chờ nấu"}
+                      </span>
+                    ) : null}
                   </div>
                   <span className="text-xs font-black text-slate-900">{formatVnd(item.price * item.quantity)} vnđ</span>
                 </div>
@@ -229,15 +262,34 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
         )}
 
         {isPaid && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex justify-between items-center">
-            <span className="text-xs font-bold text-emerald-700">Đã thanh toán</span>
-            <button
-              onClick={onPrint}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
-            >
-              <Printer size={13} />
-              In hóa đơn
-            </button>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-emerald-700">Đã thanh toán</span>
+              {invoice.has_refund && (
+                <span className="text-[10px] font-black text-red-600 bg-red-100 px-2 py-0.5 rounded-full border border-red-200">
+                  Đã hoàn {Number(invoice.refunded_total || 0).toLocaleString("vi-VN")}đ
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {onRefund && (
+                <button
+                  onClick={onRefund}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                  title="Tạo phiếu hoàn tiền cho món ăn"
+                >
+                  <RotateCcw size={13} />
+                  Phiếu hoàn
+                </button>
+              )}
+              <button
+                onClick={onPrint}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Printer size={13} />
+                In hóa đơn
+              </button>
+            </div>
           </div>
         )}
         {isCancelled && (

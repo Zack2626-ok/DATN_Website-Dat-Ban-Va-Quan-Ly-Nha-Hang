@@ -49,6 +49,8 @@ import {
   addOrderItem,
   getWaiterMenuItems,
   voidOrderItem,
+  requestPayment,
+  markItemAsServed,
   type WaiterOrderItem,
 } from "../../../services/waiterService";
 import { Modal } from "../../../components/Modal";
@@ -176,7 +178,7 @@ const STATUS_CONFIG: Record<
     dot: "bg-rose-500",
   },
   cleaning: {
-    label: "🧹 Đang dọn dẹp",
+    label: "Đã thanh toán",
     bg: "bg-blue-50",
     text: "text-blue-700",
     border: "border-blue-300",
@@ -614,7 +616,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   const handleRequestPaymentFromTable = async () => {
     if (!selectedTableId || !selectedTable || !activeOrder || activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length === 0) return;
-    const unfinished = activeOrder.items.filter((i) => i.status === "pending" || i.status === "cooking");
+    const unfinished = activeOrder.items.filter((i) => i.status === "pending" || i.status === "waiting_kitchen" || i.status === "cooking" || i.status === "done");
     if (unfinished.length > 0) {
       setUnfinishedPaymentModal(unfinished);
       return;
@@ -632,6 +634,21 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       if (selectedTableId) loadActiveOrder(selectedTableId);
     } catch {
       toast.error("Không thể gửi yêu cầu thanh toán");
+    } finally {
+      setProcessingPaymentRequest(false);
+    }
+  };
+
+  const executeRequestEarlyPaymentFromTable = async () => {
+    if (!selectedTableId || !activeOrder) return;
+    try {
+      setProcessingPaymentRequest(true);
+      await requestPayment(activeOrder.id, undefined, true);
+      toast.success("Đã gửi yêu cầu thanh toán sớm cho thu ngân");
+      fetchData();
+      if (selectedTableId) loadActiveOrder(selectedTableId);
+    } catch {
+      toast.error("Không thể gửi yêu cầu thanh toán sớm");
     } finally {
       setProcessingPaymentRequest(false);
     }
@@ -825,13 +842,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         {t.status !== "empty" && (
                           <span className="text-[10px] opacity-90 mt-0.5 leading-none font-bold">
                             {t.status === "serving"
-                              ? "Có khách"
+                              ? (t.is_early_paid ? "Đã thanh toán" : t.is_early_payment ? "TT Sớm" : "Có khách")
                               : t.status === "reserved"
                                 ? "Đã đặt"
                                 : t.status === "pending_payment"
                                   ? "Chờ TT"
                                   : t.status === "cleaning"
-                                    ? "Đang dọn"
+                                    ? "Đã thanh toán"
                                     : "Bảo trì"}
                           </span>
                         )}
@@ -935,10 +952,19 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${(STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
-                      } bg-white border border-sky-100 shadow-2xs`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      selectedTable.status === "serving" && selectedTable.is_early_paid
+                        ? "text-emerald-700 bg-emerald-50 border-emerald-300"
+                        : selectedTable.status === "serving" && selectedTable.is_early_payment
+                        ? "text-amber-700 bg-amber-50 border-amber-300"
+                        : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
+                    } bg-white border border-sky-100 shadow-2xs`}
                   >
-                    {(STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
+                    {selectedTable.status === "serving" && selectedTable.is_early_paid
+                      ? "Đang phục vụ (đã thanh toán)"
+                      : selectedTable.status === "serving" && selectedTable.is_early_payment
+                      ? "Đang phục vụ (thanh toán sớm)"
+                      : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
                   </span>
                   <button
                     type="button"
@@ -1212,12 +1238,30 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                                         )}
                                       </div>
 
-                                      <div className="flex items-center shrink-0">
+                                      <div className="flex items-center gap-1.5 shrink-0">
                                         <span
                                           className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
                                         >
                                           {st.label}
                                         </span>
+                                        {item.status === "done" && (
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              if (!activeOrder) return;
+                                              try {
+                                                await markItemAsServed(activeOrder.id, item.id);
+                                                toast.success(`Đã mang "${item.item_name}" ra bàn`);
+                                                loadActiveOrder(selectedTable.id);
+                                              } catch {
+                                                toast.error("Không thể cập nhật món đã mang ra");
+                                              }
+                                            }}
+                                            className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors cursor-pointer"
+                                          >
+                                            🛎 Đã mang ra
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -1259,8 +1303,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             </div>
                           )}
 
-                          {/* Nút thao tác chuyển/gộp/tách — CHỈ HIỂN THỊ khi bàn đang ở trạng thái phục vụ (serving) */}
-                          {selectedTable.status === "serving" && !selectedTable.is_merged_child && (
+                          {/* Nút thao tác chuyển/gộp/tách — CHỈ HIỂN THỊ khi bàn đang ở trạng thái phục vụ và chưa thanh toán */}
+                          {selectedTable.status === "serving" && !selectedTable.is_early_paid && !selectedTable.is_merged_child && (
                             <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
                               <button
                                 onClick={() => setActiveAction("transfer")}
@@ -1285,12 +1329,25 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             </div>
                           )}
 
-                          {selectedTable.status === "serving" && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                          {selectedTable.status === "serving" && !selectedTable.is_early_paid && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
                             <button
                               onClick={handleRequestPaymentFromTable}
                               className="w-full rounded-xl border-2 border-purple-200 bg-purple-50/60 px-3 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 shadow-2xs"
                             >
                               <FileText size={14} className="text-purple-600" /> Yêu cầu thanh toán (Thu ngân)
+                            </button>
+                          )}
+
+                          {selectedTable.status === "serving" && selectedTable.is_early_paid && (
+                            <button
+                              onClick={async () => {
+                                await updateTableStatus(Number(selectedTable.id), "empty");
+                                toast.success("Đã dọn dẹp và trả bàn trống thành công!");
+                                fetchData();
+                              }}
+                              className="w-full rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-bold hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-2 shadow-sm"
+                            >
+                              <CheckCircle size={15} /> 🧹 Đã dọn dẹp (Khách rời đi, trả bàn trống)
                             </button>
                           )}
                         </div>
@@ -1605,7 +1662,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <Modal
         isOpen={!!unfinishedPaymentModal}
         onClose={() => !processingPaymentRequest && setUnfinishedPaymentModal(null)}
-        title="⚠️ Cảnh báo: Bàn vẫn còn món chưa mang ra"
+        title="⚠️ Cảnh báo: Bàn vẫn còn món chưa hoàn thành / chưa mang ra"
         size="md"
         theme="light"
       >
@@ -1613,7 +1670,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           <div className="space-y-4 text-sm">
             <p className="text-gray-600">
               Bàn <strong className="text-gray-900">{selectedTable?.name}</strong> đang có{" "}
-              <strong className="text-amber-600">{unfinishedPaymentModal.length} món</strong> chưa hoàn thành:
+              <strong className="text-amber-600">{unfinishedPaymentModal.length} món</strong> chưa hoàn thành hoặc chưa mang ra bàn:
             </p>
 
             <div className="max-h-48 overflow-y-auto border border-amber-100 rounded-xl bg-amber-50/40 p-3 space-y-2">
@@ -1623,102 +1680,100 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                     <p className="font-bold text-gray-800">{item.item_name}</p>
                     <p className="text-gray-500">Số lượng: <span className="font-bold text-gray-700">{item.quantity}</span></p>
                   </div>
-                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-                    }`}>
-                    {item.status === "cooking" ? "⏳ Đang nấu" : "📋 Chờ gửi bếp"}
+                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${
+                    item.status === "cooking" ? "bg-amber-100 text-amber-800" :
+                    item.status === "done" ? "bg-emerald-100 text-emerald-800" :
+                    item.status === "waiting_kitchen" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"
+                  }`}>
+                    {item.status === "cooking" ? "⏳ Đang nấu" :
+                     item.status === "done" ? "✅ Bếp đã nấu xong (chờ bưng ra)" :
+                     item.status === "waiting_kitchen" ? "📋 Đã gửi bếp" : "📋 Chờ gửi bếp"}
                   </span>
                 </div>
               ))}
             </div>
 
-            {(() => {
-              const servedOrDoneCount = activeOrder?.items.filter((i) => i.status === "served" || i.status === "done").length || 0;
-              if (servedOrDoneCount === 0) {
-                return (
-                  <div className="space-y-3">
-                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium space-y-1">
-                      <p className="font-bold text-rose-900 flex items-center gap-1.5 text-sm">
-                        ⛔ Bàn chưa có món nào được mang ra (`Đã mang ra = 0`)
-                      </p>
-                      <p>Khách chưa ăn hoặc bếp chưa làm xong thì không thể yêu cầu thu ngân thanh toán trước! Nếu khách đổi ý rời đi không ăn nữa, vui lòng chọn Hủy toàn bộ món bên dưới.</p>
-                    </div>
+            <div className="space-y-3">
+              <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl text-xs text-sky-900 space-y-1">
+                <p className="font-bold text-sky-900 flex items-center gap-1.5">
+                  💡 Lựa chọn xử lý nghiệp vụ cho bàn:
+                </p>
+                <p>• <strong>Thanh toán sớm:</strong> Khách muốn trả tiền trước tất cả món nhưng vẫn tiếp tục ngồi ăn (Bếp & Phục vụ tiếp tục hoàn thành các món).</p>
+                <p>• <strong>Hủy món chưa ra:</strong> Khách không muốn chờ nữa, hủy các món chưa ra và chỉ thanh toán các món đã ăn.</p>
+              </div>
 
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-xs font-bold text-gray-700">
-                        Lý do hủy toàn bộ món chưa ra:
-                      </label>
-                      <input
-                        type="text"
-                        value={unfinishedVoidReason}
-                        onChange={(e) => setUnfinishedVoidReason(e.target.value)}
-                        placeholder="Khách rời đi không dùng bữa..."
-                        className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20"
-                      />
-                    </div>
+              <div className="flex flex-col gap-2 pt-1">
+                {/* Lựa chọn 1: Thanh toán sớm (chỉ hiện khi đã gửi bếp tất cả món & không có món Chờ gửi) */}
+                {(() => {
+                  const activeItems = activeOrder?.items.filter((i) => i.status !== "voided" && i.status !== "cancelled") || [];
+                  const hasPendingItems = activeItems.some((i) => i.status === "pending");
+                  const hasSentToKitchen = activeItems.some(
+                    (i) => i.status === "waiting_kitchen" || i.status === "cooking" || i.status === "done" || i.status === "served"
+                  );
+                  const canEarlyPay = hasSentToKitchen && !hasPendingItems;
 
-                    <div className="flex flex-col gap-2 pt-2">
+                  if (canEarlyPay) {
+                    return (
                       <button
-                        onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
+                        onClick={async () => {
+                          setUnfinishedPaymentModal(null);
+                          await executeRequestEarlyPaymentFromTable();
+                        }}
                         disabled={processingPaymentRequest}
-                        className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                        className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
                       >
-                        {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                        Hủy toàn bộ món chưa ra & Trả bàn trống (0đ)
+                        {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+                        💳 Thanh toán sớm (Khách trả tiền trước tất cả món, vẫn tiếp tục ăn / chờ bếp ra món)
                       </button>
+                    );
+                  } else {
+                    return (
+                      <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium space-y-1">
+                        <p className="font-bold text-amber-900">
+                          ⛔ Chưa thể chọn Thanh toán sớm
+                        </p>
+                        <p>
+                          {hasPendingItems
+                            ? 'Đơn hàng còn món ở trạng thái "Chờ gửi". Vui lòng bấm Đóng rồi nhấn "Gửi bếp" tất cả món trước khi thanh toán sớm!'
+                            : 'Đơn hàng chưa có món nào được gửi xuống bếp. Vui lòng bấm Đóng rồi nhấn "Gửi bếp" trước!'}
+                        </p>
+                      </div>
+                    );
+                  }
+                })()}
 
-                      <button
-                        onClick={() => setUnfinishedPaymentModal(null)}
-                        disabled={processingPaymentRequest}
-                        className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
-                      >
-                        Đóng / Tiếp tục chờ bếp phục vụ
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-3">
-                  <div className="space-y-1.5 pt-1">
-                    <label className="block text-xs font-bold text-gray-700">
-                      Lý do hủy món (nếu chọn hủy & tính tiền luôn):
-                    </label>
-                    <input
-                      type="text"
-                      value={unfinishedVoidReason}
-                      onChange={(e) => setUnfinishedVoidReason(e.target.value)}
-                      placeholder="Khách yêu cầu thanh toán sớm..."
-                      className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-amber-500/20"
-                    />
-                  </div>
-
-                  <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-xl space-y-1 border border-gray-100">
-                    <p className="font-bold text-gray-800">💡 Nghiệp vụ xử lý:</p>
-                    <p>• <strong>Hủy món & Thanh toán:</strong> Khách không muốn chờ món đang làm nữa (hủy để không tính tiền vào hóa đơn và gửi thu ngân thanh toán tiền các món đã dùng).</p>
-                  </div>
-
-                  <div className="flex flex-col gap-2 pt-2">
-                    <button
-                      onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
-                      disabled={processingPaymentRequest}
-                      className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
-                    >
-                      {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                      Hủy các món chưa ra & Yêu cầu thanh toán luôn (Chỉ tính món đã ra)
-                    </button>
-
-                    <button
-                      onClick={() => setUnfinishedPaymentModal(null)}
-                      disabled={processingPaymentRequest}
-                      className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
-                    >
-                      Đóng / Tiếp tục chờ bếp phục vụ xong
-                    </button>
-                  </div>
+                {/* Lựa chọn 2: Hủy món chưa ra & Thanh toán */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <label className="block text-xs font-bold text-gray-700">
+                    Hoặc Hủy món chưa ra (nếu khách không muốn chờ nữa):
+                  </label>
+                  <input
+                    type="text"
+                    value={unfinishedVoidReason}
+                    onChange={(e) => setUnfinishedVoidReason(e.target.value)}
+                    placeholder="Lý do hủy: Khách không muốn chờ món nữa..."
+                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                  <button
+                    onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
+                    disabled={processingPaymentRequest}
+                    className="w-full py-2.5 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm mt-1"
+                  >
+                    {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
+                    🚫 Hủy các món chưa ra & Yêu cầu thanh toán các món đã ra
+                  </button>
                 </div>
-              );
-            })()}
+
+                {/* Lựa chọn 3: Đóng / Hủy thao tác */}
+                <button
+                  onClick={() => setUnfinishedPaymentModal(null)}
+                  disabled={processingPaymentRequest}
+                  className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
+                >
+                  Đóng / Tiếp tục chờ bếp phục vụ xong
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </Modal>

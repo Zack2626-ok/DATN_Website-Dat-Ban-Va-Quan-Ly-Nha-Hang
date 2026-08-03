@@ -35,7 +35,7 @@ export interface WaiterOrderItem {
   seat_number?: number | null;
   course_number: number;
   kitchen_note?: string;
-  status: "pending" | "cooking" | "done" | "served" | "cancelled" | "voided";
+  status: "pending" | "waiting_kitchen" | "cooking" | "done" | "served" | "cancelled" | "voided";
   is_held?: number | boolean;
   voided_at?: string | null;
   void_reason?: string | null;
@@ -139,7 +139,7 @@ export const markItemAsServed = async (orderId: number, itemId: number): Promise
   await api.patch(`/v1/waiter/orders/${orderId}/items/${itemId}/served`);
 };
 
-export const requestPayment = async (orderId: number, note?: string): Promise<{ orderId: number; status: string; waiterName: string }> => {
-  const response = await api.post(`/v1/waiter/orders/${orderId}/request-payment`, { note });
+export const requestPayment = async (orderId: number, note?: string, isEarlyPayment?: boolean): Promise<{ orderId: number; status: string; waiterName: string }> => {
+  const response = await api.post(`/v1/waiter/orders/${orderId}/request-payment`, { note, isEarlyPayment });
   return response.data.data;
 };

@@ -23,6 +23,10 @@ export interface Invoice {
   orderType?: string;
   paymentMethod?: string;
   staffName?: string;
+  is_early_payment?: boolean;
+  is_early_paid?: boolean;
+  refunded_total?: number;
+  has_refund?: boolean;
 }
 
 export interface PaymentBreakdown {

@@ -58,10 +58,16 @@ export interface Table {
 }
 
 export interface OrderItem {
+  id?: number;
   menuItemId: string | number;
   name: string;
   price: number;
   quantity: number;
+  status?: string;
+  is_refunded?: boolean;
+  refunded_at?: string;
+  refund_reason?: string;
+  refund_amount?: number;
 }
 
 export interface Order {

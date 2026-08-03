@@ -27,16 +27,80 @@ export const printCashierInvoice = (
     const invId = invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A";
     const guestName = invoice.customerName || invoice.customer_name || invoice.guestName || invoice.guest_name || "";
     const guestPhone = invoice.customerPhone || invoice.customer_phone || invoice.guestPhone || invoice.guest_phone || "";
-    const validItems = (invoice.items || []).filter((item: any) => item.status !== "voided" && item.status !== "cancelled");
+    const allItems = (invoice.items || []).filter((item: any) => item.status !== "cancelled");
+    const activeItems = allItems.filter((item: any) => !item.is_refunded && item.status !== "voided");
+    const refundedItems = allItems.filter((item: any) => item.is_refunded || item.status === "voided");
 
-    const subtotal = invoice.subtotal !== undefined ? Number(invoice.subtotal) : Number(invoice.totalAmount || 0);
-    const tax = Number(invoice.tax || 0);
-    const vatRate = Number(invoice.vatRate || (tax > 0 && subtotal > 0 ? Math.round((tax / subtotal) * 100) : 10));
+    // Tính từ active items (món chưa hoàn)
+    const activeSubtotal = activeItems.reduce((s: number, i: any) => s + Number(i.price || i.unit_price || 0) * Number(i.quantity || 1), 0);
+    const hasRefund = refundedItems.length > 0;
+
+    // Nếu có món đã hoàn: tính lại toàn bộ từ active items (tránh dùng giá trị cũ từ DB)
+    // Nếu không có hoàn: dùng giá trị từ invoice như bình thường
+    const originalSubtotal = invoice.subtotal !== undefined ? Number(invoice.subtotal) : activeSubtotal;
+    const subtotal = hasRefund ? activeSubtotal : originalSubtotal;
+
+    const vatRateNum = Number(invoice.vatRate || 10);
+    const tax = hasRefund
+      ? Math.round(activeSubtotal * vatRateNum / 100)
+      : Number(invoice.tax || 0);
+    const vatRate = vatRateNum;
+
     const voucherDiscount = invoice.voucherDiscount !== undefined ? Number(invoice.voucherDiscount) : (invoice.pointsDiscount !== undefined ? 0 : Number(invoice.discount || 0));
     const pointsDiscount = Number(invoice.pointsDiscount || 0);
     const discount = Number(invoice.discount || 0);
     const depositAmount = Number(invoice.depositAmount || 0);
-    const finalAmount = Number(invoice.totalAmount !== undefined ? invoice.totalAmount : Math.max(0, subtotal + tax - depositAmount - discount));
+
+    // Discount/điểm giữ nguyên không đổi dù có hoàn tiền
+    // (Đây là quyền lợi khách đã được hưởng khi thanh toán)
+    const totalDiscount = voucherDiscount + pointsDiscount || discount;
+
+    const finalAmount = hasRefund
+      ? Math.max(0, subtotal + tax - totalDiscount - depositAmount)
+      : Number(invoice.totalAmount !== undefined ? invoice.totalAmount : Math.max(0, subtotal + tax - depositAmount - discount));
+
+
+    // Helper in từng món
+    const renderItem = (item: any, isRefunded: boolean) => {
+      const itemName = item.item_name || item.name || item.menu_item_name || "—";
+      const constituents = getComboConstituents(itemName);
+      const subItemsHtml = constituents
+        ? `<div style="font-size: 9px; color: #555; padding-left: 12px; margin-top: 2px; line-height: 1.2;">
+                ${constituents.map((sub: string) => `<div>• ${sub}</div>`).join("")}
+               </div>`
+        : "";
+      const qty = Number(item.quantity || 1);
+      const price = Number(item.price || item.unit_price || 0);
+      const lineTotal = qty * price;
+
+      if (isRefunded) {
+        return `
+          <div class="item-block" style="opacity:0.7;">
+            <div class="bold" style="font-size: 11px; text-decoration: line-through; color: #dc2626;">${itemName}</div>
+            <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px; text-decoration: line-through; color: #dc2626;">
+              <span>${qty} x ${price.toLocaleString("vi-VN")}</span>
+              <span class="bold">[Đã hoàn] -${lineTotal.toLocaleString("vi-VN")}đ</span>
+            </div>
+            ${subItemsHtml}
+          </div>
+        `;
+      }
+      return `
+        <div class="item-block">
+          <div class="bold" style="font-size: 11px;">${itemName}</div>
+          <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
+            <span>${qty} x ${price.toLocaleString("vi-VN")}</span>
+            <span class="bold">${lineTotal.toLocaleString("vi-VN")}đ</span>
+          </div>
+          ${subItemsHtml}
+          ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
+        </div>
+      `;
+    };
+
+    const activeItemsHtml = activeItems.map((item: any) => renderItem(item, false)).join("");
+    const refundedItemsHtml = refundedItems.map((item: any) => renderItem(item, true)).join("");
+
 
     // Meta & Contact Info
     const rAddr = restaurantInfo?.address || "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM";
@@ -138,26 +202,8 @@ export const printCashierInvoice = (
         ${guestPhone ? `<div class="row"><span>SĐT:</span><span>${guestPhone}</span></div>` : ""}
         ` : ""}
         <div class="divider"></div>
-        ${validItems.map((item: any) => {
-          const itemName = item.item_name || item.name || item.menu_item_name || "—";
-          const constituents = getComboConstituents(itemName);
-          const subItemsHtml = constituents 
-            ? `<div style="font-size: 9px; color: #555; padding-left: 12px; margin-top: 2px; line-height: 1.2;">
-                ${constituents.map(sub => `<div>• ${sub}</div>`).join("")}
-               </div>`
-            : "";
-          return `
-            <div class="item-block">
-              <div class="bold" style="font-size: 11px;">${itemName}</div>
-              <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
-                <span>${item.quantity} x ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
-                <span class="bold">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
-              </div>
-              ${subItemsHtml}
-              ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
-            </div>
-          `;
-        }).join("")}
+        ${activeItemsHtml}
+        ${refundedItems.length > 0 ? `<div style="border-top: 1px dashed #dc2626; margin: 4px 0; font-size:9px; color:#dc2626; text-align:center;">— Các món đã hoàn tiền —</div>${refundedItemsHtml}` : ""}
         <div class="divider"></div>
         <div class="row">
           <span>Tạm tính:</span>
@@ -171,28 +217,30 @@ export const printCashierInvoice = (
         ` : ""}
         ${voucherDiscount > 0 ? `
         <div class="row">
-          <span>Voucher/Giảm giá:</span>
+          <span>Voucher/Gi\u1ea3m gi\u00e1:</span>
           <span>-${voucherDiscount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
         ${pointsDiscount > 0 ? `
         <div class="row">
-          <span>Khấu trừ điểm:</span>
+          <span>Kh\u1ea5u tr\u1eeb \u0111i\u1ec3m:</span>
           <span>-${pointsDiscount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
         ${(discount > 0 && voucherDiscount === 0 && pointsDiscount === 0) ? `
         <div class="row">
-          <span>Voucher/Giảm giá:</span>
+          <span>Voucher/Gi\u1ea3m gi\u00e1:</span>
           <span>-${discount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
+
         ${depositAmount > 0 ? `
         <div class="row">
-          <span>Tiền cọc đặt bàn:</span>
+          <span>Ti\u1ec1n cọc đặt b\u00e0n:</span>
           <span>-${depositAmount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
+
         <div class="divider"></div>
         <div class="row total-row">
           <span>TỔNG THANH TOÁN:</span>

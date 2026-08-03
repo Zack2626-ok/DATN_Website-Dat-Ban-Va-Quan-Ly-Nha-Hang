@@ -72,7 +72,7 @@ export const Badge: React.FC<BadgeProps> = ({ status, type = "order", className 
           return {
             bg: isLight ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-500/10 border-blue-500/20 text-blue-400",
             dot: isLight ? "bg-blue-500" : "bg-blue-400 animate-bounce",
-            label: "🧹 Đang dọn dẹp",
+            label: "Đã thanh toán",
           };
         default:
           return {
