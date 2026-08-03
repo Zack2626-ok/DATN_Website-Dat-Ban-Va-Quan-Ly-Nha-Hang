@@ -10,6 +10,7 @@ import {
   payPartial,
   getInvoicePayments,
   getPaymentHistory,
+  refundInvoiceItemsHandler,
 } from "../controllers/invoice.controller";
 
 const router = Router();
@@ -20,6 +21,7 @@ router.get("/:id", getInvoiceById);
 router.get("/:id/payments", getInvoicePayments);
 router.post("/:id/pay", processPayment);
 router.post("/:id/pay-partial", payPartial);
+router.post("/:id/refund", refundInvoiceItemsHandler);
 router.patch("/:id/cancel", cancelInvoice);
 router.post("/:id/split-equal", splitBillEqual);
 router.post("/:id/split-items", splitBillByItems);

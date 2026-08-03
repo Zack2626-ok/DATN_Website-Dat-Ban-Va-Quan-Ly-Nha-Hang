@@ -18,6 +18,7 @@ import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
 import { PaymentModal } from "./components/PaymentModal";
 import { SplitBillModal } from "./components/SplitBillModal";
 import { MergeBillModal } from "./components/MergeBillModal";
+import { RefundModal } from "./components/RefundModal";
 import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 import { printCashierInvoice } from "../../../utils/printBill";
@@ -33,6 +34,7 @@ export const CashierPaymentPage: React.FC = () => {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
 
@@ -374,6 +376,7 @@ export const CashierPaymentPage: React.FC = () => {
           onMerge={() => setMergeOpen(true)}
           onCancel={handleCancel}
           onPrint={handlePrint}
+          onRefund={() => setRefundOpen(true)}
           loading={actionLoading}
         />
       </div>
@@ -407,6 +410,20 @@ export const CashierPaymentPage: React.FC = () => {
           invoices={invoices}
           onMerge={handleMerge}
           loading={actionLoading}
+        />
+      )}
+
+      {refundOpen && selectedInvoice && (
+        <RefundModal
+          isOpen={refundOpen}
+          onClose={() => setRefundOpen(false)}
+          invoice={selectedInvoice}
+          onSuccess={() => {
+            dispatch(fetchInvoices());
+            dispatch(fetchTables());
+            dispatch(fetchOrders());
+            showSuccess("Đã tạo phiếu hoàn tiền thành công!");
+          }}
         />
       )}
     </div>

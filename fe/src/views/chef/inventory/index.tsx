@@ -710,41 +710,14 @@ export const InventoryControl: React.FC = () => {
     }
   };
 
+<<<<<<< HEAD
   // Perform Stocktake adjustment
   // @ts-ignore
   const handleApplyStocktake = async () => {
     let changed = false;
+=======
+>>>>>>> d21c3cefae19c645657ea5538db7f2578cdc0776
 
-    for (const ing of reduxIngredients) {
-      const val = stocktakeValues[ing.id];
-      if (val !== undefined && val.trim() !== "") {
-        const actualQty = Number(val);
-        const discrepancy = actualQty - ing.stock;
-
-        if (discrepancy !== 0) {
-          try {
-            await updateInventoryQuantityApi(ing.id, {
-              quantity: Math.abs(discrepancy),
-              type: discrepancy > 0 ? "import" : "adjust",
-              reasonOrSupplier: `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`
-            });
-            changed = true;
-          } catch (e) {
-            console.error("Lỗi cập nhật", e);
-          }
-        }
-      }
-    }
-
-    if (changed) {
-      getIngredientsApi().then((data) => setReduxIngredients(data));
-      getInventoryTransactionsApi().then(data => setTransactions(data));
-      setStocktakeValues({});
-      toast.success("✅ Cân đối kho thành công! Số lượng thực tế đã được cập nhật.");
-    } else {
-      toast.error("Chưa có số lượng kiểm kê thực tế nào được nhập hoặc không có chênh lệch.");
-    }
-  };
 
   // Check how many days until expiry
   const getExpiryLabel = (expiryDateStr: string) => {

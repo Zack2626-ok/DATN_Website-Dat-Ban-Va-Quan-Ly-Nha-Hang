@@ -232,11 +232,10 @@ export const markItemServedHandler = async (req: Request, res: Response): Promis
   }
 };
 
-// Waiter gửi yêu cầu thanh toán cho thu ngân
 export const requestPaymentHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { orderId } = req.params;
-    const { note } = req.body;
+    const { note, isEarlyPayment } = req.body;
 
     const orders = await db.getAllResmanagerOrders();
     const order = orders.find((o: any) => String(o.id) === orderId);
@@ -249,22 +248,22 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
       return;
     }
 
-    await db.updateOrderStatus(orderId, "pending_payment");
-
-    if (order.table_id) {
-      const activeOrders = await db.query<any[]>(
-        "SELECT id, status FROM orders WHERE table_id = ? AND status IN ('open', 'serving')",
-        [order.table_id]
-      );
-      if (!activeOrders || activeOrders.length === 0) {
+    if (isEarlyPayment) {
+      await db.query("UPDATE orders SET is_early_payment = 1 WHERE id = ?", [orderId]);
+    } else {
+      await db.updateOrderStatus(orderId, "pending_payment");
+      if (order.table_id) {
         await db.updateResmanagerTableStatus(Number(order.table_id), "pending_payment");
       }
     }
 
     const waiterName = req.user?.email || "Phục vụ";
+    const title = isEarlyPayment ? "Yêu cầu thanh toán sớm" : "Yêu cầu thanh toán";
+    const content = `${waiterName} yêu cầu ${isEarlyPayment ? "thanh toán sớm" : "thanh toán"} đơn #${orderId} - Bàn ${order.table_name || "?"}`;
+
     await db.createNotification(
-      "Yêu cầu thanh toán",
-      `${waiterName} yêu cầu thanh toán đơn #${orderId} - Bàn ${order.table_name || "?"}`,
+      title,
+      content,
       "payment_request",
       "cashier"
     );
@@ -276,9 +275,10 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
       waiterName,
       totalAmount: order.totalAmount,
       note,
+      isEarlyPayment: !!isEarlyPayment,
     });
 
-    sendSuccess(res, { orderId, status: "pending_payment", waiterName }, "Đã gửi yêu cầu thanh toán");
+    sendSuccess(res, { orderId, status: isEarlyPayment ? order.status : "pending_payment", isEarlyPayment: !!isEarlyPayment, waiterName }, "Đã gửi yêu cầu thanh toán");
   } catch (error) {
     console.error("Error requesting payment:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);

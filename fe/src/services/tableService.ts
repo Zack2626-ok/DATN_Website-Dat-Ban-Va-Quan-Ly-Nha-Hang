@@ -23,6 +23,8 @@ export interface ResmanagerTable {
   deposit_amount?: number | null;
   active_order_id?: number | null;
   active_order_type?: string | null;
+  is_early_payment?: boolean | number;
+  is_early_paid?: boolean | number;
   pre_ordered_items?: {
     id?: number;
     menu_item_id?: number;
