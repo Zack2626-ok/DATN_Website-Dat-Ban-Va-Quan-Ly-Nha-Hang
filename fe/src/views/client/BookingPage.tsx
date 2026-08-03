@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
-import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer, Star } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer, Star, Users } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, getPublicPromotions, payBookingDeposit } from "../../services/customerService";
 import { getComboConstituents } from "../../utils/comboHelper";
@@ -35,33 +35,45 @@ const getBookingEndTime = (date: string, time: string): string => {
 };
 
 export const BookingPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+
+  // ── Restore state từ sessionStorage khi F5 ─────────────────────────────
+  const BOOKING_SESSION_KEY = "booking_session";
+  const savedSession = (() => {
+    try { return JSON.parse(sessionStorage.getItem(BOOKING_SESSION_KEY) || "null"); } catch { return null; }
+  })();
+
+  const [step, setStep] = useState<number>(savedSession?.step || 1);
   const [loadingTables, setLoadingTables] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [availableTables, setAvailableTables] = useState<any[]>([]);
+  const [availableTables, setAvailableTables] = useState<any[]>(savedSession?.availableTables || []);
 
-  const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
-
-  // Bắt buộc đăng nhập tài khoản khách hàng trước khi đặt bàn
-  useEffect(() => {
-    const token = localStorage.getItem("customer_token");
-    if (!token) {
-      toast.error("Bạn cần đăng ký hoặc đăng nhập tài khoản Khách hàng để sử dụng tính năng đặt bàn!");
-      navigate("/customer/login?redirect=/booking");
-    }
-  }, [navigate]);
   const [confirmationCode, setConfirmationCode] = useState("");
   const [selectedArea, setSelectedArea] = useState("Tất cả");
   const [createdBooking, setCreatedBooking] = useState<any>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
+  const [preOrderedDishes, setPreOrderedDishes] = useState<Record<number, any>>({});
+
+  const handlePayDeposit = async () => {
+    if (!createdBooking?.id) return;
+    setPayingDeposit(true);
+    try {
+      const updated = await payBookingDeposit(createdBooking.id);
+      setCreatedBooking(updated);
+      toast.success("🎉 Mô phỏng thanh toán tiền cọc thành công!");
+      setShowPaymentModal(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Không thể thực hiện thanh toán tiền cọc lúc này.");
+    } finally {
+      setPayingDeposit(false);
+    }
+  };
 
   const [searchParams] = useSearchParams();
   const promoParam = searchParams.get("promo");
 
   const [promotionsList, setPromotionsList] = useState<any[]>([]);
-  const [selectedPromoId, setSelectedPromoId] = useState<string>("");
+  const [selectedPromoId, setSelectedPromoId] = useState<string>(savedSession?.selectedPromoId || "");
 
   // Fetch promotions and menu items
   useEffect(() => {
@@ -99,19 +111,19 @@ export const BookingPage: React.FC = () => {
   const sortedRowKeys = Object.keys(groupedRows).sort();
   
   const [form, setForm] = useState({
-    date: "",
-    time: "",
-    guests: "2",
-    tableId: "",
-    tableName: "",
-    areaName: "",
-    name: "",
-    phone: "",
-    email: "",
-    note: "",
+    date:      savedSession?.form?.date      || "",
+    time:      savedSession?.form?.time      || "",
+    guests:    savedSession?.form?.guests    || "2",
+    tableId:   savedSession?.form?.tableId   || "",
+    tableName: savedSession?.form?.tableName || "",
+    areaName:  savedSession?.form?.areaName  || "",
+    name:      savedSession?.form?.name      || "",
+    phone:     savedSession?.form?.phone     || "",
+    email:     savedSession?.form?.email     || "",
+    note:      savedSession?.form?.note      || "",
   });
 
-  // Auto fill profile if logged in
+  // Auto fill profile if logged in (chỉ fill nếu chưa có session được restore)
   useEffect(() => {
     const infoStr = localStorage.getItem("customer_info");
     if (infoStr) {
@@ -119,15 +131,33 @@ export const BookingPage: React.FC = () => {
         const customer = JSON.parse(infoStr) as Customer;
         setForm((prev) => ({
           ...prev,
-          name: customer.name || "",
-          email: customer.email || "",
-          phone: customer.phone || "",
+          name: prev.name || customer.name || "",
+          email: prev.email || customer.email || "",
+          phone: prev.phone || customer.phone || "",
         }));
       } catch (e) {
         console.error("Error parsing customer_info", e);
       }
     }
   }, []);
+
+  // ── Lưu state vào sessionStorage mỗi khi thay đổi (phải sau khi form được khai báo) ──
+  useEffect(() => {
+    if (step === 4) {
+      // Xóa session khi đặt bàn hoàn tất — được làm ở setStep(4) nên không cần lưu
+      return;
+    }
+    try {
+      sessionStorage.setItem(BOOKING_SESSION_KEY, JSON.stringify({
+        step,
+        form,
+        availableTables,
+        selectedPromoId,
+      }));
+    } catch {
+      // sessionStorage đầy hoặc bị disabled — bỏ qua
+    }
+  }, [step, form, availableTables, selectedPromoId]);
 
   const setField = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -173,7 +203,6 @@ export const BookingPage: React.FC = () => {
         tableName: "",
         areaName: "",
       }));
-      setPreOrderedDishes({}); // Reset giỏ món khi tìm lại lịch trình đặt bàn mới
       setStep(2);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Không thể kiểm tra bàn trống lúc này.");
@@ -190,6 +219,35 @@ export const BookingPage: React.FC = () => {
       areaName: table.area_name || "",
     }));
   };
+
+  // Hàm refresh sơ đồ bàn — tái sử dụng được
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshTableStatus = useCallback(async (silent = false) => {
+    if (!form.date || !form.time) return;
+    if (!silent) setRefreshing(true);
+    try {
+      const startTimeStr = `${form.date} ${form.time}:00`;
+      const tables = await getAvailableTables(startTimeStr);
+      const filtered = tables.filter((t: any) => t.capacity >= Number(form.guests));
+      setAvailableTables(filtered);
+      // Nếu bàn đang chọn đã bị người khác đặt — deselect
+      if (form.tableId) {
+        const selectedInNew = filtered.find((t: any) => String(t.id) === form.tableId);
+        if (!selectedInNew || !selectedInNew.is_bookable) {
+          setForm((prev) => ({ ...prev, tableId: "", tableName: "", areaName: "" }));
+          if (!silent) toast.error("⚠️ Bàn bạn đang chọn vừa bị người khác đặt! Vui lòng chọn bàn khác.", { duration: 5000 });
+        }
+      }
+    } catch { /* bỏ qua lỗi silent refresh */ }
+    finally { setRefreshing(false); }
+  }, [form.date, form.time, form.guests, form.tableId]);
+
+  // Auto-refresh sơ đồ bàn mỗi 60 giây khi đang ở step 2
+  useEffect(() => {
+    if (step !== 2) return;
+    const timer = setInterval(() => refreshTableStatus(true), 60_000);
+    return () => clearInterval(timer);
+  }, [step, refreshTableStatus]);
 
   const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,31 +328,23 @@ export const BookingPage: React.FC = () => {
 
       setCreatedBooking(bookingResult);
       setConfirmationCode(bookingResult.confirmation_code);
-      setPreOrderedDishes({}); // Xóa sạch giỏ món ăn sau khi đặt bàn thành công
+      // Xóa session sau khi đặt bàn thành công — không restore lần sau
+      try { sessionStorage.removeItem(BOOKING_SESSION_KEY); } catch { /* ignore */ }
       setStep(4);
       toast.success("Đặt bàn thành công!");
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Đặt bàn thất bại. Vui lòng thử lại.");
+      const errMsg: string = err.response?.data?.message || "";
+      const isTableConflict = err.response?.status === 400 && errMsg.includes("trùng với lịch đặt khác trên cùng bàn");
+      if (isTableConflict) {
+        // Tự động refresh sơ đồ bàn và deselect bàn bị tranh giành
+        toast.error("⚠️ Bàn này vừa được người khác đặt trước! Đang tải lại sơ đồ bàn...", { duration: 4000 });
+        setForm((prev) => ({ ...prev, tableId: "", tableName: "", areaName: "" }));
+        await refreshTableStatus(false);
+      } else {
+        toast.error(errMsg || "Đặt bàn thất bại. Vui lòng thử lại.");
+      }
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handlePayDeposit = async () => {
-    if (!createdBooking?.id) return;
-    setPayingDeposit(true);
-    try {
-      await payBookingDeposit(createdBooking.id);
-      setCreatedBooking((prev: any) => {
-        if (!prev) return null;
-        return { ...prev, deposit_status: "paid" };
-      });
-      toast.success("Thanh toán tiền cọc thành công!");
-      setShowPaymentModal(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Không thể thực hiện thanh toán lúc này.");
-    } finally {
-      setPayingDeposit(false);
     }
   };
 
@@ -352,14 +402,13 @@ export const BookingPage: React.FC = () => {
           {/* Card Lower Section */}
           <div className="text-left bg-client-bg/50 rounded-2xl p-5 border border-client-accent space-y-3">
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Người đặt:</span> <span className="font-semibold text-client-text">{createdBooking?.guest_name || form.name}</span></div>
-             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
+             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Bàn đã chọn:</span> <span className="font-semibold text-client-text">{createdBooking?.table_name || form.tableName} ({createdBooking?.area_name || form.areaName || "Nhà hàng"})</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Số lượng khách:</span> <span className="font-semibold text-client-text">{createdBooking?.party_size || form.guests} người</span></div>
              <div className="flex justify-between text-xs">
                <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái đặt:</span> 
                <span className="font-bold text-amber-600">Chờ xác nhận</span>
              </div>
-             
              {/* Deposit Information Box */}
              {createdBooking?.deposit_amount > 0 && (
                <div className="mt-4 pt-3 border-t border-client-accent space-y-3">
@@ -404,7 +453,6 @@ export const BookingPage: React.FC = () => {
             onClick={() => {
               setStep(1);
               setCreatedBooking(null);
-              setPreOrderedDishes({});
               setForm({
                 date: "",
                 time: "",
@@ -437,7 +485,7 @@ export const BookingPage: React.FC = () => {
           <div className="py-4 space-y-2 border-b border-dashed border-gray-400">
             <div className="flex justify-between"><span>Khách hàng:</span> <span className="font-bold">{createdBooking?.guest_name || form.name}</span></div>
             <div className="flex justify-between"><span>Số điện thoại:</span> <span>{createdBooking?.guest_phone || form.phone}</span></div>
-            <div className="flex justify-between"><span>Thời gian đến:</span> <span className="font-bold">{form.time} - {new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
+            <div className="flex justify-between"><span>Thời gian đến:</span> <span className="font-bold">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
             <div className="flex justify-between"><span>Số lượng khách:</span> <span>{createdBooking?.party_size || form.guests} người</span></div>
             <div className="flex justify-between"><span>Bàn ăn:</span> <span className="font-bold">{createdBooking?.table_name || form.tableName} ({createdBooking?.area_name || form.areaName || "Khu vực"})</span></div>
             <div className="flex justify-between"><span>Trạng thái:</span> <span className="font-bold uppercase text-xs">Chờ xác nhận</span></div>
@@ -465,15 +513,15 @@ export const BookingPage: React.FC = () => {
                           <div className="font-bold">{item.menu_item_name}</div>
                           {constituents && (
                             <div className="pl-3 text-[10px] text-gray-500 font-medium mt-0.5 leading-relaxed">
-                              {constituents.map((sub, sIdx) => (
+                              {constituents.map((sub: string, sIdx: number) => (
                                 <div key={sIdx}>• {sub}</div>
                               ))}
                             </div>
                           )}
                         </td>
-                        <td className="py-1 text-center">{item.quantity}</td>
+                        <td className="py-1 text-center font-bold">{item.quantity}</td>
                         <td className="py-1 text-right">{Number(item.unit_price).toLocaleString("vi-VN")}đ</td>
-                        <td className="py-1 text-right">{(item.quantity * item.unit_price).toLocaleString("vi-VN")}đ</td>
+                        <td className="py-1 text-right font-bold">{(item.quantity * item.unit_price).toLocaleString("vi-VN")}đ</td>
                       </tr>
                     );
                   })}
@@ -676,9 +724,19 @@ export const BookingPage: React.FC = () => {
                   </h2>
                   <p className="text-xs text-client-muted mt-1">Vui lòng chọn một bàn ăn trống màu xanh dưới đây</p>
                 </div>
-                <span className="text-xs font-bold px-3 py-1.5 bg-client-primary/10 text-client-primary rounded-xl whitespace-nowrap self-start">
-                  Tìm thấy {availableTables.length} bàn trống
-                </span>
+                <div className="flex items-center gap-3 self-start flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => refreshTableStatus(false)}
+                    disabled={refreshing}
+                    className="text-xs font-bold px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {refreshing ? <Loader2 size={12} className="animate-spin text-client-primary" /> : "🔄 Làm mới sơ đồ"}
+                  </button>
+                  <span className="text-xs font-bold px-3 py-1.5 bg-client-primary/10 text-client-primary rounded-xl whitespace-nowrap">
+                    Tìm thấy {availableTables.length} bàn trống
+                  </span>
+                </div>
               </div>
 
               {availableTables.length === 0 ? (
@@ -694,7 +752,7 @@ export const BookingPage: React.FC = () => {
                 </div>
               ) : (
                 <>
-                  {/* Bộ lọc khu vực (AreaSelector) */}
+                  {/* Bộ lọc khu vực */}
                   {uniqueAreas.length > 1 && (
                     <div className="flex flex-wrap gap-2 mb-2 border-b border-client-accent pb-4">
                       {uniqueAreas.map((area) => (
@@ -726,19 +784,75 @@ export const BookingPage: React.FC = () => {
                             .sort((a: any, b: any) => (a.col_pos || 0) - (b.col_pos || 0))
                             .map((table: any) => {
                               const isSelected = String(table.id) === form.tableId;
+                              const bookingStatus: string = table.booking_status || table.status || "empty";
+                              const isBookable = table.is_bookable === 1 || table.is_bookable === true;
+
+                              type StatusCfg = { bg: string; border: string; text: string; badgeBg: string; badgeText: string; label: string; icon: string };
+                              const statusConfig: Record<string, StatusCfg> = {
+                                empty:           { bg: "bg-emerald-50",   border: "border-emerald-300", text: "text-emerald-800", badgeBg: "bg-emerald-100", badgeText: "text-emerald-700", label: "Trống",         icon: "✓" },
+                                reserved:        { bg: "bg-amber-50",     border: "border-amber-300",   text: "text-amber-700",   badgeBg: "bg-amber-100",   badgeText: "text-amber-700",   label: "Đặt trước",     icon: "🔒" },
+                                booked:          { bg: "bg-amber-50",     border: "border-amber-300",   text: "text-amber-700",   badgeBg: "bg-amber-100",   badgeText: "text-amber-700",   label: "Đã đặt",        icon: "🔒" },
+                                serving:         { bg: "bg-rose-50",      border: "border-rose-300",    text: "text-rose-600",    badgeBg: "bg-rose-100",    badgeText: "text-rose-600",    label: "Đang phục vụ",  icon: "🍽" },
+                                pending_payment: { bg: "bg-rose-50",      border: "border-rose-300",    text: "text-rose-600",    badgeBg: "bg-rose-100",    badgeText: "text-rose-600",    label: "Chờ thanh toán", icon: "💳" },
+                                cleaning:        { bg: "bg-sky-50",       border: "border-sky-300",     text: "text-sky-700",     badgeBg: "bg-sky-100",     badgeText: "text-sky-700",     label: "Đang dọn",      icon: "🧹" },
+                              };
+                              const cfg: StatusCfg = statusConfig[bookingStatus] || statusConfig.empty;
+
+                              if (isSelected) {
+                                return (
+                                  <div
+                                    key={table.id}
+                                    onClick={() => handleSelectTable(table)}
+                                    className="relative cursor-pointer p-3.5 rounded-2xl border-2 border-blue-600 bg-blue-50 text-blue-800 shadow-lg ring-4 ring-blue-200/50 transition-all w-[110px] text-center flex flex-col items-center gap-1.5"
+                                  >
+                                    <span className="absolute -top-2 -right-2 w-5 h-5 bg-blue-600 text-white rounded-full text-[10px] font-black flex items-center justify-center shadow-sm">✓</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-black">{table.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-[11px] text-blue-600 font-semibold">
+                                      <Users size={10} /> {table.capacity} người
+                                    </div>
+                                    <span className="text-[9px] font-extrabold uppercase bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Đang chọn</span>
+                                  </div>
+                                );
+                              }
+
+                              if (!isBookable) {
+                                return (
+                                  <div
+                                    key={table.id}
+                                    title={`Bàn ${table.name} — ${cfg.label}`}
+                                    className={`relative p-3.5 rounded-2xl border-2 ${cfg.border} ${cfg.bg} opacity-65 cursor-not-allowed w-[110px] text-center flex flex-col items-center gap-1.5`}
+                                  >
+                                    <span className="text-sm font-black text-gray-500">{table.name}</span>
+                                    <div className="flex items-center gap-1 text-[11px] text-gray-400 font-semibold">
+                                      <Users size={10} /> {table.capacity} người
+                                    </div>
+                                    <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${cfg.badgeBg} ${cfg.badgeText}`}>
+                                      {cfg.icon} {cfg.label}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              // Bàn trống — có thể đặt
                               return (
                                 <div
                                   key={table.id}
                                   onClick={() => handleSelectTable(table)}
-                                  className={`cursor-pointer p-4 rounded-xl border-2 transition-all text-center flex flex-col justify-center items-center gap-1 w-[120px] ${
-                                    isSelected
-                                      ? "bg-client-primary/10 border-client-primary text-client-primary shadow-sm font-bold"
-                                      : "bg-emerald-50 border-emerald-250 hover:border-emerald-350 text-emerald-800"
-                                  }`}
+                                  title={`Chọn bàn ${table.name} — ${table.capacity} người`}
+                                  className="relative cursor-pointer p-3.5 rounded-2xl border-2 border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-500 hover:bg-emerald-100 hover:shadow-md hover:scale-105 transition-all w-[110px] text-center flex flex-col items-center gap-1.5 group"
                                 >
-                                  <span className="text-base font-bold font-display">{table.name}</span>
-                                  <span className="text-xs opacity-75">{table.capacity} chỗ</span>
-                                  <span className="text-[10px] font-extrabold uppercase mt-1">Đạt yêu cầu</span>
+                                  {/* Pulse dot for available */}
+                                  <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5">
+                                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                                    <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500" />
+                                  </span>
+                                  <span className="text-sm font-black text-emerald-800 group-hover:text-emerald-900">{table.name}</span>
+                                  <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
+                                    <Users size={10} /> {table.capacity} người
+                                  </div>
+                                  <span className="text-[9px] font-extrabold uppercase bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full">Trống</span>
                                 </div>
                               );
                             })}
@@ -746,9 +860,27 @@ export const BookingPage: React.FC = () => {
                       </div>
                     ))}
                   </div>
+
+                  {/* Legend */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 pt-4 border-t border-gray-100">
+                    {[
+                      { dot: "bg-emerald-400 animate-pulse", label: "Trống — có thể đặt" },
+                      { dot: "bg-amber-400",   label: "Đã đặt / Đặt trước" },
+                      { dot: "bg-rose-400",    label: "Đang phục vụ" },
+                      { dot: "bg-sky-400",     label: "Đang dọn dẹp" },
+                      { dot: "bg-blue-600",    label: "Bàn bạn đang chọn" },
+                    ].map(({ dot, label }) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+                        <span className="text-[10px] text-gray-500 font-medium leading-tight">{label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </>
               )}
+
             </div>
+
 
             {/* Cột bên phải: Thông tin liên hệ & Đặt bàn (40%) */}
             <div className="lg:col-span-4 space-y-6">
@@ -830,7 +962,7 @@ export const BookingPage: React.FC = () => {
                   />
                   {/* Tag ghi chú nhanh */}
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {["Đặt trước món ăn", "Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh"].map((tag) => (
+                    {["Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh", "Bàn ngoài trời"].map((tag) => (
                       <button
                         key={tag}
                         type="button"
@@ -855,12 +987,11 @@ export const BookingPage: React.FC = () => {
               <div className="bg-client-accent/30 border border-client-accent rounded-3xl p-6 flex flex-col gap-3 text-sm text-client-text font-semibold shadow-2xs mt-6">
                 <h4 className="font-extrabold uppercase text-xs text-client-primary tracking-wider font-display">Thông tin tóm tắt đặt bàn</h4>
                 <div className="grid grid-cols-1 gap-y-2">
-                  <div>Ngày đến: <span className="font-bold text-gray-900">{new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
-                  <div>Giờ đến: <span className="font-bold text-gray-900">{form.time}</span></div>
+                  <div>Ngày đến: <span className="font-bold text-gray-900">{form.date ? new Date(form.date).toLocaleDateString("vi-VN") : "Chưa chọn"}</span></div>
+                  <div>Giờ đến: <span className="font-bold text-gray-900">{form.time || "Chưa chọn"}</span></div>
                   <div>Bàn ăn đã chọn: <span className="font-bold text-gray-900">{form.tableName ? `${form.tableName} ${form.areaName ? `(${form.areaName})` : ""}` : "Chưa chọn"}</span></div>
                   <div>Số khách: <span className="font-bold text-gray-900">{form.guests} người</span></div>
                 </div>
-                
                 {/* Hiển thị tiền cọc dự kiến */}
                 {Object.keys(preOrderedDishes).length > 0 && (
                   <div className="mt-2 pt-2 border-t border-client-accent flex justify-between items-center text-xs">
@@ -868,7 +999,7 @@ export const BookingPage: React.FC = () => {
                       <span className="text-[#7b6f65] block">Tổng tiền món đặt trước</span>
                       <span className="font-bold text-[#2a221c]">
                         {Object.values(preOrderedDishes)
-                          .reduce((sum, d) => sum + d.price * d.quantity, 0)
+                          .reduce((sum: number, d: any) => sum + (Number(d.price || 0) * Number(d.quantity || 0)), 0)
                           .toLocaleString("vi-VN")}đ
                       </span>
                     </div>
@@ -876,7 +1007,7 @@ export const BookingPage: React.FC = () => {
                       <span className="text-client-primary font-extrabold block uppercase tracking-wider text-[10px]">Tiền đặt cọc (20% để xác nhận)</span>
                       <span className="font-black text-rose-600 text-sm">
                         {Math.round(
-                          Object.values(preOrderedDishes).reduce((sum, d) => sum + d.price * d.quantity, 0) * 0.20
+                          Object.values(preOrderedDishes).reduce((sum: number, d: any) => sum + (Number(d.price || 0) * Number(d.quantity || 0)), 0) * 0.20
                         ).toLocaleString("vi-VN")}đ
                       </span>
                     </div>

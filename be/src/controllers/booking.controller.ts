@@ -164,8 +164,9 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
 
     sendSuccess(res, { ...booking, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
   } catch (error) {
+    console.error("Lỗi khi tạo đơn đặt bàn (createBookingHandler):", error);
     const msg = (error as Error).message;
-    sendError(res, msg, msg.includes("trùng") ? 400 : 500);
+    sendError(res, msg, 400);
   }
 };
 

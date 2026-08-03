@@ -3,13 +3,13 @@ import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { 
-  User, Calendar, Award, ClipboardList, Sparkles, LogOut, Loader2, Phone, Mail, Edit3, Key, Plus
+  User, Calendar, Award, ClipboardList, Sparkles, LogOut, Loader2, Phone, Mail, Edit3, Key, Plus, Star, X
 } from "lucide-react";
 import { 
   getCustomerProfile, updateCustomerProfile, changeCustomerPassword, 
   getMyBookings, cancelBooking, getCustomerLoyalty, getCustomerVouchers, 
   getPublicHalls, getPublicEventPackages, createEventContract, getMyEventContracts,
-  redeemVoucher, getMyUnusedVouchers
+  redeemVoucher, getMyUnusedVouchers, submitBookingReview
 } from "../../services/customerService";
 
 export const AccountPage: React.FC = () => {
@@ -122,6 +122,15 @@ export const AccountPage: React.FC = () => {
     }
   });
 
+  const [eventForm, setEventForm] = useState({
+    hall_id: "",
+    package_id: "",
+    event_date: "",
+    guest_count: 50,
+    table_count: 5,
+    note: "",
+  });
+
   const createContractMutation = useMutation({
     mutationFn: createEventContract,
     onSuccess: () => {
@@ -135,23 +144,41 @@ export const AccountPage: React.FC = () => {
         table_count: 5,
         note: "",
       });
+    }
+  });
+
+  const [reviewModal, setReviewModal] = useState<{
+    isOpen: boolean;
+    bookingId: number | null;
+    tableInfo: string;
+    rating: number;
+    comment: string;
+  }>({
+    isOpen: false,
+    bookingId: null,
+    tableInfo: "",
+    rating: 5,
+    comment: "",
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: (payload: { bookingId: number; rating: number; comment?: string }) =>
+      submitBookingReview(payload.bookingId, { rating: payload.rating, comment: payload.comment }),
+    onSuccess: (data: any) => {
+      toast.success(`🎉 ${data.message || "Đã gửi đánh giá thành công (+30 PTS)!"}`);
+      setReviewModal({ isOpen: false, bookingId: null, tableInfo: "", rating: 5, comment: "" });
+      queryClient.invalidateQueries({ queryKey: ["customer-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-loyalty"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gửi yêu cầu thất bại.");
-    }
+      toast.error(err.response?.data?.message || "Không thể gửi đánh giá lúc này.");
+    },
   });
 
   // States for Forms
   const [profileForm, setProfileForm] = useState({ name: "", phone: "" });
   const [passwordForm, setPasswordForm] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
-  const [eventForm, setEventForm] = useState({
-    hall_id: "",
-    package_id: "",
-    event_date: "",
-    guest_count: 50,
-    table_count: 5,
-    note: "",
-  });
 
   // Sync profile data to profile form when loaded
   useEffect(() => {
@@ -351,7 +378,7 @@ export const AccountPage: React.FC = () => {
             >
               <Award size={18} /> Thẻ VIP & Tích điểm
             </button>
-            {/* <button
+            <button
               onClick={() => setActiveTab("events")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all text-left cursor-pointer ${
                 activeTab === "events" 
@@ -359,8 +386,8 @@ export const AccountPage: React.FC = () => {
                   : "bg-white hover:bg-client-accent border border-client-accent text-client-text"
               }`}
             >
-              <PartyPopper size={18} /> Yêu cầu đặt tiệc
-            </button> */}
+              <Plus size={18} /> Đặt tiệc sự kiện
+            </button>
           </div>
 
           {/* Active Panel */}
@@ -474,47 +501,93 @@ export const AccountPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {bookings.map((booking: any) => {
-                      const isCancellable = ["pending", "confirmed"].includes(booking.status);
-                      return (
-                        <div key={booking.id} className="border border-client-accent rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-xs transition-shadow">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-client-text font-display">{booking.table_name || `Bàn ID: ${booking.table_id}`}</span>
-                              <span className="text-xs text-client-muted">({booking.area_name || "Nhà hàng"})</span>
-                              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                                booking.status === "completed" ? "bg-emerald-50 text-emerald-700" :
-                                booking.status === "cancelled" ? "bg-red-50 text-red-700" :
-                                booking.status === "confirmed" ? "bg-client-primary/10 text-client-primary" : "bg-amber-50 text-amber-700"
-                              }`}>
-                                {booking.status === "pending" ? "Chờ duyệt" :
-                                 booking.status === "confirmed" ? "Đã xác nhận" :
-                                 booking.status === "completed" ? "Hoàn thành" : "Đã hủy"}
-                              </span>
+                    {[...bookings]
+                      .sort((a: any, b: any) => {
+                        const getPriority = (status: string) => {
+                          if (status === "confirmed") return 1;
+                          if (status === "pending") return 2;
+                          if (status === "completed") return 3;
+                          if (status === "cancelled") return 4;
+                          return 5;
+                        };
+                        const pA = getPriority(a.status);
+                        const pB = getPriority(b.status);
+                        if (pA !== pB) return pA - pB;
+                        return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
+                      })
+                      .map((booking: any) => {
+                        const isCancellable = ["pending", "confirmed"].includes(booking.status);
+                        return (
+                          <div key={booking.id} className="border border-gray-150 rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-xs transition-shadow">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-gray-950 font-display">{booking.table_name || `Bàn ID: ${booking.table_id}`}</span>
+                                <span className="text-xs text-gray-400">({booking.area_name || "Nhà hàng"})</span>
+                                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                  booking.status === "completed" ? "bg-emerald-50 text-emerald-700" :
+                                  booking.status === "cancelled" ? "bg-red-50 text-red-700" :
+                                  booking.status === "confirmed" ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"
+                                }`}>
+                                  {booking.status === "pending" ? "Chờ nhà hàng xác nhận" :
+                                   booking.status === "confirmed" ? "Đã xác nhận đặt bàn" :
+                                   booking.status === "completed" ? "Đã hoàn thành" : "Đã hủy"}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-400">
+                                Mã đơn: <span className="font-bold text-slate-600">{booking.confirmation_code || `#${booking.id}`}</span> · Số khách: <span className="font-bold text-slate-600">{booking.party_size} khách</span>
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                Thời gian đến: <span className="font-bold text-slate-600">{new Date(booking.start_time).toLocaleString("vi-VN")}</span>
+                              </p>
+                              {booking.status === "pending" && (
+                                <p className="text-[11px] text-amber-700 font-medium">
+                                  ↳ Nhà hàng đã tiếp nhận thông tin và đang kiểm tra xếp bàn cho bạn.
+                                </p>
+                              )}
                             </div>
-                            <p className="text-xs text-client-muted">
-                              Mã đơn: <span className="font-bold text-[#7b6f65]">{booking.confirmation_code || `#${booking.id}`}</span> · Số khách: <span className="font-bold text-[#7b6f65]">{booking.party_size} khách</span>
-                            </p>
-                            <p className="text-xs text-client-muted">
-                              Thời gian đến: <span className="font-bold text-[#7b6f65]">{new Date(booking.start_time).toLocaleString("vi-VN")}</span>
-                            </p>
+                            {isCancellable && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm("Bạn có chắc chắn muốn hủy đơn đặt bàn này không?")) {
+                                    cancelBookingMutation.mutate(booking.id);
+                                  }
+                                }}
+                                disabled={cancelBookingMutation.isPending}
+                                className="px-4 py-2 border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                              >
+                                Hủy đặt bàn
+                              </button>
+                            )}
+
+                            {booking.status === "completed" && (
+                              <div>
+                                {booking.is_reviewed ? (
+                                  <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3.5 py-2 rounded-xl text-xs font-bold">
+                                    <Star size={14} className="fill-amber-400 text-amber-400" />
+                                    <span>Đã đánh giá ({booking.review_rating || 5}★)</span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() =>
+                                      setReviewModal({
+                                        isOpen: true,
+                                        bookingId: booking.id,
+                                        tableInfo: `${booking.table_name || `Bàn ID: ${booking.table_id}`} · ${new Date(booking.start_time).toLocaleDateString("vi-VN")}`,
+                                        rating: 5,
+                                        comment: "",
+                                      })
+                                    }
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer"
+                                  >
+                                    <Star size={14} className="fill-white text-white" />
+                                    <span>Đánh giá bữa ăn (+30 PTS)</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {isCancellable && (
-                            <button
-                              onClick={() => {
-                                if (window.confirm("Bạn có chắc chắn muốn hủy đơn đặt bàn này không?")) {
-                                  cancelBookingMutation.mutate(booking.id);
-                                }
-                              }}
-                              disabled={cancelBookingMutation.isPending}
-                              className="px-4 py-2 border border-red-200 bg-red-50 hover:bg-red-100 text-red-650 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
-                            >
-                              Hủy đặt bàn
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -571,17 +644,14 @@ export const AccountPage: React.FC = () => {
 
                   return (
                     <div className="bg-white rounded-3xl border border-client-accent p-6 shadow-sm">
-                      <div className="flex items-center justify-between mb-5">
+                      <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
                         <h3 className="text-base font-bold text-client-text font-display flex items-center gap-2">
                           <Sparkles size={16} className="text-client-primary" />
                           Lộ trình thăng hạng thành viên
-                                
                         </h3>
-                        <h3 className="text-base font-bold text-client-text font-display flex items-center gap-2">
-                          <Sparkles size={16} className="text-client-primary" />
-                           1000 đ = 1 điểm
-                                
-                        </h3>
+                        <span className="text-xs text-client-muted font-medium bg-client-accent/30 px-3 py-1 rounded-xl">
+                          1,000đ thanh toán = 1 điểm
+                        </span>
                         {nextTier ? (
                           <span className="text-xs text-client-muted font-semibold">
                             Cần thêm <span className="text-client-primary font-black">{ptsToNext.toLocaleString("vi-VN")} điểm</span> để lên <span className="font-black">{nextTier.label}</span>
@@ -688,7 +758,6 @@ export const AccountPage: React.FC = () => {
                 })()}
 
                 {/* Loyalty Transactions & Vouchers */}
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   
                   {/* Loyalty Transactions */}
@@ -741,71 +810,55 @@ export const AccountPage: React.FC = () => {
                             <div key={v.customer_voucher_id} className="border border-dashed border-client-secondary rounded-xl p-3 bg-client-bg flex justify-between items-center">
                               <div>
                                 <span className="bg-client-primary/10 text-client-primary text-[10px] font-extrabold px-2 py-0.5 rounded-full">{v.code}</span>
-                                <p className="text-xs text-client-text font-bold mt-1.5">
-                                  Giảm {v.type === "percent" ? `${Number(v.value)}%` : `${Number(v.value).toLocaleString("vi-VN")}đ`}
-                                </p>
-                                <span className="text-[9px] text-client-muted block mt-0.5">HSD: {new Date(v.expired_at).toLocaleDateString("vi-VN")}</span>
-                                <span className="text-[9px] text-slate-500 block">Đơn tối thiểu: {Number(v.min_order).toLocaleString("vi-VN")}đ</span>
+                                <p className="text-xs text-client-text font-bold mt-1.5">{v.name}</p>
                               </div>
-                              <button
-                                onClick={() => {
-                                  navigator.clipboard.writeText(v.code);
-                                  toast.success("Đã sao chép mã voucher!");
-                                }}
-                                className="px-3 py-1 bg-white hover:bg-client-accent border border-client-accent text-client-primary rounded-lg text-[10px] font-bold cursor-pointer"
-                              >
-                                Sao chép
-                              </button>
+                              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 font-bold uppercase">Sẵn sàng sử dụng</span>
                             </div>
                           ))}
                         </div>
                       )}
                     </div>
 
-                    {/* Section B: Đổi điểm lấy voucher */}
-                    <div className="border-t border-slate-100 pt-5">
+                    {/* Section B: Vouchers có thể đổi */}
+                    <div>
                       <h3 className="text-base font-bold text-client-text font-display mb-3 flex items-center gap-1.5">
                         <Sparkles size={16} className="text-amber-500" />
-                        Đổi voucher bằng điểm thưởng
+                        Đổi điểm nhận Voucher ưu đãi
                       </h3>
                       
                       {vouchers.length === 0 ? (
-                        <p className="text-xs text-client-muted text-center py-4">Hiện tại không có voucher khuyến mãi nào.</p>
+                        <p className="text-xs text-client-muted italic text-center py-4 bg-client-bg rounded-xl border border-dashed border-client-accent">
+                          Hiện không có voucher ưu đãi nào.
+                        </p>
                       ) : (
-                        <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                        <div className="space-y-3">
                           {vouchers.map((v: any) => {
-                            const cost = Number(v.points_cost || 0);
-                            const canRedeem = (profile?.loyalty_points || 0) >= cost;
+                            const cost = Number(v.points_cost || v.points_required || 0);
+                            const userPoints = Number(profile?.loyalty_points || 0);
+                            const canAfford = userPoints >= cost;
                             return (
-                              <div key={v.id} className="border border-dashed border-slate-200 rounded-xl p-3 bg-white hover:bg-slate-50/50 transition-all flex justify-between items-center">
+                              <div key={v.id} className="border border-client-accent rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                 <div>
-                                  <span className="bg-slate-100 text-slate-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">{v.code}</span>
-                                  <p className="text-xs text-client-text font-bold mt-1.5">
-                                    Giảm {v.type === "percent" ? `${Number(v.value)}%` : `${Number(v.value).toLocaleString("vi-VN")}đ`}
-                                  </p>
-                                  <p className="text-[10px] text-client-muted mt-0.5">
-                                    Đơn tối thiểu: <span className="font-semibold text-slate-700">{Number(v.min_order).toLocaleString("vi-VN")}đ</span>
-                                  </p>
-                                  <span className="text-[9px] text-client-muted block mt-0.5">Yêu cầu: <strong className="text-amber-600 font-bold">{cost} điểm</strong></span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">{v.code}</span>
+                                    <span className="font-bold text-client-text text-sm">{v.name}</span>
+                                  </div>
+                                  <p className="text-xs text-client-muted mt-1">{v.description || "Giảm giá hóa đơn thanh toán"}</p>
                                 </div>
                                 <button
-                                  disabled={redeemVoucherMutation.isPending}
+                                  disabled={!canAfford || redeemVoucherMutation.isPending}
                                   onClick={() => {
-                                    if (!canRedeem) {
-                                      toast.error(`Bạn không đủ điểm để đổi voucher này (Cần ${cost} điểm, hiện có ${profile?.loyalty_points || 0} điểm).`);
-                                      return;
-                                    }
-                                    if (window.confirm(`Đổi ${cost} điểm tích lũy lấy voucher ${v.code}?`)) {
+                                    if (window.confirm(`Xác nhận đổi ${cost} điểm lấy voucher ${v.code}?`)) {
                                       redeemVoucherMutation.mutate(v.id);
                                     }
                                   }}
-                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
-                                    canRedeem 
-                                      ? "bg-client-primary text-white hover:bg-client-primary-dark" 
-                                      : "bg-slate-100 text-slate-400 border border-slate-200 hover:bg-slate-200"
+                                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                                    canAfford
+                                      ? "bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
+                                      : "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
                                   }`}
                                 >
-                                  {redeemVoucherMutation.isPending ? "Đang xử lý..." : `Đổi (${cost} điểm)`}
+                                  {redeemVoucherMutation.isPending ? "Đang xử lý..." : canAfford ? `Đổi (${cost} điểm)` : `Thiếu ${cost - userPoints} điểm`}
                                 </button>
                               </div>
                             );
@@ -982,6 +1035,111 @@ export const AccountPage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Review Modal */}
+      {reviewModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-sky-100 animate-scale-up">
+            <div className="p-6 border-b border-sky-100 flex justify-between items-center bg-sky-50/50">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <Star className="text-amber-500 fill-amber-500" size={18} />
+                  Đánh giá chất lượng bữa ăn
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">{reviewModal.tableInfo}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewModal({ isOpen: false, bookingId: null, tableInfo: "", rating: 5, comment: "" })}
+                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (reviewModal.bookingId) {
+                  reviewMutation.mutate({
+                    bookingId: reviewModal.bookingId,
+                    rating: reviewModal.rating,
+                    comment: reviewModal.comment,
+                  });
+                }
+              }}
+              className="p-6 space-y-5"
+            >
+              <div className="text-center space-y-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Bạn cảm thấy bữa ăn như thế nào? *
+                </label>
+                <div className="flex justify-center items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewModal((prev) => ({ ...prev, rating: star }))}
+                      className="p-1 hover:scale-110 transition-transform cursor-pointer focus:outline-none"
+                    >
+                      <Star
+                        size={32}
+                        className={
+                          star <= reviewModal.rating
+                            ? "fill-amber-400 text-amber-400 drop-shadow-xs"
+                            : "text-gray-200 fill-gray-100"
+                        }
+                      />
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs font-bold text-amber-600 block">
+                  {reviewModal.rating === 5 ? "Rất tuyệt vời (5/5)" :
+                   reviewModal.rating === 4 ? "Hài lòng (4/5)" :
+                   reviewModal.rating === 3 ? "Bình thường (3/5)" :
+                   reviewModal.rating === 2 ? "Chưa tốt (2/5)" : "Tệ (1/5)"}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Ý kiến nhận xét / Góp ý
+                </label>
+                <textarea
+                  rows={3}
+                  value={reviewModal.comment}
+                  onChange={(e) => setReviewModal((prev) => ({ ...prev, comment: e.target.value }))}
+                  placeholder="Hãy chia sẻ trải nghiệm về món ăn, không gian, hoặc thái độ phục vụ..."
+                  className="w-full rounded-2xl border border-sky-200 p-3 text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                />
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center gap-2 text-xs text-amber-800 font-medium">
+                <Sparkles size={16} className="text-amber-500 shrink-0" />
+                <span>Hoàn tất đánh giá nhận ngay <strong className="font-extrabold text-amber-700">+30 PTS</strong> điểm tích lũy thưởng!</span>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewModal({ isOpen: false, bookingId: null, tableInfo: "", rating: 5, comment: "" })}
+                  className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-slate-600 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={reviewMutation.isPending}
+                  className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-md transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {reviewMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                  Gửi đánh giá (+30 PTS)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

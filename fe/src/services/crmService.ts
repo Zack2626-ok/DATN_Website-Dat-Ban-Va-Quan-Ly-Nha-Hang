@@ -28,6 +28,7 @@ export interface Voucher {
   value: number;
   min_order: number;
   max_uses: number | null;
+  points_required?: number;
   used_count: number;
   expired_at: string | null;
   is_active: number;
