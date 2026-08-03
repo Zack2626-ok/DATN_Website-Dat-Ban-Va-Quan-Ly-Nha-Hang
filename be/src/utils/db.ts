@@ -2984,7 +2984,7 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     SELECT t.*, a.name AS area_name,
            COALESCE(o.guest_name, b.guest_name) AS guest_name,
            COALESCE(o.guest_phone, b.guest_phone) AS guest_phone,
-           COALESCE(o.guest_count, b.party_size) AS guest_count,
+           COALESCE(o.guest_count, b.party_size, (SELECT party_size FROM bookings WHERE table_id = t.id AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1)) AS guest_count,
            DATE_FORMAT(COALESCE(o.created_at, b.start_time), '%H:%i %d/%m/%Y') AS start_time,
            COALESCE(o.note, b.guest_note) AS guest_note,
            b.confirmation_code AS booking_code,
@@ -4621,11 +4621,21 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
   
-  // Lấy chi tiết các món trước khi cập nhật để tạo thông báo
+  // Lấy chi tiết các món trước khi cập nhật để kiểm tra tình trạng tồn kho & tạo thông báo
   const items = await query<any[]>(
-    `SELECT order_id, menu_item_id, quantity FROM order_items WHERE id IN (${placeholders})`,
+    `SELECT oi.id, oi.order_id, oi.menu_item_id, oi.quantity, m.name AS item_name
+     FROM order_items oi
+     JOIN menu_items m ON oi.menu_item_id = m.id
+     WHERE oi.id IN (${placeholders})`,
     orderItemIds
   );
+
+  for (const item of items) {
+    const availCheck = await checkMenuItemAvailability(Number(item.menu_item_id));
+    if (!availCheck.available) {
+      throw new Error(availCheck.reason || `Không thể gửi món '${item.item_name}' xuống bếp do hết hàng hoặc nguyên liệu đã hết hạn!`);
+    }
+  }
 
   const result = await query<any>(
     `UPDATE order_items SET status = 'waiting_kitchen', is_held = 0

@@ -564,6 +564,7 @@ CREATE TABLE orders (
     note        TEXT         DEFAULT NULL,
     guest_name  VARCHAR(100) DEFAULT NULL,
     guest_phone VARCHAR(20)  DEFAULT NULL,
+    guest_count INT          DEFAULT NULL COMMENT 'Số lượng khách tại bàn',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     closed_at   DATETIME     DEFAULT NULL,
     merged_into_order_id INT DEFAULT NULL,
@@ -575,23 +576,23 @@ CREATE TABLE orders (
     CONSTRAINT fk_orders_merged_into FOREIGN KEY (merged_into_order_id) REFERENCES orders(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, created_at, closed_at) VALUES
+INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, guest_count, created_at, closed_at) VALUES
  -- ─── SERVING (2) ───────────────────────────────────────────────────────
- (1,  4,  1,    4, 'dine_in', NULL, 'serving',         'Khách yêu cầu ít muối',              NULL,           NULL,         '2026-07-30 18:00:00', NULL),
- (2,  8,  NULL, 5, 'dine_in', NULL, 'serving',         NULL,                                 'Tran Van Binh','0988887777', '2026-07-30 19:00:00', NULL),
+ (1,  4,  1,    4, 'dine_in', NULL, 'serving',         'Khách yêu cầu ít muối',              NULL,           NULL,         4, '2026-07-30 18:00:00', NULL),
+ (2,  8,  NULL, 5, 'dine_in', NULL, 'serving',         NULL,                                 'Tran Van Binh','0988887777', 5, '2026-07-30 19:00:00', NULL),
  -- ─── PENDING_PAYMENT (2) ────────────────────────────────────────────────
- (3,  5,  2,    4, 'dine_in', NULL, 'pending_payment', 'Khách muốn in hóa đơn',              NULL,           NULL,         '2026-07-30 17:30:00', NULL),
- (4,  1,  NULL, 5, 'dine_in', NULL, 'pending_payment', NULL,                                 'Le Thi Hoa',   '0966778899', '2026-07-30 17:00:00', NULL),
+ (3,  5,  2,    4, 'dine_in', NULL, 'pending_payment', 'Khách muốn in hóa đơn',              NULL,           NULL,         2, '2026-07-30 17:30:00', NULL),
+ (4,  1,  NULL, 5, 'dine_in', NULL, 'pending_payment', NULL,                                 'Le Thi Hoa',   '0966778899', 3, '2026-07-30 17:00:00', NULL),
  -- ─── OPEN (1): Vừa mở bàn, chưa gọi hết món ────────────────────────────
- (5,  7,  NULL, 4, 'dine_in', NULL, 'open',            NULL,                                 'Nguyen Hoang', '0912344321', '2026-07-30 19:30:00', NULL),
+ (5,  7,  NULL, 4, 'dine_in', NULL, 'open',            NULL,                                 'Nguyen Hoang', '0912344321', 4, '2026-07-30 19:30:00', NULL),
  -- ─── COMPLETED (5) ──────────────────────────────────────────────────────
- (6,  2,  3,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-30 17:00:00', '2026-07-30 19:00:00'),
- (7,  10, 4,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-29 19:00:00', '2026-07-29 21:00:00'),
- (8,  11, 5,    5, 'dine_in', NULL, 'completed',       'Khách phản hồi: món hơi chậm',       NULL,           NULL,         '2026-07-28 12:00:00', '2026-07-28 13:30:00'),
- (9,  12, 1,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-28 18:00:00', '2026-07-28 20:00:00'),
- (10, 13, 2,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-27 19:00:00', '2026-07-27 21:00:00'),
+ (6,  2,  3,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         3, '2026-07-30 17:00:00', '2026-07-30 19:00:00'),
+ (7,  10, 4,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         4, '2026-07-29 19:00:00', '2026-07-29 21:00:00'),
+ (8,  11, 5,    5, 'dine_in', NULL, 'completed',       'Khách phản hồi: món hơi chậm',       NULL,           NULL,         2, '2026-07-28 12:00:00', '2026-07-28 13:30:00'),
+ (9,  12, 1,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         4, '2026-07-28 18:00:00', '2026-07-28 20:00:00'),
+ (10, 13, 2,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         3, '2026-07-27 19:00:00', '2026-07-27 21:00:00'),
  -- ─── CANCELLED (1) ──────────────────────────────────────────────────────
- (11, NULL, NULL, 4, 'dine_in', NULL, 'cancelled', 'Khách đổi ý sau khi gọi món, yêu cầu hủy', 'Vu Thi Lan', '0977112233', '2026-07-29 20:00:00', NULL);
+ (11, NULL, NULL, 4, 'dine_in', NULL, 'cancelled', 'Khách đổi ý sau khi gọi món, yêu cầu hủy', 'Vu Thi Lan', '0977112233', 2, '2026-07-29 20:00:00', NULL);
 
 -- ============================================================================
 --  ORDER ITEMS: Đủ 5 trạng thái — pending | cooking | done | cancelled | voided
@@ -853,15 +854,15 @@ CREATE TABLE stock_in (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, created_at) VALUES
- (1, 'LOT-TB-0701', 50.000, 47.500, 250000.00, 1, '2026-08-15', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
- (2, 'LOT-TG-0701', 40.000, 39.700, 120000.00, 1, '2026-08-05', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
- (3, 'LOT-CH-0701', 20.000, 20.000, 400000.00, 2, '2026-07-28', 'Cá hồi sắp hết hạn', 2, '2026-07-01 08:30:00'),
- (4, 'LOT-TM-0701', 30.000, 29.100, 180000.00, 2, '2026-08-10', 'Nhập hàng tháng 7', 2, '2026-07-01 08:30:00'),
- (5, 'LOT-RA-0701', 25.000, 24.750,  30000.00, 3, '2026-08-02', 'Nhập hàng tháng 7', 2, '2026-07-01 09:00:00'),
+ (1, 'LOT-TB-0701', 50.000, 47.500, 250000.00, 1, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
+ (2, 'LOT-TG-0701', 40.000, 39.700, 120000.00, 1, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
+ (3, 'LOT-CH-0701', 20.000, 20.000, 400000.00, 2, '2026-12-31', 'Cá hồi nhập mới',    2, '2026-07-01 08:30:00'),
+ (4, 'LOT-TM-0701', 30.000, 29.100, 180000.00, 2, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 08:30:00'),
+ (5, 'LOT-RA-0701', 25.000, 24.750,  30000.00, 3, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 09:00:00'),
  (6, 'LOT-GA-0701', 100.000, 100.000, 20000.00, 3, NULL, 'Gạo không hết hạn',  2, '2026-07-01 09:00:00'),
- (9, 'LOT-TC-0710', 15.000, 15.000,  80000.00, 3, '2026-08-01', 'Nhập trái cây',      2, '2026-07-10 09:00:00'),
+ (9, 'LOT-TC-0710', 15.000, 15.000,  80000.00, 3, '2026-12-31', 'Nhập trái cây',      2, '2026-07-10 09:00:00'),
  (10,'LOT-BM-0710', 30.000, 30.000,  25000.00, 3, '2027-07-10', 'Nhập bột mì',        2, '2026-07-10 09:00:00'),
- (1, 'LOT-TB-0801', 10.000,  8.000, 260000.00, 1, '2026-09-01', 'Lô hàng có trả lại NCC', 2, '2026-08-01 08:00:00');
+ (1, 'LOT-TB-0801', 10.000,  8.000, 260000.00, 1, '2026-12-31', 'Lô hàng có trả lại NCC', 2, '2026-08-01 08:00:00');
 
 CREATE TABLE stock_out (
     id             INT           NOT NULL AUTO_INCREMENT,
