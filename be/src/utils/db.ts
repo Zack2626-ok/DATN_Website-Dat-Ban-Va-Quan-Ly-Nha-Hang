@@ -1865,17 +1865,29 @@ export const updateResmanagerTableStatus = async (
     }
 
     if (status === TABLE_STATUS.PENDING_PAYMENT) {
-      await connection.query(
-        `UPDATE orders SET status = ?
-         WHERE table_id = ? AND status IN (?, ?)`,
-        [ORDER_STATUS.PENDING_PAYMENT, primaryTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING],
+      const [splitRows] = await connection.query<any[]>(
+        "SELECT id FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active'",
+        [primaryTableId]
       );
+      if (!splitRows || splitRows.length === 0) {
+        await connection.query(
+          `UPDATE orders SET status = ?
+           WHERE table_id = ? AND status IN (?, ?)`,
+          [ORDER_STATUS.PENDING_PAYMENT, primaryTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING],
+        );
+      }
     } else if (status === TABLE_STATUS.SERVING) {
-      await connection.query(
-        `UPDATE orders SET status = ?
-         WHERE table_id = ? AND status = ?`,
-        [ORDER_STATUS.SERVING, primaryTableId, ORDER_STATUS.PENDING_PAYMENT],
+      const [splitRows] = await connection.query<any[]>(
+        "SELECT id FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active'",
+        [primaryTableId]
       );
+      if (!splitRows || splitRows.length === 0) {
+        await connection.query(
+          `UPDATE orders SET status = ?
+           WHERE table_id = ? AND status = ?`,
+          [ORDER_STATUS.SERVING, primaryTableId, ORDER_STATUS.PENDING_PAYMENT],
+        );
+      }
     } else if (status === TABLE_STATUS.EMPTY) {
       await connection.query(
         `UPDATE table_merges
@@ -3193,7 +3205,7 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     );
     const groupCapacity = groupPrimaryCluster.reduce((total, table) => total + Number(table.capacity), 0)
       + groupChildren.reduce((total, table) => total + Number(table.capacity), 0);
-    const splits = await query("SELECT child_label FROM table_splits WHERE parent_table_id = ?", [r.id]);
+    const splits = await query("SELECT child_label FROM table_splits WHERE parent_table_id = ? AND status = 'active'", [r.id]);
 
     let preOrderedItems: any[] = [];
     if (r.active_order_id && r.active_order_type === 'pre_order') {
@@ -5937,11 +5949,11 @@ export const splitResmanagerTable = async (
 
 /** Lấy thông tin các nhóm sub-orders active của 1 bàn */
 export const getTableActiveSplits = async (tableId: number): Promise<any> => {
-  const [sessions] = await query<any[]>(
+  const sessions = await query<any[]>(
     "SELECT * FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
     [tableId]
   );
-  if (sessions.length === 0) return null;
+  if (!sessions || sessions.length === 0) return null;
 
   const session = sessions[0];
   const splits = await query<any[]>(

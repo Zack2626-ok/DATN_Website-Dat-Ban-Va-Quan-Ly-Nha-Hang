@@ -252,7 +252,13 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
     await db.updateOrderStatus(orderId, "pending_payment");
 
     if (order.table_id) {
-      await db.updateResmanagerTableStatus(Number(order.table_id), "pending_payment");
+      const activeOrders = await db.query<any[]>(
+        "SELECT id, status FROM orders WHERE table_id = ? AND status IN ('open', 'serving')",
+        [order.table_id]
+      );
+      if (!activeOrders || activeOrders.length === 0) {
+        await db.updateResmanagerTableStatus(Number(order.table_id), "pending_payment");
+      }
     }
 
     const waiterName = req.user?.email || "Phục vụ";
@@ -275,6 +281,33 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
     sendSuccess(res, { orderId, status: "pending_payment", waiterName }, "Đã gửi yêu cầu thanh toán");
   } catch (error) {
     console.error("Error requesting payment:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Waiter / Manager hủy yêu cầu thanh toán (quay lại trạng thái phục vụ)
+export const cancelPaymentRequestHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId } = req.params;
+
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === orderId);
+    if (!order) {
+      sendError(res, "Không tìm thấy đơn hàng", 404);
+      return;
+    }
+
+    await db.updateOrderStatus(orderId, "serving");
+
+    if (order.table_id) {
+      await db.updateResmanagerTableStatus(Number(order.table_id), "serving");
+    }
+
+    req.app.get("io")?.emit("table:status_changed", { tableId: order.table_id, status: "serving" });
+
+    sendSuccess(res, { orderId, status: "serving" }, "Đã hủy yêu cầu thanh toán, tiếp tục phục vụ");
+  } catch (error) {
+    console.error("Error cancelling payment request:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
