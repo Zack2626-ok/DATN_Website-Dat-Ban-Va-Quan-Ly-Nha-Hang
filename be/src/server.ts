@@ -131,6 +131,7 @@ app.use("/api/promotions", promotionRoutes);
 app.use("/api/restaurant-info", restaurantInfoRoutes);
 app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
 app.use("/api/invoices", invoiceRoutes);
+app.use("/api/v1/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);

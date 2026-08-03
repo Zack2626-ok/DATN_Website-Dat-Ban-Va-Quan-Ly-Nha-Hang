@@ -4,6 +4,7 @@ import { sendError, sendSuccess } from "../utils/response";
 import { TABLE_STATUS, type TableStatus } from "../constants/table";
 import { BOOKING_SCHEDULE_MODE, type BookingScheduleMode } from "../constants/booking";
 
+
 // Lấy tất cả khu vực bàn (table_areas)
 export const getTableAreasHandler = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -34,6 +35,73 @@ export const getEmptyTablesHandler = async (req: Request, res: Response): Promis
     sendSuccess(res, tables, "Lấy danh sách bàn trống thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Tách bàn — POST /api/v1/tables/:id/split
+export const splitTableHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parentTableId = Number(req.params.id);
+    const { groups } = req.body;
+    const createdBy = req.user?.userId ? Number(req.user.userId) : 1;
+
+    if (!Array.isArray(groups) || groups.length < 2) {
+      sendError(res, "Danh sách nhóm cần tách (groups) phải là mảng tối thiểu 2 nhóm.", 400);
+      return;
+    }
+
+    const result = await db.splitResmanagerTable(parentTableId, groups, createdBy);
+
+    req.app.get("io")?.emit("table:split", {
+      parentTableId,
+      splitSessionId: result.splitSessionId,
+      subOrders: result.subOrders,
+    });
+    req.app.get("io")?.emit("table:status_changed", { tableId: parentTableId, status: "serving" });
+
+    sendSuccess(res, result, "Tách bàn thành công", 201);
+  } catch (error) {
+    const statusCode = error instanceof db.TableSplitValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
+  }
+};
+
+// Lấy danh sách sub-orders active của bàn — GET /api/v1/tables/:id/splits
+export const getTableSplitsHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    const splits = await db.getTableActiveSplits(tableId);
+    sendSuccess(res, splits, "Lấy thông tin nhóm tách bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Chuyển món giữa các nhóm sub-orders — POST /api/v1/tables/:id/split/items/move
+export const moveSplitItemsHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    const { source_child_order_id, target_child_order_id, order_item_id, quantity } = req.body;
+
+    if (!source_child_order_id || !target_child_order_id || !order_item_id || !quantity) {
+      sendError(res, "Thiếu thông tin chuyển món (source_child_order_id, target_child_order_id, order_item_id, quantity).", 400);
+      return;
+    }
+
+    await db.moveSplitOrderItems(
+      tableId,
+      Number(source_child_order_id),
+      Number(target_child_order_id),
+      Number(order_item_id),
+      Number(quantity)
+    );
+
+    req.app.get("io")?.emit("table:split-updated", { tableId, sourceChildOrderId: Number(source_child_order_id), targetChildOrderId: Number(target_child_order_id) });
+
+    sendSuccess(res, true, "Chuyển món giữa các nhóm thành công");
+  } catch (error) {
+    const statusCode = error instanceof db.TableSplitValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
   }
 };
 
@@ -325,42 +393,10 @@ export const unmergeTableHandler = async (req: Request, res: Response): Promise<
   }
 };
 
-// Tách bàn — POST /api/v1/tables/:id/split
-export const splitTableHandler = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const parentTableId = Number(req.params.id);
-    const { target_table_id, child_label, item_ids } = req.body;
-
-    if (!target_table_id || !child_label) {
-      sendError(res, "target_table_id và child_label là bắt buộc", 400);
-      return;
-    }
-
-    const result = await db.splitResmanagerTable(
-      parentTableId,
-      child_label,
-      Number(target_table_id),
-      Array.isArray(item_ids) ? item_ids.map(Number) : [],
-    );
-
-    if (!result.success) {
-      sendError(res, "Không tìm thấy order để tách hoặc bàn nguồn không hợp lệ", 400);
-      return;
-    }
-
-    req.app.get("io")?.emit("table:split", { parentTableId, targetTableId: Number(target_table_id), newOrderId: result.newOrderId });
-
-    sendSuccess(res, { parentTableId, targetTableId: Number(target_table_id), newOrderId: result.newOrderId }, "Tách bàn thành công");
-  } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
-  }
-};
-
 // Thêm bàn mới — POST /api/v1/tables
 export const createResmanagerTableHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { area_id, name, capacity, row_pos, col_pos } = req.body;
-
     if (!area_id || !name || !capacity || !row_pos || !col_pos) {
       sendError(res, "Các trường dữ liệu: khu vực, tên bàn, sức chứa, dòng và cột là bắt buộc!", 400);
       return;

@@ -232,8 +232,16 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       );
     }
     if (order.table_id) {
-      const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
-      req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+      const subResult = await db.completeSubOrderPayment(Number(id));
+      if (!subResult.sessionCompleted) {
+        // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
+        req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
+      } else {
+        // Đã thanh toán HẾT các nhóm trong phiên split, mới giải phóng bàn vật lý!
+        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+        req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+        req.app.get("io")?.emit("table:released", { tableId: Number(order.table_id) });
+      }
     }
 
     // Tích điểm loyalty nếu có khách hàng thành viên liên kết

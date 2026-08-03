@@ -783,20 +783,6 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: added bookings deposit columns");
     }
-
-    const bookingEmailCol = await query<any[]>(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'guest_email'`,
-    );
-    if (bookingEmailCol.length === 0) {
-      await query(`
-        ALTER TABLE bookings 
-        ADD COLUMN guest_email VARCHAR(150) DEFAULT NULL AFTER guest_phone
-      `);
-      console.log("✅ Migration: added guest_email column to bookings table");
-    }
-
-    // Migration: Tạo bảng booking_menu_items để lưu món đặt trước nếu chưa có
     const bookingMenuItemsTable = await query<any[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_menu_items'`,
@@ -3453,9 +3439,20 @@ export const transferResmanagerOrder = async (
     if (!sourceOrder) {
       throw new TableTransferValidationError("Không xác định được order cần chuyển.");
     }
+    // Chuyển toàn bộ orders (bao gồm tất cả sub-orders thuộc bàn nếu có split session)
+    for (const sOrder of sourceOrders) {
+      await connection.query(
+        `UPDATE orders SET table_id = ? WHERE id = ?`,
+        [targetTableId, sOrder.id],
+      );
+    }
     await connection.query(
-      `UPDATE orders SET table_id = ? WHERE id = ?`,
-      [targetTableId, sourceOrder.id],
+      `UPDATE table_splits SET parent_table_id = ? WHERE parent_table_id = ? AND status = 'active'`,
+      [targetTableId, sourceTableId],
+    );
+    await connection.query(
+      `UPDATE table_split_sessions SET parent_table_id = ? WHERE parent_table_id = ? AND status = 'active'`,
+      [targetTableId, sourceTableId],
     );
     await connection.query(
       `UPDATE tables SET status = ? WHERE id = ?`,
@@ -3990,6 +3987,15 @@ export const mergeResmanagerTablesTransactionally = async (
       throw new TableMergeValidationError(`Bàn ${primaryTable.name} đang ở trạng thái không thể gộp.`);
     }
 
+    const checkSplitIds = [primaryTableId, ...uniqueMergedTableIds];
+    const [splitSessions] = await connection.query<any[]>(
+      `SELECT id FROM table_split_sessions WHERE parent_table_id IN (${checkSplitIds.map(() => "?").join(", ")}) AND status = 'active' FOR UPDATE`,
+      checkSplitIds
+    );
+    if (splitSessions.length > 0) {
+      throw new TableMergeValidationError("Không thể gộp bàn đang có phiên tách bàn (Sub-Orders) hoạt động.");
+    }
+
     const mergedTables = uniqueMergedTableIds.map((tableId) => {
       const table = tableRows.find((candidate) => candidate.id === tableId);
       if (!table) {
@@ -4302,45 +4308,7 @@ export const unmergeResmanagerTablesTransactionally = async (tableId: number): P
   }
 };
 
-export const splitResmanagerTable = async (
-  parentTableId: number,
-  childLabel: string,
-  targetTableId: number,
-  itemIds: number[]
-): Promise<{ success: boolean; newOrderId?: number }> => {
-  const rows = await query("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving') LIMIT 1", [parentTableId]);
-  if (rows.length === 0) return { success: false };
-  const originalOrder = rows[0];
 
-
-  const result = await query(`
-    INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, guest_name, guest_phone)
-    VALUES (?, ?, ?, ?, ?, 'serving', ?, ?)
-  `, [
-    targetTableId,
-    originalOrder.customer_id,
-    originalOrder.created_by,
-    originalOrder.order_type,
-    childLabel,
-    originalOrder.guest_name,
-    originalOrder.guest_phone
-  ]);
-  const newOrderId = result.insertId;
-
-  if (itemIds.length > 0) {
-    const placeholders = itemIds.map(() => "?").join(", ");
-    await query(`
-      UPDATE order_items 
-      SET order_id = ? 
-      WHERE id IN (${placeholders})
-    `, [newOrderId, ...itemIds]);
-  }
-
-  await query("INSERT INTO table_splits (parent_table_id, child_label) VALUES (?, ?)", [parentTableId, childLabel]);
-  await query("UPDATE tables SET status = 'serving' WHERE id = ?", [targetTableId]);
-
-  return { success: true, newOrderId };
-};
 
 // ===== WAITER/MENU DATABASE OPERATIONS =====
 export const checkMenuItemAvailability = async (menuItemId: number): Promise<{ available: boolean; reason?: string; is_expired?: boolean; out_of_stock?: boolean }> => {
@@ -4505,7 +4473,7 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
 
 export const getAllResmanagerOrders = async (status?: string): Promise<any[]> => {
   let sql = `
-    SELECT o.*, t.name AS table_name, t.area_id, t.status AS table_status,
+    SELECT o.*, COALESCE(o.split_label, t.name) AS table_name, t.area_id, t.status AS table_status,
            u.full_name AS staff_name,
            c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email
     FROM orders o
@@ -5718,6 +5686,514 @@ export const updatePromotion = async (id: number | string, data: any): Promise<b
   values.push(id);
   const result = await query(`UPDATE promotions SET ${fields.join(", ")} WHERE id = ?`, values);
   return result.affectedRows > 0;
+};
+
+// ===== TABLE SPLIT & BILL SPLIT OPERATIONS =====
+export interface SplitGroupInput {
+  guest_count: number;
+  item_allocations?: { order_item_id: number; quantity: number }[];
+}
+
+export interface TableSplitResult {
+  splitSessionId: number;
+  parentTableId: number;
+  parentOrderId: number;
+  subOrders: {
+    splitId: number;
+    childOrderId: number;
+    childLabel: string;
+    guestCount: number;
+    totalAmount: number;
+  }[];
+}
+
+export class TableSplitValidationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "TableSplitValidationError";
+  }
+}
+
+/** Tách bàn vật lý thành các nhóm sub-orders theo phiên table_split_sessions */
+export const splitResmanagerTable = async (
+  parentTableId: number,
+  groups: SplitGroupInput[],
+  createdBy: number = 1
+): Promise<TableSplitResult> => {
+  if (!Number.isInteger(parentTableId) || parentTableId <= 0) {
+    throw new TableSplitValidationError("Mã bàn không hợp lệ.");
+  }
+  if (!Array.isArray(groups) || groups.length < 2) {
+    throw new TableSplitValidationError("Phải tách thành ít nhất 2 nhóm.");
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    if (!Number.isInteger(groups[i].guest_count) || groups[i].guest_count <= 0) {
+      throw new TableSplitValidationError(`Số lượng khách nhóm ${i + 1} phải lớn hơn 0.`);
+    }
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 1. Lock bàn vật lý
+    const [tables] = await connection.query<any[]>(
+      "SELECT id, name, capacity, status, merged_into_table_id FROM tables WHERE id = ? AND is_deleted = 0 FOR UPDATE",
+      [parentTableId]
+    );
+    if (tables.length === 0) {
+      throw new TableSplitValidationError("Không tìm thấy bàn vật lý.");
+    }
+    const table = tables[0];
+
+    if (table.status !== TABLE_STATUS.SERVING && table.status !== TABLE_STATUS.EMPTY) {
+      throw new TableSplitValidationError(`Bàn ${table.name} đang ở trạng thái '${table.status}', không thể tách bàn.`);
+    }
+
+    const totalGuests = groups.reduce((sum, g) => sum + g.guest_count, 0);
+    if (totalGuests > Number(table.capacity)) {
+      throw new TableSplitValidationError(`Tổng số khách các nhóm (${totalGuests}) vượt quá sức chứa bàn vật lý (${table.capacity} chỗ).`);
+    }
+
+    // 2. Chặn nếu bàn đang thuộc cụm gộp
+    const [merges] = await connection.query<any[]>(
+      "SELECT id FROM table_merges WHERE status = ? AND (primary_table_id = ? OR merged_table_id = ?)",
+      [TABLE_MERGE_STATUS.ACTIVE, parentTableId, parentTableId]
+    );
+    if (table.merged_into_table_id !== null || merges.length > 0) {
+      throw new TableSplitValidationError("Không thể tách bàn đang thuộc cụm gộp. Vui lòng gỡ gộp bàn trước.");
+    }
+
+    // 3. Chặn nếu bàn đang có 1 split session active
+    const [existingSessions] = await connection.query<any[]>(
+      "SELECT id FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active'",
+      [parentTableId]
+    );
+    if (existingSessions.length > 0) {
+      throw new TableSplitValidationError(`Bàn ${table.name} đang có phiên tách bàn hoạt động. Vui lòng hoàn tất phiên hiện tại trước.`);
+    }
+
+    // 4. Lấy đơn hàng active hiện tại (đơn vị order gốc)
+    let parentOrderId: number;
+    const [activeOrders] = await connection.query<any[]>(
+      "SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving') ORDER BY id DESC LIMIT 1 FOR UPDATE",
+      [parentTableId]
+    );
+
+    if (activeOrders.length === 0) {
+      // Nếu bàn chưa có order, tạo order gốc
+      const [newParentRes] = await connection.query<any>(
+        "INSERT INTO orders (table_id, created_by, order_type, status, guest_count) VALUES (?, ?, 'dine_in', 'serving', ?)",
+        [parentTableId, createdBy, groups[0].guest_count]
+      );
+      parentOrderId = newParentRes.insertId;
+    } else {
+      parentOrderId = activeOrders[0].id;
+    }
+
+    // 5. Kiểm tra ràng buộc món ăn với Kitchen status
+    const [existingItems] = await connection.query<any[]>(
+      `SELECT oi.id, oi.order_id, oi.menu_item_id, m.name AS item_name, oi.quantity, oi.unit_price, oi.status, oi.kitchen_note
+       FROM order_items oi
+       JOIN menu_items m ON oi.menu_item_id = m.id
+       WHERE oi.order_id = ? FOR UPDATE`,
+      [parentOrderId]
+    );
+
+    // Kiểm tra xem có món cooking / served nào bị yêu cầu chuyển sang nhóm 2..N không
+    for (let gIdx = 1; gIdx < groups.length; gIdx++) {
+      const allocations = groups[gIdx].item_allocations || [];
+      for (const alloc of allocations) {
+        const item = existingItems.find((i) => i.id === alloc.order_item_id);
+        if (item && (item.status === 'cooking' || item.status === 'served')) {
+          throw new TableSplitValidationError(
+            `Món '${item.item_name}' (đang ở trạng thái '${item.status}') không được chuyển sang nhóm khác. Món chế biến/phục vụ giữ nguyên ở nhóm ${table.name}:1.`
+          );
+        }
+      }
+    }
+
+    // 6. Tạo phiên split_session
+    const [sessionRes] = await connection.query<any>(
+      "INSERT INTO table_split_sessions (parent_table_id, parent_order_id, status) VALUES (?, ?, 'active')",
+      [parentTableId, parentOrderId]
+    );
+    const splitSessionId = sessionRes.insertId;
+
+    // 7. Tạo nhóm 1 (Dùng order gốc)
+    const label1 = `${table.name}:1`;
+    await connection.query(
+      "UPDATE orders SET split_label = ?, guest_count = ? WHERE id = ?",
+      [label1, groups[0].guest_count, parentOrderId]
+    );
+    const [split1Res] = await connection.query<any>(
+      "INSERT INTO table_splits (split_session_id, parent_table_id, parent_order_id, child_order_id, child_label, guest_count, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+      [splitSessionId, parentTableId, parentOrderId, parentOrderId, label1, groups[0].guest_count]
+    );
+
+    const subOrders = [
+      {
+        splitId: split1Res.insertId,
+        childOrderId: parentOrderId,
+        childLabel: label1,
+        guestCount: groups[0].guest_count,
+        totalAmount: 0,
+      },
+    ];
+
+    // 8. Tạo nhóm 2..N (Tạo các child orders mới)
+    for (let i = 1; i < groups.length; i++) {
+      const childLabel = `${table.name}:${i + 1}`;
+      const [childOrderRes] = await connection.query<any>(
+        "INSERT INTO orders (table_id, created_by, order_type, status, split_label, guest_count) VALUES (?, ?, 'dine_in', 'serving', ?, ?)",
+        [parentTableId, createdBy, childLabel, groups[i].guest_count]
+      );
+      const childOrderId = childOrderRes.insertId;
+
+      const [splitRes] = await connection.query<any>(
+        "INSERT INTO table_splits (split_session_id, parent_table_id, parent_order_id, child_order_id, child_label, guest_count, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+        [splitSessionId, parentTableId, parentOrderId, childOrderId, childLabel, groups[i].guest_count]
+      );
+
+      subOrders.push({
+        splitId: splitRes.insertId,
+        childOrderId,
+        childLabel,
+        guestCount: groups[i].guest_count,
+        totalAmount: 0,
+      });
+    }
+
+    // 9. Thực hiện phân bổ order_items cho từng nhóm
+    for (let gIdx = 0; gIdx < groups.length; gIdx++) {
+      const targetChildOrderId = subOrders[gIdx].childOrderId;
+      const allocations = groups[gIdx].item_allocations || [];
+
+      for (const alloc of allocations) {
+        const item = existingItems.find((i) => i.id === alloc.order_item_id);
+        if (!item) continue;
+        if (alloc.quantity <= 0) continue;
+
+        if (gIdx === 0) {
+          // Nhóm 1 (Order gốc): Cập nhật lại số lượng nếu có tách bớt
+          await connection.query(
+            "UPDATE order_items SET quantity = ? WHERE id = ?",
+            [alloc.quantity, item.id]
+          );
+        } else {
+          // Nhóm 2..N: Chuyển toàn bộ hoặc tạo dòng mới với số lượng tách
+          if (alloc.quantity === item.quantity) {
+            // Chuyển toàn bộ món sang order mới
+            await connection.query(
+              "UPDATE order_items SET order_id = ? WHERE id = ?",
+              [targetChildOrderId, item.id]
+            );
+          } else {
+            // Tách một phần số lượng sang order mới
+            const newChildQty = alloc.quantity;
+            await connection.query(
+              "INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status, kitchen_note) VALUES (?, ?, ?, ?, ?, ?)",
+              [targetChildOrderId, item.menu_item_id, newChildQty, item.unit_price, item.status, item.kitchen_note]
+            );
+            // Giảm số lượng ở order gốc
+            const remainQty = item.quantity - newChildQty;
+            await connection.query(
+              "UPDATE order_items SET quantity = ? WHERE id = ?",
+              [remainQty, item.id]
+            );
+          }
+        }
+      }
+    }
+
+    // 10. Tính toán lại tổng tiền cho tất cả sub-orders
+    for (const sub of subOrders) {
+      const [sumRows] = await connection.query<any[]>(
+        "SELECT COALESCE(SUM(quantity * unit_price), 0) as total FROM order_items WHERE order_id = ?",
+        [sub.childOrderId]
+      );
+      sub.totalAmount = Number(sumRows[0]?.total || 0);
+    }
+
+    // 11. Bàn vật lý giữ trạng thái SERVING
+    await connection.query("UPDATE tables SET status = ? WHERE id = ?", [TABLE_STATUS.SERVING, parentTableId]);
+
+    await connection.commit();
+
+    return {
+      splitSessionId,
+      parentTableId,
+      parentOrderId,
+      subOrders,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Lấy thông tin các nhóm sub-orders active của 1 bàn */
+export const getTableActiveSplits = async (tableId: number): Promise<any> => {
+  const [sessions] = await query<any[]>(
+    "SELECT * FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
+    [tableId]
+  );
+  if (sessions.length === 0) return null;
+
+  const session = sessions[0];
+  const splits = await query<any[]>(
+    `SELECT ts.*, o.split_label, o.status AS order_status, o.created_at AS order_created_at
+     FROM table_splits ts
+     JOIN orders o ON o.id = ts.child_order_id
+     WHERE ts.split_session_id = ?
+     ORDER BY ts.id ASC`,
+    [session.id]
+  );
+
+  for (const split of splits) {
+    const items = await query<any[]>(
+      `SELECT oi.id, oi.menu_item_id, m.name AS item_name, oi.quantity, oi.unit_price, (oi.quantity * oi.unit_price) AS subtotal, oi.status, oi.kitchen_note
+       FROM order_items oi
+       JOIN menu_items m ON oi.menu_item_id = m.id
+       WHERE oi.order_id = ?`,
+      [split.child_order_id]
+    );
+    split.items = items;
+    split.total_amount = items.reduce((sum, item) => sum + Number(item.subtotal), 0);
+  }
+
+  return {
+    sessionId: session.id,
+    parentTableId: session.parent_table_id,
+    parentOrderId: session.parent_order_id,
+    sessionStatus: session.status,
+    createdAt: session.created_at,
+    splits,
+  };
+};
+
+/** Chuyển món/tách số lượng giữa các nhóm sub-orders trong cùng 1 phiên split active */
+export const moveSplitOrderItems = async (
+  tableId: number,
+  sourceChildOrderId: number,
+  targetChildOrderId: number,
+  orderItemId: number,
+  moveQuantity: number
+): Promise<boolean> => {
+  if (sourceChildOrderId === targetChildOrderId) {
+    throw new TableSplitValidationError("Nhóm nguồn và nhóm đích phải khác nhau.");
+  }
+  if (!Number.isInteger(moveQuantity) || moveQuantity <= 0) {
+    throw new TableSplitValidationError("Số lượng chuyển phải lớn hơn 0.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [items] = await connection.query<any[]>(
+      "SELECT id, order_id, menu_item_id, item_name, quantity, unit_price, status, notes FROM order_items WHERE id = ? AND order_id = ? FOR UPDATE",
+      [orderItemId, sourceChildOrderId]
+    );
+    if (items.length === 0) {
+      throw new TableSplitValidationError("Không tìm thấy món cần chuyển.");
+    }
+    const item = items[0];
+
+    // Bắt buộc món phải ở trạng thái pending
+    if (item.status !== 'pending') {
+      throw new TableSplitValidationError(
+        `Món '${item.item_name}' đang ở trạng thái '${item.status}'. Chỉ món ở trạng thái chờ ('pending') mới được phép chuyển giữa các nhóm.`
+      );
+    }
+
+    if (moveQuantity > item.quantity) {
+      throw new TableSplitValidationError(`Số lượng chuyển (${moveQuantity}) vượt quá số lượng hiện có (${item.quantity}).`);
+    }
+
+    if (moveQuantity === item.quantity) {
+      await connection.query("UPDATE order_items SET order_id = ? WHERE id = ?", [targetChildOrderId, item.id]);
+    } else {
+      const remainQty = item.quantity - moveQuantity;
+      await connection.query("UPDATE order_items SET quantity = ? WHERE id = ?", [remainQty, item.id]);
+
+      await connection.query(
+        "INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status, kitchen_note) VALUES (?, ?, ?, ?, ?, ?)",
+        [targetChildOrderId, item.menu_item_id, moveQuantity, item.unit_price, item.status, item.kitchen_note]
+      );
+    }
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Đóng 1 nhóm sub-order khi thanh toán và kiểm tra hoàn tất phiên tách bàn để giải phóng bàn vật lý */
+export const completeSubOrderPayment = async (childOrderId: number): Promise<{ sessionCompleted: boolean; tableReleased: boolean }> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 1. Cập nhật order status sang completed
+    await connection.query("UPDATE orders SET status = 'completed' WHERE id = ?", [childOrderId]);
+
+    // 2. Cập nhật table_splits tương ứng sang status = 'paid'
+    await connection.query("UPDATE table_splits SET status = 'paid', closed_at = NOW() WHERE child_order_id = ?", [childOrderId]);
+
+    // 3. Tìm thông tin split_session
+    const [splits] = await connection.query<any[]>(
+      "SELECT split_session_id, parent_table_id FROM table_splits WHERE child_order_id = ? LIMIT 1",
+      [childOrderId]
+    );
+
+    if (splits.length === 0) {
+      await connection.commit();
+      return { sessionCompleted: false, tableReleased: false };
+    }
+
+    const { split_session_id, parent_table_id } = splits[0];
+
+    // 4. Kiểm tra xem phiên còn nhóm nào 'active' không
+    const [activeSplits] = await connection.query<any[]>(
+      "SELECT id FROM table_splits WHERE split_session_id = ? AND status = 'active'",
+      [split_session_id]
+    );
+
+    let sessionCompleted = false;
+    let tableReleased = false;
+
+    if (activeSplits.length === 0) {
+      // Đã thanh toán HẾT các nhóm trong phiên
+      sessionCompleted = true;
+      await connection.query(
+        "UPDATE table_split_sessions SET status = 'completed', closed_at = NOW() WHERE id = ?",
+        [split_session_id]
+      );
+
+      // Kiểm tra xem bàn vật lý còn bất kỳ order active nào khác không
+      const [otherActiveOrders] = await connection.query<any[]>(
+        "SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment') LIMIT 1",
+        [parent_table_id]
+      );
+
+      if (otherActiveOrders.length === 0) {
+        tableReleased = true;
+        await connection.query("UPDATE tables SET status = ? WHERE id = ?", [TABLE_STATUS.CLEANING, parent_table_id]);
+      }
+    }
+
+    await connection.commit();
+    return { sessionCompleted, tableReleased };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Tách hóa đơn theo món khi checkout và lưu vết invoice_item_splits */
+export const splitInvoiceByItems = async (
+  parentInvoiceId: number,
+  childBills: { items: { order_item_id: number; quantity: number; amount: number }[] }[]
+): Promise<number[]> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [parentInvoices] = await connection.query<any[]>("SELECT * FROM invoices WHERE id = ? FOR UPDATE", [parentInvoiceId]);
+    if (parentInvoices.length === 0) {
+      throw new Error("Không tìm thấy hóa đơn gốc.");
+    }
+    const parentInvoice = parentInvoices[0];
+
+    const childInvoiceIds: number[] = [];
+
+    for (let i = 0; i < childBills.length; i++) {
+      const bill = childBills[i];
+      const billTotal = bill.items.reduce((sum, item) => sum + Number(item.amount), 0);
+
+      const [res] = await connection.query<any>(
+        `INSERT INTO invoices (order_id, parent_invoice_id, subtotal, tax_amount, service_fee, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, 0, 0, 0, ?, 'unpaid', NOW())`,
+        [parentInvoice.order_id, parentInvoiceId, billTotal, billTotal]
+      );
+      const childInvoiceId = res.insertId;
+      childInvoiceIds.push(childInvoiceId);
+
+      for (const item of bill.items) {
+        await connection.query(
+          `INSERT INTO invoice_item_splits (parent_invoice_id, child_invoice_id, order_item_id, quantity, amount)
+           VALUES (?, ?, ?, ?, ?)`,
+          [parentInvoiceId, childInvoiceId, item.order_item_id, item.quantity, item.amount]
+        );
+      }
+    }
+
+    await connection.commit();
+    return childInvoiceIds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Chia đều hóa đơn khi checkout với xử lý phần dư làm tròn chính xác */
+export const splitInvoiceEqually = async (
+  parentInvoiceId: number,
+  guestCount: number
+): Promise<{ childInvoiceIds: number[]; amounts: number[] }> => {
+  if (!Number.isInteger(guestCount) || guestCount <= 1) {
+    throw new Error("Số người chia hóa đơn phải lớn hơn 1.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [parentInvoices] = await connection.query<any[]>("SELECT * FROM invoices WHERE id = ? FOR UPDATE", [parentInvoiceId]);
+    if (parentInvoices.length === 0) {
+      throw new Error("Không tìm thấy hóa đơn gốc.");
+    }
+    const parentInvoice = parentInvoices[0];
+    const totalAmount = Number(parentInvoice.final_amount || parentInvoice.subtotal);
+
+    const baseAmount = Math.floor(totalAmount / guestCount);
+    const remainder = totalAmount - (baseAmount * guestCount);
+
+    const childInvoiceIds: number[] = [];
+    const amounts: number[] = [];
+
+    for (let i = 0; i < guestCount; i++) {
+      const childAmount = i === guestCount - 1 ? baseAmount + remainder : baseAmount;
+      amounts.push(childAmount);
+
+      const [res] = await connection.query<any>(
+        `INSERT INTO invoices (order_id, parent_invoice_id, subtotal, tax_amount, service_fee, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, 0, 0, 0, ?, 'unpaid', NOW())`,
+        [parentInvoice.order_id, parentInvoiceId, childAmount, childAmount]
+      );
+      childInvoiceIds.push(res.insertId);
+    }
+
+    await connection.commit();
+    return { childInvoiceIds, amounts };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 };
 
 export const deletePromotion = async (id: number | string): Promise<boolean> => {
