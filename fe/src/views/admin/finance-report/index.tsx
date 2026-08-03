@@ -191,13 +191,68 @@ export const FinanceReport: React.FC = () => {
   const groupedTransactions = useMemo(() => {
     const rawList = data.recentTransactions || [];
     
-    const incomeList = rawList.filter((tx: any) => tx.type === "income").map((tx: any) => ({
-      ...tx,
-      hasRefund: Boolean(tx.hasRefund),
-      refundedTotal: Number(tx.refundedTotal || 0)
-    }));
-    const expenseList = rawList.filter((tx: any) => tx.type === "expense");
+    // Tách income thành: hóa đơn bán hàng và trả hàng NCC
+    const invoiceIncomeList = rawList
+      .filter((tx: any) => tx.type === "income" && tx.txSubType !== "return_supplier")
+      .map((tx: any) => ({
+        ...tx,
+        hasRefund: Boolean(tx.hasRefund),
+        refundedTotal: Number(tx.refundedTotal || 0)
+      }));
+    
+    // Gom nhóm trả hàng NCC theo SLIP code
+    const returnList = rawList.filter((tx: any) => tx.type === "income" && tx.txSubType === "return_supplier");
+    const returnGroups: { [key: string]: any } = {};
+    returnList.forEach((tx: any) => {
+      const noteStr = tx.note || "";
+      const slipMatch = noteStr.match(/\[SLIP:([^\]]+)\]/);
+      const dateMinuteStr = new Date(tx.date).toISOString().slice(0, 16);
+      const supplierName = tx.supplierName || "NCC";
+      const groupKey = slipMatch ? `RET-${slipMatch[1]}` : `RET-${dateMinuteStr}_${supplierName}`;
+      const ticketCode = slipMatch ? slipMatch[1] : `TXT${new Date(tx.date).getFullYear()}${String(new Date(tx.date).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.date).getDate()).padStart(2, '0')}N-${String(tx.id).slice(-4)}`;
 
+      const qty = Math.abs(Number(tx.quantity) || 0);
+      const price = Number(tx.unitCost) || 0;
+      const total = qty * price;
+
+      if (!returnGroups[groupKey]) {
+        returnGroups[groupKey] = {
+          id: groupKey,
+          ticketCode,
+          type: "income",
+          txSubType: "return_supplier",
+          date: tx.date,
+          status: "completed",
+          supplierName,
+          isCredit: false,
+          note: noteStr,
+          items: [],
+          amount: 0,
+          hasRefund: false,
+          refundedTotal: 0
+        };
+      }
+      returnGroups[groupKey].items.push({
+        ingredientName: tx.ingredientName || "Nguyên liệu",
+        quantity: qty,
+        unitCost: price,
+        ingredientUnit: tx.ingredientUnit || "kg",
+        batchCode: tx.batchCode || "-",
+        amount: total
+      });
+      returnGroups[groupKey].amount += total;
+    });
+
+    const processedReturns = Object.values(returnGroups).map((group: any) => {
+      const totalItems = group.items.length;
+      const firstItem = group.items[0];
+      const description = totalItems > 1
+        ? `Trả hàng NCC: ${firstItem.ingredientName} (+${totalItems - 1} mặt hàng khác)`
+        : `Trả hàng NCC: ${firstItem.ingredientName}`;
+      return { ...group, description };
+    });
+
+    const expenseList = rawList.filter((tx: any) => tx.type === "expense");
     const expenseGroups: { [key: string]: any } = {};
 
     expenseList.forEach((tx: any) => {
@@ -264,7 +319,7 @@ export const FinanceReport: React.FC = () => {
       };
     });
 
-    const combined = [...incomeList, ...processedExpenses];
+    const combined = [...invoiceIncomeList, ...processedReturns, ...processedExpenses];
     combined.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return combined;
   }, [data.recentTransactions]);
@@ -502,6 +557,11 @@ export const FinanceReport: React.FC = () => {
                               Hoàn tiền
                             </span>
                           )}
+                          {row.txSubType === "return_supplier" && (
+                            <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                              Trả hàng NCC
+                            </span>
+                          )}
                         </td>
                         <td
                           className={`px-5 py-4 text-right tabular-nums`}
@@ -525,7 +585,74 @@ export const FinanceReport: React.FC = () => {
                       {isExpanded && (
                         <tr className="bg-sky-50/10">
                           <td colSpan={6} className="px-6 py-4 border-t border-slate-100">
-                            {row.type === "expense" ? (
+                            {row.txSubType === "return_supplier" ? (
+                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-teal-50/40 p-5 rounded-2xl border border-teal-100/80 animate-fade-in text-xs">
+                                {/* Left: returned items list */}
+                                <div className="lg:col-span-2 space-y-2">
+                                  <h4 className="font-bold text-teal-800 text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    📦 Hàng đã trả lại NCC ({row.items?.length || 0} món)
+                                  </h4>
+                                  <div className="overflow-hidden rounded-xl border border-teal-200 bg-white">
+                                    <table className="min-w-full divide-y divide-slate-200">
+                                      <thead className="bg-teal-50 text-[10px] font-bold text-teal-700 uppercase tracking-wider">
+                                        <tr>
+                                          <th scope="col" className="px-4 py-2 text-left w-10">#</th>
+                                          <th scope="col" className="px-4 py-2 text-left">Tên hàng hóa</th>
+                                          <th scope="col" className="px-4 py-2 text-right">SL trả</th>
+                                          <th scope="col" className="px-4 py-2 text-right">Đơn giá</th>
+                                          <th scope="col" className="px-4 py-2 text-right">Thành tiền</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 text-[11px] text-slate-800">
+                                        {(row.items || []).map((item: any, idx: number) => (
+                                          <tr key={idx} className="hover:bg-teal-50/30">
+                                            <td className="px-4 py-2 text-slate-500">{idx + 1}</td>
+                                            <td className="px-4 py-2">
+                                              <div className="font-bold text-slate-800">{item.ingredientName}</div>
+                                              <div className="text-[9px] text-slate-400 font-mono mt-0.5">Lô: {item.batchCode}</div>
+                                            </td>
+                                            <td className="px-4 py-2 text-right font-bold text-teal-700">{item.quantity} {item.ingredientUnit}</td>
+                                            <td className="px-4 py-2 text-right">{formatCurrency(item.unitCost)}</td>
+                                            <td className="px-4 py-2 text-right font-bold text-emerald-700">{formatCurrency(item.amount)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                                {/* Right: return info */}
+                                <div className="space-y-3 flex flex-col justify-between">
+                                  <div className="space-y-3">
+                                    <h4 className="font-bold text-teal-800 text-xs uppercase tracking-wider mb-2">
+                                      💰 Thông tin hoàn tiền
+                                    </h4>
+                                    <div className="bg-white p-4 rounded-xl border border-teal-200 space-y-2">
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500 font-medium">Mã phiếu trả:</span>
+                                        <span className="font-mono text-teal-700 font-bold">{row.ticketCode || row.id}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500 font-medium">Nhà cung cấp:</span>
+                                        <span className="font-bold text-slate-800">{row.supplierName || "—"}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500 font-medium">Số món trả:</span>
+                                        <span className="font-bold">{row.items?.length || 0} món</span>
+                                      </div>
+                                      <div className="border-t border-dashed border-teal-200 my-2 pt-2">
+                                        <div className="flex justify-between">
+                                          <span className="text-slate-500 font-semibold">Tổng hoàn về:</span>
+                                          <span className="font-black text-emerald-700 text-sm">{formatCurrency(row.amount)}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[10px] text-emerald-800 font-semibold">
+                                      ✅ NCC đã hoàn trả tiền mặt / chuyển khoản cho nhà hàng
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : row.type === "expense" ? (
                               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-slate-50/80 p-5 rounded-2xl border border-slate-100/80 animate-fade-in text-xs">
                                 {/* Left column: List of products (2 cols in large) */}
                                 <div className="lg:col-span-2 space-y-2">

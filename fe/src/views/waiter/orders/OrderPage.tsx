@@ -417,6 +417,10 @@ export const OrderPage: React.FC = () => {
     if (!orderId) return;
     try {
       setProcessingPaymentRequest(true);
+      const pendingItems = orderItems.filter((i) => i.status === "pending");
+      if (pendingItems.length > 0) {
+        await sendItemsToKitchen(orderId, pendingItems.map((i) => i.id)).catch(console.error);
+      }
       await requestPayment(orderId, undefined, true);
       toast.success("Đã gửi yêu cầu thanh toán sớm cho thu ngân (Bàn vẫn ở trạng thái Đang phục vụ)");
       navigate("/waiter/tables");
@@ -954,10 +958,7 @@ export const OrderPage: React.FC = () => {
                 {(() => {
                   const activeOrderItems = orderItems.filter((i) => i.status !== "voided");
                   const hasPendingItems = activeOrderItems.some((i) => i.status === "pending");
-                  const hasSentToKitchen = activeOrderItems.some(
-                    (i) => i.status === "waiting_kitchen" || i.status === "cooking" || i.status === "done" || i.status === "served"
-                  );
-                  const canEarlyPay = hasSentToKitchen && !hasPendingItems;
+                  const canEarlyPay = activeOrderItems.length > 0;
 
                   if (canEarlyPay) {
                     return (

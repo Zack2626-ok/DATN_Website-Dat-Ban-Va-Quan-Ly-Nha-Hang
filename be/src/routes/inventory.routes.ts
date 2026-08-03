@@ -38,19 +38,21 @@ router.get("/suppliers", getSuppliers);
 router.post("/suppliers", addSupplier);
 router.put("/suppliers/:id", updateSupplier);
 router.delete("/suppliers/:id", deleteSupplier);
+router.patch("/suppliers/:id/pay", paySupplierDebt);
+router.get("/suppliers/:id/debt-history", getDebtHistory);
 router.post("/upload-excel", upload.single("file") as any, uploadExcel);
 router.get("/low-stock", getLowStockItems);
 router.post("/", createInventoryItem);
 router.post("/waste-expired", wasteExpiredBatches);
 router.get("/batches/all", getAllBatches);
+// Kiểm kê: PHẢI đặt trước /:id để tránh Express match nhầm
+router.get("/stock-check/today", getTodayCheckList);
+router.post("/stock-check", submitStockCheck);
+// Wildcard :id routes - phải đặt SAU các route cụ thể
 router.get("/:id", getInventoryById);
 router.get("/:id/batches", getIngredientBatches);
 router.patch("/:id", updateInventoryItem);
 router.patch("/:id/quantity", updateInventoryQuantity);
 router.delete("/:id", deleteInventoryItem);
-router.get("/stock-check/today", getTodayCheckList);
-router.post("/stock-check", submitStockCheck);
-router.patch("/suppliers/:id/pay", paySupplierDebt);
-router.get("/suppliers/:id/debt-history", getDebtHistory);
 
 export default router;

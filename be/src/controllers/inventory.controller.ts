@@ -32,17 +32,18 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
         SELECT 
           CONCAT('OUT-', so.id) as id,
           'export' as type,
+          so.ingredient_id as ingredientId,
           i.name as ingredientName,
           so.quantity as quantity,
           i.unit as unit,
           so.note as reasonOrSupplier,
-          0 as unit_cost,
+          COALESCE(si.unit_cost, 0) as unit_cost,
           so.note as note,
           so.created_at as timestamp,
           si.batch_code as batchNo,
           si.expiry_date as expiryDate,
-          0 as isCredit,
-          0 as supplierId,
+          COALESCE(si.is_credit, 0) as isCredit,
+          COALESCE(si.supplier_id, 0) as supplierId,
           so.reason as reasonType
         FROM stock_out so
         JOIN ingredients i ON so.ingredient_id = i.id
@@ -53,6 +54,7 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
         SELECT 
           CONCAT('IN-', si.id) as id,
           'import' as type,
+          si.ingredient_id as ingredientId,
           i.name as ingredientName,
           si.quantity as quantity,
           i.unit as unit,
@@ -325,16 +327,19 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
         );
       }
 
-      const exportReason = reasonType || (type === "waste" ? "expired" : (reasonOrSupplier && reasonOrSupplier.includes("Trả hàng") ? 'return_supplier' : 'other'));
+      const rawReason = reasonType || (type === "waste" ? "expired" : (reasonOrSupplier && (reasonOrSupplier.includes("Trả hàng") || reasonOrSupplier.includes("trả lại")) ? 'return_to_supplier' : 'other'));
+      const exportReason = (rawReason === "return_supplier" || rawReason === "return_supplier_export") ? "return_to_supplier" : rawReason;
 
       for (const batch of batches) {
         if (remainingToDeduct <= 0) break;
         const deductQty = Math.min(batch.remaining_quantity, remainingToDeduct);
         
-        await db.query(
-          `UPDATE stock_in SET remaining_quantity = remaining_quantity - ? WHERE id = ?`,
-          [deductQty, batch.id]
-        );
+        if (!isDraft) {
+          await db.query(
+            `UPDATE stock_in SET remaining_quantity = GREATEST(0, remaining_quantity - ?) WHERE id = ?`,
+            [deductQty, batch.id]
+          );
+        }
 
         await db.query(
           `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -349,6 +354,23 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
           `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?)`,
           [ingredientIdNum, remainingToDeduct, exportReason, noteWithDraft || 'Xuất/Điều chỉnh/Tiêu hủy kho (âm/không rõ lô)', 1]
         );
+      }
+
+      // TASK: Trả hàng NCC + Giảm trừ công nợ (deduct_credit)
+      // Khi isCredit=true + reason=return_to_supplier + có supplierId → trừ nợ NCC
+      if (
+        exportReason === "return_to_supplier" &&
+        isCredit &&
+        supplierId &&
+        !isDraft
+      ) {
+        const returnAmount = qty * (Number(unitCost) || 0);
+        if (returnAmount > 0) {
+          await db.query(
+            `UPDATE suppliers SET total_debt = GREATEST(0, total_debt - ?) WHERE id = ?`,
+            [returnAmount, supplierId]
+          );
+        }
       }
     }
 

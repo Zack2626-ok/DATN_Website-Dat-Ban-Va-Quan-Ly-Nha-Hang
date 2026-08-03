@@ -51,6 +51,7 @@ interface Category {
 interface StockTransaction {
   id: string;
   type: "import" | "export" | "adjust";
+  ingredientId?: string | number;
   ingredientName: string;
   quantity: number;
   unit: string;
@@ -155,8 +156,7 @@ export const InventoryControl: React.FC = () => {
 
   // Sub tab for Xuất kho (Hàng trả NCC vs Trừ kho tự động)
   const [returnSubTab, setReturnSubTab] = useState<"supplier_return" | "auto_deduction">("supplier_return");
-  // Sub category filter for Kiểm kê
-  const [stocktakeFilterCategory, setStocktakeFilterCategory] = useState<string>("all");
+
   // Printable Stocktake Receipt state (Matching Image 5)
   const [printStocktakeData, setPrintStocktakeData] = useState<any>(null);
   const [showStocktakePrintModal, setShowStocktakePrintModal] = useState<boolean>(false);
@@ -1295,12 +1295,16 @@ export const InventoryControl: React.FC = () => {
         };
       }
 
+      const matchIng = reduxIngredients.find((i: any) => i.name === tx.ingredientName);
+      const ingredientId = tx.ingredientId || (tx as any).ingredient_id || (matchIng ? matchIng.id : tx.id);
+      const ingredientCode = matchIng ? (matchIng.code || matchIng.itemCode) : `SP${String(ingredientId).padStart(6, '0')}`;
+
       groups[groupKey].rawTxList.push(tx);
       groups[groupKey].items.push({
         draftTxId: tx.id,
-        ingredientId: (tx as any).ingredient_id || tx.id,
+        ingredientId,
         ingredientName: tx.ingredientName,
-        code: `SP${String(tx.id).padStart(6, '0')}`,
+        code: ingredientCode,
         unit: tx.unit || "kg",
         quantity: qty,
         unitCost: price,
@@ -1315,7 +1319,7 @@ export const InventoryControl: React.FC = () => {
     });
 
     return Object.values(groups);
-  }, [filteredImportTransactions]);
+  }, [filteredImportTransactions, reduxIngredients]);
 
   const groupedReturnSlips = useMemo(() => {
     const groups: { [key: string]: any } = {};
@@ -1328,10 +1332,12 @@ export const InventoryControl: React.FC = () => {
         .replace(/\[SLIP:[^\]]+\]\s*/g, "")
         .replace("[LƯU TẠM] ", "")
         .replace("Trả hàng cho ", "")
+        .replace(" - Trừ công nợ", "")
+        .replace(" - Trừ nợ NCC", "")
         .trim() || "Nhà cung cấp";
       
       const isDraft = reasonStr.includes("[LƯU TẠM]") || (tx as any).status === "draft" || (tx as any).note?.includes("[LƯU TẠM]");
-      const isCreditTx = Boolean(tx.isCredit || (tx as any).is_credit || reasonStr.includes("Công nợ") || reasonStr.includes("trừ nợ"));
+      const isCreditTx = Boolean(tx.isCredit || (tx as any).is_credit || reasonStr.toLowerCase().includes("công nợ") || reasonStr.toLowerCase().includes("trừ nợ"));
       
       const slipMatch = reasonStr.match(/\[SLIP:([^\]]+)\]/);
       const dateMinuteStr = new Date(tx.timestamp).toISOString().slice(0, 16);
@@ -1360,12 +1366,16 @@ export const InventoryControl: React.FC = () => {
         };
       }
 
+      const matchIng = reduxIngredients.find((i: any) => i.name === tx.ingredientName);
+      const ingredientId = tx.ingredientId || (tx as any).ingredient_id || (matchIng ? matchIng.id : tx.id);
+      const ingredientCode = matchIng ? (matchIng.code || matchIng.itemCode) : `SP${String(ingredientId).padStart(6, '0')}`;
+
       groups[groupKey].rawTxList.push(tx);
       groups[groupKey].items.push({
         draftTxId: tx.id,
-        ingredientId: (tx as any).ingredient_id || tx.id,
+        ingredientId,
         ingredientName: tx.ingredientName,
-        code: `SP${String(tx.id).padStart(6, '0')}`,
+        code: ingredientCode,
         unit: tx.unit || "kg",
         quantity: qty,
         unitCost: price,
@@ -1374,6 +1384,7 @@ export const InventoryControl: React.FC = () => {
         expiryDate: tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"
       });
 
+      groups[groupKey].isCredit = groups[groupKey].isCredit || isCreditTx;
       groups[groupKey].totalAmount += total;
       groups[groupKey].paidAmount += isCreditTx ? 0 : total;
       groups[groupKey].debtAmount += isCreditTx ? total : 0;
@@ -1485,10 +1496,29 @@ export const InventoryControl: React.FC = () => {
           </div>
           <div className="text-right space-y-0.5">
             <div>Tổng số lượng: <span className="font-bold ml-8">{totalItemsQty}</span></div>
-            <div>Tổng thanh toán: <span className="font-bold ml-8">{Number(d.totalAmount || 0).toLocaleString("vi-VN")}</span></div>
-            <div>{isReturn ? "Đã đưa:" : "Đã thanh toán:"} <span className="font-bold ml-8">{Number(d.paidAmount || 0).toLocaleString("vi-VN")}</span></div>
-            {Number(d.debtAmount || 0) > 0 && (
-              <div>Còn nợ: <span className="font-bold ml-8">{Number(d.debtAmount || 0).toLocaleString("vi-VN")}</span></div>
+            {isReturn ? (
+              <>
+                <div>Tổng giá trị xuất trả: <span className="font-bold ml-8">{Number(d.totalAmount || 0).toLocaleString("vi-VN")}</span></div>
+                {d.isCredit || Number(d.debtAmount) > 0 || d.paymentStatus === "deduct_credit" ? (
+                  <>
+                    <div>Hình thức hoàn tiền: <span className="font-bold ml-4">Giảm trừ Công nợ NCC</span></div>
+                    <div>Giảm trừ nợ: <span className="font-bold ml-8">{Number(d.debtAmount || d.totalAmount || 0).toLocaleString("vi-VN")}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div>Hình thức hoàn tiền: <span className="font-bold ml-4">NCC hoàn tiền mặt / CK</span></div>
+                    <div>Đã nhận hoàn lại: <span className="font-bold ml-8">{Number(d.paidAmount || d.totalAmount || 0).toLocaleString("vi-VN")}</span></div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div>Tổng thanh toán: <span className="font-bold ml-8">{Number(d.totalAmount || 0).toLocaleString("vi-VN")}</span></div>
+                <div>Đã thanh toán: <span className="font-bold ml-8">{Number(d.paidAmount || 0).toLocaleString("vi-VN")}</span></div>
+                {Number(d.debtAmount || 0) > 0 && (
+                  <div>Còn nợ: <span className="font-bold ml-8">{Number(d.debtAmount || 0).toLocaleString("vi-VN")}</span></div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -2295,6 +2325,10 @@ export const InventoryControl: React.FC = () => {
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">
                                   LƯU TẠM
                                 </span>
+                              ) : (slip.isReturned || transactions.some(t => t.type === "export" && (t.reasonType === "return_supplier" || t.reasonType === "return_to_supplier" || t.reasonOrSupplier?.toLowerCase().includes("trả")) && (t.reasonOrSupplier?.includes(slip.ticketCode) || t.note?.includes(slip.ticketCode)))) ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-purple-50 text-purple-800 border border-purple-200">
+                                  XUẤT TRẢ NCC
+                                </span>
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-emerald-50 text-emerald-800 border border-emerald-200">
                                   HOÀN THÀNH
@@ -2315,6 +2349,31 @@ export const InventoryControl: React.FC = () => {
                                     <Pencil size={15} />
                                   </button>
                                 )}
+                                <button
+                                  className="p-1 hover:bg-rose-100 rounded-lg text-rose-600 transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px]"
+                                  title="Xuất trả nhà cung cấp"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const suppObj = suppliers.find((s: any) => s.name === slip.supplierName);
+                                    setReturnBatchData({
+                                      supplierId: suppObj ? suppObj.id : undefined,
+                                      supplierName: slip.supplierName,
+                                      note: `Trả hàng cho phiếu ${slip.ticketCode}`,
+                                      items: slip.items.map((it: any) => ({
+                                        ingredientId: it.ingredientId,
+                                        ingredientName: it.ingredientName,
+                                        code: it.code,
+                                        quantity: it.quantity,
+                                        unitCost: it.unitCost,
+                                        batchNo: it.batchNo,
+                                        unit: it.unit
+                                      }))
+                                    });
+                                    setCurrentView("returnGoods");
+                                  }}
+                                >
+                                  <Truck size={14} /> Trả hàng
+                                </button>
                                 <button
                                   className="p-1 hover:bg-blue-100 rounded-lg text-blue-700 transition-colors cursor-pointer"
                                   title="In phiếu"
@@ -2523,7 +2582,8 @@ export const InventoryControl: React.FC = () => {
                       <th scope="col" className="px-5 py-3 text-left">Nhà cung cấp</th>
                       <th scope="col" className="px-5 py-3 text-left">Nguyên liệu trả</th>
                       <th scope="col" className="px-5 py-3 text-center">Số lượng trả</th>
-                      <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
+                      <th scope="col" className="px-5 py-3 text-right">Tổng tiền</th>
+                      <th scope="col" className="px-5 py-3 text-center">Trạng thái</th>
                       <th scope="col" className="px-5 py-3 text-left">Lý do / Chi tiết</th>
                       <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
                     </tr>
@@ -2531,7 +2591,7 @@ export const InventoryControl: React.FC = () => {
                   <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
                     {groupedReturnSlips.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium">
+                        <td colSpan={9} className="px-5 py-8 text-center text-slate-400 font-medium">
                           Không tìm thấy phiếu xuất trả nhà cung cấp nào.
                         </td>
                       </tr>
@@ -2543,7 +2603,6 @@ export const InventoryControl: React.FC = () => {
                         const displayIngName = totalItemsCount > 1 
                           ? `${firstItem.ingredientName} (+${totalItemsCount - 1} mặt hàng khác)`
                           : firstItem.ingredientName;
-                        const displayBatch = totalItemsCount > 1 ? `${firstItem.batchNo}...` : firstItem.batchNo;
 
                         const handleOpenReturnSlip = () => {
                           if (slip.isDraft) {
@@ -2620,7 +2679,27 @@ export const InventoryControl: React.FC = () => {
                                   {totalItemsCount > 1 ? `${totalItemsCount} món (-${totalQtyVal} ${firstItem.unit})` : `-${totalQtyVal} ${firstItem.unit}`}
                                 </span>
                               </td>
-                              <td className="px-5 py-3 font-semibold text-slate-700">{displayBatch}</td>
+                              <td className="px-5 py-3 text-right whitespace-nowrap">
+                                <div className="font-extrabold text-slate-900">
+                                  {slip.totalAmount.toLocaleString("vi-VN")} đ
+                                </div>
+                                {slip.isCredit ? (
+                                  <div className="text-[10px] text-rose-600 font-bold">
+                                    (nợ: {slip.totalAmount.toLocaleString("vi-VN")} đ)
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td className="px-5 py-3 text-center">
+                                {slip.isDraft ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">
+                                    Lưu tạm / Chờ xuất
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    Hoàn thành / Đã xuất
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-5 py-3 text-slate-600 font-medium max-w-[200px] truncate">{slip.note || "-"}</td>
                               <td className="px-5 py-3 text-center relative">
                                 <div className="flex items-center justify-center gap-2">
@@ -2671,7 +2750,7 @@ export const InventoryControl: React.FC = () => {
                             {/* Accordion Expandable Detail Row for Return Slip */}
                             {expandedTxId === slip.id && (
                               <tr className="bg-slate-50/90 border-b-2 border-slate-300">
-                                <td colSpan={8} className="p-4">
+                                <td colSpan={9} className="p-4">
                                   <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
                                     <div className="lg:col-span-2">
                                       <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-1.5">
@@ -2856,35 +2935,9 @@ export const InventoryControl: React.FC = () => {
 
         {/* Tab 4: Kiểm kê kho (Giao diện chuẩn & In phiếu) */}
         {activeTab === "stocktake" && (
-          <div className="flex flex-col md:flex-row gap-5">
-            {/* Left Sidebar Filter */}
-            <div className="w-full md:w-56 shrink-0 flex flex-col gap-1 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs h-fit text-xs font-bold">
-              <h3 className="px-3 py-2 text-xs font-black uppercase text-slate-800 border-b border-slate-100 mb-1">HÀNG HOÁ</h3>
-              {[
-                { id: "all", label: "Tất cả", count: reduxIngredients.length },
-                { id: "available", label: "Hàng còn trong kho", count: reduxIngredients.filter(i => i.stock > 0).length },
-                { id: "long_inventory", label: "Tồn kho lâu", count: 0 },
-                { id: "out_of_stock", label: "Hết hàng", count: reduxIngredients.filter(i => i.stock <= 0).length },
-                { id: "near_out", label: "Sắp hết hàng", count: reduxIngredients.filter(i => i.stock <= i.threshold && i.stock > 0).length },
-                { id: "defect", label: "Hàng bị lỗi kho", count: 1 },
-              ].map((filter) => (
-                <button
-                  key={filter.id}
-                  onClick={() => setStocktakeFilterCategory(filter.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors cursor-pointer ${
-                    stocktakeFilterCategory === filter.id
-                      ? "bg-blue-50 text-blue-600 font-extrabold"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <span>{filter.label}</span>
-                  <span className="text-[11px] text-slate-400 font-semibold">({filter.count})</span>
-                </button>
-              ))}
-            </div>
-
+          <div className="flex flex-col gap-5">
             {/* Right Main Area */}
-            <div className="flex-1 flex flex-col gap-4">
+            <div className="flex flex-col gap-4">
               {/* Header Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
                 <div className="flex items-center gap-3">
