@@ -328,7 +328,10 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
 
     // 1) Summary
     const incomeRow = await db.query(
-      `SELECT COALESCE(SUM(total), 0) AS val FROM invoices WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
+      `SELECT COALESCE(SUM(GREATEST(0, inv.total - COALESCE(o.refunded_total, 0))), 0) AS val 
+       FROM invoices inv
+       LEFT JOIN orders o ON inv.order_id = o.id
+       WHERE inv.status = 'paid' AND inv.paid_at BETWEEN ? AND ?`,
       [startStr, endStr]
     );
     const totalIncome = Number(incomeRow[0].val);
@@ -345,26 +348,56 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       `
       (
         SELECT 
-          CONCAT('INV-', id) as id,
+          CONCAT('INV-', inv.id) as id,
           'income' as type,
-          CONCAT('Thanh toán hóa đơn #', id) as description,
-          total as amount,
-          paid_at as date,
-          'completed' as status
-        FROM invoices 
-        WHERE status = 'paid' AND paid_at BETWEEN ? AND ?
+          CONCAT('Thanh toán hóa đơn #', inv.order_id) as description,
+          GREATEST(0, COALESCE(inv.total, 0) - COALESCE(o.refunded_total, 0)) as amount,
+          inv.paid_at as date,
+          CASE
+            WHEN o.has_refund = 1 THEN 'refunded'
+            ELSE 'completed'
+          END as status,
+          inv.order_id as orderId,
+          NULL as ingredientName,
+          NULL as quantity,
+          NULL as unitCost,
+          NULL as ingredientUnit,
+          NULL as supplierName,
+          NULL as isCredit,
+          NULL as dueDate,
+          NULL as batchCode,
+          NULL as note,
+          o.has_refund as hasRefund,
+          o.refunded_total as refundedTotal
+        FROM invoices inv
+        LEFT JOIN orders o ON inv.order_id = o.id
+        WHERE inv.status = 'paid' AND inv.paid_at BETWEEN ? AND ?
       )
       UNION ALL
       (
         SELECT 
-          CONCAT('EXP-', id) as id,
+          CONCAT('EXP-', si.id) as id,
           'expense' as type,
-          COALESCE(note, 'Nhập nguyên liệu') as description,
-          (quantity * unit_cost) as amount,
-          created_at as date,
-          'completed' as status
-        FROM stock_in 
-        WHERE created_at BETWEEN ? AND ?
+          CONCAT('Nhập kho: ', ing.name) as description,
+          (si.quantity * si.unit_cost) as amount,
+          si.created_at as date,
+          'completed' as status,
+          NULL as orderId,
+          ing.name as ingredientName,
+          si.quantity as quantity,
+          si.unit_cost as unitCost,
+          ing.unit as ingredientUnit,
+          sup.name as supplierName,
+          si.is_credit as isCredit,
+          si.due_date as dueDate,
+          si.batch_code as batchCode,
+          si.note as note,
+          NULL as hasRefund,
+          NULL as refundedTotal
+        FROM stock_in si
+        JOIN ingredients ing ON si.ingredient_id = ing.id
+        LEFT JOIN suppliers sup ON si.supplier_id = sup.id
+        WHERE si.created_at BETWEEN ? AND ?
       )
       ORDER BY date DESC
       LIMIT 100
