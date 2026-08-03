@@ -12,6 +12,7 @@ import {
   UserCheck,
   Hourglass,
   AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { getRestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice } from "../../../../interfaces/invoice";
@@ -24,6 +25,7 @@ interface Props {
   onMerge: () => void;
   onCancel: () => void;
   onPrint: () => void;
+  onRefund?: () => void;
   loading: boolean;
 }
 
@@ -35,7 +37,7 @@ const formatTime = (dateStr: string) => {
 };
 
 export const InvoiceDetailPanel: React.FC<Props> = (props) => {
-  const { invoice, onPay, onPrint, loading } = props;
+  const { invoice, onPay, onPrint, onRefund, loading } = props;
 
   useEffect(() => {
     getRestaurantInfo().catch(() => { });
@@ -153,8 +155,14 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
                     <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
                       {item.quantity}x
                     </span>
-                    <span className="text-xs font-bold text-slate-800">{item.name}</span>
-                    {item.status && (
+                    <span className={`text-xs font-bold ${item.is_refunded ? "line-through text-red-600 bg-red-50 px-1.5 py-0.5 rounded" : "text-slate-800"}`}>
+                      {item.name}
+                    </span>
+                    {item.is_refunded ? (
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-red-100 text-red-700 border border-red-200">
+                        Đã hoàn tiền
+                      </span>
+                    ) : item.status ? (
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
                         item.status === "served" ? "bg-slate-200/80 text-slate-600" :
                         item.status === "done" ? "bg-emerald-100 text-emerald-800 font-extrabold" :
@@ -164,7 +172,7 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
                          item.status === "done" ? "Bếp nấu xong" :
                          item.status === "cooking" ? "Đang nấu" : "Chờ nấu"}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <span className="text-xs font-black text-slate-900">{formatVnd(item.price * item.quantity)} vnđ</span>
                 </div>
@@ -254,15 +262,34 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
         )}
 
         {isPaid && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex justify-between items-center">
-            <span className="text-xs font-bold text-emerald-700">Đã thanh toán</span>
-            <button
-              onClick={onPrint}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
-            >
-              <Printer size={13} />
-              In hóa đơn
-            </button>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-emerald-700">Đã thanh toán</span>
+              {invoice.has_refund && (
+                <span className="text-[10px] font-black text-red-600 bg-red-100 px-2 py-0.5 rounded-full border border-red-200">
+                  Đã hoàn {Number(invoice.refunded_total || 0).toLocaleString("vi-VN")}đ
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {onRefund && (
+                <button
+                  onClick={onRefund}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                  title="Tạo phiếu hoàn tiền cho món ăn"
+                >
+                  <RotateCcw size={13} />
+                  Phiếu hoàn
+                </button>
+              )}
+              <button
+                onClick={onPrint}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Printer size={13} />
+                In hóa đơn
+              </button>
+            </div>
           </div>
         )}
         {isCancelled && (

@@ -3016,6 +3016,37 @@ export const ensureEarlyPaymentColumns = async (): Promise<void> => {
   }
 };
 
+let refundColumnsEnsured = false;
+export const ensureRefundColumns = async (): Promise<void> => {
+  if (refundColumnsEnsured) return;
+  try {
+    const colOrderItems = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_refunded'`,
+    ).catch(() => []);
+    if (!colOrderItems || colOrderItems.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN is_refunded TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+      await query(`ALTER TABLE order_items ADD COLUMN refunded_at DATETIME NULL`).catch(() => {});
+      await query(`ALTER TABLE order_items ADD COLUMN refund_reason VARCHAR(255) NULL`).catch(() => {});
+      await query(`ALTER TABLE order_items ADD COLUMN refund_amount DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {});
+      console.log("Migration: added order_items refund columns");
+    }
+
+    const colOrders = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'refunded_total'`,
+    ).catch(() => []);
+    if (!colOrders || colOrders.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN refunded_total DECIMAL(12,2) NOT NULL DEFAULT 0`).catch(() => {});
+      await query(`ALTER TABLE orders ADD COLUMN has_refund TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+      console.log("Migration: added orders refund columns");
+    }
+    refundColumnsEnsured = true;
+  } catch (err) {
+    console.error("Error ensuring refund columns:", err);
+  }
+};
+
 // ===== RESMANAGER TABLE DATABASE OPERATIONS =====
 export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any[]> => {
   await ensureEarlyPaymentColumns();
@@ -4188,8 +4219,11 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
   );
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
-    order.items = allItems.filter((i: any) => i.status !== "voided" && i.status !== "cancelled");
-    const subtotal = order.items.reduce((sum: number, item: any) => sum + Number(item.unit_price) * item.quantity, 0);
+    order.items = allItems.filter(
+      (i: any) => (i.status !== "voided" && i.status !== "cancelled") || Boolean(i.is_refunded)
+    );
+    const activeItems = order.items.filter((i: any) => !i.is_refunded);
+    const subtotal = activeItems.reduce((sum: number, item: any) => sum + Number(item.unit_price) * item.quantity, 0);
     order.subtotal = subtotal;
 
     let depositAmount = 0;
@@ -4229,11 +4263,11 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
 
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
-    // Bên thu ngân tự động loại bỏ các món đã hủy (voided/cancelled) khỏi hóa đơn và tổng tiền
     order.items = allItems.filter(
-      (item: any) => item.status !== "voided" && item.status !== "cancelled"
+      (item: any) => (item.status !== "voided" && item.status !== "cancelled") || Boolean(item.is_refunded)
     );
-    const subtotal = order.items.reduce(
+    const activeItems = order.items.filter((item: any) => !item.is_refunded);
+    const subtotal = activeItems.reduce(
       (sum: number, item: any) => sum + Number(item.unit_price) * item.quantity,
       0
     );
@@ -4426,13 +4460,19 @@ export const getResmanagerPayments = async (): Promise<any[]> => {
   const rows = await query<any[]>(`
     SELECT p.id,
            COALESCE(i.order_id, p.invoice_id) AS orderId,
-           p.amount,
+           GREATEST(0, p.amount - COALESCE(o.refunded_total, 0)) AS amount,
+           p.amount AS originalAmount,
+           COALESCE(o.refunded_total, 0) AS refunded_total,
            CASE 
              WHEN p.method = 'bank_transfer' THEN 'transfer'
              WHEN p.method IN ('momo', 'vnpay') THEN 'wallet'
              ELSE p.method 
            END AS paymentMethod,
-           'completed' AS status,
+           CASE
+             WHEN o.has_refund = 1 THEN 'refunded'
+             ELSE 'completed'
+           END AS status,
+           o.has_refund,
            p.note AS notes,
            p.paid_at AS createdAt,
            p.paid_at AS completedAt,
@@ -4450,6 +4490,9 @@ export const getResmanagerPayments = async (): Promise<any[]> => {
   return rows.map((row) => ({
     ...row,
     amount: Number(row.amount || 0),
+    originalAmount: Number(row.originalAmount || 0),
+    refunded_total: Number(row.refunded_total || 0),
+    has_refund: Boolean(row.has_refund),
   }));
 };
 
@@ -5395,4 +5438,81 @@ export const updateRestaurantInfo = async (data: any): Promise<any> => {
   values.push(1);
   await query(`UPDATE restaurant_info SET ${fields.join(", ")} WHERE id = ?`, values);
   return getRestaurantInfo();
+};
+
+export const processOrderItemRefund = async (data: {
+  orderId: number;
+  itemIds: number[];
+  reason?: string;
+  refundMethod?: string;
+}): Promise<any> => {
+  await ensureRefundColumns();
+  const { orderId, itemIds, reason = "Khách yêu cầu hoàn tiền sau thanh toán", refundMethod = "cash" } = data;
+
+  if (!itemIds || itemIds.length === 0) {
+    throw new Error("Không có món ăn nào được chọn để hoàn tiền");
+  }
+
+  // Fetch current order items
+  const allItems = await getResmanagerOrderItems(orderId);
+  const targetItems = allItems.filter((i) => itemIds.includes(Number(i.id)) && !i.is_refunded);
+
+  if (targetItems.length === 0) {
+    throw new Error("Không tìm thấy món ăn phù hợp để hoàn tiền (có thể món đã được hoàn trước đó)");
+  }
+
+  let totalItemRefundAmount = 0;
+  for (const item of targetItems) {
+    const itemAmt = Number(item.unit_price) * item.quantity;
+    totalItemRefundAmount += itemAmt;
+
+    await query(
+      `UPDATE order_items
+       SET status = 'voided', is_refunded = 1, refunded_at = NOW(), refund_reason = ?, refund_amount = ?
+       WHERE id = ?`,
+      [reason, itemAmt, item.id],
+    );
+  }
+
+  // Hoàn = giá món + VAT, không trừ discount/điểm tích lũy
+  // (Discount là quyền lợi khách đã được hưởng khi thanh toán, giữ nguyên)
+  const vatRefundAmount = Math.round(totalItemRefundAmount * 0.10);
+  const netRefundAmount = totalItemRefundAmount + vatRefundAmount;
+
+  // Cập nhật orders.refunded_total
+  await query(
+    `UPDATE orders
+     SET refunded_total = refunded_total + ?, has_refund = 1
+     WHERE id = ?`,
+    [netRefundAmount, orderId],
+  );
+
+  // Trừ tiền hoàn vào invoice: cập nhật subtotal, tax và total
+  // để DB nhất quán với số tiền thực tế sau hoàn
+  await query(
+    `UPDATE invoices
+     SET subtotal = GREATEST(0, subtotal - ?),
+         tax      = GREATEST(0, tax - ?),
+         total    = GREATEST(0, total - ?)
+     WHERE order_id = ?`,
+    [totalItemRefundAmount, vatRefundAmount, netRefundAmount, orderId],
+  );
+
+  return {
+    orderId,
+    refundedItems: targetItems.map((i) => ({
+      id: i.id,
+      name: i.item_name,
+      quantity: i.quantity,
+      unitPrice: Number(i.unit_price),
+      refundAmount: Number(i.unit_price) * i.quantity,
+    })),
+    totalItemRefundAmount,
+    vatRefundAmount,
+    proportionalDiscount: 0,
+    netRefundAmount,
+    refundMethod,
+    reason,
+    refundedAt: new Date().toISOString(),
+  };
 };

@@ -137,6 +137,11 @@ export const InvoiceListPanel: React.FC<Props> = ({
                           TT Sớm
                         </span>
                       )}
+                      {inv.has_refund && (
+                        <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[9px] font-black rounded border border-red-200 shrink-0">
+                          Hoàn {Number(inv.refunded_total || 0).toLocaleString("vi-VN")}đ
+                        </span>
+                      )}
                       {statusBadge(inv.invoiceStatus)}
                     </div>
                     <p className="text-[10px] text-slate-500 truncate">
