@@ -323,12 +323,24 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     start.setDate(1); // First day of current month
     start.setHours(0, 0, 0, 0);
 
-    const startStr = formatMySQLDateTime(startDate ? new Date(startDate as string) : start);
-    const endStr = formatMySQLDateTime(endDate ? new Date(endDate as string) : end);
+    let startD = start;
+    if (startDate) {
+      startD = new Date(startDate as string);
+      startD.setHours(0, 0, 0, 0);
+    }
+
+    let endD = end;
+    if (endDate) {
+      endD = new Date(endDate as string);
+      endD.setHours(23, 59, 59, 999);
+    }
+
+    const startStr = formatMySQLDateTime(startD);
+    const endStr = formatMySQLDateTime(endD);
 
     // 1) Summary
     const incomeRow = await db.query(
-      `SELECT COALESCE(SUM(GREATEST(0, inv.total - COALESCE(o.refunded_total, 0))), 0) AS val 
+      `SELECT COALESCE(SUM(GREATEST(0, COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id), inv.total) - COALESCE(o.refunded_total, 0))), 0) AS val 
        FROM invoices inv
        LEFT JOIN orders o ON inv.order_id = o.id
        WHERE inv.status = 'paid' AND inv.paid_at BETWEEN ? AND ?`,
@@ -351,7 +363,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           CONCAT('INV-', inv.id) as id,
           'income' as type,
           CONCAT('Thanh toán hóa đơn #', inv.order_id) as description,
-          GREATEST(0, COALESCE(inv.total, 0) - COALESCE(o.refunded_total, 0)) as amount,
+          GREATEST(0, COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id), inv.total) - COALESCE(o.refunded_total, 0)) as amount,
           inv.paid_at as date,
           CASE
             WHEN o.has_refund = 1 THEN 'refunded'

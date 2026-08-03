@@ -18,6 +18,32 @@ export const FinanceReport: React.FC = () => {
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
 
+  const [timeRange, setTimeRange] = useState<"today" | "7days" | "30days" | "custom">("30days");
+
+  const getTodayStr = () => new Date().toISOString().split("T")[0];
+  const getNDaysAgoStr = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().split("T")[0];
+  };
+
+  const [startDate, setStartDate] = useState<string>(() => getNDaysAgoStr(30));
+  const [endDate, setEndDate] = useState<string>(() => getTodayStr());
+
+  const handleTimeRangeChange = (range: "today" | "7days" | "30days" | "custom") => {
+    setTimeRange(range);
+    if (range === "today") {
+      setStartDate(getTodayStr());
+      setEndDate(getTodayStr());
+    } else if (range === "7days") {
+      setStartDate(getNDaysAgoStr(7));
+      setEndDate(getTodayStr());
+    } else if (range === "30days") {
+      setStartDate(getNDaysAgoStr(30));
+      setEndDate(getTodayStr());
+    }
+  };
+
   useEffect(() => {
     getRestaurantInfo().then(setRestaurantInfo).catch(console.error);
   }, []);
@@ -25,7 +51,7 @@ export const FinanceReport: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await api.get("/v1/analytics/finance-report");
+      const res = await api.get(`/v1/analytics/finance-report?startDate=${startDate}&endDate=${endDate}`);
       if (res.data.success) {
         setData(res.data.data);
       }
@@ -39,7 +65,7 @@ export const FinanceReport: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [startDate, endDate]);
 
   const handlePrintInvoice = async (orderId: number) => {
     try {
@@ -278,7 +304,7 @@ export const FinanceReport: React.FC = () => {
   return (
     <div className="space-y-4 font-sans text-[#1A1A1A]">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
           <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
             Báo cáo tài chính thu / chi
@@ -287,15 +313,59 @@ export const FinanceReport: React.FC = () => {
             Tổng hợp dòng tiền thực tế (Thu từ Hóa đơn, Chi từ Nhập kho)
           </p>
         </div>
-        <button
-          type="button"
-          onClick={fetchData}
-          disabled={loading}
-          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 disabled:opacity-50"
-        >
-          <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
-          Làm mới
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Date range tab selector matching image 2 */}
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-full shrink-0">
+            {[
+              { value: "today", label: "Hôm nay" },
+              { value: "7days", label: "7 ngày qua" },
+              { value: "30days", label: "30 ngày qua" },
+              { value: "custom", label: "Tùy chỉnh" }
+            ].map(range => (
+              <button
+                key={range.value}
+                onClick={() => handleTimeRangeChange(range.value as any)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                  timeRange === range.value
+                    ? "bg-[#3E2016] text-white shadow-xs"
+                    : "text-slate-600 hover:text-[#3E2016] hover:bg-slate-50"
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
+
+          {/* If custom is selected, show the date pickers */}
+          {timeRange === "custom" && (
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-full px-4 py-2 text-xs animate-fade-in">
+              <span className="text-slate-500 font-bold">Từ:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="font-bold text-slate-700 outline-none bg-transparent cursor-pointer"
+              />
+              <span className="text-slate-500 font-bold border-l border-slate-350 pl-2">Đến:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="font-bold text-slate-700 outline-none bg-transparent cursor-pointer"
+              />
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={fetchData}
+            disabled={loading}
+            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 disabled:opacity-50"
+          >
+            <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
+            Làm mới
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
