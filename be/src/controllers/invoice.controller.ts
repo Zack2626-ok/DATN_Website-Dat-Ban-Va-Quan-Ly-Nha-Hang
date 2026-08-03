@@ -233,24 +233,20 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       );
     }
     if (order.table_id) {
-<<<<<<< HEAD
-      const subResult = await db.completeSubOrderPayment(Number(id));
-      if (!subResult.sessionCompleted) {
-        // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
-        req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
-      } else {
-        // Đã thanh toán HẾT các nhóm trong phiên split, mới giải phóng bàn vật lý!
-        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
-        req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
-        req.app.get("io")?.emit("table:released", { tableId: Number(order.table_id) });
-=======
       if (order.is_early_payment) {
         await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
         req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
       } else {
-        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
-        req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
->>>>>>> d21c3cefae19c645657ea5538db7f2578cdc0776
+        const subResult = await db.completeSubOrderPayment(Number(id));
+        if (!subResult.sessionCompleted) {
+          // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
+          req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
+        } else {
+          // Đã thanh toán HẾT các nhóm trong phiên split, mới giải phóng bàn vật lý!
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+          req.app.get("io")?.emit("table:released", { tableId: Number(order.table_id) });
+        }
       }
     }
 

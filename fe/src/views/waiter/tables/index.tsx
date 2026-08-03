@@ -32,7 +32,6 @@ import { MergeTableModal } from "./MergeTableModal";
 import { GroupSeatingModal } from "./GroupSeatingModal";
 import { SplitTableModal } from "./SplitTableModal";
 import { SubOrderSelectionModal } from "./SubOrderSelectionModal";
-import { requestPayment } from "../../../services/waiterService";
 import {
   getTableAreas,
   getTablesV1,
