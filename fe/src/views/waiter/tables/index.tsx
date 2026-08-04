@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { isAxiosError } from "axios";
 import { io } from "socket.io-client";
 import {
   RefreshCw,
@@ -14,11 +15,12 @@ import {
   Wrench,
   CheckCircle,
   Phone,
-  UserCheck,
   XCircle,
   FileText,
   Loader2,
   Copy,
+  Link2,
+  UsersRound,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -27,15 +29,21 @@ import { TableArea } from "../../../interfaces/table.interface";
 import { toast } from "react-hot-toast";
 import { TransferTableModal } from "./TransferTableModal";
 import { MergeTableModal } from "./MergeTableModal";
+import { GroupSeatingModal } from "./GroupSeatingModal";
 import { SplitTableModal } from "./SplitTableModal";
+import { SubOrderSelectionModal } from "./SubOrderSelectionModal";
 import {
   getTableAreas,
   getTablesV1,
+  getActiveOrderForTable,
   updateTableStatus,
   createResmanagerTable,
   deleteResmanagerTable,
+  getTableBookingSchedule,
+  checkInTableBooking,
   type ResmanagerTable,
 } from "../../../services/tableService";
+import type { BookingScheduleItem, BookingScheduleMode } from "../../../services/bookingService";
 import {
   getOrdersByTable,
   getOrderItems,
@@ -43,6 +51,8 @@ import {
   addOrderItem,
   getWaiterMenuItems,
   voidOrderItem,
+  requestPayment,
+  markItemAsServed,
   type WaiterOrderItem,
 } from "../../../services/waiterService";
 import { Modal } from "../../../components/Modal";
@@ -51,7 +61,14 @@ import { AddDishModal } from "./AddDishModal";
 import { ProvisionalBillModal } from "./ProvisionalBillModal";
 import { updateBookingStatus } from "../../../services/bookingService";
 
-type TableAction = "transfer" | "merge" | "split" | null;
+type TableAction = "transfer" | "merge" | "groupSeating" | "split" | null;
+
+const TABLE_SCHEDULE_MODE: Record<"CURRENT" | "HISTORY", BookingScheduleMode> = {
+  CURRENT: "current",
+  HISTORY: "history",
+};
+
+const SCHEDULE_CLOCK_REFRESH_MS = 1_000;
 
 interface ActiveOrderInfo {
   id: number;
@@ -62,6 +79,18 @@ interface ActiveOrderInfo {
   totalAmount: number;
   status: string;
 }
+
+interface OpenTableApiErrorResponse {
+  message?: string;
+}
+
+/** Extracts the server-side reason when a physical-table opening request is rejected. */
+const getOpenTableErrorMessage = (error: unknown): string => {
+  if (isAxiosError<OpenTableApiErrorResponse>(error)) {
+    return error.response?.data?.message || "Không thể mở bàn. Vui lòng thử lại.";
+  }
+  return "Không thể mở bàn. Vui lòng thử lại.";
+};
 
 const getCurrentUserId = (): number => {
   try {
@@ -86,6 +115,48 @@ const getCurrentUserInfo = () => {
   } catch {
     return { name: "Nhân viên Phục vụ", code: "NV004" };
   }
+};
+
+/** Return the total physical capacity available to a table or its merged cluster. */
+const getTableClusterCapacity = (table: ResmanagerTable): number =>
+  table.group_seating_capacity ?? table.cluster_capacity ?? table.capacity;
+
+/** Check whether a table's current guest count exceeds its physical cluster capacity. */
+const isTableOverClusterCapacity = (table: ResmanagerTable): boolean =>
+  typeof table.guest_count === "number" && table.guest_count > getTableClusterCapacity(table);
+
+/** Formats a date as a date-input value for the staff booking calendar. */
+const toDateInputValue = (date: Date): string => date.toISOString().slice(0, 10);
+
+/** Formats one scheduled booking timestamp for staff without exposing raw SQL/UTC text. */
+const formatScheduleTimestamp = (value: string): string => new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+}).format(new Date(value));
+
+/** Converts a SQL booking timestamp into an absolute instant in the restaurant timezone. */
+const parseScheduleTimestamp = (value: string): number =>
+  new Date(value.includes("T") ? value : `${value.replace(" ", "T")}+07:00`).getTime();
+
+/** Derives the client-side display state for a server-enforced booking check-in window. */
+const getScheduleCheckInState = (
+  booking: BookingScheduleItem,
+  nowMilliseconds: number,
+): { canCheckIn: boolean; message: string } => {
+  const opensAt = parseScheduleTimestamp(booking.check_in_open_at);
+  const closesAt = parseScheduleTimestamp(booking.check_in_close_at);
+  if (nowMilliseconds < opensAt) {
+    return { canCheckIn: false, message: `Mở lúc ${formatScheduleTimestamp(booking.check_in_open_at)}` };
+  }
+  if (nowMilliseconds > closesAt) {
+    return { canCheckIn: false, message: "Đã quá giờ nhận khách" };
+  }
+  return { canCheckIn: true, message: "Có thể mở bàn" };
 };
 
 const STATUS_CONFIG: Record<
@@ -121,7 +192,7 @@ const STATUS_CONFIG: Record<
     dot: "bg-rose-500",
   },
   cleaning: {
-    label: "🧹 Đang dọn dẹp",
+    label: "Đã thanh toán",
     bg: "bg-blue-50",
     text: "text-blue-700",
     border: "border-blue-300",
@@ -158,10 +229,22 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   // Layout 2 cột: bàn đang được chọn bên phải
   const [selectedTableId, setSelectedTableId] = useState<number | string | null>(null);
+  const [tableSchedule, setTableSchedule] = useState<BookingScheduleItem[]>([]);
+  const [tableScheduleMode, setTableScheduleMode] = useState<BookingScheduleMode>(TABLE_SCHEDULE_MODE.CURRENT);
+  const [isTableScheduleOpen, setIsTableScheduleOpen] = useState(false);
+  const [loadingTableSchedule, setLoadingTableSchedule] = useState(false);
+  const [checkingInBookingId, setCheckingInBookingId] = useState<number | null>(null);
+  const [scheduleNow, setScheduleNow] = useState(() => Date.now());
 
   const location = useLocation();
   const userInfo = getCurrentUserInfo();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isTableScheduleOpen) return undefined;
+    const intervalId = window.setInterval(() => setScheduleNow(Date.now()), SCHEDULE_CLOCK_REFRESH_MS);
+    return () => window.clearInterval(intervalId);
+  }, [isTableScheduleOpen]);
 
   // Auto-select bàn khi quay lại từ trang Gọi món
   useEffect(() => {
@@ -187,6 +270,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
   const [isAddDishOpen, setIsAddDishOpen] = useState(false);
   const [isPrintBillOpen, setIsPrintBillOpen] = useState(false);
+  const [isSubOrderModalOpen, setIsSubOrderModalOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<TableAction>(null);
 
   // State hủy booking từ sơ đồ bàn
@@ -258,11 +342,21 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       fetchData();
     });
 
+    socket.on("table:merge_resolved", () => {
+      fetchData();
+    });
+
+    socket.on("table:group_seating_changed", () => {
+      fetchData();
+    });
+
     return () => {
       socket.off("connect");
       socket.off("table:status_changed");
       socket.off("table:transferred");
       socket.off("table:merged");
+      socket.off("table:merge_resolved");
+      socket.off("table:group_seating_changed");
       socket.disconnect();
       console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
     };
@@ -277,7 +371,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     }
     setLoadingOrder(true);
     try {
-      const orders = await getOrdersByTable(Number(tableId));
+      const resolution = await getActiveOrderForTable(Number(tableId));
+      const orders = await getOrdersByTable(resolution.primaryTableId);
       if (orders.length === 0) {
         setActiveOrder(null);
         return;
@@ -336,6 +431,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     [tables, selectedTableId],
   );
 
+  const isSelectedTableInCluster = Boolean(
+    selectedTable?.is_merged_primary
+    || selectedTable?.is_merged_child
+    || selectedTable?.is_group_seating_primary
+    || selectedTable?.is_group_seating_child,
+  );
+
   // Mở bàn + tự động thêm Khăn ướt theo số khách
   const handleOpenTable = async (data: { guestCount: number; customerName: string; customerPhone: string }) => {
     if (!selectedTableId || !selectedTable) return;
@@ -388,9 +490,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
       navigate(`/waiter/orders/${selectedTableId}`);
-    } catch (err) {
-      toast.error("Không thể mở bàn. Vui lòng thử lại.");
-      console.error(err);
+    } catch (error: unknown) {
+      toast.error(getOpenTableErrorMessage(error));
+      console.error(error);
     }
   };
 
@@ -483,9 +585,60 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     }
   };
 
+  /** Loads one operational view of the selected table's booking calendar. */
+  const loadTableSchedule = async (mode: BookingScheduleMode): Promise<void> => {
+    if (!selectedTable) return;
+    const startDate = toDateInputValue(new Date());
+    const endDateValue = new Date();
+    endDateValue.setDate(endDateValue.getDate() + 30);
+    try {
+      setLoadingTableSchedule(true);
+      const result = await getTableBookingSchedule(
+        selectedTable.id,
+        mode === TABLE_SCHEDULE_MODE.CURRENT
+          ? { startDate, endDate: toDateInputValue(endDateValue), mode }
+          : { mode },
+      );
+      setTableSchedule(result.schedule);
+      setTableScheduleMode(mode);
+    } catch {
+      toast.error("Không thể tải lịch đặt của bàn này");
+    } finally {
+      setLoadingTableSchedule(false);
+    }
+  };
+
+  /** Opens the current booking list for the selected physical table. */
+  const handleOpenTableSchedule = async (): Promise<void> => {
+    setIsTableScheduleOpen(true);
+    await loadTableSchedule(TABLE_SCHEDULE_MODE.CURRENT);
+  };
+
+  /** Checks a scheduled party in after the backend verifies timing and table readiness. */
+  const handleCheckInScheduledBooking = async (booking: BookingScheduleItem): Promise<void> => {
+    if (!selectedTable) return;
+    try {
+      setCheckingInBookingId(booking.id);
+      const result = await checkInTableBooking(
+        Number(selectedTable.id),
+        booking.id,
+        getCurrentUserId(),
+      );
+      toast.success(`Khách ${booking.guest_name} đã đến — đã mở bàn ${selectedTable.name}`);
+      setIsTableScheduleOpen(false);
+      await fetchData();
+      navigate(`/waiter/orders/${result.primaryTableId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể mở bàn cho lịch đặt này";
+      toast.error(message);
+    } finally {
+      setCheckingInBookingId(null);
+    }
+  };
+
   const handleRequestPaymentFromTable = async () => {
     if (!selectedTableId || !selectedTable || !activeOrder || activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length === 0) return;
-    const unfinished = activeOrder.items.filter((i) => i.status === "pending" || i.status === "cooking");
+    const unfinished = activeOrder.items.filter((i) => i.status === "pending" || i.status === "waiting_kitchen" || i.status === "cooking" || i.status === "done");
     if (unfinished.length > 0) {
       setUnfinishedPaymentModal(unfinished);
       return;
@@ -497,12 +650,31 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     if (!selectedTableId) return;
     try {
       setProcessingPaymentRequest(true);
-      await updateTableStatus(Number(selectedTableId), "pending_payment");
+      if (activeOrder?.id) {
+        await requestPayment(Number(activeOrder.id));
+      } else {
+        await updateTableStatus(Number(selectedTableId), "pending_payment");
+      }
       toast.success("Đã gửi yêu cầu thanh toán — thu ngân sẽ xử lý tại quầy");
       fetchData();
       if (selectedTableId) loadActiveOrder(selectedTableId);
     } catch {
       toast.error("Không thể gửi yêu cầu thanh toán");
+    } finally {
+      setProcessingPaymentRequest(false);
+    }
+  };
+
+  const executeRequestEarlyPaymentFromTable = async () => {
+    if (!selectedTableId || !activeOrder) return;
+    try {
+      setProcessingPaymentRequest(true);
+      await requestPayment(activeOrder.id, undefined, true);
+      toast.success("Đã gửi yêu cầu thanh toán sớm cho thu ngân");
+      fetchData();
+      if (selectedTableId) loadActiveOrder(selectedTableId);
+    } catch {
+      toast.error("Không thể gửi yêu cầu thanh toán sớm");
     } finally {
       setProcessingPaymentRequest(false);
     }
@@ -666,11 +838,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3.5">
                 {filteredTables.map((t) => {
                   const isSelected = selectedTableId?.toString() === t.id.toString();
+                  const mergedTableNames = t.merged_tables?.map((table) => table.name).join(", ") ?? "";
 
                   return (
                     <div
                       key={t.id}
-                      onClick={() => setSelectedTableId(t.id)}
+                      onClick={() => {
+                        setSelectedTableId(t.id);
+                        if (t.is_split) {
+                          setIsSubOrderModalOpen(true);
+                        }
+                      }}
                       className={`relative flex items-center justify-center p-8 transition-all cursor-pointer select-none rounded-2xl border-2 ${isSelected
                         ? "border-sky-500 bg-sky-500/5 ring-4 ring-sky-500/15"
                         : "border-transparent bg-slate-50/50 hover:bg-slate-100/30"
@@ -695,17 +873,58 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         {t.status !== "empty" && (
                           <span className="text-[10px] opacity-90 mt-0.5 leading-none font-bold">
                             {t.status === "serving"
-                              ? "Có khách"
+                              ? (t.is_early_paid ? "Đã thanh toán" : t.is_early_payment ? "TT Sớm" : "Có khách")
                               : t.status === "reserved"
                                 ? "Đã đặt"
                                 : t.status === "pending_payment"
                                   ? "Chờ TT"
                                   : t.status === "cleaning"
-                                    ? "Đang dọn"
+                                    ? "Đã thanh toán"
                                     : "Bảo trì"}
                           </span>
                         )}
                       </div>
+
+                      {t.is_split && (t.split_labels?.length ?? 0) > 0 && (
+                        <span
+                          className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-pink-300 bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700 shadow-xs animate-pulse"
+                          title={`Đang tách bàn thành: ${t.split_labels?.join(", ")}`}
+                        >
+                          <Copy size={10} className="text-pink-600" /> Tách · {t.split_labels?.join(", ")}
+                        </span>
+                      )}
+                      {t.is_merged_primary && mergedTableNames && (
+                        <span
+                          className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black text-violet-700 shadow-xs"
+                          title={`Bàn chính, gộp với ${mergedTableNames}`}
+                        >
+                          <Link2 size={10} /> Chính · {mergedTableNames}
+                        </span>
+                      )}
+                      {t.is_merged_child && t.merged_into && (
+                        <span
+                          className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-black text-sky-700 shadow-xs"
+                          title={`Bàn phụ, đang gộp vào ${t.merged_into.name}`}
+                        >
+                          <Link2 size={10} /> Gộp → {t.merged_into.name}
+                        </span>
+                      )}
+                      {t.is_group_seating_primary && (t.group_seating_tables?.length ?? 0) > 0 && (
+                        <span
+                          className="absolute -bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-black text-cyan-700 shadow-xs"
+                          title={`Đoàn chung với ${t.group_seating_tables?.map((table) => table.name).join(", ")}`}
+                        >
+                          <UsersRound size={10} /> Đoàn · {(t.group_seating_tables?.length ?? 0) + 1} bàn
+                        </span>
+                      )}
+                      {t.is_group_seating_child && t.group_seating_into && (
+                        <span
+                          className="absolute -bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-black text-cyan-700 shadow-xs"
+                          title={`Bàn đoàn, order chung tại ${t.group_seating_into.name}`}
+                        >
+                          <UsersRound size={10} /> Đoàn → {t.group_seating_into.name}
+                        </span>
+                      )}
 
                       {/* Chairs arranged around the table */}
                       {Array.from({ length: t.capacity }).map((_, i) => {
@@ -761,16 +980,40 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 <div>
                   <h3 className="text-lg font-black text-slate-800">Bàn {selectedTable.name}</h3>
                   <p className="text-xs text-slate-400">
-                    Khu vực: {selectedTable.area_name} • {selectedTable.status !== "empty" ? `Khách: ${selectedTable.guest_count || "?"}/${selectedTable.capacity} người` : `Sức chứa: ${selectedTable.capacity} khách`}
+                    Khu vực: {selectedTable.area_name} • {selectedTable.is_merged_child
+                      ? `Bàn phụ của ${selectedTable.merged_into?.name ?? "bàn chính"}`
+                      : selectedTable.is_group_seating_child
+                        ? `Bàn đoàn của ${selectedTable.group_seating_into?.name ?? "bàn chính"}`
+                        : selectedTable.status !== "empty"
+                        ? `Khách: ${selectedTable.guest_count || "?"}/${getTableClusterCapacity(selectedTable)} người`
+                        : `Sức chứa: ${getTableClusterCapacity(selectedTable)} khách`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${(STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
-                      } bg-white border border-sky-100 shadow-2xs`}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      selectedTable.status === "serving" && selectedTable.is_early_paid
+                        ? "text-emerald-700 bg-emerald-50 border-emerald-300"
+                        : selectedTable.status === "serving" && selectedTable.is_early_payment
+                        ? "text-amber-700 bg-amber-50 border-amber-300"
+                        : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
+                    } bg-white border border-sky-100 shadow-2xs`}
                   >
-                    {(STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
+                    {selectedTable.status === "serving" && selectedTable.is_early_paid
+                      ? "Đang phục vụ (đã thanh toán)"
+                      : selectedTable.status === "serving" && selectedTable.is_early_payment
+                      ? "Đang phục vụ (thanh toán sớm)"
+                      : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
                   </span>
+                  <button
+                    type="button"
+                    onClick={handleOpenTableSchedule}
+                    disabled={loadingTableSchedule}
+                    title="Xem lịch đặt 30 ngày"
+                    className="rounded-lg border border-sky-100 bg-white px-2 py-1.5 text-[10px] font-black text-sky-700 hover:bg-sky-50 disabled:opacity-50 transition-colors"
+                  >
+                    {loadingTableSchedule ? "Đang tải" : "Lịch đặt"}
+                  </button>
                   <button
                     onClick={() => handleDeleteTable(selectedTable)}
                     title="Xóa bàn"
@@ -781,7 +1024,78 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 </div>
               </div>
 
+              {selectedTable.is_split && (
+                <div className="mx-5 mt-4 flex flex-col gap-2 rounded-xl border-2 border-pink-300 bg-pink-50 p-3.5 text-xs text-pink-900 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Copy size={16} className="text-pink-600 shrink-0" />
+                      <span className="font-black text-sm text-pink-900">Bàn đang tách thành {selectedTable.split_labels?.length || 2} nhóm sub-orders</span>
+                    </div>
+                    <span className="font-extrabold text-[11px] text-pink-700 bg-pink-100 px-2 py-0.5 rounded-full border border-pink-200">
+                      {selectedTable.split_labels?.join(", ") || "Sub-orders"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-pink-800">
+                    Mỗi nhóm khách có order và hóa đơn riêng độc lập ({selectedTable.split_labels?.join(", ")}). Nhấn bên dưới để gọi món hoặc thanh toán từng nhóm:
+                  </p>
+                  <button
+                    onClick={() => setIsSubOrderModalOpen(true)}
+                    className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer mt-1"
+                  >
+                    <Copy size={14} />
+                    Xem & Thao tác Sub-Orders ({selectedTable.split_labels?.join(", ") || "B04:1, B04:2"})
+                  </button>
+                </div>
+              )}
+
+              {selectedTable.is_merged_primary && (selectedTable.merged_tables?.length ?? 0) > 0 && (
+                <div className="mx-5 mt-4 flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs text-violet-800">
+                  <Link2 size={15} className="mt-0.5 shrink-0 text-violet-600" />
+                  <p>
+                    <span className="font-black">Bàn chính của cụm:</span>{" "}
+                    {selectedTable.name} + {selectedTable.merged_tables?.map((table) => table.name).join(", ")}. Sức chứa cụm: {getTableClusterCapacity(selectedTable)} khách. Món ăn và thanh toán được xử lý chung tại đây.
+                  </p>
+                </div>
+              )}
+
+              {selectedTable.is_merged_child && selectedTable.merged_into && (
+                <div className="mx-5 mt-4 flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800">
+                  <div className="flex items-start gap-2">
+                    <Link2 size={15} className="mt-0.5 shrink-0 text-sky-600" />
+                    <p>
+                      <span className="font-black">Bàn phụ:</span> {selectedTable.name} đang gộp vào {selectedTable.merged_into.name}. Món ăn và thanh toán dùng chung với bàn chính.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedTableId(selectedTable.merged_into?.id ?? null)}
+                    className="shrink-0 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-[10px] font-black text-sky-700 hover:bg-sky-100 transition-colors"
+                  >
+                    Mở {selectedTable.merged_into.name}
+                  </button>
+                </div>
+              )}
+
               {/* Status control buttons */}
+              {selectedTable.is_group_seating_primary && (selectedTable.group_seating_tables?.length ?? 0) > 0 && (
+                <div className="mx-5 mt-4 flex items-start gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs text-cyan-900">
+                  <UsersRound size={15} className="mt-0.5 shrink-0 text-cyan-700" />
+                  <p>
+                    <span className="font-black">Bàn chính của đoàn:</span>{" "}
+                    {selectedTable.name} + {selectedTable.group_seating_tables?.map((table) => table.name).join(", ")}. Tổng sức chứa: {getTableClusterCapacity(selectedTable)} khách. Các bàn cùng dùng chung order và hóa đơn.
+                  </p>
+                </div>
+              )}
+
+              {selectedTable.is_group_seating_child && selectedTable.group_seating_into && (
+                <div className="mx-5 mt-4 flex items-center justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs text-cyan-800">
+                  <div className="flex items-start gap-2">
+                    <UsersRound size={15} className="mt-0.5 shrink-0 text-cyan-700" />
+                    <p><span className="font-black">Bàn của đoàn:</span> {selectedTable.name} dùng chung order và hóa đơn tại {selectedTable.group_seating_into.name}.</p>
+                  </div>
+                  <button onClick={() => setSelectedTableId(selectedTable.group_seating_into?.id ?? null)} className="shrink-0 rounded-lg border border-cyan-200 bg-white px-2 py-1.5 text-[10px] font-black text-cyan-700 hover:bg-cyan-100 transition-colors">Mở {selectedTable.group_seating_into.name}</button>
+                </div>
+              )}
+
               <div className="p-5 space-y-4">
                 {selectedTable.status === "empty" && (
                   <div className="space-y-2">
@@ -863,8 +1177,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
                         <div className="flex justify-between">
                           <span className="text-gray-500">Số khách đặt/đang ngồi:</span>
-                          <span className="font-bold text-emerald-700">
-                            {selectedTable.guest_count || "?"} / {selectedTable.capacity} người
+                          <span className={`font-bold ${isTableOverClusterCapacity(selectedTable) ? "text-rose-600" : "text-emerald-700"}`}>
+                            {selectedTable.is_merged_child
+                              ? `Xem tại ${selectedTable.merged_into?.name ?? "bàn chính"}`
+                              : `${selectedTable.guest_count || "?"} / ${getTableClusterCapacity(selectedTable)} người`}
                           </span>
                         </div>
                         {selectedTable.booking_code && (
@@ -882,7 +1198,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             </span>
                             {selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0 ? (
                               <ul className="list-disc list-inside text-amber-800 font-semibold space-y-0.5 ml-1">
-                                {selectedTable.pre_ordered_items.map((item: any, idx: number) => (
+                                {selectedTable.pre_ordered_items.map((item, idx) => (
                                   <li key={idx}>
                                     {item.name} <span className="text-amber-950 font-black">x{item.quantity}</span>
                                   </li>
@@ -897,75 +1213,14 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         )}
                       </div>
 
-                      {/* NÚT KHÁCH ĐÃ ĐẾN & HỦY BOOKING — chỉ hiện khi bàn là reserved */}
-                      {selectedTable.status === "reserved" && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              try {
-                                const userId = getCurrentUserId();
-                                const newOrder = await createOrder({
-                                  table_id: Number(selectedTable.id),
-                                  created_by: userId,
-                                  order_type: "dine_in",
-                                  guest_name: selectedTable.guest_name || undefined,
-                                  guest_phone: selectedTable.guest_phone || undefined,
-                                  guest_count: selectedTable.guest_count || undefined,
-                                });
-
-                                try {
-                                  if (selectedTable.guest_count && selectedTable.guest_count > 0) {
-                                    const menuItems = await getWaiterMenuItems();
-                                    const wetTissue = menuItems.find(
-                                      (m) =>
-                                        m.name.toLowerCase().includes("khăn ướt") ||
-                                        m.name.toLowerCase().includes("khăn lạnh")
-                                    );
-                                    if (wetTissue) {
-                                      await addOrderItem(newOrder.id, {
-                                        menu_item_id: wetTissue.id,
-                                        quantity: selectedTable.guest_count,
-                                        unit_price: wetTissue.price,
-                                        kitchen_note: "Mặc định theo số khách",
-                                        created_by: userId,
-                                      });
-                                    }
-                                  }
-                                } catch (err) {
-                                  console.warn("Lỗi thêm khăn ướt mặc định:", err);
-                                }
-
-                                toast.success(`✅ Khách đã đến — Bàn ${selectedTable.name} đang phục vụ`);
-                                navigate(`/waiter/orders/${selectedTable.id}`);
-                              } catch {
-                                toast.error("Không thể xác nhận khách đến");
-                              }
-                            }}
-                            className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
-                          >
-                            <UserCheck size={15} /> Khách đã đến — Bắt đầu phục vụ
-                          </button>
-                          <button
-                            onClick={() => {
-                              setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name });
-                              setCancelBookingReason("");
-                            }}
-                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                            title="Hủy booking"
-                          >
-                            <XCircle size={14} /> Hủy
-                          </button>
-                        </div>
-                      )}
-
                       {/* CẢNH BÁO PHÁT SINH NGƯỜI */}
-                      {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
+                      {isTableOverClusterCapacity(selectedTable) && (
                         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 space-y-2">
                           <div className="flex items-start gap-2">
                             <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
                             <div>
                               <p className="font-bold text-amber-800">
-                                Bàn phát sinh thêm người ({selectedTable.guest_count}/{selectedTable.capacity} khách)
+                                Bàn phát sinh thêm người ({selectedTable.guest_count}/{getTableClusterCapacity(selectedTable)} khách)
                               </p>
                               <p className="text-[11px] text-amber-700 mt-0.5">
                                 Bạn có thể chuyển sang bàn lớn hơn hoặc gộp bàn để phục vụ thuận tiện.
@@ -985,6 +1240,12 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             >
                               <GitMerge size={12} /> Gộp bàn
                             </button>
+                            <button
+                              onClick={() => setActiveAction("groupSeating")}
+                              className="flex-1 rounded-lg border border-cyan-300 bg-cyan-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-cyan-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <UsersRound size={12} /> Xếp đoàn
+                            </button>
                           </div>
                         </div>
                       )}
@@ -999,7 +1260,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                                 Món ăn đã gọi
                               </h4>
                             </div>
-                            {selectedTable.status === "serving" && (
+                            {selectedTable.status === "serving" && !selectedTable.is_merged_child && (
                               <button
                                 onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
                                 className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
@@ -1040,12 +1301,30 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                                         )}
                                       </div>
 
-                                      <div className="flex items-center shrink-0">
+                                      <div className="flex items-center gap-1.5 shrink-0">
                                         <span
                                           className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
                                         >
                                           {st.label}
                                         </span>
+                                        {item.status === "done" && (
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              if (!activeOrder) return;
+                                              try {
+                                                await markItemAsServed(activeOrder.id, item.id);
+                                                toast.success(`Đã mang "${item.item_name}" ra bàn`);
+                                                loadActiveOrder(selectedTable.id);
+                                              } catch {
+                                                toast.error("Không thể cập nhật món đã mang ra");
+                                              }
+                                            }}
+                                            className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors cursor-pointer"
+                                          >
+                                            🛎 Đã mang ra
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -1087,12 +1366,14 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             </div>
                           )}
 
-                          {/* Nút thao tác chuyển/gộp/tách — CHỈ HIỂN THỊ khi bàn đang ở trạng thái phục vụ (serving) */}
-                          {selectedTable.status === "serving" && (
+                          {/* Nút thao tác chuyển/gộp/tách — CHỈ HIỂN THỊ khi bàn đang ở trạng thái phục vụ và chưa thanh toán */}
+                          {selectedTable.status === "serving" && !selectedTable.is_early_paid && !selectedTable.is_merged_child && (
                             <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
                               <button
                                 onClick={() => setActiveAction("transfer")}
-                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                                disabled={isSelectedTableInCluster}
+                                title={isSelectedTableInCluster ? "Tách hoặc hoàn tất cụm trước khi chuyển bàn" : "Chuyển toàn bộ order sang bàn trống"}
+                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 disabled:cursor-not-allowed disabled:opacity-45 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                               >
                                 <ArrowRightLeft size={13} /> Chuyển bàn
                               </button>
@@ -1113,12 +1394,25 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             </div>
                           )}
 
-                          {selectedTable.status === "serving" && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                          {selectedTable.status === "serving" && !selectedTable.is_early_paid && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
                             <button
                               onClick={handleRequestPaymentFromTable}
                               className="w-full rounded-xl border-2 border-purple-200 bg-purple-50/60 px-3 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 shadow-2xs"
                             >
                               <FileText size={14} className="text-purple-600" /> Yêu cầu thanh toán (Thu ngân)
+                            </button>
+                          )}
+
+                          {selectedTable.status === "serving" && selectedTable.is_early_paid && (
+                            <button
+                              onClick={async () => {
+                                await updateTableStatus(Number(selectedTable.id), "empty");
+                                toast.success("Đã dọn dẹp và trả bàn trống thành công!");
+                                fetchData();
+                              }}
+                              className="w-full rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-bold hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-2 shadow-sm"
+                            >
+                              <CheckCircle size={15} /> 🧹 Đã dọn dẹp (Khách rời đi, trả bàn trống)
                             </button>
                           )}
                         </div>
@@ -1159,7 +1453,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         isOpen={isOpenTableModalOpen}
         onClose={() => setIsOpenTableModalOpen(false)}
         onConfirm={handleOpenTable}
-        table={selectedTable as any}
+        table={selectedTable}
       />
 
       <AddTableModal
@@ -1200,8 +1494,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <TransferTableModal
         isOpen={activeAction === "transfer"}
         onClose={() => setActiveAction(null)}
-        sourceTable={selectedTable as any}
-        availableTables={tables as any}
+        sourceTable={selectedTable}
+        availableTables={tables}
         onConfirm={async (_src, targetId) => {
           await fetchData();
           setSelectedTableId(targetId);
@@ -1216,12 +1510,145 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <MergeTableModal
         isOpen={activeAction === "merge"}
         onClose={() => setActiveAction(null)}
-        sourceTable={selectedTable as any}
-        availableTables={tables as any}
+        sourceTable={selectedTable}
+        availableTables={tables}
         onConfirm={async () => {
           await fetchData();
           setActiveAction(null);
         }}
+        onSuccess={() => {
+          fetchData();
+          setActiveAction(null);
+        }}
+      />
+
+      <GroupSeatingModal
+        isOpen={activeAction === "groupSeating"}
+        onClose={() => setActiveAction(null)}
+        sourceTable={selectedTable}
+        availableTables={tables}
+        onSuccess={() => {
+          fetchData();
+          setActiveAction(null);
+        }}
+      />
+
+      {selectedTable && (
+        <SplitTableModal
+          isOpen={activeAction === "split"}
+          onClose={() => setActiveAction(null)}
+          tableName={selectedTable.name}
+          tableCapacity={selectedTable.capacity}
+          sourceTableId={Number(selectedTable.id)}
+          orderItems={(activeOrder?.items || []).map((i) => ({
+            id: i.id,
+            name: i.item_name,
+            quantity: i.quantity,
+            price: i.unit_price,
+            status: i.status,
+          }))}
+          onSuccess={() => {
+            fetchData();
+            setActiveAction(null);
+            setIsSubOrderModalOpen(true);
+          }}
+        />
+      )}
+
+      {selectedTable && (
+        <SubOrderSelectionModal
+          isOpen={isSubOrderModalOpen}
+          onClose={() => setIsSubOrderModalOpen(false)}
+          tableId={Number(selectedTable.id)}
+          tableName={selectedTable.name}
+        />
+      )}
+
+      <Modal
+        isOpen={isTableScheduleOpen}
+        onClose={() => setIsTableScheduleOpen(false)}
+        title={`Lịch đặt — Bàn ${selectedTable?.name ?? ""}`}
+        size="lg"
+        theme="light"
+      >
+        <div className="mb-4 flex gap-2 border-b border-slate-100 pb-3">
+          <button
+            type="button"
+            onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.CURRENT)}
+            disabled={loadingTableSchedule}
+            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+              tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT
+                ? "bg-sky-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Lịch đặt hiện tại
+          </button>
+          <button
+            type="button"
+            onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.HISTORY)}
+            disabled={loadingTableSchedule}
+            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
+              tableScheduleMode === TABLE_SCHEDULE_MODE.HISTORY
+                ? "bg-slate-700 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Lịch sử đặt bàn
+          </button>
+        </div>
+        {tableSchedule.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm font-medium text-slate-400">
+            {tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT
+              ? "Bàn này chưa có lịch đặt hiện tại nào trong 30 ngày tới."
+              : "Chưa có lịch sử booking đã hoàn tất hoặc đã hủy."}
+          </p>
+        ) : (
+          <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+            {tableSchedule.map((booking) => {
+              const checkInState = getScheduleCheckInState(booking, scheduleNow);
+              const isCurrentSchedule = tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT;
+              const isCheckingIn = checkingInBookingId === booking.id;
+              return (
+                <div key={booking.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-black text-slate-800">#{booking.confirmation_code} · {booking.guest_name}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-500">{booking.guest_phone} · {booking.party_size} khách</p>
+                    </div>
+                    <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">
+                      {formatScheduleTimestamp(booking.start_time)}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-600">Bàn: <strong>{booking.table_names}</strong> · Sức chứa cụm: {booking.total_capacity}</p>
+                  {booking.guest_note && <p className="mt-1 text-xs italic text-slate-500">Ghi chú: {booking.guest_note}</p>}
+                  {isCurrentSchedule && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                      <span className={`text-xs font-semibold ${checkInState.canCheckIn ? "text-emerald-700" : "text-slate-500"}`}>
+                        {checkInState.message}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!checkInState.canCheckIn || isCheckingIn}
+                        onClick={() => void handleCheckInScheduledBooking(booking)}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        {isCheckingIn ? "Đang mở bàn..." : "Khách đã đến – Mở bàn"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
+
+      <GroupSeatingModal
+        isOpen={activeAction === "groupSeating"}
+        onClose={() => setActiveAction(null)}
+        sourceTable={selectedTable}
+        availableTables={tables}
         onSuccess={() => {
           fetchData();
           setActiveAction(null);
@@ -1250,6 +1677,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           fetchData();
           setActiveAction(null);
         }}
+      />
+
+      <SubOrderSelectionModal
+        isOpen={isSubOrderModalOpen}
+        onClose={() => setIsSubOrderModalOpen(false)}
+        tableId={selectedTableId ? Number(selectedTableId) : 0}
+        tableName={selectedTable?.name || ""}
       />
 
       {/* ── Modal Lý Do Bảo Trì ── */}
@@ -1342,7 +1776,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <Modal
         isOpen={!!unfinishedPaymentModal}
         onClose={() => !processingPaymentRequest && setUnfinishedPaymentModal(null)}
-        title="⚠️ Cảnh báo: Bàn vẫn còn món chưa mang ra"
+        title="⚠️ Cảnh báo: Bàn vẫn còn món chưa hoàn thành / chưa mang ra"
         size="md"
         theme="light"
       >
@@ -1350,7 +1784,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           <div className="space-y-4 text-sm">
             <p className="text-gray-600">
               Bàn <strong className="text-gray-900">{selectedTable?.name}</strong> đang có{" "}
-              <strong className="text-amber-600">{unfinishedPaymentModal.length} món</strong> chưa hoàn thành:
+              <strong className="text-amber-600">{unfinishedPaymentModal.length} món</strong> chưa hoàn thành hoặc chưa mang ra bàn:
             </p>
 
             <div className="max-h-48 overflow-y-auto border border-amber-100 rounded-xl bg-amber-50/40 p-3 space-y-2">
@@ -1360,102 +1794,100 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                     <p className="font-bold text-gray-800">{item.item_name}</p>
                     <p className="text-gray-500">Số lượng: <span className="font-bold text-gray-700">{item.quantity}</span></p>
                   </div>
-                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${item.status === "cooking" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
-                    }`}>
-                    {item.status === "cooking" ? "⏳ Đang nấu" : "📋 Chờ gửi bếp"}
+                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${
+                    item.status === "cooking" ? "bg-amber-100 text-amber-800" :
+                    item.status === "done" ? "bg-emerald-100 text-emerald-800" :
+                    item.status === "waiting_kitchen" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"
+                  }`}>
+                    {item.status === "cooking" ? "⏳ Đang nấu" :
+                     item.status === "done" ? "✅ Bếp đã nấu xong (chờ bưng ra)" :
+                     item.status === "waiting_kitchen" ? "📋 Đã gửi bếp" : "📋 Chờ gửi bếp"}
                   </span>
                 </div>
               ))}
             </div>
 
-            {(() => {
-              const servedOrDoneCount = activeOrder?.items.filter((i) => i.status === "served" || i.status === "done").length || 0;
-              if (servedOrDoneCount === 0) {
-                return (
-                  <div className="space-y-3">
-                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium space-y-1">
-                      <p className="font-bold text-rose-900 flex items-center gap-1.5 text-sm">
-                        ⛔ Bàn chưa có món nào được mang ra (`Đã mang ra = 0`)
-                      </p>
-                      <p>Khách chưa ăn hoặc bếp chưa làm xong thì không thể yêu cầu thu ngân thanh toán trước! Nếu khách đổi ý rời đi không ăn nữa, vui lòng chọn Hủy toàn bộ món bên dưới.</p>
-                    </div>
+            <div className="space-y-3">
+              <div className="p-3 bg-sky-50 border border-sky-100 rounded-xl text-xs text-sky-900 space-y-1">
+                <p className="font-bold text-sky-900 flex items-center gap-1.5">
+                  💡 Lựa chọn xử lý nghiệp vụ cho bàn:
+                </p>
+                <p>• <strong>Thanh toán sớm:</strong> Khách muốn trả tiền trước tất cả món nhưng vẫn tiếp tục ngồi ăn (Bếp & Phục vụ tiếp tục hoàn thành các món).</p>
+                <p>• <strong>Hủy món chưa ra:</strong> Khách không muốn chờ nữa, hủy các món chưa ra và chỉ thanh toán các món đã ăn.</p>
+              </div>
 
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-xs font-bold text-gray-700">
-                        Lý do hủy toàn bộ món chưa ra:
-                      </label>
-                      <input
-                        type="text"
-                        value={unfinishedVoidReason}
-                        onChange={(e) => setUnfinishedVoidReason(e.target.value)}
-                        placeholder="Khách rời đi không dùng bữa..."
-                        className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20"
-                      />
-                    </div>
+              <div className="flex flex-col gap-2 pt-1">
+                {/* Lựa chọn 1: Thanh toán sớm (chỉ hiện khi đã gửi bếp tất cả món & không có món Chờ gửi) */}
+                {(() => {
+                  const activeItems = activeOrder?.items.filter((i) => i.status !== "voided" && i.status !== "cancelled") || [];
+                  const hasPendingItems = activeItems.some((i) => i.status === "pending");
+                  const hasSentToKitchen = activeItems.some(
+                    (i) => i.status === "waiting_kitchen" || i.status === "cooking" || i.status === "done" || i.status === "served"
+                  );
+                  const canEarlyPay = hasSentToKitchen && !hasPendingItems;
 
-                    <div className="flex flex-col gap-2 pt-2">
+                  if (canEarlyPay) {
+                    return (
                       <button
-                        onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
+                        onClick={async () => {
+                          setUnfinishedPaymentModal(null);
+                          await executeRequestEarlyPaymentFromTable();
+                        }}
                         disabled={processingPaymentRequest}
-                        className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                        className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
                       >
-                        {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                        Hủy toàn bộ món chưa ra & Trả bàn trống (0đ)
+                        {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+                        💳 Thanh toán sớm (Khách trả tiền trước tất cả món, vẫn tiếp tục ăn / chờ bếp ra món)
                       </button>
+                    );
+                  } else {
+                    return (
+                      <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium space-y-1">
+                        <p className="font-bold text-amber-900">
+                          ⛔ Chưa thể chọn Thanh toán sớm
+                        </p>
+                        <p>
+                          {hasPendingItems
+                            ? 'Đơn hàng còn món ở trạng thái "Chờ gửi". Vui lòng bấm Đóng rồi nhấn "Gửi bếp" tất cả món trước khi thanh toán sớm!'
+                            : 'Đơn hàng chưa có món nào được gửi xuống bếp. Vui lòng bấm Đóng rồi nhấn "Gửi bếp" trước!'}
+                        </p>
+                      </div>
+                    );
+                  }
+                })()}
 
-                      <button
-                        onClick={() => setUnfinishedPaymentModal(null)}
-                        disabled={processingPaymentRequest}
-                        className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
-                      >
-                        Đóng / Tiếp tục chờ bếp phục vụ
-                      </button>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-3">
-                  <div className="space-y-1.5 pt-1">
-                    <label className="block text-xs font-bold text-gray-700">
-                      Lý do hủy món (nếu chọn hủy & tính tiền luôn):
-                    </label>
-                    <input
-                      type="text"
-                      value={unfinishedVoidReason}
-                      onChange={(e) => setUnfinishedVoidReason(e.target.value)}
-                      placeholder="Khách yêu cầu thanh toán sớm..."
-                      className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-amber-500/20"
-                    />
-                  </div>
-
-                  <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-xl space-y-1 border border-gray-100">
-                    <p className="font-bold text-gray-800">💡 Nghiệp vụ xử lý:</p>
-                    <p>• <strong>Hủy món & Thanh toán:</strong> Khách không muốn chờ món đang làm nữa (hủy để không tính tiền vào hóa đơn và gửi thu ngân thanh toán tiền các món đã dùng).</p>
-                  </div>
-
-                  <div className="flex flex-col gap-2 pt-2">
-                    <button
-                      onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
-                      disabled={processingPaymentRequest}
-                      className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
-                    >
-                      {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                      Hủy các món chưa ra & Yêu cầu thanh toán luôn (Chỉ tính món đã ra)
-                    </button>
-
-                    <button
-                      onClick={() => setUnfinishedPaymentModal(null)}
-                      disabled={processingPaymentRequest}
-                      className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
-                    >
-                      Đóng / Tiếp tục chờ bếp phục vụ xong
-                    </button>
-                  </div>
+                {/* Lựa chọn 2: Hủy món chưa ra & Thanh toán */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <label className="block text-xs font-bold text-gray-700">
+                    Hoặc Hủy món chưa ra (nếu khách không muốn chờ nữa):
+                  </label>
+                  <input
+                    type="text"
+                    value={unfinishedVoidReason}
+                    onChange={(e) => setUnfinishedVoidReason(e.target.value)}
+                    placeholder="Lý do hủy: Khách không muốn chờ món nữa..."
+                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                  <button
+                    onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
+                    disabled={processingPaymentRequest}
+                    className="w-full py-2.5 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm mt-1"
+                  >
+                    {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
+                    🚫 Hủy các món chưa ra & Yêu cầu thanh toán các món đã ra
+                  </button>
                 </div>
-              );
-            })()}
+
+                {/* Lựa chọn 3: Đóng / Hủy thao tác */}
+                <button
+                  onClick={() => setUnfinishedPaymentModal(null)}
+                  disabled={processingPaymentRequest}
+                  className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-xs hover:bg-gray-200 transition-colors cursor-pointer mt-1"
+                >
+                  Đóng / Tiếp tục chờ bếp phục vụ xong
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </Modal>

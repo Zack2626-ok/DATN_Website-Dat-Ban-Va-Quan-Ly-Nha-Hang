@@ -4,7 +4,36 @@ import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Lan
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, getPublicPromotions, payBookingDeposit } from "../../services/customerService";
 import { getComboConstituents } from "../../utils/comboHelper";
-import { isWithinPublicBookingHours, PUBLIC_BOOKING_HOURS } from "../../constants/booking";
+import {
+  BOOKING_DURATION_MINUTES,
+  BOOKING_MAX_ADVANCE_DAYS,
+  isWithinPublicBookingHours,
+  ONLINE_BOOKING_LAST_ARRIVAL_TIME,
+  PUBLIC_BOOKING_HOURS,
+} from "../../constants/booking";
+import { getBookingValidationStatus } from "../../services/systemService";
+
+/** Returns a date input value offset by the configured booking horizon. */
+const getMaximumBookingDate = (): string => {
+  const date = new Date();
+  date.setDate(date.getDate() + BOOKING_MAX_ADVANCE_DAYS);
+  return date.toISOString().slice(0, 10);
+};
+
+/** Builds a Vietnam-local SQL datetime after a configured booking duration. */
+const getBookingEndTime = (date: string, time: string): string => {
+  const start = new Date(`${date}T${time}:00+07:00`);
+  const end = new Date(start.getTime() + BOOKING_DURATION_MINUTES * 60 * 1000);
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(end).replace("T", " ");
+};
 
 export const BookingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +43,11 @@ export const BookingPage: React.FC = () => {
   const [availableTables, setAvailableTables] = useState<any[]>([]);
 
   const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
+  }, []);
 
   // Bắt buộc đăng nhập tài khoản khách hàng trước khi đặt bàn
   useEffect(() => {
@@ -110,9 +144,13 @@ export const BookingPage: React.FC = () => {
       toast.error("Vui lòng chọn ngày và giờ đặt bàn!");
       return;
     }
+    if (form.date > getMaximumBookingDate()) {
+      toast.error(`Chỉ có thể đặt bàn trong vòng ${BOOKING_MAX_ADVANCE_DAYS} ngày kể từ hôm nay.`);
+      return;
+    }
     
-    if (!isWithinPublicBookingHours(form.time)) {
-      toast.error(`Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}.`);
+    if (bookingValidationEnabled && !isWithinPublicBookingHours(form.time)) {
+      toast.error(`Nhà hàng nhận đặt bàn online từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${ONLINE_BOOKING_LAST_ARRIVAL_TIME}.`);
       return;
     }
 
@@ -209,10 +247,7 @@ export const BookingPage: React.FC = () => {
     setSubmitting(true);
     try {
       const startTimeStr = `${form.date} ${form.time}:00`;
-      // Calculate end time as start time + 2 hours
-      const [h, m] = form.time.split(":");
-      const endHour = (parseInt(h) + 2).toString().padStart(2, "0");
-      const endTimeStr = `${form.date} ${endHour}:${m}:00`;
+      const endTimeStr = getBookingEndTime(form.date, form.time);
 
       let customerId: number | null = null;
       const infoStr = localStorage.getItem("customer_info");
@@ -236,6 +271,7 @@ export const BookingPage: React.FC = () => {
         start_time: startTimeStr,
         end_time: endTimeStr,
         guest_note: form.note.trim(),
+        booking_channel: "online",
       });
 
       setCreatedBooking(bookingResult);
@@ -584,6 +620,7 @@ export const BookingPage: React.FC = () => {
                     value={form.date}
                     onChange={(e) => setField("date", e.target.value)}
                     min={new Date().toISOString().split("T")[0]}
+                    max={getMaximumBookingDate()}
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
                   />
                 </div>
@@ -593,12 +630,12 @@ export const BookingPage: React.FC = () => {
                     required
                     type="time"
                     min={PUBLIC_BOOKING_HOURS.OPEN}
-                    max={PUBLIC_BOOKING_HOURS.CLOSE}
+                    max={ONLINE_BOOKING_LAST_ARRIVAL_TIME}
                     value={form.time}
                     onChange={(e) => setField("time", e.target.value)}
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
                   />
-                  <p className="mt-2 text-xs text-client-muted">Nhận đặt bàn từ 10:00 đến 22:00. Bạn có thể nhập chính xác từng phút.</p>
+                  <p className="mt-2 text-xs text-client-muted">Nhận đặt online từ 10:00 đến 19:00, tối đa 30 ngày. Bạn có thể nhập chính xác từng phút.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số khách *</label>

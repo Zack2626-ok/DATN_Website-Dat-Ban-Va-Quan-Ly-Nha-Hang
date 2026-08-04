@@ -87,3 +87,15 @@ export const getPaymentHistoryApi = async (params?: {
   const response = await api.get(`${BASE}/payment-history`, { params });
   return response.data.data;
 };
+
+export const refundInvoiceItemsApi = async (
+  invoiceId: string,
+  data: {
+    itemIds: number[];
+    reason?: string;
+    refundMethod?: string;
+  },
+): Promise<any> => {
+  const response = await api.post(`${BASE}/${invoiceId}/refund`, data);
+  return response.data.data;
+};

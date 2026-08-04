@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 import { addLoyaltyPoints } from "./crm.controller";
+import { io } from "../server";
 
 export const getAllInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -225,18 +226,28 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     await db.updateOrderStatus(id, "completed");
 
-    if (voucherCode) {
-      try {
-        await db.query(
-          "UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?",
-          [voucherCode]
-        );
-      } catch (err) {
-        console.error("Error updating voucher used_count:", err);
-      }
+    if (dbVoucherId) {
+      await db.query(
+        "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
+        [dbVoucherId],
+      );
     }
     if (order.table_id) {
-      await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+      if (order.is_early_payment) {
+        await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
+        req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
+      } else {
+        const subResult = await db.completeSubOrderPayment(Number(id));
+        if (!subResult.sessionCompleted) {
+          // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
+          req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
+        } else {
+          // Đã thanh toán HẾT các nhóm trong phiên split, mới giải phóng bàn vật lý!
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+          req.app.get("io")?.emit("table:released", { tableId: Number(order.table_id) });
+        }
+      }
     }
 
     // Tích điểm loyalty nếu có khách hàng thành viên liên kết
@@ -264,12 +275,6 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
             await db.query(
               "UPDATE customer_vouchers SET is_used = 1, used_at = NOW() WHERE id = ?",
               [customerVoucherRecordId]
-            );
-          }
-          if (dbVoucherId) {
-            await db.query(
-              "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
-              [dbVoucherId]
             );
           }
           // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)
@@ -577,7 +582,13 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
     if (totalPaid >= order.totalAmount) {
       await db.updateOrderStatus(id, "completed");
       if (order.table_id) {
-        await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+        if (order.is_early_payment) {
+          await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
+          req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
+        } else {
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+        }
       }
     }
 
@@ -627,5 +638,39 @@ export const getPaymentHistory = async (req: Request, res: Response): Promise<vo
   } catch (error) {
     console.error("Error fetching payment history:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+/**
+ * POST /api/v1/invoices/:id/refund
+ * Request refund for specific items of an invoice/order after payment
+ */
+export const refundInvoiceItemsHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { itemIds, reason, refundMethod } = req.body;
+
+    if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+      sendError(res, "Vui lòng chọn ít nhất một món ăn để hoàn tiền", 400);
+      return;
+    }
+
+    const refundResult = await db.processOrderItemRefund({
+      orderId: Number(id),
+      itemIds: itemIds.map(Number),
+      reason,
+      refundMethod,
+    });
+
+    // Emit real-time WebSocket events
+    io.emit("order_updated");
+    io.emit("kds_updated");
+    io.emit("table_updated");
+    io.emit("invoice_refunded", refundResult);
+
+    sendSuccess(res, refundResult, "Tạo phiếu hoàn tiền thành công!");
+  } catch (error) {
+    console.error("Error in refundInvoiceItemsHandler:", error);
+    sendError(res, `Lỗi tạo phiếu hoàn tiền: ${(error as Error).message}`, 500);
   }
 };

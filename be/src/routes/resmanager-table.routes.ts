@@ -4,11 +4,17 @@ import {
   getResmanagerTablesHandler,
   getEmptyTablesHandler,
   getResmanagerTableHandler,
+  getTableBookingScheduleHandler,
+  checkInTableBookingHandler,
+  getActiveOrderForTableHandler,
   updateResmanagerTableStatusHandler,
   transferTableHandler,
   mergeTableHandler,
+  arrangeGroupSeatingHandler,
   unmergeTableHandler,
   splitTableHandler,
+  getTableSplitsHandler,
+  moveSplitItemsHandler,
   createResmanagerTableHandler,
   updateResmanagerTableHandler,
   deleteResmanagerTableHandler,
@@ -33,6 +39,9 @@ router.post("/", createResmanagerTableHandler);
 router.post("/tab", openResmanagerTabHandler);
 
 // GET /api/v1/tables/:id
+router.get("/:id/active-order", getActiveOrderForTableHandler);
+router.get("/:id/booking-schedule", getTableBookingScheduleHandler);
+router.post("/:id/bookings/:bookingId/check-in", checkInTableBookingHandler);
 router.get("/:id", getResmanagerTableHandler);
 
 // PATCH /api/v1/tables/:id - Sửa bàn
@@ -50,10 +59,19 @@ router.post("/:id/transfer", transferTableHandler);
 // POST /api/v1/tables/:id/merge
 router.post("/:id/merge", mergeTableHandler);
 
+// POST /api/v1/tables/:id/group-seating
+router.post("/:id/group-seating", arrangeGroupSeatingHandler);
+
 // DELETE /api/v1/tables/:id/merge
 router.delete("/:id/merge", unmergeTableHandler);
 
+// GET /api/v1/tables/:id/splits
+router.get("/:id/splits", getTableSplitsHandler);
+
 // POST /api/v1/tables/:id/split
 router.post("/:id/split", splitTableHandler);
+
+// POST /api/v1/tables/:id/split/items/move
+router.post("/:id/split/items/move", moveSplitItemsHandler);
 
 export default router;

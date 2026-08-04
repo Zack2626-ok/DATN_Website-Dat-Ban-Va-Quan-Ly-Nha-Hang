@@ -4,7 +4,13 @@ import { sendError, sendSuccess } from "../utils/response";
 import { getPhoneNumberValidationError } from "../utils/validation";
 import { sendBookingConfirmationEmail } from "../utils/email";
 import { notifyWaitersAboutBooking } from "../utils/telegram";
-import { BOOKING_DURATION_MINUTES, MAX_BOOKING_PARTY_SIZE, PUBLIC_BOOKING_HOURS } from "../constants/booking";
+import {
+  BOOKING_CHANNEL,
+  BOOKING_DURATION_MINUTES,
+  MAX_BOOKING_PARTY_SIZE,
+  type BookingChannel,
+} from "../constants/booking";
+import { getBookingTimeValidationError } from "../utils/bookingTime";
 
 /** Builds a Vietnam-local booking datetime string from a date and time query. */
 const buildBookingDateTime = (date: string, time: string): string => `${date} ${time}:00`;
@@ -25,10 +31,6 @@ const calculateBookingEndTime = (startTime: string): string => {
   return vietnamTime.replace("T", " ");
 };
 
-/** Checks whether a clock value is valid and falls within public booking hours. */
-const isWithinPublicBookingHours = (time: string): boolean =>
-  /^\d{2}:\d{2}$/.test(time) && time >= PUBLIC_BOOKING_HOURS.OPEN && time <= PUBLIC_BOOKING_HOURS.CLOSE;
-
 /** Returns tables available for a requested booking interval. */
 export const getAvailableTablesHandler = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -40,12 +42,17 @@ export const getAvailableTablesHandler = async (req: Request, res: Response): Pr
       sendError(res, "date phải là YYYY-MM-DD và time phải là HH:mm", 400);
       return;
     }
-    if (!isWithinPublicBookingHours(time)) {
-      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
-      return;
-    }
     if (!Number.isInteger(guests) || guests < 1 || guests > MAX_BOOKING_PARTY_SIZE) {
       sendError(res, `guests phải từ 1 đến ${MAX_BOOKING_PARTY_SIZE}`, 400);
+      return;
+    }
+
+    const bookingTimeError = getBookingTimeValidationError(
+      buildBookingDateTime(date, time),
+      BOOKING_CHANNEL.ONLINE,
+    );
+    if (bookingTimeError) {
+      sendError(res, bookingTimeError, 400);
       return;
     }
 
@@ -86,10 +93,10 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email, email, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
+    const { table_id, table_ids, booking_channel, customer_id, promotion_id, guest_name, guest_phone, guest_email, email, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
       req.body;
 
-    if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
+    if (!table_id || !guest_name || !guest_phone || !party_size || !start_time) {
       sendError(res, "Thiếu thông tin bắt buộc", 400);
       return;
     }
@@ -107,27 +114,22 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     }
 
     // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
-    const normalizedStart = start_time.trim().replace(' ', 'T');
-    const bookingStart = new Date(normalizedStart.includes('+') || normalizedStart.endsWith('Z')
-      ? normalizedStart
-      : normalizedStart + '+07:00'
-    );
-    const now = new Date();
-    if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
-      sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
+    const channel: BookingChannel = booking_channel === BOOKING_CHANNEL.DIRECT && req.user
+      ? BOOKING_CHANNEL.DIRECT
+      : BOOKING_CHANNEL.ONLINE;
+    const bookingTimeError = getBookingTimeValidationError(start_time, channel);
+    if (bookingTimeError) {
+      sendError(res, bookingTimeError, 400);
       return;
     }
 
-    const requestedTime = normalizedStart.slice(11, 16);
-    if (!isWithinPublicBookingHours(requestedTime)) {
-      sendError(res, `Nhà hàng nhận đặt bàn từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${PUBLIC_BOOKING_HOURS.CLOSE}`, 400);
-      return;
-    }
+    const calculatedEndTime = calculateBookingEndTime(start_time);
 
     const targetEmail = (guest_email || email || "").trim();
 
     const booking = await db.createBooking({
       table_id: Number(table_id),
+      table_ids,
       customer_id: customer_id ? Number(customer_id) : null,
       promotion_id: promotion_id ? Number(promotion_id) : null,
       guest_name,
@@ -135,7 +137,7 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       guest_email: targetEmail || null,
       party_size: Number(party_size),
       start_time,
-      end_time,
+      end_time: calculatedEndTime,
       guest_note,
       note,
       pre_ordered_items: pre_ordered_items || items,
@@ -165,6 +167,47 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     const msg = (error as Error).message;
     sendError(res, msg, msg.includes("trùng") ? 400 : 500);
   }
+};
+
+/** Returns the staff calendar for all tables or one selected table over a controlled date range. */
+export const getBookingScheduleHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const startDate = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
+    const endDate = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
+    const tableIdValue = typeof req.query.table_id === "string" ? Number(req.query.table_id) : undefined;
+    const includeCancelled = req.query.include_cancelled === "true";
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if ((startDate && !datePattern.test(startDate)) || (endDate && !datePattern.test(endDate))) {
+      sendError(res, "Ngày lọc phải theo định dạng YYYY-MM-DD.", 400);
+      return;
+    }
+    if (tableIdValue !== undefined && (!Number.isInteger(tableIdValue) || tableIdValue <= 0)) {
+      sendError(res, "table_id không hợp lệ.", 400);
+      return;
+    }
+    if (startDate && endDate && startDate > endDate) {
+      sendError(res, "Khoảng ngày lọc không hợp lệ.", 400);
+      return;
+    }
+
+    const schedule = await db.getBookingSchedule({
+      tableId: tableIdValue,
+      startDate,
+      endDate,
+      includeCancelled,
+    });
+    sendSuccess(res, schedule, "Lấy lịch đặt bàn thành công");
+  } catch (error) {
+    console.error("Error fetching booking schedule:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+/** Creates a staff-only direct booking while keeping the public endpoint online-only. */
+export const createDirectBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  req.body = { ...req.body, booking_channel: BOOKING_CHANNEL.DIRECT };
+  await createBookingHandler(req, res);
 };
 
 export const updateBookingStatusHandler = async (req: Request, res: Response): Promise<void> => {

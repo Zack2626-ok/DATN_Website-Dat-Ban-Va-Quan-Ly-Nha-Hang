@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from "react";
-import { Plus, Search, Trash2, ArrowLeft, Save, UploadCloud } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi } from "../../../services/api";
-
-interface ImportGoodsProps {
-  onBack: () => void;
-}
+// @ts-ignore
+import * as XLSX from "xlsx";
 
 interface ImportItem {
+  draftTxId?: string | number;
   ingredientId: string;
   ingredientName: string;
   code: string;
@@ -17,7 +16,14 @@ interface ImportItem {
   expiryDate: string;
 }
 
-export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack }) => {
+interface ImportGoodsProps {
+  onBack: () => void;
+  initialData?: any[];
+  onAddSupplier?: () => void;
+  onPrintReceipt?: (data: any) => void;
+}
+
+export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, onAddSupplier, onPrintReceipt }) => {
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,14 +32,62 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack }) => {
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [importDate, setImportDate] = useState(new Date().toISOString().slice(0, 16));
   const [note, setNote] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("paid"); // "paid" or "credit"
+  const [paymentStatus, setPaymentStatus] = useState("credit"); // "paid" or "credit"
+
+  const [showExcelModal, setShowExcelModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    getIngredientsApi().then(setIngredients).catch(console.error);
+    getIngredientsApi().then(data => {
+      setIngredients(data);
+      // Auto-populate initialData or low stock items
+      if (initialData && initialData.length > 0) {
+        setImportItems(initialData.map((ing: any) => ({
+          draftTxId: ing.draftTxId,
+          ingredientId: ing.ingredientId || ing.id,
+          ingredientName: ing.ingredientName || ing.name,
+          code: ing.code || `SP${(ing.ingredientId || ing.id).toString().padStart(6, '0')}`,
+          quantity: ing.quantity ?? 1,
+          unitCost: ing.unitCost ?? ing.unit_cost ?? 0,
+          batchNo: ing.batchNo || `LOT-${ing.id || Date.now().toString().slice(-4)}`,
+          expiryDate: (() => {
+            if (!ing.expiryDate) return "";
+            const s = String(ing.expiryDate).trim();
+            if (s.includes("/")) {
+              const p = s.split("/");
+              if (p.length === 3) return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+            }
+            return s.split("T")[0];
+          })()
+        })));
+        if (initialData[0]?.note) setNote(initialData[0].note);
+        if (initialData[0]?.supplierId) setSelectedSupplier(initialData[0].supplierId);
+      } else {
+        const lowStockItems = data.filter((ing: any) => Number(ing.stock) <= Number(ing.threshold));
+        if (lowStockItems.length > 0) {
+          setImportItems(lowStockItems.map((ing: any) => ({
+            ingredientId: ing.id,
+            ingredientName: ing.name,
+            code: `SP${ing.id.toString().padStart(6, '0')}`,
+            quantity: 1,
+            unitCost: 0,
+            batchNo: `LOT-${ing.id}-${Date.now().toString().slice(-6)}`,
+            expiryDate: ""
+          })));
+        }
+      }
+    }).catch(console.error);
     getSuppliersApi().then(setSuppliers).catch(console.error);
-  }, []);
+  }, [initialData]);
 
   const handleAddItem = (ing: any) => {
+    // Check if ingredient is already in list
+    if (importItems.some(item => item.ingredientId === ing.id)) {
+      toast.error("Mặt hàng này đã có trong danh sách nhập!");
+      setSearchTerm("");
+      return;
+    }
+
     setImportItems(prev => [
       ...prev,
       {
@@ -46,6 +100,19 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack }) => {
         expiryDate: ""
       }
     ]);
+    
+    // Auto-select supplier
+    const matchingSupplier = suppliers.find(s => 
+      s.mainIngredients && s.mainIngredients.toLowerCase().includes(ing.name.toLowerCase())
+    );
+
+    if (matchingSupplier) {
+      setSelectedSupplier(matchingSupplier.id);
+      toast.success(`Đã tự động chọn nhà cung cấp: ${matchingSupplier.name}`);
+    } else {
+      window.confirm(`Hiện tại chưa có nhà cung cấp nào được lưu trong danh sách mà có món này. Bạn có muốn thêm hoặc chọn nhà cung cấp khác không?`);
+    }
+
     setSearchTerm("");
   };
 
@@ -61,31 +128,64 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack }) => {
 
   const totalAmount = importItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
 
-  const handleSave = async () => {
+  const handleSave = async (mode: "draft" | "completed" | "save_print" = "completed") => {
     if (importItems.length === 0) {
       toast.error("Vui lòng chọn ít nhất một mặt hàng để nhập");
       return;
     }
     
     try {
-      // Create a single note that encompasses all details
-      const reasonOrSupplier = `Nhập hàng từ ${suppliers.find(s => s.id == selectedSupplier)?.name || "NCC khác"} - Ghi chú: ${note}`;
+      const supplierName = suppliers.find(s => s.id == selectedSupplier)?.name || "NCC khác";
+      const slipCode = initialData && initialData[0]?.ticketCode 
+        ? initialData[0].ticketCode 
+        : `PN${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}N-${Date.now().toString().slice(-4)}`;
+
+      const baseReason = `[SLIP:${slipCode}] Nhập hàng từ ${supplierName}`;
+      const reasonOrSupplier = note ? `${baseReason} - Ghi chú: ${note}` : baseReason;
       
-      // Submit each item sequentially or Promise.all
       await Promise.all(importItems.map(item => 
         updateInventoryQuantityApi(item.ingredientId, {
           type: "import",
+          reasonType: "import",
+          status: mode === "draft" ? "draft" : "completed",
           quantity: item.quantity,
           unitCost: item.unitCost,
           supplierId: selectedSupplier || undefined,
           isCredit: paymentStatus === "credit",
           expiryDate: item.expiryDate || undefined,
           batchNo: item.batchNo,
-          reasonOrSupplier: reasonOrSupplier
+          reasonOrSupplier: reasonOrSupplier,
+          ingredientName: item.ingredientName,
+          draftTxId: item.draftTxId
         })
       ));
 
-      toast.success("Tạo phiếu nhập hàng thành công!");
+      if (mode === "draft") {
+        toast.success("Đã lưu tạm phiếu nhập hàng!");
+      } else {
+        toast.success("Tạo phiếu nhập hàng thành công!");
+      }
+
+      if (mode === "save_print" && onPrintReceipt) {
+        onPrintReceipt({
+          title: "PHIẾU NHẬP HÀNG",
+          ticketCode: `PN${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${Date.now().toString().slice(-4)}`,
+          supplierName,
+          dateStr: importDate,
+          userName: "Nhân viên kho",
+          items: importItems.map(i => ({
+            name: i.ingredientName,
+            quantity: i.quantity,
+            price: i.unitCost,
+            total: i.quantity * i.unitCost
+          })),
+          totalAmount,
+          paidAmount: paymentStatus === "paid" ? totalAmount : 0,
+          debtAmount: paymentStatus === "credit" ? totalAmount : 0,
+          note
+        });
+      }
+
       onBack();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Có lỗi xảy ra khi lưu phiếu nhập");
@@ -109,12 +209,30 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack }) => {
             <p className="text-xs text-slate-600 font-medium">Nhập nguyên liệu từ nhà cung cấp vào kho</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <button className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <UploadCloud size={16} /> Nhập từ Excel
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowExcelModal(true)} className="px-3 py-2 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 text-xs flex items-center gap-1.5 cursor-pointer shadow-xs mr-2">
+            <UploadCloud size={14} className="text-blue-600" /> Nhập từ Excel
           </button>
-          <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-            <Save size={16} /> Lưu & Hoàn thành
+          <button
+            type="button"
+            onClick={() => handleSave("draft")}
+            className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Check size={14} /> LƯU TẠM
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave("completed")}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Check size={14} /> LƯU
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSave("save_print")}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+          >
+            <Printer size={14} /> LƯU & IN
           </button>
         </div>
       </div>
@@ -233,17 +351,42 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack }) => {
             <div className="flex flex-col gap-4">
               <div>
                 <label className="text-xs font-bold text-slate-600 block mb-1">Nhà cung cấp</label>
-                <div className="flex gap-2">
-                  <select 
-                    value={selectedSupplier}
-                    onChange={(e) => setSelectedSupplier(e.target.value)}
-                    className="flex-1 p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm font-semibold cursor-pointer"
-                  >
-                    <option value="">Chọn nhà cung cấp...</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                <div className="flex gap-2 items-start">
+                  <div className="flex-1">
+                    <select 
+                      value={selectedSupplier}
+                      onChange={(e) => setSelectedSupplier(e.target.value)}
+                      className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm font-semibold cursor-pointer"
+                    >
+                      <option value="">Chọn nhà cung cấp...</option>
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    {selectedSupplier && (
+                      <div className="mt-2 text-[11px] bg-slate-50 p-2 rounded border border-slate-200">
+                        <span className="font-bold text-slate-600 block mb-1">Nguyên liệu của NCC này:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {(suppliers.find(s => s.id == selectedSupplier)?.mainIngredients || "").split(",").map((ing: string, i: number) => 
+                            ing.trim() ? <span key={i} className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold border border-blue-200">{ing.trim()}</span> : null
+                          )}
+                          {!(suppliers.find(s => s.id == selectedSupplier)?.mainIngredients) && (
+                            <span className="text-slate-400 italic">Chưa có thông tin nguyên liệu</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {onAddSupplier && (
+                    <button 
+                      type="button" 
+                      onClick={onAddSupplier} 
+                      className="p-2 bg-blue-50 text-blue-600 rounded border border-blue-200 hover:bg-blue-100 transition-colors" 
+                      title="Thêm nhà cung cấp mới"
+                    >
+                      <Plus size={20} />
+                    </button>
+                  )}
                 </div>
               </div>
               
@@ -294,6 +437,126 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack }) => {
           </div>
         </div>
       </div>
+
+      {/* MODAL NHẬP EXCEL */}
+      {showExcelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-slate-200">
+              <h3 className="text-lg font-black text-slate-800">Nhập Excel</h3>
+              <button 
+                onClick={() => setShowExcelModal(false)}
+                className="p-2 bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 rounded-full transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 shadow-sm">
+                <h4 className="text-sm font-black text-rose-600 mb-2 underline">Lưu ý:</h4>
+                <ul className="text-xs text-rose-700 font-medium space-y-2 list-none">
+                  <li>- Hệ thống chỉ hỗ trợ tối đa <span className="font-bold">500</span> hàng hóa cho mỗi lần nhập dữ liệu từ file excel.</li>
+                  <li>- Trong trường hợp file Excel có hàng hóa chưa hợp lệ. Bạn vui lòng điều chỉnh các dòng bị lỗi theo các hướng dẫn sửa lỗi sau đây và thực hiện lại.</li>
+                  <li className="pl-4">- Đối với hàng hóa không quản lý Serial thì số lượng phải lớn hơn 0, đối với hàng hóa quản lý Serial thì phải khai báo danh sách Serial và các Serial phải có định dạng cho phép (a-z, 0-9, "-", " ").</li>
+                  <li className="pl-4">- Giá nhập, giá bán đều phải lớn hơn hoặc bằng 0.</li>
+                  <li className="pl-4">- Mỗi hàng hóa chỉ được liệt kê ở 1 dòng duy nhất, đối với Serial thì mỗi Serial phải là duy nhất, không được trùng và chưa tồn tại trong hệ thống.</li>
+                  <li className="pl-4 font-bold">- Để nhập kho cho hàng sản xuất định lượng. Vui lòng vào menu Sản xuất -&gt; tạo phiếu sản xuất, để hệ thống ghi nhận tồn kho chính xác hơn.</li>
+                </ul>
+              </div>
+
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".xlsx, .xls, .csv" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (evt) => {
+                    try {
+                      const bstr = evt.target?.result;
+                      const wb = XLSX.read(bstr, { type: 'binary' });
+                      const wsname = wb.SheetNames[0];
+                      const ws = wb.Sheets[wsname];
+                      const data = XLSX.utils.sheet_to_json(ws);
+                      
+                      const newItems = data.map((row: any) => {
+                        const supplierNameInRow = row["Nhà cung cấp"] || row["Supplier"] || row.supplier || "";
+                        if (supplierNameInRow) {
+                          const matchedSup = suppliers.find(s => 
+                            s.name.toLowerCase().includes(supplierNameInRow.toLowerCase()) || 
+                            supplierNameInRow.toLowerCase().includes(s.name.toLowerCase())
+                          );
+                          if (matchedSup) {
+                            setSelectedSupplier(matchedSup.id);
+                          }
+                        }
+
+                        const name = row["Tên hàng"] || row["Tên nguyên liệu"] || row["Tên"] || row.Name || row.name || "";
+                        const ing = ingredients.find(i => i.name.toLowerCase() === name.toLowerCase());
+                        const id = ing ? ing.id : `TEMP_${Math.floor(Math.random() * 10000)}`;
+                        return {
+                          ingredientId: id,
+                          ingredientName: name || "Mặt hàng chưa xác định",
+                          code: `SP${id.toString().padStart(6, '0')}`,
+                          quantity: Number(row["Số lượng"] || row.Quantity || row.quantity || 1),
+                          unitCost: Number(row["Đơn giá"] || row.Price || row.price || 0),
+                          batchNo: row["Số lô"] || row.Batch || `LOT-${id}-${Date.now().toString().slice(-6)}`,
+                          expiryDate: row["Ngày hết hạn"] || row.Expiry || ""
+                        };
+                      });
+
+                      setImportItems([...importItems, ...newItems]);
+                      toast.success(`Đã tải và thêm thành công ${newItems.length} mặt hàng từ file Excel!`);
+                      setShowExcelModal(false);
+                    } catch (error) {
+                      toast.error("Lỗi khi đọc file Excel. Vui lòng kiểm tra lại định dạng.");
+                      console.error(error);
+                    }
+                  };
+                  reader.readAsBinaryString(file);
+                }} 
+              />
+              <div className="flex flex-col gap-3">
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 hover:border-blue-400 transition-colors"
+                >
+                  <UploadCloud size={40} className="text-slate-400 mb-2" />
+                  <p className="text-sm font-bold text-slate-700">Kéo thả hoặc click vào để chọn file Excel (.xlsx, .csv)</p>
+                  <p className="text-xs text-slate-400 mt-1">Tự động nhận diện Nhà cung cấp & Danh sách hàng hóa</p>
+                </div>
+                
+                <div className="flex justify-between items-center bg-blue-50 p-3 rounded-xl border border-blue-100 text-xs">
+                  <span className="font-semibold text-blue-900">Chưa có file mẫu nhập hàng?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const supObj = suppliers.find(s => s.id == selectedSupplier);
+                      const supName = supObj ? supObj.name : "Công ty TNHH Thực phẩm ABC";
+                      const sampleData = [
+                        { "Nhà cung cấp": supName, "Tên nguyên liệu": "Thịt bò Mỹ", "Số lượng": 15.5, "Đơn giá": 250000, "Số lô": "LOT-ABC-001", "Ngày hết hạn": "2026-12-31" },
+                        { "Nhà cung cấp": supName, "Tên nguyên liệu": "Thịt heo", "Số lượng": 25.0, "Đơn giá": 120000, "Số lô": "LOT-ABC-002", "Ngày hết hạn": "2026-11-30" },
+                        { "Nhà cung cấp": supName, "Tên nguyên liệu": "Thịt gà đùi", "Số lượng": 30.0, "Đơn giá": 85000, "Số lô": "LOT-ABC-003", "Ngày hết hạn": "2026-10-15" }
+                      ];
+                      const ws = XLSX.utils.json_to_sheet(sampleData);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, "NhapHang");
+                      XLSX.writeFile(wb, `Mau_Nhap_Hang_${supName.replace(/\s+/g, "_")}.xlsx`);
+                      toast.success(`Đã tải xuống file Excel mẫu cho ${supName}!`);
+                    }}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
+                  >
+                    <DownloadCloud size={14} /> Tải file Excel mẫu
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

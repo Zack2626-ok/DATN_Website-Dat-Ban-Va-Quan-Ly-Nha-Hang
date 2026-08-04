@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { Bell, LogOut, Search, Timer, User } from "lucide-react";
+import { Bell, LogOut, Search, Timer, User, Clock } from "lucide-react";
+import { io } from "socket.io-client";
+import { toast } from "react-hot-toast";
+import { getBookingValidationStatus, updateBookingValidationStatus } from "../../services/systemService";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
@@ -18,6 +21,42 @@ export const ManagerLayout: React.FC = () => {
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || "manager";
   const defaultName = displayRole === "manager" ? "Restaurant Manager" : "Demo User";
+
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
+  const [togglingValidation, setTogglingValidation] = useState<boolean>(false);
+
+  useEffect(() => {
+    getBookingValidationStatus()
+      .then(setBookingValidationEnabled)
+      .catch(() => {});
+
+    const socket = io(import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000");
+    socket.on("system:booking_validation_changed", (data: { enabled: boolean }) => {
+      setBookingValidationEnabled(data.enabled);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  const handleToggleBookingValidation = async () => {
+    try {
+      setTogglingValidation(true);
+      const nextState = !bookingValidationEnabled;
+      const updated = await updateBookingValidationStatus(nextState);
+      setBookingValidationEnabled(updated);
+      toast.success(
+        updated
+          ? "🔔 ĐÃ BẬT giới hạn giờ 21:00 (Không nhận đặt bàn sau 21:00)"
+          : "🔓 ĐÃ TẮT giới hạn giờ 21:00 (Tự do test đặt bàn bất kỳ lúc nào)"
+      );
+    } catch {
+      toast.error("Không thể thay đổi trạng thái giới hạn giờ");
+    } finally {
+      setTogglingValidation(false);
+    }
+  };
 
   return (
     <div className="min-h-screen w-full bg-[#E4E4E4] text-[#1A1A1A] flex flex-col md:flex-row font-sans p-2 md:p-3.5 gap-2 md:gap-3.5">
@@ -69,6 +108,26 @@ export const ManagerLayout: React.FC = () => {
               <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#F5C344] text-[9px] font-black text-[#1A1A1A] shadow-xs">
                 3
               </span>
+            </button>
+
+            {/* Nút Khóa / Nhận đặt bàn 21:00 */}
+            <button
+              type="button"
+              onClick={handleToggleBookingValidation}
+              disabled={togglingValidation}
+              title={
+                bookingValidationEnabled
+                  ? "Đang BẬT giới hạn 21:00 (SÁNG) — Ngưng nhận đặt bàn sau 21:00. Click để TẮT để test tự do."
+                  : "Đang TẮT giới hạn 21:00 (TỐI) — Cho phép test đặt bàn thoải mái bất kỳ lúc nào. Click để BẬT lại."
+              }
+              className={`hidden sm:flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[11px] font-extrabold transition-all border cursor-pointer ${
+                bookingValidationEnabled
+                  ? "border-amber-300 bg-amber-100 text-amber-900 shadow-xs hover:bg-amber-200 ring-2 ring-amber-300/50"
+                  : "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 opacity-60"
+              }`}
+            >
+              <Clock size={14} className={bookingValidationEnabled ? "text-amber-600 animate-pulse" : "text-slate-400"} />
+              <span>{bookingValidationEnabled ? "Giới hạn giờ: BẬT" : "Giới hạn giờ: TẮT"}</span>
             </button>
 
             <button

@@ -73,6 +73,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.order_id    AS orderId,
        oi.menu_item_id AS menuItemId,
        m.name,
+       m.kitchen_station AS dbKitchenStation,
        oi.quantity,
        oi.unit_price  AS unitPrice,
        oi.seat_number AS seatNumber,
@@ -80,8 +81,14 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.kitchen_note AS kitchenNote,
        oi.status,
        oi.created_at  AS createdAt,
+<<<<<<< HEAD
        oi.updated_at  AS updatedAt,
+       COALESCE(o.split_label, t.name) AS tableName,
+       o.split_label  AS splitLabel,
+=======
+       oi.created_at  AS updatedAt,
        t.name         AS tableName,
+>>>>>>> d21c3cefae19c645657ea5538db7f2578cdc0776
        ta.name        AS areaName,
        o.order_type   AS orderType,
        oi.void_reason  AS voidReason,
@@ -94,15 +101,15 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      LEFT JOIN users u  ON oi.created_by   = u.id
-     WHERE (oi.status IN ('waiting_kitchen', 'cooking') 
-        OR (oi.status = 'done' AND oi.updated_at >= NOW() - INTERVAL 3 MINUTE)
+     WHERE (oi.status IN ('pending', 'waiting_kitchen', 'cooking') 
+        OR oi.status = 'done'
         OR (oi.status IN ('cancelled', 'voided') AND oi.chef_dismissed = 0))
-       AND oi.created_at >= NOW() - INTERVAL 6 HOUR
+       AND (o.status IN ('open', 'serving') OR (o.status = 'completed' AND o.is_early_paid = 1))
      ORDER BY oi.created_at ASC`
   );
 
   return rows.map((row) => {
-    const kitchenStation = getKitchenStationFromName(row.name);
+    const kitchenStation = row.dbKitchenStation || getKitchenStationFromName(row.name);
     return {
       id: row.id,
       orderId: row.orderId,
