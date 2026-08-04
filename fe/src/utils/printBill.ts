@@ -216,10 +216,12 @@ export const printCashierInvoice = (
     `);
     printWindow.document.close();
     printWindow.focus();
+    printWindow.onafterprint = () => {
+      printWindow?.close();
+    };
     setTimeout(() => {
       if (printWindow) {
         printWindow.print();
-        printWindow.close();
       }
     }, 300);
   } catch (err) {

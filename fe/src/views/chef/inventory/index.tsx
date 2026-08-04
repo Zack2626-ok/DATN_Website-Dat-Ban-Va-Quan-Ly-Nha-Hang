@@ -30,16 +30,12 @@ import {
   Info,
   UploadCloud,
   FileText,
-<<<<<<< HEAD
   BarChart3,
   Printer,
-  Pencil
-=======
   Pencil,
   PackageMinus,
   CheckCircle,
   Save
->>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
 } from "lucide-react";
 
 // Types for local interactive states
@@ -1549,7 +1545,6 @@ export const InventoryControl: React.FC = () => {
                 >
                   <Plus size={12} /> Tạo phiếu kiểm kê mới
                 </button>
-<<<<<<< HEAD
                 <button
                   onClick={() => {
                     const headers = ["Ten nguyen lieu", "Ton he thong", "Thuc te kiem dem", "Don vi", "Chenh lech"];
@@ -1602,8 +1597,6 @@ export const InventoryControl: React.FC = () => {
               <div>
                 <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
                 <p className="text-[10px] text-slate-600 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
-=======
->>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
               </div>
             </div>
 
