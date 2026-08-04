@@ -16,6 +16,44 @@ export interface CustomerAuthResponse {
   customer: Customer;
 }
 
+export interface CustomerLoyaltyTransaction {
+  id: number;
+  points: number;
+  type: "earn" | "redeem";
+  note: string | null;
+  created_at: string;
+}
+
+export interface CustomerLoyaltySummary {
+  loyalty_points: number;
+  member_level: Customer["member_level"];
+  transactions: CustomerLoyaltyTransaction[];
+}
+
+export interface CustomerTierRewardVoucher {
+  id: number;
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  min_order: number;
+  points_cost: number;
+  required_member_level: Customer["member_level"];
+  is_unlocked: boolean;
+  is_redeemed: boolean;
+}
+
+export interface CustomerOwnedVoucher {
+  customer_voucher_id: number;
+  id: number;
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  min_order: number;
+  expired_at: string | null;
+  redeemed_at: string;
+  is_used: number;
+}
+
 export interface PublicMenuResponse {
   items: any[];
   categories: any[];
@@ -109,26 +147,22 @@ export const changeCustomerPassword = async (data: {
   await customerApi.patch("/v1/customer/me/change-password", data);
 };
 
-export const getCustomerLoyalty = async (): Promise<{
-  loyalty_points: number;
-  member_level: string;
-  transactions: any[];
-}> => {
+export const getCustomerLoyalty = async (): Promise<CustomerLoyaltySummary> => {
   const response = await customerApi.get("/v1/customer/loyalty");
   return response.data.data;
 };
 
-export const getCustomerVouchers = async (): Promise<any[]> => {
+export const getCustomerVouchers = async (): Promise<CustomerTierRewardVoucher[]> => {
   const response = await customerApi.get("/v1/customer/vouchers");
   return response.data.data || [];
 };
 
-export const redeemVoucher = async (voucherId: number): Promise<any> => {
+export const redeemVoucher = async (voucherId: number): Promise<{ loyalty_points: number; member_level: Customer["member_level"] }> => {
   const response = await customerApi.post("/v1/customer/vouchers/redeem", { voucherId, voucher_id: voucherId });
   return response.data.data;
 };
 
-export const getMyUnusedVouchers = async (): Promise<any[]> => {
+export const getMyUnusedVouchers = async (): Promise<CustomerOwnedVoucher[]> => {
   const response = await customerApi.get("/v1/customer/my-unused-vouchers");
   return response.data.data || [];
 };

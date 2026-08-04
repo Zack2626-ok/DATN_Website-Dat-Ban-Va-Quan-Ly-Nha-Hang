@@ -54,6 +54,7 @@ export const AccountPage: React.FC = () => {
     queryKey: ["customer-my-unused-vouchers"],
     queryFn: getMyUnusedVouchers,
     enabled: !!token && activeTab === "loyalty",
+    refetchInterval: 15000,
   });
 
   const { data: halls = [] } = useQuery({
@@ -114,6 +115,7 @@ export const AccountPage: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer-profile"] });
       queryClient.invalidateQueries({ queryKey: ["customer-loyalty"] });
+      queryClient.invalidateQueries({ queryKey: ["customer-vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["customer-my-unused-vouchers"] });
       toast.success("Đổi voucher thành công!");
     },
@@ -758,10 +760,10 @@ export const AccountPage: React.FC = () => {
                 })()}
 
                 {/* Loyalty Transactions & Vouchers */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
                   
                   {/* Loyalty Transactions */}
-                  <div className="bg-white rounded-3xl border border-client-accent p-6 shadow-sm">
+                  <div className="bg-white rounded-3xl border border-client-accent p-6 shadow-sm min-h-[540px] flex flex-col">
                     <h3 className="text-base font-bold text-client-text font-display mb-4">Lịch sử tích/đổi điểm</h3>
                     
                     {loadingLoyalty ? (
@@ -771,8 +773,8 @@ export const AccountPage: React.FC = () => {
                     ) : !loyaltyData?.transactions || loyaltyData.transactions.length === 0 ? (
                       <p className="text-xs text-client-muted text-center py-8">Chưa có giao dịch tích điểm nào.</p>
                     ) : (
-                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
-                        {loyaltyData.transactions.map((t: any) => (
+                      <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1 scrollbar-thin">
+                        {loyaltyData.transactions.map((t) => (
                           <div key={t.id} className="flex justify-between items-center text-xs py-2 border-b border-client-accent last:border-0">
                             <div>
                               <p className="font-bold text-client-text">{t.note || (t.type === "earn" ? "Tích điểm hóa đơn" : "Đổi điểm quà tặng")}</p>
@@ -788,7 +790,7 @@ export const AccountPage: React.FC = () => {
                   </div>
 
                   {/* Vouchers lists */}
-                  <div className="bg-white rounded-3xl border border-client-accent p-6 shadow-sm flex flex-col gap-6">
+                  <div className="bg-white rounded-3xl border border-client-accent p-6 shadow-sm min-h-[540px] flex flex-col gap-6">
                     {/* Section A: Vouchers đã đổi */}
                     <div>
                       <h3 className="text-base font-bold text-client-text font-display mb-3 flex items-center gap-1.5">
@@ -806,11 +808,15 @@ export const AccountPage: React.FC = () => {
                         </p>
                       ) : (
                         <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
-                          {myVouchers.map((v: any) => (
+                          {myVouchers.map((v) => (
                             <div key={v.customer_voucher_id} className="border border-dashed border-client-secondary rounded-xl p-3 bg-client-bg flex justify-between items-center">
                               <div>
                                 <span className="bg-client-primary/10 text-client-primary text-[10px] font-extrabold px-2 py-0.5 rounded-full">{v.code}</span>
-                                <p className="text-xs text-client-text font-bold mt-1.5">{v.name}</p>
+                                <p className="text-xs text-client-text font-bold mt-1.5">
+                                  {v.type === "percent" ? `Giảm ${Number(v.value)}%` : `Giảm ${Number(v.value).toLocaleString("vi-VN")}đ`}
+                                </p>
+                                <span className="text-[9px] text-client-muted block mt-0.5">HSD: {v.expired_at ? new Date(v.expired_at).toLocaleDateString("vi-VN") : "Không giới hạn"}</span>
+                                <span className="text-[9px] text-slate-500 block">Đơn tối thiểu: {Number(v.min_order || 0).toLocaleString("vi-VN")}đ</span>
                               </div>
                               <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 font-bold uppercase">Sẵn sàng sử dụng</span>
                             </div>
@@ -831,34 +837,56 @@ export const AccountPage: React.FC = () => {
                           Hiện không có voucher ưu đãi nào.
                         </p>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-2.5 flex-1 min-h-0 overflow-y-auto pr-1 scrollbar-thin">
                           {vouchers.map((v: any) => {
-                            const cost = Number(v.points_cost || v.points_required || 0);
+                            const cost = Number(v.points_cost || 0);
                             const userPoints = Number(profile?.loyalty_points || 0);
                             const canAfford = userPoints >= cost;
+                            const canRedeem = v.is_unlocked && !v.is_redeemed && canAfford;
                             return (
-                              <div key={v.id} className="border border-client-accent rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                              <div key={v.id} className={`border border-dashed rounded-xl p-3 transition-all flex justify-between items-center ${v.is_unlocked ? "border-slate-200 bg-white hover:bg-slate-50/50" : "border-client-accent bg-client-bg opacity-70"}`}>
                                 <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">{v.code}</span>
-                                    <span className="font-bold text-client-text text-sm">{v.name}</span>
-                                  </div>
-                                  <p className="text-xs text-client-muted mt-1">{v.description || "Giảm giá hóa đơn thanh toán"}</p>
+                                  <span className="bg-slate-100 text-slate-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase">{v.code}</span>
+                                  {v.required_member_level && <span className="ml-1.5 text-[9px] font-bold text-client-primary uppercase">{v.required_member_level}</span>}
+                                  <p className="text-xs text-client-text font-bold mt-1.5">
+                                    {v.name || (v.type === "percent" ? `Giảm ${Number(v.value)}%` : `Giảm ${Number(v.value).toLocaleString("vi-VN")}đ`)}
+                                  </p>
+                                  {v.min_order !== undefined && (
+                                    <p className="text-[10px] text-client-muted mt-0.5">
+                                      Đơn tối thiểu: <span className="font-semibold text-slate-700">{Number(v.min_order).toLocaleString("vi-VN")}đ</span>
+                                    </p>
+                                  )}
+                                  <span className="text-[9px] text-client-muted block mt-0.5">Yêu cầu: <strong className="text-amber-600 font-bold">{cost} điểm</strong></span>
+                                  {!v.is_unlocked && v.required_member_level && <span className="text-[9px] text-client-muted block mt-0.5">Mở khóa khi đạt hạng {String(v.required_member_level).toUpperCase()}.</span>}
+                                  {v.is_redeemed && <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">Đã đổi — mỗi hạng chỉ một voucher.</span>}
                                 </div>
                                 <button
-                                  disabled={!canAfford || redeemVoucherMutation.isPending}
+                                  disabled={redeemVoucherMutation.isPending || !canRedeem}
                                   onClick={() => {
-                                    if (window.confirm(`Xác nhận đổi ${cost} điểm lấy voucher ${v.code}?`)) {
+                                    if (!v.is_unlocked || v.is_redeemed) return;
+                                    if (!canAfford) {
+                                      toast.error(`Bạn không đủ điểm để đổi voucher này (Cần ${cost} điểm, hiện có ${userPoints} điểm).`);
+                                      return;
+                                    }
+                                    if (window.confirm(`Đổi ${cost} điểm tích lũy lấy voucher ${v.code}?`)) {
                                       redeemVoucherMutation.mutate(v.id);
                                     }
                                   }}
                                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                                    canAfford
+                                    canRedeem
                                       ? "bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
                                       : "bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
                                   }`}
                                 >
-                                  {redeemVoucherMutation.isPending ? "Đang xử lý..." : canAfford ? `Đổi (${cost} điểm)` : `Thiếu ${cost - userPoints} điểm`}
+                                  {redeemVoucherMutation.isPending
+                                    ? "Đang xử lý..."
+                                    : v.is_redeemed
+                                    ? "Đã đổi"
+                                    : !v.is_unlocked
+                                    ? "Chưa mở khóa"
+                                    : canAfford
+                                    ? `Đổi (${cost} điểm)`
+                                    : `Thiếu ${cost - userPoints} điểm`}
                                 </button>
                               </div>
                             );

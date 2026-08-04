@@ -82,12 +82,22 @@ export const getBookingDateValidationError = (
 export const getBookingLastArrivalTime = (channel: BookingChannel): string =>
   channel === BOOKING_CHANNEL.DIRECT ? DIRECT_BOOKING_LAST_ARRIVAL_TIME : ONLINE_BOOKING_LAST_ARRIVAL_TIME;
 
+let bookingTimeValidationEnabled = true;
+
+export const isBookingTimeValidationEnabled = (): boolean => bookingTimeValidationEnabled;
+
+export const setBookingTimeValidationEnabled = (enabled: boolean): void => {
+  bookingTimeValidationEnabled = enabled;
+};
+
 /** Returns a customer-safe error when a requested booking time violates restaurant policy. */
 export const getBookingTimeValidationError = (
   startTime: string,
   channel: BookingChannel,
   now: Date = new Date(),
 ): string | null => {
+  if (!bookingTimeValidationEnabled) return null;
+
   const bookingStart = parseVietnamBookingDateTime(startTime);
   if (Number.isNaN(bookingStart.getTime())) {
     return "Thời gian đặt bàn không hợp lệ.";
@@ -124,6 +134,8 @@ export const getBookingTimeValidationError = (
 
 /** Returns an error when a walk-in is opened outside the physical service window. */
 export const getWalkInTimeValidationError = (now: Date = new Date()): string | null => {
+  if (!bookingTimeValidationEnabled) return null;
+
   const clock = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Ho_Chi_Minh",
     hour: "2-digit",

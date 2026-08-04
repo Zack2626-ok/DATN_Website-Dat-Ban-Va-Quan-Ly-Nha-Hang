@@ -157,6 +157,7 @@ export const InventoryControl: React.FC = () => {
   const [returnSubTab, setReturnSubTab] = useState<"supplier_return" | "auto_deduction">("supplier_return");
   // Sub category filter for Kiểm kê
   const [stocktakeFilterCategory, setStocktakeFilterCategory] = useState<string>("all");
+  const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
   // Printable Stocktake Receipt state (Matching Image 5)
   const [printStocktakeData, setPrintStocktakeData] = useState<any>(null);
   const [showStocktakePrintModal, setShowStocktakePrintModal] = useState<boolean>(false);
@@ -709,6 +710,41 @@ export const InventoryControl: React.FC = () => {
     }
   };
 
+  // Perform Stocktake adjustment
+  // @ts-ignore
+  const handleApplyStocktake = async () => {
+    let changed = false;
+
+    for (const ing of reduxIngredients) {
+      const val = stocktakeValues[ing.id];
+      if (val !== undefined && val.trim() !== "") {
+        const actualQty = Number(val);
+        const discrepancy = actualQty - ing.stock;
+
+        if (discrepancy !== 0) {
+          try {
+            await updateInventoryQuantityApi(ing.id, {
+              quantity: Math.abs(discrepancy),
+              type: discrepancy > 0 ? "import" : "adjust",
+              reasonOrSupplier: `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`
+            });
+            changed = true;
+          } catch (e) {
+            console.error("Lỗi cập nhật", e);
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
+      setStocktakeValues({});
+      toast.success("✅ Cân đối kho thành công! Số lượng thực tế đã được cập nhật.");
+    } else {
+      toast.error("Chưa có số lượng kiểm kê thực tế nào được nhập hoặc không có chênh lệch.");
+    }
+  };
 
 
   // Check how many days until expiry

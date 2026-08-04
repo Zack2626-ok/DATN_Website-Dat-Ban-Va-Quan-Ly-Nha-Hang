@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer, Star, Users } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, getPublicPromotions, payBookingDeposit } from "../../services/customerService";
@@ -11,6 +11,7 @@ import {
   ONLINE_BOOKING_LAST_ARRIVAL_TIME,
   PUBLIC_BOOKING_HOURS,
 } from "../../constants/booking";
+import { getBookingValidationStatus } from "../../services/systemService";
 
 /** Returns a date input value offset by the configured booking horizon. */
 const getMaximumBookingDate = (): string => {
@@ -35,6 +36,7 @@ const getBookingEndTime = (date: string, time: string): string => {
 };
 
 export const BookingPage: React.FC = () => {
+  const navigate = useNavigate();
 
   // ── Restore state từ sessionStorage khi F5 ─────────────────────────────
   const BOOKING_SESSION_KEY = "booking_session";
@@ -47,6 +49,21 @@ export const BookingPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [availableTables, setAvailableTables] = useState<any[]>(savedSession?.availableTables || []);
 
+  const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
+  }, []);
+
+  // Bắt buộc đăng nhập tài khoản khách hàng trước khi đặt bàn
+  useEffect(() => {
+    const token = localStorage.getItem("customer_token");
+    if (!token) {
+      toast.error("Bạn cần đăng ký hoặc đăng nhập tài khoản Khách hàng để sử dụng tính năng đặt bàn!");
+      navigate("/customer/login?redirect=/booking");
+    }
+  }, [navigate]);
   const [confirmationCode, setConfirmationCode] = useState("");
   const [selectedArea, setSelectedArea] = useState("Tất cả");
   const [createdBooking, setCreatedBooking] = useState<any>(null);
@@ -173,7 +190,7 @@ export const BookingPage: React.FC = () => {
       return;
     }
     
-    if (!isWithinPublicBookingHours(form.time)) {
+    if (bookingValidationEnabled && !isWithinPublicBookingHours(form.time)) {
       toast.error(`Nhà hàng nhận đặt bàn online từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${ONLINE_BOOKING_LAST_ARRIVAL_TIME}.`);
       return;
     }

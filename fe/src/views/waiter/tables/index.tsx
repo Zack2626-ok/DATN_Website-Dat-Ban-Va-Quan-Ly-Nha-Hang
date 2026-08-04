@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { isAxiosError } from "axios";
 import { io } from "socket.io-client";
 import {
   RefreshCw,
@@ -30,6 +31,7 @@ import { TransferTableModal } from "./TransferTableModal";
 import { MergeTableModal } from "./MergeTableModal";
 import { GroupSeatingModal } from "./GroupSeatingModal";
 import { SplitTableModal } from "./SplitTableModal";
+import { SubOrderSelectionModal } from "./SubOrderSelectionModal";
 import {
   getTableAreas,
   getTablesV1,
@@ -77,6 +79,18 @@ interface ActiveOrderInfo {
   totalAmount: number;
   status: string;
 }
+
+interface OpenTableApiErrorResponse {
+  message?: string;
+}
+
+/** Extracts the server-side reason when a physical-table opening request is rejected. */
+const getOpenTableErrorMessage = (error: unknown): string => {
+  if (isAxiosError<OpenTableApiErrorResponse>(error)) {
+    return error.response?.data?.message || "Không thể mở bàn. Vui lòng thử lại.";
+  }
+  return "Không thể mở bàn. Vui lòng thử lại.";
+};
 
 const getCurrentUserId = (): number => {
   try {
@@ -256,6 +270,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
   const [isAddDishOpen, setIsAddDishOpen] = useState(false);
   const [isPrintBillOpen, setIsPrintBillOpen] = useState(false);
+  const [isSubOrderModalOpen, setIsSubOrderModalOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<TableAction>(null);
 
   // State hủy booking từ sơ đồ bàn
@@ -416,6 +431,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     [tables, selectedTableId],
   );
 
+  const isSelectedTableInCluster = Boolean(
+    selectedTable?.is_merged_primary
+    || selectedTable?.is_merged_child
+    || selectedTable?.is_group_seating_primary
+    || selectedTable?.is_group_seating_child,
+  );
+
   // Mở bàn + tự động thêm Khăn ướt theo số khách
   const handleOpenTable = async (data: { guestCount: number; customerName: string; customerPhone: string }) => {
     if (!selectedTableId || !selectedTable) return;
@@ -468,9 +490,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
       navigate(`/waiter/orders/${selectedTableId}`);
-    } catch (err) {
-      toast.error("Không thể mở bàn. Vui lòng thử lại.");
-      console.error(err);
+    } catch (error: unknown) {
+      toast.error(getOpenTableErrorMessage(error));
+      console.error(error);
     }
   };
 
@@ -628,7 +650,11 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     if (!selectedTableId) return;
     try {
       setProcessingPaymentRequest(true);
-      await updateTableStatus(Number(selectedTableId), "pending_payment");
+      if (activeOrder?.id) {
+        await requestPayment(Number(activeOrder.id));
+      } else {
+        await updateTableStatus(Number(selectedTableId), "pending_payment");
+      }
       toast.success("Đã gửi yêu cầu thanh toán — thu ngân sẽ xử lý tại quầy");
       fetchData();
       if (selectedTableId) loadActiveOrder(selectedTableId);
@@ -817,7 +843,12 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   return (
                     <div
                       key={t.id}
-                      onClick={() => setSelectedTableId(t.id)}
+                      onClick={() => {
+                        setSelectedTableId(t.id);
+                        if (t.is_split) {
+                          setIsSubOrderModalOpen(true);
+                        }
+                      }}
                       className={`relative flex items-center justify-center p-8 transition-all cursor-pointer select-none rounded-2xl border-2 ${isSelected
                         ? "border-sky-500 bg-sky-500/5 ring-4 ring-sky-500/15"
                         : "border-transparent bg-slate-50/50 hover:bg-slate-100/30"
@@ -854,6 +885,14 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         )}
                       </div>
 
+                      {t.is_split && (t.split_labels?.length ?? 0) > 0 && (
+                        <span
+                          className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-pink-300 bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700 shadow-xs animate-pulse"
+                          title={`Đang tách bàn thành: ${t.split_labels?.join(", ")}`}
+                        >
+                          <Copy size={10} className="text-pink-600" /> Tách · {t.split_labels?.join(", ")}
+                        </span>
+                      )}
                       {t.is_merged_primary && mergedTableNames && (
                         <span
                           className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-black text-violet-700 shadow-xs"
@@ -984,6 +1023,30 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   </button>
                 </div>
               </div>
+
+              {selectedTable.is_split && (
+                <div className="mx-5 mt-4 flex flex-col gap-2 rounded-xl border-2 border-pink-300 bg-pink-50 p-3.5 text-xs text-pink-900 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Copy size={16} className="text-pink-600 shrink-0" />
+                      <span className="font-black text-sm text-pink-900">Bàn đang tách thành {selectedTable.split_labels?.length || 2} nhóm sub-orders</span>
+                    </div>
+                    <span className="font-extrabold text-[11px] text-pink-700 bg-pink-100 px-2 py-0.5 rounded-full border border-pink-200">
+                      {selectedTable.split_labels?.join(", ") || "Sub-orders"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-pink-800">
+                    Mỗi nhóm khách có order và hóa đơn riêng độc lập ({selectedTable.split_labels?.join(", ")}). Nhấn bên dưới để gọi món hoặc thanh toán từng nhóm:
+                  </p>
+                  <button
+                    onClick={() => setIsSubOrderModalOpen(true)}
+                    className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer mt-1"
+                  >
+                    <Copy size={14} />
+                    Xem & Thao tác Sub-Orders ({selectedTable.split_labels?.join(", ") || "B04:1, B04:2"})
+                  </button>
+                </div>
+              )}
 
               {selectedTable.is_merged_primary && (selectedTable.merged_tables?.length ?? 0) > 0 && (
                 <div className="mx-5 mt-4 flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs text-violet-800">
@@ -1308,7 +1371,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
                               <button
                                 onClick={() => setActiveAction("transfer")}
-                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                                disabled={isSelectedTableInCluster}
+                                title={isSelectedTableInCluster ? "Tách hoặc hoàn tất cụm trước khi chuyển bàn" : "Chuyển toàn bộ order sang bàn trống"}
+                                className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 disabled:cursor-not-allowed disabled:opacity-45 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                               >
                                 <ArrowRightLeft size={13} /> Chuyển bàn
                               </button>
@@ -1388,7 +1453,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         isOpen={isOpenTableModalOpen}
         onClose={() => setIsOpenTableModalOpen(false)}
         onConfirm={handleOpenTable}
-        table={selectedTable as any}
+        table={selectedTable}
       />
 
       <AddTableModal
@@ -1429,8 +1494,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       <TransferTableModal
         isOpen={activeAction === "transfer"}
         onClose={() => setActiveAction(null)}
-        sourceTable={selectedTable as any}
-        availableTables={tables as any}
+        sourceTable={selectedTable}
+        availableTables={tables}
         onConfirm={async (_src, targetId) => {
           await fetchData();
           setSelectedTableId(targetId);
@@ -1456,6 +1521,48 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           setActiveAction(null);
         }}
       />
+
+      <GroupSeatingModal
+        isOpen={activeAction === "groupSeating"}
+        onClose={() => setActiveAction(null)}
+        sourceTable={selectedTable}
+        availableTables={tables}
+        onSuccess={() => {
+          fetchData();
+          setActiveAction(null);
+        }}
+      />
+
+      {selectedTable && (
+        <SplitTableModal
+          isOpen={activeAction === "split"}
+          onClose={() => setActiveAction(null)}
+          tableName={selectedTable.name}
+          tableCapacity={selectedTable.capacity}
+          sourceTableId={Number(selectedTable.id)}
+          orderItems={(activeOrder?.items || []).map((i) => ({
+            id: i.id,
+            name: i.item_name,
+            quantity: i.quantity,
+            price: i.unit_price,
+            status: i.status,
+          }))}
+          onSuccess={() => {
+            fetchData();
+            setActiveAction(null);
+            setIsSubOrderModalOpen(true);
+          }}
+        />
+      )}
+
+      {selectedTable && (
+        <SubOrderSelectionModal
+          isOpen={isSubOrderModalOpen}
+          onClose={() => setIsSubOrderModalOpen(false)}
+          tableId={Number(selectedTable.id)}
+          tableName={selectedTable.name}
+        />
+      )}
 
       <Modal
         isOpen={isTableScheduleOpen}
@@ -1570,6 +1677,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           fetchData();
           setActiveAction(null);
         }}
+      />
+
+      <SubOrderSelectionModal
+        isOpen={isSubOrderModalOpen}
+        onClose={() => setIsSubOrderModalOpen(false)}
+        tableId={selectedTableId ? Number(selectedTableId) : 0}
+        tableName={selectedTable?.name || ""}
       />
 
       {/* ── Modal Lý Do Bảo Trì ── */}

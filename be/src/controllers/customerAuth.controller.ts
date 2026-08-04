@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 import { isValidPhoneNumber } from "../utils/validation";
+import { MEMBER_LEVEL_RANK, normalizeMemberLevel } from "../constants/loyalty";
 
 const getCustomerSecret = (): string => {
   return process.env.JWT_CUSTOMER_SECRET || (process.env.JWT_SECRET ? process.env.JWT_SECRET + "_customer" : "customer_default_secret_key");
@@ -209,17 +210,27 @@ export const getCustomerLoyalty = async (req: Request, res: Response): Promise<v
   }
 };
 
-const getTierLevel = (points: number): "bronze" | "silver" | "gold" | "vip" => {
-  if (points >= 20000) return "vip";
-  if (points >= 8000) return "gold";
-  if (points >= 2000) return "silver";
-  return "bronze";
-};
-
 export const getVouchers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const vouchers = await db.getCustomerVouchers();
-    sendSuccess(res, vouchers, "Lấy danh sách vouchers thành công.");
+    if (!req.customer) {
+      sendError(res, "Bạn cần đăng nhập.", 401);
+      return;
+    }
+    const customer = await db.findCustomerById(req.customer.id);
+    if (!customer) {
+      sendError(res, "Không tìm thấy thông tin khách hàng.", 404);
+      return;
+    }
+    const customerLevel = normalizeMemberLevel(customer.member_level);
+    const vouchers = await db.getTierRewardVouchersForCustomer(req.customer.id);
+    const rewards = vouchers
+      .map((voucher) => ({
+        ...voucher,
+        is_unlocked: MEMBER_LEVEL_RANK[customerLevel] >= MEMBER_LEVEL_RANK[normalizeMemberLevel(voucher.required_member_level)],
+        is_redeemed: Boolean(voucher.is_redeemed),
+      }))
+      .sort((left, right) => MEMBER_LEVEL_RANK[normalizeMemberLevel(left.required_member_level)] - MEMBER_LEVEL_RANK[normalizeMemberLevel(right.required_member_level)]);
+    sendSuccess(res, rewards, "Lấy danh sách voucher quà tặng theo hạng thành công.");
   } catch (error) {
     console.error("Error in getVouchers:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -232,78 +243,20 @@ export const redeemCustomerVoucher = async (req: Request, res: Response): Promis
       sendError(res, "Bạn cần đăng nhập.", 401);
       return;
     }
-    const { voucherId, voucher_id } = req.body;
-    const targetVoucherId = voucherId || voucher_id;
-    if (!targetVoucherId) {
-      sendError(res, "Thiếu ID voucher.", 400);
+    const voucherId = Number(req.body.voucherId || req.body.voucher_id);
+    if (!Number.isInteger(voucherId) || voucherId <= 0) {
+      sendError(res, "Thiếu ID voucher hợp lệ.", 400);
       return;
     }
 
-    // 1. Fetch customer details
-    const customer = await db.findCustomerById(req.customer.id);
-    if (!customer) {
-      sendError(res, "Không tìm thấy thông tin khách hàng.", 404);
-      return;
-    }
-
-    // 2. Fetch voucher details
-    const voucherRows = await db.query(
-      "SELECT * FROM vouchers WHERE id = ? AND is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())",
-      [targetVoucherId]
-    );
-    if (!voucherRows || voucherRows.length === 0) {
-      sendError(res, "Voucher không tồn tại hoặc đã hết hạn.", 404);
-      return;
-    }
-    const voucher = voucherRows[0];
-
-    // Check max_uses vs used_count
-    if (voucher.max_uses !== null && voucher.used_count >= voucher.max_uses) {
-      sendError(res, "Voucher này đã hết lượt sử dụng.", 400);
-      return;
-    }
-
-    // 2b. Check if customer already holds an unused copy of this voucher
-    const existingRows = await db.query(
-      "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? AND is_used = 0 LIMIT 1",
-      [customer.id, voucher.id]
-    );
-    if (existingRows && existingRows.length > 0) {
-      sendError(res, "Bạn đang có voucher này chưa sử dụng trong ví. Hãy dùng trước khi đổi thêm.", 400);
-      return;
-    }
-
-    // 3. Check points cost
-    const cost = Number(voucher.points_cost || 0);
-    if (customer.loyalty_points < cost) {
-      sendError(res, `Không đủ điểm thưởng. Bạn cần ${cost} điểm để đổi voucher này (hiện có ${customer.loyalty_points} điểm).`, 400);
-      return;
-    }
-
-    // 4. Update customer points
-    const newPoints = customer.loyalty_points - cost;
-    const newLevel = getTierLevel(newPoints);
-    
-    await db.query(
-      "UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?",
-      [newPoints, newLevel, customer.id]
-    );
-
-    // Record loyalty transaction
-    await db.query(
-      "INSERT INTO loyalty_transactions (customer_id, points, type, note) VALUES (?, ?, 'redeem', ?)",
-      [customer.id, cost, `Đổi ${cost} điểm nhận voucher ${voucher.code}`]
-    );
-
-    // Record customer voucher ownership
-    await db.query(
-      "INSERT INTO customer_vouchers (customer_id, voucher_id, is_used) VALUES (?, ?, 0)",
-      [customer.id, voucher.id]
-    );
-
-    sendSuccess(res, { loyalty_points: newPoints, member_level: newLevel, voucher_code: voucher.code }, "Đổi voucher thành công.");
+    const redemption = await db.redeemTierRewardVoucher(req.customer.id, voucherId);
+    sendSuccess(res, { loyalty_points: redemption.loyaltyPoints, member_level: redemption.memberLevel }, "Đổi voucher thành công.");
   } catch (error) {
     console.error("Error in redeemCustomerVoucher:", error);
+    if (error instanceof db.LoyaltyVoucherRedemptionError) {
+      sendError(res, error.message, error.statusCode);
+      return;
+    }
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
