@@ -161,6 +161,9 @@ const invoiceSlice = createSlice({
             invoiceStatus: "paid" as InvoiceStatus,
           };
         }
+        if (state.selectedInvoiceId === String(order.id)) {
+          state.selectedInvoiceId = null;
+        }
       })
       .addCase(processInvoicePayment.rejected, (state, action) => {
         state.actionLoading = false;

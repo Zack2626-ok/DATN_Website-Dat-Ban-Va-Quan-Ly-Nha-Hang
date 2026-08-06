@@ -918,6 +918,7 @@ const runSchemaMigrations = async (): Promise<void> => {
     }
 
     // Migration: Add stock_in_id and update reason ENUM in stock_out
+    await ensureRefundColumns();
     const stockOutCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_out' AND COLUMN_NAME = 'stock_in_id'`
@@ -992,6 +993,21 @@ const runSchemaMigrations = async (): Promise<void> => {
         CONSTRAINT fk_item_splits_parent FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
         CONSTRAINT fk_item_splits_child FOREIGN KEY (child_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
         CONSTRAINT fk_item_splits_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    // Migration: Ensure debt_payments table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS debt_payments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        supplier_id INT NOT NULL,
+        amount DECIMAL(14,2) NOT NULL,
+        method VARCHAR(50) NOT NULL DEFAULT 'transfer',
+        note TEXT NULL,
+        paid_by INT NULL,
+        paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_debt_payments_supplier (supplier_id),
+        CONSTRAINT fk_debt_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
   } catch (err) {

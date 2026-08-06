@@ -338,6 +338,8 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const startStr = formatMySQLDateTime(startD);
     const endStr = formatMySQLDateTime(endD);
 
+    await db.ensureRefundColumns();
+
     // 1) Summary
     const incomeRow = await db.query(
       `SELECT COALESCE(SUM(COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id), inv.total)), 0) AS val 

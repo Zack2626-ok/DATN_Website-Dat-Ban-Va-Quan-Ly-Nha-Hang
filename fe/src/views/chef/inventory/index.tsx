@@ -29,9 +29,9 @@ import {
   UploadCloud,
   DownloadCloud,
   FileText,
+  Printer,
   Pencil,
   CheckCircle,
-  Printer,
   Filter,
   ChevronDown,
   ChevronRight,
@@ -3072,6 +3072,58 @@ export const InventoryControl: React.FC = () => {
                 >
                   <Plus size={16} /> + TẠO PHIẾU KIỂM KÊ MỚI
                 </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Ten nguyen lieu", "Ton he thong", "Thuc te kiem dem", "Don vi", "Chenh lech"];
+                    const colX = [15, 60, 100, 135, 150];
+                    const rows = reduxIngredients.map(ing => {
+                      const actualStr = stocktakeValues[ing.id];
+                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
+                      const diff = actualQty - ing.stock;
+                      const diffText = diff === 0 ? "Khop kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
+                      return [
+                        ing.name,
+                        ing.stock.toString(),
+                        actualQty.toString(),
+                        ing.unit,
+                        diffText
+                      ];
+                    });
+                    handleExportPdfShared("PHIEU KIEM KE CAN DOI TON KHO", headers, colX, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileText size={12} className="text-red-500" /> Xuất PDF
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ["Tên nguyên liệu", "Tồn hệ thống", "Thực tế kiểm đếm", "Đơn vị", "Chênh lệch"];
+                    const rows = reduxIngredients.map(ing => {
+                      const actualStr = stocktakeValues[ing.id];
+                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
+                      const diff = actualQty - ing.stock;
+                      const diffText = diff === 0 ? "Khớp kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
+                      return [
+                        ing.name,
+                        ing.stock.toString(),
+                        actualQty.toString(),
+                        ing.unit,
+                        diffText
+                      ];
+                    });
+                    handleExportExcelShared("PHIẾU KIỂM KÊ CÂN ĐỐI TỒN KHO", headers, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
+                  }}
+                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
+                >
+                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div>
+                <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
+                <p className="text-[10px] text-slate-600 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
               </div>
 
               {/* Main POS Table */}
