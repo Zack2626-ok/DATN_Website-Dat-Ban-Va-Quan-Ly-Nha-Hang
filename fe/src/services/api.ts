@@ -127,6 +127,11 @@ export const updateInventoryQuantityApi = async (id: string | number, payload: a
   return response.data.data;
 };
 
+export const deleteInventoryTransactionApi = async (id: string | number): Promise<any> => {
+  const response = await api.delete(`/inventory/transactions/${id}`);
+  return response.data.data;
+};
+
 export const getIngredientBatchesApi = async (id: string | number): Promise<any[]> => {
   const response = await api.get(`/inventory/${id}/batches`);
   return response.data.data;

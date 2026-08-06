@@ -18,6 +18,7 @@ import {
   addSupplier,
   updateSupplier,
   deleteSupplier,
+  deleteInventoryTransaction,
 } from "../controllers/inventory.controller";
 
 import {
@@ -34,6 +35,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get("/", getAllInventory);
 router.get("/ingredients", getIngredientsList);
 router.get("/transactions", getTransactionsList);
+router.delete("/transactions/:id", deleteInventoryTransaction);
 router.get("/suppliers", getSuppliers);
 router.post("/suppliers", addSupplier);
 router.put("/suppliers/:id", updateSupplier);

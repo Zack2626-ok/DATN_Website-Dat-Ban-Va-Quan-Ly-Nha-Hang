@@ -268,7 +268,7 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
                     >
                       <div>
                         <div className="font-bold text-slate-800">{ing.name}</div>
-                        <div className="text-xs text-slate-500">Mã: SP{ing.id.toString().padStart(6, '0')}</div>
+                        <div className="text-xs text-slate-500">Đơn vị: {ing.unit}</div>
                       </div>
                       <div className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
                         Tồn: {ing.stock} {ing.unit}
@@ -304,7 +304,6 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
                       <td className="px-4 py-4 font-medium">{idx + 1}</td>
                       <td className="px-4 py-4">
                         <div className="font-bold text-slate-800">{item.ingredientName}</div>
-                        <div className="text-[10px] text-slate-500 font-normal">Mã: {item.code}</div>
                       </td>
                       <td className="px-4 py-3">
                         {item.availableBatches.length > 0 ? (

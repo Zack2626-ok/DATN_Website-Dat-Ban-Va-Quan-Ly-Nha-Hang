@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi } from "../../../services/api";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, deleteInventoryTransactionApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
@@ -1576,6 +1576,7 @@ export const InventoryControl: React.FC = () => {
             setCurrentView("main"); 
             setInitialImportData(null); 
             getIngredientsApi().then(setReduxIngredients).catch(console.error);
+            getSuppliersApi().then(setSuppliers).catch(console.error);
             getInventoryTransactionsApi().then(setTransactions).catch(console.error);
             fetchAllBatchesData();
           }} 
@@ -1866,7 +1867,6 @@ export const InventoryControl: React.FC = () => {
                             </td>
                             <td className="px-5 py-4">
                               <span className="font-extrabold text-slate-900">{ing.name}</span>
-                              <div className="text-[10px] text-slate-600 font-medium mt-0.5">Mã số: {ing.id}</div>
                             </td>
                             <td className="px-5 py-4">
                               <span className="px-2 py-0.5 bg-slate-100 border border-slate-200/60 rounded-md text-[9px] font-extrabold text-slate-600">
@@ -1934,7 +1934,7 @@ export const InventoryControl: React.FC = () => {
                                       <table className="min-w-full divide-y divide-slate-200">
                                         <thead className="bg-slate-100/80">
                                           <tr>
-                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Số Lô</th>
+                                            <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Mã Lô</th>
                                             <th className="px-4 py-2 text-center text-[10px] font-bold text-slate-600 uppercase">Tồn lô</th>
                                             <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Ngày nhập</th>
                                             <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-600 uppercase">Nhà cung cấp</th>
@@ -2199,14 +2199,12 @@ export const InventoryControl: React.FC = () => {
                         {(s.mainIngredients || "").split(",").map((ingStr: string, index: number) => {
                           const ingName = ingStr.trim();
                           if (!ingName) return null;
-                          const isExists = reduxIngredients.some(i => i.name.toLowerCase() === ingName.toLowerCase());
                           return (
                             <span 
                               key={index} 
-                              className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${isExists ? 'text-blue-700 bg-blue-50 border-blue-200/40' : 'text-slate-500 bg-slate-100 border-slate-300'}`}
-                              title={isExists ? '' : 'Nguyên liệu này không còn trong kho'}
+                              className="text-[9px] font-black px-1.5 py-0.5 rounded border text-blue-700 bg-blue-50 border-blue-200/40"
                             >
-                              {ingName} {!isExists && <span className="font-normal italic ml-0.5">(Đã xóa)</span>}
+                              {ingName}
                             </span>
                           );
                         })}
@@ -2269,7 +2267,6 @@ export const InventoryControl: React.FC = () => {
                     <th scope="col" className="px-5 py-3 text-left">Nhà cung cấp</th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu nhập</th>
                     <th scope="col" className="px-5 py-3 text-center">Số lượng</th>
-                    <th scope="col" className="px-5 py-3 text-left">Mã lô (Batch)</th>
                     <th scope="col" className="px-5 py-3 text-left">Hạn sử dụng</th>
                     <th scope="col" className="px-5 py-3 text-center">Trạng thái</th>
                     <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
@@ -2278,7 +2275,7 @@ export const InventoryControl: React.FC = () => {
                 <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
                   {groupedImportSlips.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-5 py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium">
                         Không tìm thấy phiếu nhập hàng nào.
                       </td>
                     </tr>
@@ -2290,7 +2287,6 @@ export const InventoryControl: React.FC = () => {
                       const displayIngName = totalItemsCount > 1 
                         ? `${firstItem.ingredientName} (+${totalItemsCount - 1} mặt hàng khác)`
                         : firstItem.ingredientName;
-                      const displayBatch = totalItemsCount > 1 ? `${firstItem.batchNo}...` : firstItem.batchNo;
                       const displayExpiry = firstItem.expiryDate || "-";
 
                       const handleOpenSlip = () => {
@@ -2361,7 +2357,6 @@ export const InventoryControl: React.FC = () => {
                                 {totalItemsCount > 1 ? `${totalItemsCount} món (${totalQtyVal} ${firstItem.unit})` : `+${totalQtyVal} ${firstItem.unit}`}
                               </span>
                             </td>
-                            <td className="px-5 py-3 font-semibold text-slate-700">{displayBatch}</td>
                             <td className="px-5 py-3 font-semibold text-slate-700">{displayExpiry}</td>
                             <td className="px-5 py-3 text-center">
                               {slip.isDraft ? (
@@ -2384,7 +2379,7 @@ export const InventoryControl: React.FC = () => {
                             </td>
                             <td className="px-5 py-3 text-center">
                               <div className="flex items-center justify-center gap-2">
-                                {(slip.isDraft || slip.isCompleted) && (
+                                {!slip.isDraft && slip.isCompleted && (
                                   <button
                                     onClick={async (e) => {
                                       e.stopPropagation();
@@ -2405,13 +2400,13 @@ export const InventoryControl: React.FC = () => {
                                             draftTxId: item.draftTxId
                                           })
                                         ));
-                                        toast.success("Đã xác nhận nhập kho thành công!");
-                                        getIngredientsApi().then(setReduxIngredients);
-                                        getInventoryTransactionsApi().then(setTransactions);
-                                      } catch (error: any) {
-                                        toast.error(error?.response?.data?.message || "Lỗi khi nhập kho");
-                                      }
-                                    }}
+                                         toast.success("Đã xác nhận nhập kho thành công!");
+                                         getIngredientsApi().then(setReduxIngredients);
+                                         getSuppliersApi().then(setSuppliers);
+                                         getInventoryTransactionsApi().then(setTransactions);
+                                       } catch (error: any) {
+                                         toast.error(error?.response?.data?.message || "Lỗi khi nhập kho");
+                                    }}}
                                     className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-bold text-[11px] transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
                                     title="Xác nhận nhập vào kho"
                                   >
@@ -2419,16 +2414,39 @@ export const InventoryControl: React.FC = () => {
                                   </button>
                                 )}
                                 {slip.isDraft && (
-                                  <button
-                                    className="p-1 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
-                                    title="Chỉnh sửa phiếu lưu tạm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenSlip();
-                                    }}
-                                  >
-                                    <Pencil size={15} />
-                                  </button>
+                                  <>
+                                    <button
+                                      className="p-1.5 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
+                                      title="Chỉnh sửa phiếu lưu tạm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenSlip();
+                                      }}
+                                    >
+                                      <Pencil size={15} />
+                                    </button>
+                                    <button
+                                      className="p-1.5 hover:bg-rose-100 rounded-lg text-rose-600 transition-colors cursor-pointer"
+                                      title="Xóa phiếu lưu tạm"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        if (!window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn phiếu lưu tạm "${slip.ticketCode}" không?\n\nHành động này không thể hoàn tác.`)) return;
+                                        try {
+                                          await Promise.all(
+                                            slip.items.map((it: any) =>
+                                              it.draftTxId ? deleteInventoryTransactionApi(it.draftTxId) : Promise.resolve()
+                                            )
+                                          );
+                                          toast.success(`Đã xóa phiếu lưu tạm "${slip.ticketCode}" thành công!`, { id: "inventory-toast" });
+                                          getInventoryTransactionsApi().then(setTransactions);
+                                        } catch (err: any) {
+                                          toast.error(err?.response?.data?.message || "Lỗi khi xóa phiếu lưu tạm", { id: "inventory-toast" });
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 size={15} />
+                                    </button>
+                                  </>
                                 )}
                                 <button
                                   className="p-1 hover:bg-rose-100 rounded-lg text-rose-600 transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px]"
@@ -2490,7 +2508,7 @@ export const InventoryControl: React.FC = () => {
                           {/* Accordion Expandable Detail Row matching Image 2 */}
                           {expandedTxId === slip.id && (
                             <tr className="bg-slate-50/90 border-b-2 border-slate-300">
-                              <td colSpan={9} className="p-4">
+                              <td colSpan={8} className="p-4">
                                 <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
                                   {/* Left: Items Table */}
                                   <div className="lg:col-span-2">
@@ -2513,7 +2531,7 @@ export const InventoryControl: React.FC = () => {
                                             <td className="p-2 text-center font-bold">{idx + 1}</td>
                                             <td className="p-2">
                                               <div className="font-bold text-slate-800">{it.ingredientName}</div>
-                                              <div className="text-[10px] text-slate-400">Mã: {it.code}</div>
+                                               <div className="text-[10px] text-slate-400">Mã lô: {it.batchNo || it.code || ""}</div>
                                             </td>
                                             <td className="p-2 text-center font-bold text-blue-700">{it.quantity} {it.unit}</td>
                                             <td className="p-2 text-right">{it.unitCost.toLocaleString("vi-VN")} đ</td>
@@ -2888,7 +2906,7 @@ export const InventoryControl: React.FC = () => {
                                               <td className="p-2 text-center font-bold">{idx + 1}</td>
                                               <td className="p-2">
                                                 <div className="font-bold text-slate-800">{it.ingredientName}</div>
-                                                <div className="text-[10px] text-slate-400">Mã: {it.code}</div>
+                                                <div className="text-[10px] text-slate-400">Mã lô: {it.batchNo || it.code || ""}</div>
                                               </td>
                                               <td className="p-2 text-center font-bold text-rose-700">{it.quantity} {it.unit}</td>
                                               <td className="p-2 text-right">{it.unitCost.toLocaleString("vi-VN")} đ</td>
@@ -3125,9 +3143,10 @@ export const InventoryControl: React.FC = () => {
                 <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Phiên Kiểm kê kho & Cân đối dữ liệu</span>
                 <p className="text-[10px] text-slate-600 font-semibold mt-1">Nhập số lượng thực kiểm đếm được tại bếp để tính chênh lệch hao hụt thực tế.</p>
               </div>
+            </div>
 
-              {/* Main POS Table */}
-              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white shadow-2xs">
+            {/* Main POS Table */}
+            <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white shadow-2xs">
                 <table className="min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50 text-[11px] font-black text-slate-700 uppercase tracking-wider">
                     <tr>
@@ -3229,7 +3248,6 @@ export const InventoryControl: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-            </div>
           </div>
         )}
 
@@ -3300,7 +3318,7 @@ export const InventoryControl: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide print-hide">
                 {[
-                  { id: "all", label: "Tất cả" },
+                  { id: "all", label: "Tất cả (Cận & Hết hạn)" },
                   { id: "near", label: "Cận hạn" },
                   { id: "expired", label: "Đã hết hạn" }
                 ].map((f) => (
@@ -3324,7 +3342,7 @@ export const InventoryControl: React.FC = () => {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
                   <tr>
-                    <th scope="col" className="px-5 py-3 text-left">Số Lô hàng (Batch No)</th>
+                    <th scope="col" className="px-5 py-3 text-left">Mã Lô hàng (Batch No)</th>
                     <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                     <th scope="col" className="px-5 py-3 text-center">Số lượng nhập</th>
                     <th scope="col" className="px-5 py-3 text-left">Ngày hết hạn</th>
@@ -3333,16 +3351,29 @@ export const InventoryControl: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                  {expiryBatches.filter((b) => expiryFilter === "all" || getExpiryLabel(b.expiryDate).status === expiryFilter).length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-5 py-12 text-center text-slate-500 italic">
-                        Không có lô hàng nào phù hợp với bộ lọc
-                      </td>
-                    </tr>
-                  ) : (
-                    expiryBatches
-                      .filter((b) => expiryFilter === "all" || getExpiryLabel(b.expiryDate).status === expiryFilter)
-                      .map((b) => {
+                  {(() => {
+                    const alertBatches = expiryBatches.filter((b) => {
+                      const st = getExpiryLabel(b.expiryDate).status;
+                      if (st === "good") return false; // Exclude safe items from Expiry Tracking tab
+                      if (expiryFilter === "all") return st === "near" || st === "expired";
+                      return st === expiryFilter;
+                    });
+
+                    if (alertBatches.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-12 text-center text-slate-500 font-medium">
+                            <div className="flex flex-col items-center justify-center gap-2 py-4">
+                              <CheckCircle size={32} className="text-emerald-500" />
+                              <span className="font-bold text-slate-700">Không có lô hàng nào cần xử lý</span>
+                              <span className="text-xs text-slate-400">Tất cả các lô nguyên liệu trong kho hiện tại đều an toàn.</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return alertBatches.map((b) => {
                       const expiryInfo = getExpiryLabel(b.expiryDate);
                       return (
                         <tr key={b.id} className="hover:bg-slate-50/50">
@@ -3421,8 +3452,8 @@ export const InventoryControl: React.FC = () => {
                           </td>
                         </tr>
                       );
-                    })
-                  )}
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -3552,13 +3583,10 @@ export const InventoryControl: React.FC = () => {
                     </div>
                   </div>
                 </div>
-
               </div>
             </div>
-          )
-        }
-
-      </div >
+          )}
+        </div>
 
       {/* MODALS */}
 

@@ -184,7 +184,6 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                         <td className="px-4 py-4 font-medium">{idx + 1}</td>
                         <td className="px-4 py-4">
                           <div className="font-bold text-slate-800">{item.ingredientName}</div>
-                          <div className="text-[10px] text-slate-500 font-normal">Mã: {item.code}</div>
                         </td>
                         <td className="px-4 py-3 text-center font-bold text-slate-600">
                           {item.systemStock} {item.unit}
