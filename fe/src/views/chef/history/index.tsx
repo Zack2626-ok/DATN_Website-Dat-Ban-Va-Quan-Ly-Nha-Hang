@@ -43,6 +43,7 @@ export const ChefCookingHistory: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "returned">("all");
 
   const fetchHistory = async (dateVal: string) => {
     setLoading(true);
@@ -76,6 +77,13 @@ export const ChefCookingHistory: React.FC = () => {
       // Filter out takeaway/delivery
       if (item.orderType !== "dine_in") return;
 
+      // Status filtering
+      const isCompleted = ["done", "served", "delivered"].includes(item.status);
+      const isReturned = ["cancelled", "voided"].includes(item.status);
+
+      if (statusFilter === "completed" && !isCompleted) return;
+      if (statusFilter === "returned" && !isReturned) return;
+
       const orderDate = new Date(item.createdAt);
       const hour = orderDate.getHours();
       const hourSlot = `${String(hour).padStart(2, "0")}:00 - ${String(hour).padStart(2, "0")}:59`;
@@ -106,7 +114,7 @@ export const ChefCookingHistory: React.FC = () => {
     });
 
     return sortedResult;
-  }, [historyItems]);
+  }, [historyItems, statusFilter]);
 
   // Statistics calculation for the top-right corner (only for dine_in table orders)
   const stats = useMemo(() => {
@@ -218,6 +226,7 @@ export const ChefCookingHistory: React.FC = () => {
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
         {/* Left/Bottom: Detailed History List (3 columns wide) */}
         <div className="xl:col-span-3 flex flex-col gap-6">
+
           {loading && historyItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-32 gap-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
               <Clock size={48} className="text-slate-400 animate-spin" />
@@ -230,7 +239,13 @@ export const ChefCookingHistory: React.FC = () => {
               <Inbox size={48} className="text-slate-300" />
               <div>
                 <p className="text-sm font-bold text-slate-600">Không tìm thấy món ăn nào</p>
-                <p className="text-xs text-slate-450 mt-1">Chưa có đơn hoàn thành hoặc bị hủy trả trong ngày này.</p>
+                <p className="text-xs text-slate-450 mt-1">
+                  {statusFilter === "all"
+                    ? "Chưa có đơn hoàn thành hoặc bị hủy trả trong ngày này."
+                    : statusFilter === "completed"
+                    ? "Chưa có món ăn nào hoàn thành trong ngày này."
+                    : "Chưa có món ăn nào bị hủy trả trong ngày này."}
+                </p>
               </div>
             </div>
           ) : (
@@ -335,13 +350,27 @@ export const ChefCookingHistory: React.FC = () => {
             </h4>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-emerald-50 border border-emerald-150 rounded-xl p-3.5 flex flex-col gap-1 shadow-inner">
+              <div
+                onClick={() => setStatusFilter(statusFilter === "completed" ? "all" : "completed")}
+                className={`border rounded-xl p-3.5 flex flex-col gap-1 shadow-inner cursor-pointer transition-all active:scale-95 select-none ${
+                  statusFilter === "completed"
+                    ? "bg-emerald-100 border-emerald-300 ring-2 ring-emerald-500/20"
+                    : "bg-emerald-50 border-emerald-150 hover:bg-emerald-100/50"
+                }`}
+              >
                 <span className="text-[10px] font-bold text-emerald-700 uppercase">Hoàn thành</span>
                 <span className="text-xl font-black text-emerald-800">
                   {stats.completedCount} <span className="text-[11px] font-medium text-emerald-650">món</span>
                 </span>
               </div>
-              <div className="bg-rose-50 border border-rose-150 rounded-xl p-3.5 flex flex-col gap-1 shadow-inner">
+              <div
+                onClick={() => setStatusFilter(statusFilter === "returned" ? "all" : "returned")}
+                className={`border rounded-xl p-3.5 flex flex-col gap-1 shadow-inner cursor-pointer transition-all active:scale-95 select-none ${
+                  statusFilter === "returned"
+                    ? "bg-rose-100 border-rose-300 ring-2 ring-rose-500/20"
+                    : "bg-rose-50 border-rose-150 hover:bg-rose-100/50"
+                }`}
+              >
                 <span className="text-[10px] font-bold text-rose-700 uppercase">Hủy / Trả</span>
                 <span className="text-xl font-black text-rose-800">
                   {stats.returnedCount} <span className="text-[11px] font-medium text-rose-650">món</span>
