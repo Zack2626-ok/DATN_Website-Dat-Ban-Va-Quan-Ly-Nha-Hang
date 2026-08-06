@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud, Sparkles, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
-import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi } from "../../../services/api";
+import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi, getInventoryTransactionsApi } from "../../../services/api";
 // @ts-ignore
 import * as XLSX from "xlsx";
 
@@ -55,11 +55,42 @@ const getMultiplier = (baseUnit: string, displayUnit: string): number => {
   return found ? found.toBase : 1;
 };
 
+export const ALLOWED_UNITS = [
+  "kg", "g", "lít", "lit", "ml", "bao", "hộp", "hop", "chai", "lon",
+  "gói", "goi", "túi", "tui", "bó", "bo", "quả", "qua", "trái", "trai",
+  "củ", "cu", "con", "khay", "bình", "binh", "hũ", "hu", "vỉ", "vi",
+  "bánh", "banh", "cuộn", "cuon"
+];
+
 export const isValidDateStr = (dateStr?: string): boolean => {
   if (!dateStr) return false;
   const s = String(dateStr).trim();
   if (s === "" || s === "-" || s === "Invalid Date") return false;
   return true;
+};
+
+export const isPastDate = (dateStr?: string): boolean => {
+  if (!dateStr) return false;
+  const s = String(dateStr).trim();
+  if (s === "" || s === "-" || s === "Invalid Date") return false;
+  
+  const parts = s.split("T")[0].split("-");
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const dateObj = new Date(y, m, d, 23, 59, 59);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return dateObj.getTime() < today.getTime();
+  }
+  
+  const dateObj = new Date(s);
+  if (isNaN(dateObj.getTime())) return false;
+  dateObj.setHours(23, 59, 59);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dateObj.getTime() < today.getTime();
 };
 
 export const isExpiryRequired = (ingredientName: string): boolean => {
@@ -143,6 +174,50 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
+  const [existingTransactions, setExistingTransactions] = useState<any[]>([]);
+
+  const checkDuplicateToday = (supplierName: string, ingredientName: string, currentTicketCode?: string) => {
+    if (!existingTransactions || existingTransactions.length === 0) return null;
+    const todayStr = new Date().toDateString();
+
+    for (const tx of existingTransactions) {
+      if (tx.type !== "import") continue;
+      const txDate = new Date(tx.timestamp || tx.created_at || Date.now());
+      if (txDate.toDateString() !== todayStr) continue;
+
+      const reasonStr = String(tx.reasonOrSupplier || tx.note || "");
+      const cleanSup = reasonStr
+        .replace(/^\[SLIP:[^\]]+\]\s*/g, "")
+        .replace(/^\[LƯU TẠM\]\s*/g, "")
+        .replace(/^\[HOÀN THÀNH\]\s*/g, "")
+        .replace(/^Nhập hàng từ\s*/g, "")
+        .split("-")[0]
+        .trim();
+
+      const slipMatch = reasonStr.match(/\[SLIP:([^\]]+)\]/);
+      const slipCode = slipMatch ? slipMatch[1] : (tx.ticketCode || "Phiếu đã có trong ngày");
+
+      // Skip checking against the slip currently being edited
+      if (currentTicketCode && slipCode === currentTicketCode) continue;
+
+      const txIngName = String(tx.ingredientName || tx.name || "").trim().toLowerCase();
+      const targetIngName = String(ingredientName || "").trim().toLowerCase();
+
+      const isSameSupplier =
+        !supplierName ||
+        !cleanSup ||
+        cleanSup.toLowerCase().includes(supplierName.toLowerCase()) ||
+        supplierName.toLowerCase().includes(cleanSup.toLowerCase());
+
+      const isSameIngredient = txIngName && targetIngName && txIngName === targetIngName;
+
+      if (isSameSupplier && isSameIngredient) {
+        return slipCode;
+      }
+    }
+    return null;
+  };
+
   // ── initial load ──────────────────────────────────────────────────
   useEffect(() => {
     getIngredientsApi().then((data: any[]) => {
@@ -179,6 +254,9 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
       }
     }).catch(console.error);
     getSuppliersApi().then(setSuppliers).catch(console.error);
+    getInventoryTransactionsApi().then((txs: any[]) => {
+      setExistingTransactions(txs || []);
+    }).catch(console.error);
   }, [initialData]);
 
   // ── close dropdown on outside click ──────────────────────────────
@@ -292,6 +370,28 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
     if (importItems.length === 0) {
       toast.error("Vui lòng chọn ít nhất một mặt hàng để nhập");
       return;
+    }
+
+    const currentTicket = initialData && initialData[0]?.ticketCode ? initialData[0].ticketCode : undefined;
+    const currentSupName = suppliers.find((s: any) => s.id == selectedSupplier)?.name || "";
+
+    for (const item of importItems) {
+      if (item.displayUnit && !ALLOWED_UNITS.includes(item.displayUnit.toLowerCase())) {
+        toast.error(`Đơn vị tính "${item.displayUnit}" của mặt hàng "${item.ingredientName}" không hợp lệ! Vui lòng chọn (kg, g, lít, ml, bao, hộp...)`, { id: "unit-val-err" });
+        return;
+      }
+      const dupSlipCode = checkDuplicateToday(currentSupName, item.ingredientName, currentTicket);
+      if (dupSlipCode) {
+        toast.error(`Phiếu nhập hiện tại (chứa mặt hàng "${item.ingredientName}") bị trùng lặp dữ liệu với phiếu nhập [${dupSlipCode}] đã khởi tạo hôm nay! Hệ thống từ chối lưu trùng lặp.`, { id: "dup-save-err", duration: 6500 });
+        return;
+      }
+    }
+
+    for (const item of importItems) {
+      if (item.expiryDate && isPastDate(item.expiryDate)) {
+        toast.error(`Hạn sử dụng của mặt hàng "${item.ingredientName}" (${item.expiryDate}) không được ở trong quá khứ!`, { id: "past-exp-err" });
+        return;
+      }
     }
 
     if (mode !== "draft") {
@@ -594,20 +694,25 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           {/* Expiry date */}
                           <td className="px-3 py-3">
                             {(() => {
+                              const todayISO = new Date().toISOString().split("T")[0];
                               const isReq = isExpiryRequired(item.ingredientName);
                               const hasValidDate = isValidDateStr(item.expiryDate);
-                              const isMissing = isReq && !hasValidDate;
+                              const isPast = isPastDate(item.expiryDate);
+                              const isMissing = (isReq && !hasValidDate) || isPast;
                               return (
                                 <div className="flex flex-col gap-0.5">
                                   <input
                                     type="date"
+                                    min={todayISO}
                                     value={hasValidDate ? item.expiryDate : ""}
                                     onChange={e => handleUpdateItem(idx, "expiryDate", e.target.value)}
                                     className={`w-32 p-1.5 border rounded font-semibold focus:border-blue-500 outline-none text-xs ${
-                                      isMissing ? "border-rose-400 bg-rose-50/50" : "border-slate-300"
+                                      isMissing ? "border-rose-400 bg-rose-50/50 text-rose-700 font-bold" : "border-slate-300"
                                     }`}
                                   />
-                                  {isReq ? (
+                                  {isPast ? (
+                                    <span className="text-[9px] font-bold text-rose-500 animate-pulse">* HSD không được ở quá khứ</span>
+                                  ) : isReq ? (
                                     <span className={`text-[9px] font-bold ${isMissing ? "text-rose-500" : "text-emerald-600"}`}>
                                       {isMissing ? "* Bắt buộc HSD" : "✓ Có HSD"}
                                     </span>
@@ -828,7 +933,9 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                       const newItems: ImportItem[] = [];
                       let autoSupplierId = "";
 
+                      let rowIndex = 1;
                       for (const row of data) {
+                        rowIndex++;
                         // Auto-detect supplier from Excel
                         const supplierNameInRow =
                           row["Nhà cung cấp"] || row["Supplier"] || row.supplier || "";
@@ -860,6 +967,24 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           .toString()
                           .trim()
                           .toLowerCase();
+
+                        // Strict Unit Validation: Reject garbage units like "ádasdasdsa"
+                        if (excelUnit && !ALLOWED_UNITS.includes(excelUnit)) {
+                          toast.error(`Dòng ${rowIndex}: Đơn vị tính "${excelUnit}" của "${name}" không hợp lệ! Vui lòng nhập (kg, g, lít, ml, bao, hộp, chai...)`, { id: "excel-unit-err" });
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          return;
+                        }
+
+                        // Strict Duplicate Import Check: Block re-importing same ingredient today
+                        const currentTicket = initialData && initialData[0]?.ticketCode ? initialData[0].ticketCode : undefined;
+                        const targetSup = supplierNameInRow || (suppliers.find((s: any) => s.id == selectedSupplier)?.name || "");
+                        const dupSlipCode = checkDuplicateToday(targetSup, name, currentTicket);
+
+                        if (dupSlipCode) {
+                          toast.error(`File Excel này bị trùng lặp dữ liệu với phiếu nhập [${dupSlipCode}] đã khởi tạo hôm nay! Hệ thống từ chối nhập lặp lại.`, { id: "dup-excel-err", duration: 6500 });
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          return;
+                        }
 
                         // Find existing ingredient
                         const found = ingredients.find(
@@ -901,6 +1026,22 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           return s.split("T")[0];
                         })();
 
+                        if (expiryDate && isPastDate(expiryDate)) {
+                          toast.error(`Dòng ${rowIndex}: Hạn sử dụng (${expiryDate}) của mặt hàng "${name}" không được ở trong quá khứ!`, { id: "excel-past-err" });
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          return;
+                        }
+
+                        const batchVal = (
+                          row["Số lô"] ||
+                          row.Batch ||
+                          `LOT-EXCEL-${Date.now().toString().slice(-6)}`
+                        ).toString().trim();
+
+                        if (newItems.some(item => item.batchNo === batchVal)) {
+                          toast.error(`Dòng ${rowIndex}: Cảnh báo trùng lặp mã lô "${batchVal}" của mặt hàng "${name}" trong file Excel!`, { id: "excel-batch-dup" });
+                        }
+
                         newItems.push({
                           ingredientId,
                           ingredientName: name,
@@ -912,10 +1053,7 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           baseUnit,
                           unitMultiplier,
                           unitCost: Number(row["Đơn giá"] || row.Price || row.price || 0),
-                          batchNo:
-                            row["Số lô"] ||
-                            row.Batch ||
-                            `LOT-EXCEL-${Date.now().toString().slice(-6)}`,
+                          batchNo: batchVal,
                           expiryDate,
                           isNew,
                         });
