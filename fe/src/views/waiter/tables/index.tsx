@@ -1620,8 +1620,12 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                       {formatScheduleTimestamp(booking.start_time)}
                     </span>
                   </div>
-                  <p className="mt-3 text-xs text-slate-600">Bàn: <strong>{booking.table_names}</strong> · Sức chứa cụm: {booking.total_capacity}</p>
-                  {booking.guest_note && <p className="mt-1 text-xs italic text-slate-500">Ghi chú: {booking.guest_note}</p>}
+                  <div className="mt-3 rounded-lg bg-sky-50/70 p-2.5 border border-sky-100/80">
+                    <p className="text-xs font-bold text-sky-900">
+                      🔗 Cụm bàn tiệc gộp: <span className="text-sky-700">{booking.table_names}</span> (Tổng sức chứa: {booking.total_capacity} khách)
+                    </p>
+                  </div>
+                  {booking.guest_note && <p className="mt-2 text-xs italic text-slate-500">Ghi chú: {booking.guest_note}</p>}
                   {isCurrentSchedule && (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
                       <span className={`text-xs font-semibold ${checkInState.canCheckIn ? "text-emerald-700" : "text-slate-500"}`}>

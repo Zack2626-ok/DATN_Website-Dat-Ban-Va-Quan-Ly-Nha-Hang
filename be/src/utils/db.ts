@@ -2542,15 +2542,16 @@ export const getBookingSchedule = async (
     `SELECT b.id, b.confirmation_code, b.guest_name, b.guest_phone, b.guest_email,
             b.party_size, b.start_time, b.end_time, b.status, b.guest_note, b.note,
             b.table_id AS primary_table_id, primary_table.name AS primary_table_name,
-            COALESCE(GROUP_CONCAT(DISTINCT allocated_table.name ORDER BY bta.is_primary DESC, allocated_table.name SEPARATOR ', '), primary_table.name) AS table_names,
-            COALESCE(GROUP_CONCAT(DISTINCT allocated_table.id ORDER BY bta.is_primary DESC, allocated_table.name), CAST(b.table_id AS CHAR)) AS table_ids,
-            COALESCE(SUM(bta.allocated_capacity), primary_table.capacity) AS total_capacity,
+            COALESCE(GROUP_CONCAT(DISTINCT all_tables.name ORDER BY all_bta.is_primary DESC, all_tables.name SEPARATOR ', '), primary_table.name) AS table_names,
+            COALESCE(GROUP_CONCAT(DISTINCT all_tables.id ORDER BY all_bta.is_primary DESC, all_tables.name), CAST(b.table_id AS CHAR)) AS table_ids,
+            COALESCE(SUM(DISTINCT all_bta.allocated_capacity), primary_table.capacity) AS total_capacity,
             DATE_SUB(b.start_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_open_at,
             DATE_SUB(b.end_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_close_at
      FROM bookings b
      LEFT JOIN tables primary_table ON primary_table.id = b.table_id
      LEFT JOIN booking_table_assignments bta ON bta.booking_id = b.id
-     LEFT JOIN tables allocated_table ON allocated_table.id = bta.table_id
+     LEFT JOIN booking_table_assignments all_bta ON all_bta.booking_id = b.id
+     LEFT JOIN tables all_tables ON all_tables.id = all_bta.table_id
      ${whereClause}
      GROUP BY b.id
      ${orderByClause}`,

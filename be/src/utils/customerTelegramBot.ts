@@ -13,6 +13,8 @@ import { getBookingDateValidationError, getBookingTimeValidationError } from "./
 import { sendBookingConfirmationEmail } from "./email";
 import { notifyWaitersAboutBooking } from "./telegram";
 import { getPhoneNumberValidationError } from "./validation";
+import { parseBookingIntentWithAI } from "./aiBookingAgent";
+import { io } from "../server";
 
 const BOT_COMMAND = {
   START: "/start",
@@ -96,6 +98,7 @@ interface BookingSession {
   guestPhone?: string;
   guestEmail?: string;
   availabilityTableName?: string;
+  aiHistory?: { role: "user" | "model"; text: string }[];
 }
 
 let isPolling = false;
@@ -539,6 +542,17 @@ const confirmBooking = async (chatId: number, session: BookingSession): Promise<
     });
 
     bookingSessions.delete(chatId);
+    
+    // Emit socket events to update Waiter/Manager UI in real-time
+    io.emit("booking:created", { booking });
+    if (session.selectedOption?.primaryTable?.id) {
+      io.emit("table:status_changed", {
+        tableId: session.selectedOption.primaryTable.id,
+        status: "reserved",
+        guest_name: session.guestName,
+      });
+    }
+
     notifyWaitersAboutBooking(booking).catch((error: unknown) => {
       console.error("Không thể gửi thông báo booking Telegram cho waiter:", (error as Error).message);
     });
@@ -594,6 +608,72 @@ const handleBookingInput = async (chatId: number, session: BookingSession, text:
     bookingSessions.delete(chatId);
     await showTableAvailability(chatId, tableName ?? "", date);
     return;
+  }
+
+  // --- AI FIRST ROUTING ---
+  const isActionKey = text === BOT_ACTION.CANCEL_BOOKING || text === BOT_ACTION.CONFIRM_BOOKING || text === BOT_ACTION.SKIP_EMAIL;
+  if (!isActionKey) {
+    const history = session.aiHistory || [];
+    const aiResult = await parseBookingIntentWithAI(history, text);
+    if (aiResult) {
+      let updated = false;
+      if (aiResult.party_size && aiResult.party_size !== session.partySize) {
+        session.partySize = aiResult.party_size;
+        updated = true;
+      }
+      if (aiResult.booking_date && aiResult.booking_date !== session.date) {
+        session.date = aiResult.booking_date;
+        updated = true;
+      }
+      if (aiResult.booking_time && aiResult.booking_time !== session.time) {
+        session.time = aiResult.booking_time;
+        updated = true;
+      }
+      if (aiResult.guest_name && !session.guestName) {
+        session.guestName = aiResult.guest_name;
+      }
+      if (aiResult.guest_phone && !session.guestPhone) {
+        session.guestPhone = aiResult.guest_phone;
+      }
+
+      // If user is just asking a question (not providing booking parameters or modifying booking)
+      if (!updated && aiResult.reply_prompt) {
+        session.aiHistory = [...history, { role: "user", text }, { role: "model", text: aiResult.reply_prompt }];
+        await sendCustomerMessage(chatId, `🤖 ${aiResult.reply_prompt}`);
+        return;
+      }
+
+      // If booking parameters were updated by user
+      if (updated && session.partySize && session.date && session.time) {
+        const startTime = `${session.date} ${session.time}:00`;
+        const endTime = calculateEndTime(startTime);
+        const options = await db.getAvailableBookingTableOptions(session.partySize, startTime, endTime);
+        if (options.length > 0) {
+          session.startTime = startTime;
+          session.endTime = endTime;
+          session.availableOptions = options;
+          session.selectedOption = options[0];
+          session.aiHistory = [...history, { role: "user", text }, { role: "model", text: aiResult.reply_prompt }];
+          
+          if (!session.guestName) {
+            session.step = BOOKING_BOT_STEP.NAME;
+            await sendCustomerMessage(
+              chatId,
+              `🤖 Đã cập nhật yêu cầu:\n• Số khách: ${session.partySize} người\n• Ngày: ${session.date}\n• Giờ: ${session.time}\n• Bàn xếp: ${options[0].tables.map(t => t.name).join(", ")}\n\nVui lòng nhập tên của bạn:`
+            );
+            return;
+          } else if (!session.guestPhone) {
+            session.step = BOOKING_BOT_STEP.PHONE;
+            await sendCustomerMessage(chatId, `🤖 Đã cập nhật cho ${session.guestName}. Vui lòng nhập số điện thoại liên hệ:`);
+            return;
+          } else {
+            session.step = BOOKING_BOT_STEP.CONFIRMATION;
+            await askForConfirmation(chatId, session);
+            return;
+          }
+        }
+      }
+    }
   }
 
   if (session.step === BOOKING_BOT_STEP.GUEST_COUNT) {
@@ -658,6 +738,57 @@ const handleBookingInput = async (chatId: number, session: BookingSession, text:
     }
     await sendCustomerMessage(chatId, "Vui lòng chọn một phương án xếp bàn trong các nút đang hiển thị.");
     return;
+  }
+
+  // Check if customer sends a natural conversational message during active booking session (e.g. "tôi muốn đổi số khách", "đổi sang 8h tối")
+  if (text !== BOT_ACTION.CANCEL_BOOKING && text !== BOT_ACTION.CONFIRM_BOOKING && text !== BOT_ACTION.SKIP_EMAIL) {
+    const history = session.aiHistory || [];
+    const aiResult = await parseBookingIntentWithAI(history, text);
+    if (aiResult) {
+      let updated = false;
+      if (aiResult.party_size && aiResult.party_size !== session.partySize) {
+        session.partySize = aiResult.party_size;
+        updated = true;
+      }
+      if (aiResult.booking_date && aiResult.booking_date !== session.date) {
+        session.date = aiResult.booking_date;
+        updated = true;
+      }
+      if (aiResult.booking_time && aiResult.booking_time !== session.time) {
+        session.time = aiResult.booking_time;
+        updated = true;
+      }
+      if (aiResult.guest_name && !session.guestName) {
+        session.guestName = aiResult.guest_name;
+      }
+      if (aiResult.guest_phone && !session.guestPhone) {
+        session.guestPhone = aiResult.guest_phone;
+      }
+
+      if (updated && session.partySize && session.date && session.time) {
+        const startTime = `${session.date} ${session.time}:00`;
+        const endTime = calculateEndTime(startTime);
+        const options = await db.getAvailableBookingTableOptions(session.partySize, startTime, endTime);
+        if (options.length > 0) {
+          session.startTime = startTime;
+          session.endTime = endTime;
+          session.availableOptions = options;
+          session.selectedOption = options[0];
+          session.aiHistory = [...history, { role: "user", text }, { role: "model", text: `Đã cập nhật: ${session.partySize} khách, ${session.time} ngày ${session.date}` }];
+          await sendCustomerMessage(
+            chatId,
+            `🤖 Đã cập nhật yêu cầu theo tin nhắn của bạn:\n• Số khách: ${session.partySize} người\n• Ngày đặt: ${session.date}\n• Giờ đặt: ${session.time}\n• Bàn mới xếp: ${options[0].tables.map(t => t.name).join(", ")}\n\n${!session.guestName ? "Vui lòng nhập tên của bạn:" : !session.guestPhone ? "Vui lòng nhập số điện thoại:" : "Vui lòng xác nhận đặt bàn."}`
+          );
+          if (!session.guestName) session.step = BOOKING_BOT_STEP.NAME;
+          else if (!session.guestPhone) session.step = BOOKING_BOT_STEP.PHONE;
+          else {
+            session.step = BOOKING_BOT_STEP.CONFIRMATION;
+            await askForConfirmation(chatId, session);
+          }
+          return;
+        }
+      }
+    }
   }
 
   if (session.step === BOOKING_BOT_STEP.NAME) {
@@ -755,7 +886,84 @@ const replyToCustomer = async (chatId: number, rawText: string): Promise<void> =
     return;
   }
 
-  await sendCustomerMessage(chatId, "Tôi chưa hiểu yêu cầu. Hãy chọn một chức năng bên dưới hoặc gõ /start.", getMainKeyboard());
+  // --- AI NATURAL LANGUAGE AGENT (Gemini 3.6 Flash) ---
+  const aiResult = await parseBookingIntentWithAI([], text);
+  if (aiResult) {
+    if (aiResult.party_size || aiResult.booking_date || aiResult.booking_time) {
+      const newSession: BookingSession = {
+        step: BOOKING_BOT_STEP.GUEST_COUNT,
+        partySize: aiResult.party_size || undefined,
+        date: aiResult.booking_date || undefined,
+        time: aiResult.booking_time || undefined,
+        guestName: aiResult.guest_name || undefined,
+        guestPhone: aiResult.guest_phone || undefined,
+        aiHistory: [{ role: "user", text }, { role: "model", text: aiResult.reply_prompt }],
+      };
+
+      // If AI extracted complete information (party_size, date, time)
+      if (aiResult.is_complete && aiResult.party_size && aiResult.booking_date && aiResult.booking_time) {
+        const bookingDateError = getBookingDateValidationError(aiResult.booking_date);
+        if (bookingDateError) {
+          await sendCustomerMessage(chatId, `🤖 ${bookingDateError}`);
+          return;
+        }
+
+        const startTime = `${aiResult.booking_date} ${aiResult.booking_time}:00`;
+        const bookingTimeError = getBookingTimeValidationError(startTime, BOOKING_CHANNEL.ONLINE);
+        if (bookingTimeError) {
+          await sendCustomerMessage(chatId, `🤖 ${bookingTimeError}`);
+          return;
+        }
+
+        const endTime = calculateEndTime(startTime);
+        const options = await db.getAvailableBookingTableOptions(aiResult.party_size, startTime, endTime);
+
+        if (options.length === 0) {
+          await sendCustomerMessage(
+            chatId,
+            `🤖 Rất tiếc, khung giờ ${aiResult.booking_time} ngày ${aiResult.booking_date} cho ${aiResult.party_size} người đã hết bàn phù hợp. Vui lòng chọn khung giờ khác.`,
+            getMainKeyboard()
+          );
+          return;
+        }
+
+        newSession.startTime = startTime;
+        newSession.endTime = endTime;
+        newSession.availableOptions = options;
+        newSession.selectedOption = options[0];
+
+        if (!newSession.guestName) {
+          newSession.step = BOOKING_BOT_STEP.NAME;
+          bookingSessions.set(chatId, newSession);
+          await sendCustomerMessage(
+            chatId,
+            `🤖 Đã ghi nhận yêu cầu đặt bàn:\n• Số khách: ${aiResult.party_size} người\n• Ngày: ${aiResult.booking_date}\n• Giờ: ${aiResult.booking_time}${aiResult.area_preference ? `\n• Khu vực: ${aiResult.area_preference}` : ""}\n• Bàn xếp: ${options[0].tables.map(t => t.name).join(", ")}\n\nVui lòng cho biết tên của bạn:`
+          );
+          return;
+        } else if (!newSession.guestPhone) {
+          newSession.step = BOOKING_BOT_STEP.PHONE;
+          bookingSessions.set(chatId, newSession);
+          await sendCustomerMessage(chatId, "Vui lòng nhập số điện thoại liên hệ.");
+          return;
+        } else {
+          newSession.step = BOOKING_BOT_STEP.CONFIRMATION;
+          bookingSessions.set(chatId, newSession);
+          await askForConfirmation(chatId, newSession);
+          return;
+        }
+      } else {
+        bookingSessions.set(chatId, newSession);
+        await sendCustomerMessage(chatId, `🤖 ${aiResult.reply_prompt}`);
+        return;
+      }
+    } else if (aiResult.reply_prompt) {
+      // General question answered by Gemini AI naturally!
+      await sendCustomerMessage(chatId, `🤖 ${aiResult.reply_prompt}`);
+      return;
+    }
+  }
+
+  await sendCustomerMessage(chatId, "Xin chào! Em có thể giúp gì cho anh/chị ạ?", getMainKeyboard());
 };
 
 /** Answers a Telegram button click and advances the corresponding booking state. */
@@ -872,7 +1080,12 @@ const pollCustomerBot = async (): Promise<void> => {
       }
     }
   } catch (error) {
-    console.error("Telegram Customer Bot polling lỗi:", (error as Error).message);
+    const msg = (error as Error).message;
+    console.error("Telegram Customer Bot polling lỗi:", msg);
+    // Exponential / backoff delay on conflict error to prevent log spamming
+    if (msg.includes("Conflict") || msg.includes("terminated")) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
   }
 };
 
