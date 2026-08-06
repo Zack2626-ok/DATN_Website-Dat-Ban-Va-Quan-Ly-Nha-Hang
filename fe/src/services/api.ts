@@ -1,4 +1,4 @@
-﻿import axiosInstance from "./axiosInstance";
+import axiosInstance from "./axiosInstance";
 import type { Order } from "../interfaces";
 
 const api = axiosInstance;
@@ -64,6 +64,14 @@ export const recallKdsItemStatusApi = async (id: string | number): Promise<any> 
  */
 export const getKdsVoidAlertsApi = async (): Promise<any[]> => {
   const response = await api.get("/kds/void-alerts");
+  return response.data.data;
+};
+
+/**
+ * Reuse a cooked cancelled item for another waiting table
+ */
+export const reuseKdsItemApi = async (cancelledItemId: string | number, targetItemId: string | number): Promise<any> => {
+  const response = await api.post(`/kds/items/${cancelledItemId}/reuse-to/${targetItemId}`);
   return response.data.data;
 };
 

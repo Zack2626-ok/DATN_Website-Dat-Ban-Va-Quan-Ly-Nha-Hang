@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { io } from "socket.io-client";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, RefreshCw, RotateCcw, Printer } from "lucide-react";
 import { Modal } from "../../../components/Modal";
@@ -200,6 +201,41 @@ export const OrderPage: React.FC = () => {
     fetchOrderData(false);
   }, [fetchOrderData]);
 
+  // Bộ lắng nghe đồng bộ thời gian thực bằng Socket.IO
+  useEffect(() => {
+    const socketUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      console.log("⚡ Connected to Socket.io Server for Waiter Order Page");
+    });
+
+    socket.on("order_updated", () => {
+      fetchOrderData(false);
+    });
+    socket.on("kds_updated", () => {
+      fetchOrderData(false);
+    });
+    socket.on("table_updated", () => {
+      fetchOrderData(false);
+    });
+    socket.on("order:item_voided", () => {
+      fetchOrderData(false);
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("order_updated");
+      socket.off("kds_updated");
+      socket.off("table_updated");
+      socket.off("order:item_voided");
+      socket.disconnect();
+      console.log("🔌 Disconnected Socket.io Client for Waiter Order Page");
+    };
+  }, [fetchOrderData]);
+
   const filteredMenu = useMemo(() => {
     return menuItems.filter((item) => {
       const matchCat = selectedCategoryId === "all" || item.category_id === selectedCategoryId;
@@ -256,6 +292,7 @@ export const OrderPage: React.FC = () => {
         quantity: qty,
         unit_price: targetItem.price,
         kitchen_note: note?.trim() || undefined,
+        created_by: getCurrentUserId(),
       });
 
       setOrderItems((prev) => {
@@ -452,6 +489,14 @@ export const OrderPage: React.FC = () => {
 
   const handleVoidUnfinishedAndRequestPayment = async () => {
     if (!tableId || !orderId || !unfinishedPaymentModal) return;
+
+    // Kiểm tra xem có món nào đang nấu hoặc đã hoàn thành hay không
+    const cookingOrDoneItems = unfinishedPaymentModal.filter((i) => i.status === "cooking" || i.status === "done");
+    if (cookingOrDoneItems.length > 0) {
+      toast.error(`Không thể tự động hủy vì có ${cookingOrDoneItems.length} món đang nấu hoặc đã hoàn thành trên bếp!`);
+      return;
+    }
+
     try {
       setProcessingPaymentRequest(true);
       for (const item of unfinishedPaymentModal) {
@@ -808,14 +853,26 @@ export const OrderPage: React.FC = () => {
                               : "🛎"} Đã mang ra
                           </button>
                         )}
-                        {/* Nút Hủy — không hiện khi đã served hoặc voided */}
-                        {item.status !== "voided" && item.status !== "served" && (
+                        {/* Nút Hủy / Trả món — hiện khi chưa nấu, hoặc khi đã hoàn thành/phục vụ (trả món). Khóa khi đang nấu */}
+                        {item.status !== "voided" && (
                           <button
-                            disabled={isOrderLocked}
+                            disabled={isOrderLocked || item.status === "cooking"}
                             onClick={() => !isOrderLocked && setVoidTarget(item)}
-                            className="text-xs text-red-500 font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 hover:text-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            className={`text-xs font-bold flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                              item.status === "cooking"
+                                ? "text-slate-400 bg-slate-100 cursor-not-allowed"
+                                : item.status === "done" || item.status === "served"
+                                ? "text-orange-600 bg-orange-50 hover:bg-orange-100 hover:text-orange-700"
+                                : "text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700"
+                            }`}
+                            title={item.status === "cooking" ? "Không thể hủy món ăn khi bếp đang nấu" : undefined}
                           >
-                            <XCircle size={13} /> Hủy
+                            <XCircle size={13} />{" "}
+                            {item.status === "cooking"
+                              ? "Đang nấu"
+                              : item.status === "done" || item.status === "served"
+                              ? "Trả món"
+                              : "Hủy"}
                           </button>
                         )}
                       </div>

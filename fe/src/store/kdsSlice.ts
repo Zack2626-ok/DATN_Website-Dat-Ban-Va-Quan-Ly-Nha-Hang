@@ -5,6 +5,7 @@ import {
   updateKdsBatchStatusApi,
   recallKdsItemStatusApi,
   getKdsVoidAlertsApi,
+  reuseKdsItemApi,
 } from "../services/api";
 
 export interface KdsItem {
@@ -27,6 +28,8 @@ export interface KdsItem {
   voidReason?: string;
   voidedAt?: string;
   chefDismissed?: number;
+  isCookedCancelled?: number;
+  wasReused?: number;
   waiterName?: string;
 }
 
@@ -140,6 +143,20 @@ export const fetchKdsVoidAlerts = createAsyncThunk(
   }
 );
 
+export const reuseKdsItem = createAsyncThunk(
+  "kds/reuseKdsItem",
+  async (
+    { cancelledItemId, targetItemId }: { cancelledItemId: string | number; targetItemId: string | number },
+    { rejectWithValue }
+  ) => {
+    try {
+      return await reuseKdsItemApi(cancelledItemId, targetItemId);
+    } catch (err: any) {
+      return rejectWithValue(err.message || "Không thể tái sử dụng món ăn");
+    }
+  }
+);
+
 const kdsSlice = createSlice({
   name: "kds",
   initialState,
@@ -165,7 +182,15 @@ const kdsSlice = createSlice({
     updateItemStatusLocal: (state, action: PayloadAction<{ id: string | number; status: any }>) => {
       const item = state.items.find((i) => i.id === action.payload.id);
       if (item) {
-        item.status = action.payload.status;
+        const status = action.payload.status;
+        if (status === "dismissed" || status === "discarded") {
+          item.chefDismissed = 1;
+          if (status === "discarded") {
+            item.isCookedCancelled = 0;
+          }
+        } else {
+          item.status = status;
+        }
         item.updatedAt = new Date().toISOString();
       }
     },
@@ -264,7 +289,14 @@ const kdsSlice = createSlice({
         const { id, status } = action.meta.arg;
         const item = state.items.find((i) => i.id === id);
         if (item) {
-          item.status = status as any;
+          if (status === "dismissed" || status === "discarded") {
+            item.chefDismissed = 1;
+            if (status === "discarded") {
+              item.isCookedCancelled = 0;
+            }
+          } else {
+            item.status = status as any;
+          }
           item.updatedAt = new Date().toISOString();
         }
       })
@@ -272,7 +304,14 @@ const kdsSlice = createSlice({
         const { id, status } = action.payload;
         const item = state.items.find((i) => i.id === id);
         if (item) {
-          item.status = status;
+          if (status === "dismissed" || status === "discarded") {
+            item.chefDismissed = 1;
+            if (status === "discarded") {
+              item.isCookedCancelled = 0;
+            }
+          } else {
+            item.status = status;
+          }
           item.updatedAt = new Date().toISOString();
         }
       })

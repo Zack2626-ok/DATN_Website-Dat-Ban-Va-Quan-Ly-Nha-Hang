@@ -682,6 +682,14 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   const handleVoidUnfinishedAndRequestPaymentFromTable = async () => {
     if (!selectedTableId || !activeOrder || !unfinishedPaymentModal) return;
+
+    // Kiểm tra xem có món nào đang nấu hoặc đã hoàn thành hay không
+    const cookingOrDoneItems = unfinishedPaymentModal.filter((i) => i.status === "cooking" || i.status === "done");
+    if (cookingOrDoneItems.length > 0) {
+      toast.error(`Không thể tự động hủy vì có ${cookingOrDoneItems.length} món đang nấu hoặc đã hoàn thành trên bếp!`);
+      return;
+    }
+
     try {
       setProcessingPaymentRequest(true);
       for (const item of unfinishedPaymentModal) {
