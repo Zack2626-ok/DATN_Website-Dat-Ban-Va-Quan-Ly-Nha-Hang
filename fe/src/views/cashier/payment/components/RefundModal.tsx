@@ -68,9 +68,8 @@ export const RefundModal: React.FC<RefundModalProps> = ({
     (sum, item) => sum + getItemPrice(item) * getItemQty(item),
     0
   );
-  const refundVat = Math.round(refundSubtotal * 0.10);
-  // Hoàn = giá món + VAT, không trừ discount/điểm (đó là quyền lợi khách đã được hưởng)
-  const totalRefundAmount = refundSubtotal + refundVat;
+  // Hoàn = giá món gốc, không tính thuế VAT
+  const totalRefundAmount = refundSubtotal;
 
   const handlePrintRefundReceipt = (refundData: any) => {
     const printWindow = window.open("", "_blank", "width=380,height=600");
@@ -129,10 +128,6 @@ export const RefundModal: React.FC<RefundModalProps> = ({
         <div class="row">
           <span>Tạm tính món hoàn:</span>
           <span>${refundSubtotal.toLocaleString("vi-VN")} đ</span>
-        </div>
-        <div class="row">
-          <span>VAT hoàn lại (10%):</span>
-          <span>${refundVat.toLocaleString("vi-VN")} đ</span>
         </div>
         <div class="divider"></div>
         <div class="row total-row">
@@ -325,10 +320,6 @@ export const RefundModal: React.FC<RefundModalProps> = ({
             <div className="flex justify-between items-center text-slate-600">
               <span>Tạm tính (món hoàn):</span>
               <span className="font-bold text-slate-700">{refundSubtotal.toLocaleString("vi-VN")} đ</span>
-            </div>
-            <div className="flex justify-between items-center text-slate-600">
-              <span>VAT hoàn lại (10%):</span>
-              <span className="font-bold text-slate-700">{refundVat.toLocaleString("vi-VN")} đ</span>
             </div>
             <div className="border-t border-slate-300 pt-1.5 flex justify-between items-center">
               <span className="font-black text-xs text-slate-800 uppercase">TỔNG TIỀN HOÀN TRẢ:</span>

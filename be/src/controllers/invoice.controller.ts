@@ -44,6 +44,7 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       createdAt: o.created_at,
       orderType: o.order_type,
       paymentMethod: o.paymentMethod || undefined,
+      is_early_payment: o.is_early_payment,
     }));
 
     // Nếu không có món nào (0 món) thì không đưa vào thu ngân
@@ -236,16 +237,21 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       if (order.is_early_payment) {
         await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
         req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
+        req.app.get("io")?.emit("table:status_changed", { tableId: Number(order.table_id), status: "serving" });
       } else {
         const subResult = await db.completeSubOrderPayment(Number(id));
-        if (!subResult.sessionCompleted) {
-          // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
-          req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
-        } else {
-          // Đã thanh toán HẾT các nhóm trong phiên split, mới giải phóng bàn vật lý!
+        if (subResult.sessionCompleted || !subResult.isSplitOrder) {
+          // Nếu không thuộc phiên tách bàn hoặc phiên tách bàn đã hoàn tất các nhóm
+          // tiến hành giải phóng cụm bàn (gộp bàn nếu có) và đưa bàn về trạng thái cleaning/empty
           const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
           req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
           req.app.get("io")?.emit("table:released", { tableId: Number(order.table_id) });
+          releasedTableIds.forEach((tId) => {
+            req.app.get("io")?.emit("table:status_changed", { tableId: tId, status: "cleaning" });
+          });
+        } else {
+          // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
+          req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
         }
       }
     }

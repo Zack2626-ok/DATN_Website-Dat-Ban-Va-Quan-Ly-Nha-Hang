@@ -11,6 +11,7 @@ import {
   type BookingChannel,
 } from "../constants/booking";
 import { getBookingTimeValidationError } from "../utils/bookingTime";
+import { io } from "../server";
 
 /** Builds a Vietnam-local booking datetime string from a date and time query. */
 const buildBookingDateTime = (date: string, time: string): string => `${date} ${time}:00`;
@@ -148,6 +149,16 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     try {
       const fullBooking = await db.getBookingById(booking.id);
       if (fullBooking) {
+        // Emit Socket.io events for real-time table status update on Waiter/Manager UI
+        io.emit("booking:created", { booking: fullBooking });
+        if (fullBooking.table_id) {
+          io.emit("table:status_changed", {
+            tableId: fullBooking.table_id,
+            status: "reserved",
+            guest_name: fullBooking.guest_name,
+          });
+        }
+
         // Gửi thông báo Telegram tới nhóm Waiter
         notifyWaitersAboutBooking(fullBooking).catch((tgErr) => {
           console.error("⚠️ Lỗi khi gửi Telegram cho nhóm Waiter:", (tgErr as Error).message);

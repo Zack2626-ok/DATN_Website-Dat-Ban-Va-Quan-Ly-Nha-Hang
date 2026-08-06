@@ -832,6 +832,15 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: added bookings deposit columns");
     }
+
+    const bookingEmailCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'guest_email'`,
+    );
+    if (bookingEmailCols.length === 0) {
+      await query(`ALTER TABLE bookings ADD COLUMN guest_email VARCHAR(255) DEFAULT NULL AFTER guest_phone`);
+      console.log("✅ Migration: added bookings.guest_email");
+    }
     const bookingMenuItemsTable = await query<any[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_menu_items'`,
@@ -945,6 +954,7 @@ const runSchemaMigrations = async (): Promise<void> => {
     }
 
     // Migration: Add stock_in_id and update reason ENUM in stock_out
+    await ensureRefundColumns();
     const stockOutCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_out' AND COLUMN_NAME = 'stock_in_id'`
@@ -958,6 +968,7 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added stock_in_id to stock_out table");
     }
 
+<<<<<<< HEAD
     // Ensure table_split_sessions table exists
     const splitSessionsExists = await query<any[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
@@ -1046,6 +1057,86 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: created invoice_item_splits table");
     }
 
+=======
+    await ensureRefundColumns();
+    await ensureEarlyPaymentColumns();
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS table_split_sessions (
+        id INT NOT NULL AUTO_INCREMENT,
+        parent_table_id INT NOT NULL,
+        parent_order_id INT NOT NULL,
+        status ENUM('active', 'completed', 'cancelled') NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        closed_at DATETIME NULL,
+        PRIMARY KEY (id),
+        INDEX idx_split_sessions_table (parent_table_id),
+        INDEX idx_split_sessions_order (parent_order_id),
+        INDEX idx_split_sessions_status (status),
+        CONSTRAINT fk_split_session_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_split_session_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS table_splits (
+        id INT NOT NULL AUTO_INCREMENT,
+        split_session_id INT NOT NULL,
+        parent_table_id INT NOT NULL,
+        parent_order_id INT NOT NULL,
+        child_order_id INT NOT NULL,
+        child_label VARCHAR(100) NOT NULL,
+        guest_count INT NOT NULL DEFAULT 1,
+        status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        closed_at DATETIME NULL,
+        PRIMARY KEY (id),
+        INDEX idx_splits_session (split_session_id),
+        INDEX idx_splits_parent_table (parent_table_id),
+        INDEX idx_splits_parent_order (parent_order_id),
+        INDEX idx_splits_child_order (child_order_id),
+        INDEX idx_splits_status (status),
+        CONSTRAINT fk_splits_session FOREIGN KEY (split_session_id) REFERENCES table_split_sessions(id) ON DELETE CASCADE,
+        CONSTRAINT fk_splits_parent_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_splits_parent_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        CONSTRAINT fk_splits_child_order FOREIGN KEY (child_order_id) REFERENCES orders(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS invoice_item_splits (
+        id INT NOT NULL AUTO_INCREMENT,
+        parent_invoice_id INT NOT NULL,
+        child_invoice_id INT NOT NULL,
+        order_item_id INT NOT NULL,
+        quantity INT NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_item_splits_parent (parent_invoice_id),
+        INDEX idx_item_splits_child (child_invoice_id),
+        INDEX idx_item_splits_order_item (order_item_id),
+        CONSTRAINT fk_item_splits_parent FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+        CONSTRAINT fk_item_splits_child FOREIGN KEY (child_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+        CONSTRAINT fk_item_splits_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    // Migration: Ensure debt_payments table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS debt_payments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        supplier_id INT NOT NULL,
+        amount DECIMAL(14,2) NOT NULL,
+        method VARCHAR(50) NOT NULL DEFAULT 'transfer',
+        note TEXT NULL,
+        paid_by INT NULL,
+        paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_debt_payments_supplier (supplier_id),
+        CONSTRAINT fk_debt_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+>>>>>>> 4b5d994736d483f2d3fc05aa5c3b277cc7399714
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -2650,15 +2741,16 @@ export const getBookingSchedule = async (
     `SELECT b.id, b.confirmation_code, b.guest_name, b.guest_phone, b.guest_email,
             b.party_size, b.start_time, b.end_time, b.status, b.guest_note, b.note,
             b.table_id AS primary_table_id, primary_table.name AS primary_table_name,
-            COALESCE(GROUP_CONCAT(DISTINCT allocated_table.name ORDER BY bta.is_primary DESC, allocated_table.name SEPARATOR ', '), primary_table.name) AS table_names,
-            COALESCE(GROUP_CONCAT(DISTINCT allocated_table.id ORDER BY bta.is_primary DESC, allocated_table.name), CAST(b.table_id AS CHAR)) AS table_ids,
-            COALESCE(SUM(bta.allocated_capacity), primary_table.capacity) AS total_capacity,
+            COALESCE(GROUP_CONCAT(DISTINCT all_tables.name ORDER BY all_bta.is_primary DESC, all_tables.name SEPARATOR ', '), primary_table.name) AS table_names,
+            COALESCE(GROUP_CONCAT(DISTINCT all_tables.id ORDER BY all_bta.is_primary DESC, all_tables.name), CAST(b.table_id AS CHAR)) AS table_ids,
+            COALESCE(SUM(DISTINCT all_bta.allocated_capacity), primary_table.capacity) AS total_capacity,
             DATE_SUB(b.start_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_open_at,
             DATE_SUB(b.end_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_close_at
      FROM bookings b
      LEFT JOIN tables primary_table ON primary_table.id = b.table_id
      LEFT JOIN booking_table_assignments bta ON bta.booking_id = b.id
-     LEFT JOIN tables allocated_table ON allocated_table.id = bta.table_id
+     LEFT JOIN booking_table_assignments all_bta ON all_bta.booking_id = b.id
+     LEFT JOIN tables all_tables ON all_tables.id = all_bta.table_id
      ${whereClause}
      GROUP BY b.id
      ${orderByClause}`,
@@ -3269,9 +3361,7 @@ export const payBookingDeposit = async (id: number): Promise<boolean> => {
   return true;
 };
 
-let earlyPaymentColumnsEnsured = false;
 export const ensureEarlyPaymentColumns = async (): Promise<void> => {
-  if (earlyPaymentColumnsEnsured) return;
   try {
     const earlyPaymentColumn = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -3282,15 +3372,12 @@ export const ensureEarlyPaymentColumns = async (): Promise<void> => {
       await query(`ALTER TABLE orders ADD COLUMN is_early_paid TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
       console.log("Migration: added orders.is_early_payment and orders.is_early_paid");
     }
-    earlyPaymentColumnsEnsured = true;
   } catch (err) {
     console.error("Error ensuring early payment columns:", err);
   }
 };
 
-let refundColumnsEnsured = false;
 export const ensureRefundColumns = async (): Promise<void> => {
-  if (refundColumnsEnsured) return;
   try {
     const colOrderItems = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -3313,15 +3400,109 @@ export const ensureRefundColumns = async (): Promise<void> => {
       await query(`ALTER TABLE orders ADD COLUMN has_refund TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
       console.log("Migration: added orders refund columns");
     }
-    refundColumnsEnsured = true;
   } catch (err) {
     console.error("Error ensuring refund columns:", err);
   }
 };
 
+export const ensureResmanagerTablesSchema = async (): Promise<void> => {
+  try {
+    await ensureEarlyPaymentColumns();
+    await ensureRefundColumns();
+
+    // 1. Ensure table_merges.status and extra columns
+    const tmCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges'`,
+    ).catch(() => []);
+    if (tmCols && tmCols.length > 0) {
+      const tmSet = new Set(tmCols.map((c) => String(c.COLUMN_NAME)));
+      if (!tmSet.has("status")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN status ENUM('active','resolved') NOT NULL DEFAULT 'active'`).catch(() => {});
+      }
+      if (!tmSet.has("primary_order_id")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN primary_order_id INT NULL`).catch(() => {});
+      }
+      if (!tmSet.has("merged_order_id")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN merged_order_id INT NULL`).catch(() => {});
+      }
+      if (!tmSet.has("merged_by")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN merged_by INT NULL`).catch(() => {});
+      }
+      if (!tmSet.has("resolved_at")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN resolved_at DATETIME NULL`).catch(() => {});
+      }
+    }
+
+    // 2. Ensure tables.merged_into_table_id
+    const tCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tables' AND COLUMN_NAME = 'merged_into_table_id'`,
+    ).catch(() => []);
+    if (!tCols || tCols.length === 0) {
+      await query(`ALTER TABLE tables ADD COLUMN merged_into_table_id INT NULL`).catch(() => {});
+    }
+
+    // 3. Ensure orders.merged_into_order_id & booking_id & guest_count
+    const oCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'`,
+    ).catch(() => []);
+    if (oCols && oCols.length > 0) {
+      const oSet = new Set(oCols.map((c) => String(c.COLUMN_NAME)));
+      if (!oSet.has("merged_into_order_id")) {
+        await query(`ALTER TABLE orders ADD COLUMN merged_into_order_id INT NULL`).catch(() => {});
+      }
+      if (!oSet.has("booking_id")) {
+        await query(`ALTER TABLE orders ADD COLUMN booking_id INT NULL`).catch(() => {});
+      }
+      if (!oSet.has("guest_count")) {
+        await query(`ALTER TABLE orders ADD COLUMN guest_count INT NULL`).catch(() => {});
+      }
+    }
+
+    // 4. Ensure bookings deposit columns
+    const bCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
+    ).catch(() => []);
+    if (!bCols || bCols.length === 0) {
+      await query(`
+        ALTER TABLE bookings 
+        ADD COLUMN pre_order_total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'
+      `).catch(() => {});
+    }
+
+    // 5. Ensure table_splits.status and extra columns
+    const tsCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_splits'`,
+    ).catch(() => []);
+    if (tsCols && tsCols.length > 0) {
+      const tsSet = new Set(tsCols.map((c) => String(c.COLUMN_NAME)));
+      if (!tsSet.has("status")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active'`).catch(() => {});
+      }
+      if (!tsSet.has("split_session_id")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN split_session_id INT NULL`).catch(() => {});
+      }
+      if (!tsSet.has("guest_count")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN guest_count INT NOT NULL DEFAULT 1`).catch(() => {});
+      }
+      if (!tsSet.has("closed_at")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN closed_at DATETIME NULL`).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error("Error in ensureResmanagerTablesSchema:", err);
+  }
+};
+
 // ===== RESMANAGER TABLE DATABASE OPERATIONS =====
 export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any[]> => {
-  await ensureEarlyPaymentColumns();
+  await ensureResmanagerTablesSchema();
   let sql = `
     SELECT t.*, a.name AS area_name,
            COALESCE(o.guest_name, b.guest_name) AS guest_name,
@@ -5065,6 +5246,7 @@ export const reuseCancelledKdsItem = async (
 
 
 export const getResmanagerPayments = async (): Promise<any[]> => {
+  await ensureRefundColumns();
   const rows = await query<any[]>(`
     SELECT p.id,
            COALESCE(i.order_id, p.invoice_id) AS orderId,
@@ -6447,7 +6629,7 @@ export const moveSplitOrderItems = async (
 };
 
 /** Đóng 1 nhóm sub-order khi thanh toán và kiểm tra hoàn tất phiên tách bàn để giải phóng bàn vật lý */
-export const completeSubOrderPayment = async (childOrderId: number): Promise<{ sessionCompleted: boolean; tableReleased: boolean }> => {
+export const completeSubOrderPayment = async (childOrderId: number): Promise<{ isSplitOrder: boolean; sessionCompleted: boolean; tableReleased: boolean }> => {
   const connection = await ensurePool().getConnection();
   try {
     await connection.beginTransaction();
@@ -6455,21 +6637,24 @@ export const completeSubOrderPayment = async (childOrderId: number): Promise<{ s
     // 1. Cập nhật order status sang completed
     await connection.query("UPDATE orders SET status = 'completed' WHERE id = ?", [childOrderId]);
 
-    // 2. Cập nhật table_splits tương ứng sang status = 'paid'
-    await connection.query("UPDATE table_splits SET status = 'paid', closed_at = NOW() WHERE child_order_id = ?", [childOrderId]);
-
-    // 3. Tìm thông tin split_session
+    // 2 & 3. Tìm thông tin split_session bằng JOIN với orders
     const [splits] = await connection.query<any[]>(
-      "SELECT split_session_id, parent_table_id FROM table_splits WHERE child_order_id = ? LIMIT 1",
+      `SELECT ts.id as split_id, ts.split_session_id, ts.parent_table_id 
+       FROM table_splits ts 
+       JOIN orders o ON ts.parent_table_id = o.table_id AND ts.child_label = o.split_label 
+       WHERE o.id = ? LIMIT 1`,
       [childOrderId]
     );
 
     if (splits.length === 0) {
       await connection.commit();
-      return { sessionCompleted: false, tableReleased: false };
+      return { isSplitOrder: false, sessionCompleted: false, tableReleased: false };
     }
 
-    const { split_session_id, parent_table_id } = splits[0];
+    const { split_id, split_session_id, parent_table_id } = splits[0];
+
+    // Cập nhật table_splits tương ứng sang status = 'paid'
+    await connection.query("UPDATE table_splits SET status = 'paid', closed_at = NOW() WHERE id = ?", [split_id]);
 
     // 4. Kiểm tra xem phiên còn nhóm nào 'active' không
     const [activeSplits] = await connection.query<any[]>(
@@ -6501,7 +6686,7 @@ export const completeSubOrderPayment = async (childOrderId: number): Promise<{ s
     }
 
     await connection.commit();
-    return { sessionCompleted, tableReleased };
+    return { isSplitOrder: true, sessionCompleted, tableReleased };
   } catch (error) {
     await connection.rollback();
     throw error;
