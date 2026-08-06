@@ -187,9 +187,13 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
     `);
     printWindow.document.close();
     printWindow.focus();
+    printWindow.onafterprint = () => {
+      printWindow?.close();
+    };
     setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
+      if (printWindow) {
+        printWindow.print();
+      }
     }, 300);
   };
 

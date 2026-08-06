@@ -139,10 +139,12 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
         {exceedsCapacity && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             <p className="flex items-center gap-2 font-bold">
-              <AlertCircle size={16} />
+              <AlertCircle size={16} className="shrink-0 text-amber-600" />
               Số khách vượt sức chứa chuẩn ({guestCount}/{table.capacity} khách).
             </p>
-            <p className="mt-1 text-xs">Bạn vẫn có thể mở bàn rồi chuyển hoặc gộp bàn để phục vụ đoàn khách.</p>
+            <p className="mt-1 text-xs">
+              Mở bàn thành công nhưng hệ thống sẽ <strong>khóa gọi món</strong>. Bạn bắt buộc phải <strong>Chuyển bàn</strong> hoặc <strong>Gộp bàn</strong> để mở rộng sức chứa mới có thể gọi món.
+            </p>
           </div>
         )}
 

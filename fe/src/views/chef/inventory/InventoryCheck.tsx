@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Search, ArrowLeft, Save, UploadCloud, CheckCircle, ClipboardCheck } from "lucide-react";
 import toast from "react-hot-toast";
-import { getIngredientsApi, updateInventoryQuantityApi } from "../../../services/api";
+import { getIngredientsApi, submitStockCheckApi } from "../../../services/api";
 
 interface InventoryCheckProps {
   onBack: () => void;
@@ -76,21 +76,15 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
     }
 
     try {
-      // Find items with variance
-      const itemsToAdjust = checkItems.filter(item => item.actualStock !== item.systemStock);
-      
-      await Promise.all(itemsToAdjust.map(item => {
-        const diff = item.actualStock - item.systemStock;
-        const type = diff > 0 ? "import" : "adjust"; // If surplus, we "import" it. If deficit, we "adjust" (deduct) it.
-        const absQty = Math.abs(diff);
-
-        return updateInventoryQuantityApi(item.ingredientId, {
-          type,
-          quantity: absQty,
-          unitCost: 0, 
-          reasonOrSupplier: `Cân đối kiểm kê: ${ticketName} - Ghi chú: ${note}`,
-        });
+      // Gửi toàn bộ danh sách kiểm kê lên API stock-check
+      // API này chỉ ghi vào stock_inventory + cập nhật current_stock
+      // KHÔNG tạo stock_in → không xuất hiện ở tab Nhập hàng
+      const records = checkItems.map(item => ({
+        ingredient_id: Number(item.ingredientId),
+        actual_stock: Number(item.actualStock),
       }));
+
+      await submitStockCheckApi(records);
 
       // Remove draft if it was one
       if (draftData?.id) {
@@ -190,7 +184,6 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                         <td className="px-4 py-4 font-medium">{idx + 1}</td>
                         <td className="px-4 py-4">
                           <div className="font-bold text-slate-800">{item.ingredientName}</div>
-                          <div className="text-[10px] text-slate-500 font-normal">Mã: {item.code}</div>
                         </td>
                         <td className="px-4 py-3 text-center font-bold text-slate-600">
                           {item.systemStock} {item.unit}

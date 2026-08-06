@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Outlet, Link, NavLink } from "react-router-dom";
 import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed } from "lucide-react";
-import { HotlineButton } from "../../components/client/HotlineButton";
+import { AIChatWidget } from "../../components/client/AIChatWidget";
 
 const navLinks = [
   { to: "/", label: "Trang chủ", end: true },
@@ -215,7 +215,7 @@ export const ClientLayout: React.FC = () => {
         </div>
       </footer>
 
-      <HotlineButton />
+      <AIChatWidget />
     </div>
   );
 };
