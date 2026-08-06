@@ -909,6 +909,7 @@ const runSchemaMigrations = async (): Promise<void> => {
     }
 
     // Migration: Add stock_in_id and update reason ENUM in stock_out
+    await ensureRefundColumns();
     const stockOutCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_out' AND COLUMN_NAME = 'stock_in_id'`
@@ -921,6 +922,21 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: added stock_in_id to stock_out table");
     }
+
+    // Migration: Ensure debt_payments table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS debt_payments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        supplier_id INT NOT NULL,
+        amount DECIMAL(14,2) NOT NULL,
+        method VARCHAR(50) NOT NULL DEFAULT 'transfer',
+        note TEXT NULL,
+        paid_by INT NULL,
+        paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_debt_payments_supplier (supplier_id),
+        CONSTRAINT fk_debt_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
 
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
@@ -6143,7 +6159,7 @@ export const moveSplitOrderItems = async (
 };
 
 /** Đóng 1 nhóm sub-order khi thanh toán và kiểm tra hoàn tất phiên tách bàn để giải phóng bàn vật lý */
-export const completeSubOrderPayment = async (childOrderId: number): Promise<{ sessionCompleted: boolean; tableReleased: boolean }> => {
+export const completeSubOrderPayment = async (childOrderId: number): Promise<{ isSplitOrder: boolean; sessionCompleted: boolean; tableReleased: boolean }> => {
   const connection = await ensurePool().getConnection();
   try {
     await connection.beginTransaction();
@@ -6162,7 +6178,7 @@ export const completeSubOrderPayment = async (childOrderId: number): Promise<{ s
 
     if (splits.length === 0) {
       await connection.commit();
-      return { sessionCompleted: false, tableReleased: false };
+      return { isSplitOrder: false, sessionCompleted: false, tableReleased: false };
     }
 
     const { split_session_id, parent_table_id } = splits[0];
@@ -6197,7 +6213,7 @@ export const completeSubOrderPayment = async (childOrderId: number): Promise<{ s
     }
 
     await connection.commit();
-    return { sessionCompleted, tableReleased };
+    return { isSplitOrder: true, sessionCompleted, tableReleased };
   } catch (error) {
     await connection.rollback();
     throw error;

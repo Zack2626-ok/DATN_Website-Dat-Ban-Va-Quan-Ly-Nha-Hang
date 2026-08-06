@@ -692,8 +692,9 @@ const handleBookingInput = async (chatId: number, session: BookingSession, text:
   }
 
   if (session.step === BOOKING_BOT_STEP.EMAIL) {
-    if (text !== BOT_ACTION.SKIP_EMAIL && !/^\S+@\S+\.\S+$/.test(text.trim())) {
-      await sendCustomerMessage(chatId, "Email chưa hợp lệ. Vui lòng nhập lại hoặc chọn Bỏ qua.");
+    const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (text !== BOT_ACTION.SKIP_EMAIL && !EMAIL_REGEX.test(text.trim())) {
+      await sendCustomerMessage(chatId, "Email chưa hợp lệ. Vui lòng nhập lại (ví dụ: example@gmail.com) hoặc chọn Bỏ qua.");
       return;
     }
     session.guestEmail = text === BOT_ACTION.SKIP_EMAIL ? undefined : text.trim();
