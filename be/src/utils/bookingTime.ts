@@ -82,7 +82,7 @@ export const getBookingDateValidationError = (
 export const getBookingLastArrivalTime = (channel: BookingChannel): string =>
   channel === BOOKING_CHANNEL.DIRECT ? DIRECT_BOOKING_LAST_ARRIVAL_TIME : ONLINE_BOOKING_LAST_ARRIVAL_TIME;
 
-let bookingTimeValidationEnabled = true;
+let bookingTimeValidationEnabled = false;
 
 export const isBookingTimeValidationEnabled = (): boolean => bookingTimeValidationEnabled;
 

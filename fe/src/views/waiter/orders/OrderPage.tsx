@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
-import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, RefreshCw, RotateCcw, Printer } from "lucide-react";
+import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, RefreshCw, RotateCcw, Printer, AlertTriangle } from "lucide-react";
 import { Modal } from "../../../components/Modal";
 import { VoidItemModal, type OrderItemStatus } from "./VoidItemModal";
 import { toast } from "react-hot-toast";
@@ -213,16 +213,22 @@ export const OrderPage: React.FC = () => {
   const pendingCount = orderItems.filter((i) => i.status === "pending" && !i.held).length;
   const heldCount = orderItems.filter((i) => i.status === "pending" && i.held).length;
 
+  const clusterCap = table?.group_seating_capacity ?? table?.cluster_capacity ?? table?.capacity ?? 0;
+  const isOverCapacity = typeof table?.guest_count === "number" && clusterCap > 0 && table.guest_count > clusterCap;
+
   const isPendingPayment = orderStatus === "pending_payment" || (!table?.is_split && table?.status === "pending_payment");
   const isOrderLocked =
     isPendingPayment ||
     orderStatus === "completed" ||
     orderStatus === "paid" ||
-    orderStatus === "cancelled";
+    orderStatus === "cancelled" ||
+    isOverCapacity;
 
   const handleAddItemToOrder = async (targetItem: WaiterMenuItem, qty: number, note?: string) => {
     if (isOrderLocked) {
-      if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
+      if (isOverCapacity) {
+        toast.error(`⚠️ Bàn đang vượt quá sức chứa (${table?.guest_count}/${clusterCap} khách). Vui lòng Chuyển bàn hoặc Gộp bàn tại Sơ đồ bàn trước khi gọi món!`);
+      } else if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
         toast.error("⚠️ Bàn đang yêu cầu thanh toán (Chờ thanh toán). Hệ thống đã khóa gọi thêm món để tránh sai lệch hóa đơn!");
       } else {
         toast.error("⚠️ Đơn hàng đã hoàn tất hoặc đã hủy, không thể gọi thêm món!");
@@ -440,6 +446,10 @@ export const OrderPage: React.FC = () => {
     if (!orderId) return;
     try {
       setProcessingPaymentRequest(true);
+      const pendingItems = orderItems.filter((i) => i.status === "pending");
+      if (pendingItems.length > 0) {
+        await sendItemsToKitchen(orderId, pendingItems.map((i) => i.id)).catch(console.error);
+      }
       await requestPayment(orderId, undefined, true);
       toast.success("Đã gửi yêu cầu thanh toán sớm cho thu ngân (Bàn vẫn ở trạng thái Đang phục vụ)");
       navigate("/waiter/tables");
@@ -607,8 +617,28 @@ export const OrderPage: React.FC = () => {
             ))}
           </div>
 
-          {/* Status banner when order is locked */}
-          {isOrderLocked && (
+          {/* Status banner when order is locked or over capacity */}
+          {isOverCapacity ? (
+            <div className="mb-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3.5 flex items-center justify-between shadow-sm animate-fade-in">
+              <div className="flex items-center gap-3 text-xs">
+                <AlertTriangle size={20} className="text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-bold text-amber-900 text-sm">
+                    ⚠️ Bàn đang vượt quá sức chứa chuẩn ({table?.guest_count}/{clusterCap} khách)
+                  </p>
+                  <p className="mt-0.5 text-amber-700">
+                    Hệ thống đang <strong>khóa gọi món</strong>. Bạn bắt buộc phải quay lại Sơ đồ bàn để <strong>Chuyển bàn</strong> hoặc <strong>Gộp bàn</strong> mới có thể gọi món.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate("/waiter/tables", { state: { selectedTableId: tableId } })}
+                className="ml-3 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 cursor-pointer shadow-2xs transition-colors"
+              >
+                Đến Sơ đồ bàn
+              </button>
+            </div>
+          ) : isOrderLocked && (
             <div className="mb-4 bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-3.5 flex items-center gap-3 shadow-sm">
               <span className="text-xl">⚠️</span>
               <div className="text-xs">
@@ -999,10 +1029,7 @@ export const OrderPage: React.FC = () => {
                 {(() => {
                   const activeOrderItems = orderItems.filter((i) => i.status !== "voided");
                   const hasPendingItems = activeOrderItems.some((i) => i.status === "pending");
-                  const hasSentToKitchen = activeOrderItems.some(
-                    (i) => i.status === "waiting_kitchen" || i.status === "cooking" || i.status === "done" || i.status === "served"
-                  );
-                  const canEarlyPay = hasSentToKitchen && !hasPendingItems;
+                  const canEarlyPay = activeOrderItems.length > 0;
 
                   if (canEarlyPay) {
                     return (

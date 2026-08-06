@@ -342,19 +342,42 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
 
     // 1) Summary
     const incomeRow = await db.query(
-      `SELECT COALESCE(SUM(GREATEST(0, COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id), inv.total) - COALESCE(o.refunded_total, 0))), 0) AS val 
+      `SELECT COALESCE(SUM(COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id), inv.total)), 0) AS val 
        FROM invoices inv
-       LEFT JOIN orders o ON inv.order_id = o.id
        WHERE inv.status = 'paid' AND inv.paid_at BETWEEN ? AND ?`,
       [startStr, endStr]
     );
-    const totalIncome = Number(incomeRow[0].val);
+    const totalInvoiceIncome = Number(incomeRow[0].val);
 
-    const expenseRow = await db.query(
-      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val FROM stock_in WHERE created_at BETWEEN ? AND ?`,
+    // Tổng tiền trả hàng NCC (hoàn tiền mặt/CK, không phải giảm nợ)
+    // Lấy từ stock_out có reason=return_to_supplier và note KHÔNG chứa "Trừ công nợ"
+    const returnIncomeRow = await db.query(
+      `SELECT COALESCE(SUM(so.quantity * si.unit_cost), 0) AS val
+       FROM stock_out so
+       JOIN stock_in si ON so.stock_in_id = si.id
+       WHERE so.reason = 'return_to_supplier'
+         AND (so.note NOT LIKE '%Trừ công nợ%' AND so.note NOT LIKE '%deduct%')
+         AND so.created_at BETWEEN ? AND ?`,
       [startStr, endStr]
     );
-    const totalExpenses = Number(expenseRow[0].val);
+    const totalReturnIncome = Number(returnIncomeRow[0].val);
+    const totalIncome = totalInvoiceIncome + totalReturnIncome;
+
+    const expenseRow = await db.query(
+      `SELECT COALESCE(
+        (SELECT SUM(quantity * unit_cost) FROM stock_in WHERE created_at BETWEEN ? AND ?)
+        -
+        (SELECT SUM(so.quantity * COALESCE(si.unit_cost, 0)) 
+         FROM stock_out so 
+         LEFT JOIN stock_in si ON so.stock_in_id = si.id 
+         WHERE so.reason = 'return_to_supplier' 
+           AND so.note NOT LIKE '%[LƯU TẠM]%' 
+           AND so.created_at BETWEEN ? AND ?),
+        0
+      ) AS val`,
+      [startStr, endStr, startStr, endStr]
+    );
+    const totalExpenses = Math.max(0, Number(expenseRow[0].val));
     const netProfit = totalIncome - totalExpenses;
 
     // 2) Recent Transactions
@@ -365,12 +388,9 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           CONCAT('INV-', inv.id) as id,
           'income' as type,
           CONCAT('Thanh toán hóa đơn #', inv.order_id) as description,
-          GREATEST(0, COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id), inv.total) - COALESCE(o.refunded_total, 0)) as amount,
+          COALESCE((SELECT SUM(amount) FROM payments WHERE invoice_id = inv.id), inv.total) as amount,
           inv.paid_at as date,
-          CASE
-            WHEN o.has_refund = 1 THEN 'refunded'
-            ELSE 'completed'
-          END as status,
+          'completed' as status,
           inv.order_id as orderId,
           NULL as ingredientName,
           NULL as quantity,
@@ -381,10 +401,11 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           NULL as dueDate,
           NULL as batchCode,
           NULL as note,
-          o.has_refund as hasRefund,
-          o.refunded_total as refundedTotal
+          0 as returnedQuantity,
+          0 as hasRefund,
+          0 as refundedTotal,
+          'invoice' as txSubType
         FROM invoices inv
-        LEFT JOIN orders o ON inv.order_id = o.id
         WHERE inv.status = 'paid' AND inv.paid_at BETWEEN ? AND ?
       )
       UNION ALL
@@ -406,17 +427,56 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           si.due_date as dueDate,
           si.batch_code as batchCode,
           si.note as note,
+          COALESCE((
+            SELECT SUM(so.quantity) 
+            FROM stock_out so 
+            WHERE so.stock_in_id = si.id 
+              AND so.reason = 'return_to_supplier' 
+              AND so.note NOT LIKE '%[LƯU TẠM]%'
+          ), 0) as returnedQuantity,
           NULL as hasRefund,
-          NULL as refundedTotal
+          NULL as refundedTotal,
+          'stock_import' as txSubType
         FROM stock_in si
         JOIN ingredients ing ON si.ingredient_id = ing.id
         LEFT JOIN suppliers sup ON si.supplier_id = sup.id
         WHERE si.created_at BETWEEN ? AND ?
       )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('RET-', so.id) as id,
+          'income' as type,
+          CONCAT('Trả hàng NCC: ', ing.name) as description,
+          (so.quantity * COALESCE(si.unit_cost, 0)) as amount,
+          so.created_at as date,
+          'completed' as status,
+          NULL as orderId,
+          ing.name as ingredientName,
+          so.quantity as quantity,
+          COALESCE(si.unit_cost, 0) as unitCost,
+          ing.unit as ingredientUnit,
+          sup.name as supplierName,
+          0 as isCredit,
+          NULL as dueDate,
+          si.batch_code as batchCode,
+          so.note as note,
+          0 as returnedQuantity,
+          NULL as hasRefund,
+          NULL as refundedTotal,
+          'return_supplier' as txSubType
+        FROM stock_out so
+        JOIN ingredients ing ON so.ingredient_id = ing.id
+        LEFT JOIN stock_in si ON so.stock_in_id = si.id
+        LEFT JOIN suppliers sup ON si.supplier_id = sup.id
+        WHERE so.reason = 'return_to_supplier'
+          AND (so.note NOT LIKE '%Trừ công nợ%' AND so.note NOT LIKE '%deduct%')
+          AND so.created_at BETWEEN ? AND ?
+      )
       ORDER BY date DESC
       LIMIT 100
       `,
-      [startStr, endStr, startStr, endStr]
+      [startStr, endStr, startStr, endStr, startStr, endStr]
     );
 
     sendSuccess(

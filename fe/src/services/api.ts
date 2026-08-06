@@ -1,4 +1,4 @@
-﻿import axiosInstance from "./axiosInstance";
+import axiosInstance from "./axiosInstance";
 import type { Order } from "../interfaces";
 
 const api = axiosInstance;
@@ -127,6 +127,11 @@ export const updateInventoryQuantityApi = async (id: string | number, payload: a
   return response.data.data;
 };
 
+export const deleteInventoryTransactionApi = async (id: string | number): Promise<any> => {
+  const response = await api.delete(`/inventory/transactions/${id}`);
+  return response.data.data;
+};
+
 export const getIngredientBatchesApi = async (id: string | number): Promise<any[]> => {
   const response = await api.get(`/inventory/${id}/batches`);
   return response.data.data;
@@ -183,5 +188,15 @@ export const deleteSupplierApi = async (id: string | number): Promise<any> => {
 
 export const getAllBatchesApi = async (): Promise<any> => {
   const response = await api.get('/inventory/batches/all');
+  return response.data.data;
+};
+
+/**
+ * Submit inventory check records (cân bằng kho kiểm kê)
+ * Dùng route POST /inventory/stock-check thay vì updateInventoryQuantity
+ * để tránh tạo stock_in làm ô nhiễm tab Nhập hàng
+ */
+export const submitStockCheckApi = async (records: { ingredient_id: number; actual_stock: number }[]): Promise<any> => {
+  const response = await api.post('/inventory/stock-check', { records });
   return response.data.data;
 };

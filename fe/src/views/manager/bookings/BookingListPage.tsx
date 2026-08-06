@@ -28,6 +28,7 @@ import {
   Booking,
 } from "../../../services/bookingService";
 import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
+import { getBookingValidationStatus } from "../../../services/systemService";
 import { useAppSelector } from "../../../store/hooks";
 import { CancelledBookings } from "./components/CancelledBookings";
 import { BOOKING_DURATION_MINUTES, BOOKING_MAX_ADVANCE_DAYS, MAX_BOOKING_PARTY_SIZE } from "../../../constants/booking";
@@ -85,6 +86,11 @@ export const BookingListPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState(true);
+
+  useEffect(() => {
+    getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
+  }, []);
 
   /** Formats the current local instant for a datetime-local input. */
   const getLocalNowString = () => {
@@ -647,8 +653,8 @@ export const BookingListPage: React.FC = () => {
                   <input
                     type="datetime-local"
                     required
-                    min={getLocalNowString()}
-                    max={getMaximumBookingDateTime()}
+                    min={bookingValidationEnabled ? getLocalNowString() : undefined}
+                    max={bookingValidationEnabled ? getMaximumBookingDateTime() : undefined}
                     value={formData.start_time}
                     onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                     className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800"

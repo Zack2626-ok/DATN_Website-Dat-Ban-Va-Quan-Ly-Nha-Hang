@@ -44,6 +44,7 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       createdAt: o.created_at,
       orderType: o.order_type,
       paymentMethod: o.paymentMethod || undefined,
+      is_early_payment: o.is_early_payment,
     }));
 
     // Nếu không có món nào (0 món) thì không đưa vào thu ngân

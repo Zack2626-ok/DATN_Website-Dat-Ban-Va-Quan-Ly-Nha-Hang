@@ -56,9 +56,7 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
   const isPaid = invoice.invoiceStatus === "paid";
   const isCancelled = invoice.invoiceStatus === "cancelled";
   const isPendingPayment = invoice.status === "pending_payment";
-  const isEarlyPayment = Boolean(invoice.is_early_payment) || (invoice.status === "serving" && invoice.items.some(
-    (item) => item.status && ["waiting_kitchen", "cooking", "done"].includes(item.status)
-  ));
+  const isEarlyPayment = Boolean(invoice.is_early_payment);
   const canAct = !isPaid && !isCancelled;
 
   const finalAmount = invoice.totalAmount;

@@ -21,6 +21,7 @@ import {
   Copy,
   Link2,
   UsersRound,
+  Lock,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -487,9 +488,20 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             : t,
         ),
       );
+      const clusterCap = selectedTable ? getTableClusterCapacity(selectedTable) : 0;
+      const exceedsCap = clusterCap > 0 && data.guestCount > clusterCap;
+
       toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
-      navigate(`/waiter/orders/${selectedTableId}`);
+
+      if (exceedsCap) {
+        toast.error(
+          `⚠️ Bàn ${selectedTable?.name} vượt quá sức chứa (${data.guestCount}/${clusterCap} khách). Hệ thống đã khóa gọi món, vui lòng Chuyển bàn hoặc Gộp bàn!`,
+          { duration: 6000 }
+        );
+      } else {
+        navigate(`/waiter/orders/${selectedTableId}`);
+      }
     } catch (error: unknown) {
       toast.error(getOpenTableErrorMessage(error));
       console.error(error);
@@ -1261,12 +1273,26 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                               </h4>
                             </div>
                             {selectedTable.status === "serving" && !selectedTable.is_merged_child && (
-                              <button
-                                onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
-                                className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
-                              >
-                                <Plus size={13} /> Thêm món
-                              </button>
+                              isTableOverClusterCapacity(selectedTable) ? (
+                                <button
+                                  onClick={() => {
+                                    toast.error(
+                                      `⚠️ Bàn đang vượt quá sức chứa (${selectedTable.guest_count}/${getTableClusterCapacity(selectedTable)} khách). Vui lòng Chuyển bàn hoặc Gộp bàn trước khi gọi món!`
+                                    );
+                                  }}
+                                  className="flex items-center gap-1 rounded-lg bg-amber-500 text-white px-2.5 py-1 text-[11px] font-bold cursor-not-allowed opacity-90 shadow-2xs"
+                                  title="Bàn vượt quá sức chứa. Vui lòng Chuyển bàn hoặc Gộp bàn trước khi gọi món!"
+                                >
+                                  <Lock size={13} /> Khóa gọi món
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
+                                  className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
+                                >
+                                  <Plus size={13} /> Thêm món
+                                </button>
+                              )
                             )}
                           </div>
 
@@ -1393,8 +1419,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                               )}
                             </div>
                           )}
-
-                          {selectedTable.status === "serving" && !selectedTable.is_early_paid && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                          {selectedTable.status === "serving" && !selectedTable.is_early_paid && !selectedTable.is_early_payment && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
                             <button
                               onClick={handleRequestPaymentFromTable}
                               className="w-full rounded-xl border-2 border-purple-200 bg-purple-50/60 px-3 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 shadow-2xs"
@@ -1404,16 +1429,33 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                           )}
 
                           {selectedTable.status === "serving" && selectedTable.is_early_paid && (
-                            <button
-                              onClick={async () => {
-                                await updateTableStatus(Number(selectedTable.id), "empty");
-                                toast.success("Đã dọn dẹp và trả bàn trống thành công!");
-                                fetchData();
-                              }}
-                              className="w-full rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-bold hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-2 shadow-sm"
-                            >
-                              <CheckCircle size={15} /> 🧹 Đã dọn dẹp (Khách rời đi, trả bàn trống)
-                            </button>
+                            (() => {
+                              const activeItems = (activeOrder?.items || []).filter(
+                                (i) => i.status !== "voided" && i.status !== "cancelled"
+                              );
+                              const isAllDishesServed = activeItems.every((i) => i.status === "served");
+
+                              if (!isAllDishesServed) {
+                                return (
+                                  <div className="w-full rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-center text-[11px] font-semibold text-amber-800 mt-2 shadow-2xs">
+                                    ⚠️ Còn món chưa mang ra bàn. Vui lòng chuyển tất cả món sang <strong>&quot;Đã mang ra&quot;</strong> trước khi dọn dẹp trả bàn.
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <button
+                                  onClick={async () => {
+                                    await updateTableStatus(Number(selectedTable.id), "empty");
+                                    toast.success("Đã dọn dẹp và trả bàn trống thành công!");
+                                    fetchData();
+                                  }}
+                                  className="w-full rounded-xl bg-emerald-600 text-white px-3 py-2.5 text-xs font-bold hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-2 shadow-sm"
+                                >
+                                  <CheckCircle size={15} /> 🧹 Đã dọn dẹp (Khách rời đi, trả bàn trống)
+                                </button>
+                              );
+                            })()
                           )}
                         </div>
                       )}

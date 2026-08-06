@@ -144,7 +144,7 @@ export const BookingPage: React.FC = () => {
       toast.error("Vui lòng chọn ngày và giờ đặt bàn!");
       return;
     }
-    if (form.date > getMaximumBookingDate()) {
+    if (bookingValidationEnabled && form.date > getMaximumBookingDate()) {
       toast.error(`Chỉ có thể đặt bàn trong vòng ${BOOKING_MAX_ADVANCE_DAYS} ngày kể từ hôm nay.`);
       return;
     }
@@ -157,7 +157,7 @@ export const BookingPage: React.FC = () => {
     // Kiểm tra không cho đặt giờ trong quá khứ nếu chọn ngày hôm nay
     const selectedDateTime = new Date(`${form.date}T${form.time}:00`);
     const now = new Date();
-    if (selectedDateTime < now) {
+    if (bookingValidationEnabled && selectedDateTime < now) {
       toast.error("Thời gian đặt bàn không được ở quá khứ. Vui lòng chọn thời gian khác!");
       return;
     }
@@ -619,8 +619,8 @@ export const BookingPage: React.FC = () => {
                     type="date"
                     value={form.date}
                     onChange={(e) => setField("date", e.target.value)}
-                    min={new Date().toISOString().split("T")[0]}
-                    max={getMaximumBookingDate()}
+                    min={bookingValidationEnabled ? new Date().toISOString().split("T")[0] : undefined}
+                    max={bookingValidationEnabled ? getMaximumBookingDate() : undefined}
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
                   />
                 </div>
@@ -629,8 +629,8 @@ export const BookingPage: React.FC = () => {
                   <input
                     required
                     type="time"
-                    min={PUBLIC_BOOKING_HOURS.OPEN}
-                    max={ONLINE_BOOKING_LAST_ARRIVAL_TIME}
+                    min={bookingValidationEnabled ? PUBLIC_BOOKING_HOURS.OPEN : undefined}
+                    max={bookingValidationEnabled ? ONLINE_BOOKING_LAST_ARRIVAL_TIME : undefined}
                     value={form.time}
                     onChange={(e) => setField("time", e.target.value)}
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
