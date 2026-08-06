@@ -298,6 +298,55 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
     }
 
     if (type === "import") {
+      // Validate unit if provided
+      const unitCheck = req.body.unit || req.body.displayUnit;
+      if (unitCheck && typeof unitCheck === "string" && unitCheck.trim() !== "") {
+        const cleanUnit = unitCheck.trim().toLowerCase();
+        const ALLOWED_UNITS = [
+          "kg", "g", "lít", "lit", "ml", "bao", "hộp", "hop", "chai", "lon",
+          "gói", "goi", "túi", "tui", "bó", "bo", "quả", "qua", "trái", "trai",
+          "củ", "cu", "con", "khay", "bình", "binh", "hũ", "hu", "vỉ", "vi",
+          "bánh", "banh", "cuộn", "cuon"
+        ];
+        if (!ALLOWED_UNITS.includes(cleanUnit)) {
+          sendError(res, `Đơn vị tính "${unitCheck}" không hợp lệ! Đơn vị phải là (kg, g, lít, ml, bao, hộp, chai...).`, 400);
+          return;
+        }
+      }
+
+      // Check duplicate batch code in recent stock_in entries (within 30 days)
+      if (batchNo && !isDraft) {
+        const existingBatch = await db.query<any[]>(
+          `SELECT id, created_at FROM stock_in WHERE batch_code = ? AND ingredient_id = ? AND note NOT LIKE '%[LƯU TẠM]%' AND created_at >= NOW() - INTERVAL 30 DAY`,
+          [batchNo, ingredientIdNum]
+        );
+        if (existingBatch && existingBatch.length > 0) {
+          sendError(res, `Cảnh báo: Mã lô "${batchNo}" đã tồn tại trong kho (được nhập gần đây)! Vui lòng kiểm tra lại mã lô.`, 400);
+          return;
+        }
+      }
+
+      // Check duplicate import today (same ingredient & supplier within today)
+      if (ingredientIdNum && supplierId && !isDraft) {
+        const currentTicketCode = (reasonOrSupplier || "").match(/\[SLIP:([^\]]+)\]/)?.[1];
+        const todayDup = await db.query<any[]>(
+          `SELECT id, note, created_at FROM stock_in 
+           WHERE ingredient_id = ? AND supplier_id = ? AND created_at >= CURDATE()`,
+          [ingredientIdNum, supplierId]
+        );
+
+        if (todayDup && todayDup.length > 0) {
+          for (const dup of todayDup) {
+            const dupSlip = (dup.note || "").match(/\[SLIP:([^\]]+)\]/)?.[1];
+            if (dupSlip && currentTicketCode && dupSlip === currentTicketCode) continue;
+            
+            const foundCode = dupSlip || `PN${new Date().getFullYear()}-${dup.id}`;
+            sendError(res, `Phiếu nhập kho này bị trùng lặp dữ liệu với phiếu [${foundCode}] đã khởi tạo trong ngày hôm nay!`, 400);
+            return;
+          }
+        }
+      }
+
       // ONLY update current_stock in ingredients if it is NOT a draft and NOT completed
       if (!isDraft && !isCompleted) {
         await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, ingredientIdNum]);
@@ -319,6 +368,17 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
           if (!isNaN(d.getTime())) {
             parsedExpiryDate = d.toISOString().split('T')[0];
           }
+        }
+      }
+
+      if (parsedExpiryDate) {
+        const expDate = new Date(parsedExpiryDate);
+        expDate.setHours(23, 59, 59);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (expDate.getTime() < today.getTime()) {
+          sendError(res, `Hạn sử dụng (${parsedExpiryDate}) không được ở trong quá khứ khi nhập kho!`, 400);
+          return;
         }
       }
       const finalBatchCode = batchNo ? batchNo : `LOT-${ingredientIdNum}-${Date.now()}`;
