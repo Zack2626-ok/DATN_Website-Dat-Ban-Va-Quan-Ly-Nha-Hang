@@ -260,3 +260,11 @@ export const createQROrder = async (data: {
   return response.data.data;
 };
 
+export const sendAIChatMessage = async (data: {
+  text: string;
+  messages: { role: "user" | "model"; text: string }[];
+}): Promise<{ reply: string; intent?: any; booking_created?: boolean; booking?: any }> => {
+  const response = await customerApi.post("/v1/public/ai-chat", data);
+  return response.data.data;
+};
+
