@@ -18,9 +18,17 @@ import {
   GROUP_SEATING_CODE_PREFIX,
   GROUP_SEATING_STATUS,
   MERGE_BOOKING_LOOKAHEAD_MINUTES,
+  ORDER_TYPE,
   ORDER_STATUS,
   TABLE_MERGE_STATUS,
 } from "../constants/order";
+import {
+  getMemberLevelFromPoints,
+  MEMBER_LEVEL_RANK,
+  normalizeMemberLevel,
+  TIER_REWARD_VOUCHERS,
+  type MemberLevel,
+} from "../constants/loyalty";
 import { formatVietnamBookingDateTime } from "./bookingTime";
 
 
@@ -719,6 +727,31 @@ const runSchemaMigrations = async (): Promise<void> => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
+    // A transfer changes where an active order is served, not the table stored on
+    // the booking calendar. Keep an immutable audit trail for operational review.
+    await query(`
+      CREATE TABLE IF NOT EXISTS table_transfer_logs (
+        id INT NOT NULL AUTO_INCREMENT,
+        order_id INT NOT NULL,
+        booking_id INT NULL,
+        from_table_id INT NOT NULL,
+        to_table_id INT NOT NULL,
+        transferred_by INT NULL,
+        reason VARCHAR(500) NULL,
+        transferred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_transfer_logs_order (order_id),
+        INDEX idx_transfer_logs_booking (booking_id),
+        INDEX idx_transfer_logs_from_table (from_table_id),
+        INDEX idx_transfer_logs_to_table (to_table_id),
+        CONSTRAINT fk_transfer_log_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_transfer_log_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL,
+        CONSTRAINT fk_transfer_log_from_table FOREIGN KEY (from_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_transfer_log_to_table FOREIGN KEY (to_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_transfer_log_user FOREIGN KEY (transferred_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
     // Future reservations use a separate allocation record. This must never be confused with a live merge.
     await query(`
       CREATE TABLE IF NOT EXISTS booking_table_assignments (
@@ -764,19 +797,14 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added bookings deposit columns");
     }
 
-    const bookingEmailCol = await query<any[]>(
+    const bookingEmailCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'guest_email'`,
     );
-    if (bookingEmailCol.length === 0) {
-      await query(`
-        ALTER TABLE bookings 
-        ADD COLUMN guest_email VARCHAR(150) DEFAULT NULL AFTER guest_phone
-      `);
-      console.log("✅ Migration: added guest_email column to bookings table");
+    if (bookingEmailCols.length === 0) {
+      await query(`ALTER TABLE bookings ADD COLUMN guest_email VARCHAR(255) DEFAULT NULL AFTER guest_phone`);
+      console.log("✅ Migration: added bookings.guest_email");
     }
-
-    // Migration: Tạo bảng booking_menu_items để lưu món đặt trước nếu chưa có
     const bookingMenuItemsTable = await query<any[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_menu_items'`,
@@ -812,6 +840,31 @@ const runSchemaMigrations = async (): Promise<void> => {
       await query(`UPDATE vouchers SET points_cost = 250 WHERE code = 'GOLD25'`);
       await query(`UPDATE vouchers SET points_cost = 400 WHERE code = 'VIP30'`);
       console.log("✅ Migration: added points_cost column to vouchers table");
+    }
+
+    const voucherTierCol = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'vouchers' AND COLUMN_NAME = 'required_member_level'`,
+    );
+    if (voucherTierCol.length === 0) {
+      await query(`ALTER TABLE vouchers ADD COLUMN required_member_level VARCHAR(20) NULL AFTER points_cost`);
+      console.log("✅ Migration: added required_member_level column to vouchers table");
+    }
+
+    for (const reward of TIER_REWARD_VOUCHERS) {
+      const existingReward = await query<TableIdRow[]>("SELECT id FROM vouchers WHERE code = ? LIMIT 1", [reward.code]);
+      if (existingReward.length === 0) {
+        await query(
+          `INSERT INTO vouchers (code, type, value, min_order, max_uses, used_count, points_cost, required_member_level, expired_at, is_active, created_at)
+           VALUES (?, ?, ?, ?, NULL, 0, ?, ?, NULL, 1, NOW())`,
+          [reward.code, reward.type, reward.value, reward.minOrder, reward.pointsCost, reward.requiredMemberLevel],
+        );
+      } else {
+        await query(
+          "UPDATE vouchers SET type = ?, value = ?, min_order = ?, points_cost = ?, required_member_level = ? WHERE id = ?",
+          [reward.type, reward.value, reward.minOrder, reward.pointsCost, reward.requiredMemberLevel, existingReward[0].id],
+        );
+      }
     }
 
     const customerVouchersTable = await query<any[]>(
@@ -878,6 +931,69 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added stock_in_id to stock_out table");
     }
 
+    await ensureRefundColumns();
+    await ensureEarlyPaymentColumns();
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS table_split_sessions (
+        id INT NOT NULL AUTO_INCREMENT,
+        parent_table_id INT NOT NULL,
+        parent_order_id INT NOT NULL,
+        status ENUM('active', 'completed', 'cancelled') NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        closed_at DATETIME NULL,
+        PRIMARY KEY (id),
+        INDEX idx_split_sessions_table (parent_table_id),
+        INDEX idx_split_sessions_order (parent_order_id),
+        INDEX idx_split_sessions_status (status),
+        CONSTRAINT fk_split_session_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_split_session_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS table_splits (
+        id INT NOT NULL AUTO_INCREMENT,
+        split_session_id INT NOT NULL,
+        parent_table_id INT NOT NULL,
+        parent_order_id INT NOT NULL,
+        child_order_id INT NOT NULL,
+        child_label VARCHAR(100) NOT NULL,
+        guest_count INT NOT NULL DEFAULT 1,
+        status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        closed_at DATETIME NULL,
+        PRIMARY KEY (id),
+        INDEX idx_splits_session (split_session_id),
+        INDEX idx_splits_parent_table (parent_table_id),
+        INDEX idx_splits_parent_order (parent_order_id),
+        INDEX idx_splits_child_order (child_order_id),
+        INDEX idx_splits_status (status),
+        CONSTRAINT fk_splits_session FOREIGN KEY (split_session_id) REFERENCES table_split_sessions(id) ON DELETE CASCADE,
+        CONSTRAINT fk_splits_parent_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+        CONSTRAINT fk_splits_parent_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        CONSTRAINT fk_splits_child_order FOREIGN KEY (child_order_id) REFERENCES orders(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS invoice_item_splits (
+        id INT NOT NULL AUTO_INCREMENT,
+        parent_invoice_id INT NOT NULL,
+        child_invoice_id INT NOT NULL,
+        order_item_id INT NOT NULL,
+        quantity INT NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_item_splits_parent (parent_invoice_id),
+        INDEX idx_item_splits_child (child_invoice_id),
+        INDEX idx_item_splits_order_item (order_item_id),
+        CONSTRAINT fk_item_splits_parent FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+        CONSTRAINT fk_item_splits_child FOREIGN KEY (child_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+        CONSTRAINT fk_item_splits_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -1840,28 +1956,30 @@ export const updateResmanagerTableStatus = async (
     }
 
     if (status === TABLE_STATUS.PENDING_PAYMENT) {
-      await connection.query(
-        `UPDATE orders SET status = ?
-         WHERE table_id = ? AND status IN (?, ?)`,
-        [ORDER_STATUS.PENDING_PAYMENT, primaryTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING],
+      const [splitRows] = await connection.query<any[]>(
+        "SELECT id FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active'",
+        [primaryTableId]
       );
+      if (!splitRows || splitRows.length === 0) {
+        await connection.query(
+          `UPDATE orders SET status = ?
+           WHERE table_id = ? AND status IN (?, ?)`,
+          [ORDER_STATUS.PENDING_PAYMENT, primaryTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING],
+        );
+      }
     } else if (status === TABLE_STATUS.SERVING) {
-      await connection.query(
-        `UPDATE orders SET status = ?
-         WHERE table_id = ? AND status = ?`,
-        [ORDER_STATUS.SERVING, primaryTableId, ORDER_STATUS.PENDING_PAYMENT],
+      const [splitRows] = await connection.query<any[]>(
+        "SELECT id FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active'",
+        [primaryTableId]
       );
-      await connection.query(
-        `UPDATE bookings SET status = ?
-         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
-        [BOOKING_STATUS.COMPLETED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
-      );
+      if (!splitRows || splitRows.length === 0) {
+        await connection.query(
+          `UPDATE orders SET status = ?
+           WHERE table_id = ? AND status = ?`,
+          [ORDER_STATUS.SERVING, primaryTableId, ORDER_STATUS.PENDING_PAYMENT],
+        );
+      }
     } else if (status === TABLE_STATUS.EMPTY) {
-      await connection.query(
-        `UPDATE bookings SET status = ?
-         WHERE table_id IN (${tablePlaceholders}) AND status IN (?, ?)`,
-        [BOOKING_STATUS.CANCELLED, ...updatedTableIds, BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED],
-      );
       await connection.query(
         `UPDATE table_merges
          SET status = ?, resolved_at = NOW()
@@ -1995,6 +2113,52 @@ interface ActiveTableBookingRow {
   id: number;
 }
 
+interface LoyaltyCustomerRow extends mysql.RowDataPacket {
+  id: number;
+  loyalty_points: number;
+  member_level: string;
+}
+
+interface TierVoucherRow extends mysql.RowDataPacket {
+  id: number;
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  min_order: number;
+  points_cost: number;
+  required_member_level: MemberLevel;
+  is_redeemed: number;
+}
+
+interface VoucherRedemptionRow extends mysql.RowDataPacket {
+  id: number;
+  code: string;
+  points_cost: number;
+  max_uses: number | null;
+  used_count: number;
+  required_member_level: MemberLevel | null;
+}
+
+interface CustomerVoucherRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+/** Represents a controlled business error returned by loyalty voucher redemption. */
+export class LoyaltyVoucherRedemptionError extends Error {
+  public readonly statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.name = "LoyaltyVoucherRedemptionError";
+    this.statusCode = statusCode;
+  }
+}
+
+interface WalkInBookingConflictRow {
+  id: number;
+  booking_clock: string;
+}
+
 /** Checks whether a table belongs to a booking whose three-hour service window is in progress. */
 export const hasBookingInProgressForTable = async (
   tableId: number,
@@ -2025,6 +2189,43 @@ export const hasBookingInProgressForTable = async (
     ],
   );
   return rows.length > 0;
+};
+
+/**
+ * Finds a scheduled booking that overlaps the full service window of a walk-in.
+ * A walk-in occupies the table for the standard booking duration, so a future
+ * booking in that period must be protected before an order is opened.
+ */
+export const getWalkInBookingConflictForTable = async (
+  tableId: number,
+  currentTime: string,
+): Promise<WalkInBookingConflictRow | null> => {
+  const rows = await query<WalkInBookingConflictRow[]>(
+    `SELECT b.id, DATE_FORMAT(b.start_time, '%H:%i') AS booking_clock
+     FROM bookings b
+     WHERE b.status IN (?, ?)
+       AND b.start_time < DATE_ADD(?, INTERVAL ${BOOKING_DURATION_MINUTES} MINUTE)
+       AND b.end_time > ?
+       AND (
+         b.table_id = ?
+         OR EXISTS (
+           SELECT 1
+           FROM booking_table_assignments bta
+           WHERE bta.booking_id = b.id AND bta.table_id = ?
+         )
+       )
+     ORDER BY b.start_time ASC, b.id ASC
+     LIMIT 1`,
+    [
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      currentTime,
+      currentTime,
+      tableId,
+      tableId,
+    ],
+  );
+  return rows[0] ?? null;
 };
 
 // ============================================================================
@@ -2075,7 +2276,7 @@ const getBookingTablesFreeForInterval = async (
          SELECT 1
          FROM bookings b
          WHERE b.table_id = t.id
-           AND b.status IN (?, ?, ?)
+           AND b.status IN (?, ?)
            AND b.start_time < ?
            AND b.end_time > ?
        )
@@ -2084,7 +2285,7 @@ const getBookingTablesFreeForInterval = async (
          FROM booking_table_assignments bta
          JOIN bookings b ON b.id = bta.booking_id
          WHERE bta.table_id = t.id
-           AND b.status IN (?, ?, ?)
+           AND b.status IN (?, ?)
            AND b.start_time < ?
            AND b.end_time > ?
        )
@@ -2093,12 +2294,10 @@ const getBookingTablesFreeForInterval = async (
       TABLE_STATUS.MAINTENANCE,
       BOOKING_STATUS.PENDING,
       BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.COMPLETED,
       endTime,
       startTime,
       BOOKING_STATUS.PENDING,
       BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.COMPLETED,
       endTime,
       startTime,
     ],
@@ -2437,7 +2636,7 @@ export const getBookingTableAvailabilityForDate = async (
     `SELECT DATE_FORMAT(GREATEST(b.start_time, ?), '%H:%i') AS start_time,
             DATE_FORMAT(LEAST(b.end_time, DATE_ADD(?, INTERVAL 1 DAY)), '%H:%i') AS end_time
      FROM bookings b
-     WHERE b.status IN (?, ?, ?)
+     WHERE b.status IN (?, ?)
        AND b.start_time < DATE_ADD(?, INTERVAL 1 DAY)
        AND b.end_time > ?
        AND (
@@ -2454,7 +2653,6 @@ export const getBookingTableAvailabilityForDate = async (
       dayStart,
       BOOKING_STATUS.PENDING,
       BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.COMPLETED,
       dayStart,
       dayStart,
       table.id,
@@ -2526,193 +2724,204 @@ export const createBooking = async (data: any): Promise<any> => {
     throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
   }
 
-  // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
-  const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
-  const overlaps = await query<any[]>(`
-    SELECT b.id FROM bookings b
-    WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?, ?)
-      AND b.start_time < ? AND b.end_time > ?
-    UNION
-    SELECT b.id FROM booking_table_assignments bta
-    JOIN bookings b ON b.id = bta.booking_id
-    WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?, ?)
-      AND b.start_time < ? AND b.end_time > ?
-    LIMIT 1
-  `, [
-    ...requestedTableIds,
-    BOOKING_STATUS.PENDING,
-    BOOKING_STATUS.CONFIRMED,
-    BOOKING_STATUS.COMPLETED,
-    data.end_time,
-    data.start_time,
-    ...requestedTableIds,
-    BOOKING_STATUS.PENDING,
-    BOOKING_STATUS.CONFIRMED,
-    BOOKING_STATUS.COMPLETED,
-    data.end_time,
-    data.start_time,
-  ]);
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
 
-  if (overlaps.length > 0) {
-    throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
-  }
+    // Lock requested tables to prevent concurrent bookings
+    const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
+    await connection.query(`SELECT id FROM tables WHERE id IN (${tablePlaceholders}) FOR UPDATE`, requestedTableIds);
 
-  // Validate customer_id to prevent foreign key constraint failure
-  let validCustomerId: number | null = null;
-  if (data.customer_id) {
-    const custRows = await query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
-    if (custRows.length > 0) {
-      validCustomerId = Number(custRows[0].id);
+    // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
+    const [overlaps] = await connection.query<any[]>(`
+      SELECT b.id FROM bookings b
+      WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+        AND b.start_time < ? AND b.end_time > ?
+      UNION
+      SELECT b.id FROM booking_table_assignments bta
+      JOIN bookings b ON b.id = bta.booking_id
+      WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+        AND b.start_time < ? AND b.end_time > ?
+      LIMIT 1
+    `, [
+      ...requestedTableIds,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      data.end_time,
+      data.start_time,
+      ...requestedTableIds,
+      BOOKING_STATUS.PENDING,
+      BOOKING_STATUS.CONFIRMED,
+      data.end_time,
+      data.start_time,
+    ]);
+
+    if (overlaps.length > 0) {
+      throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
     }
-  }
-  if (!validCustomerId && data.guest_phone) {
-    const custByPhone = await query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.guest_phone]);
-    if (custByPhone.length > 0) {
-      validCustomerId = Number(custByPhone[0].id);
+
+    // Validate customer_id to prevent foreign key constraint failure
+    let validCustomerId: number | null = null;
+    if (data.customer_id) {
+      const [custRows] = await connection.query<any[]>("SELECT id FROM customers WHERE id = ? AND is_deleted = 0 LIMIT 1", [data.customer_id]);
+      if (custRows.length > 0) {
+        validCustomerId = Number(custRows[0].id);
+      }
     }
-  }
-
-  // Validate promotion_id to prevent foreign key constraint failure
-  let validPromotionId: number | null = null;
-  if (data.promotion_id) {
-    const promoRows = await query<any[]>("SELECT id FROM promotions WHERE id = ? LIMIT 1", [data.promotion_id]);
-    if (promoRows.length > 0) {
-      validPromotionId = Number(promoRows[0].id);
+    if (!validCustomerId && data.guest_phone) {
+      const [custByPhone] = await connection.query<any[]>("SELECT id FROM customers WHERE phone = ? AND is_deleted = 0 LIMIT 1", [data.guest_phone]);
+      if (custByPhone.length > 0) {
+        validCustomerId = Number(custByPhone[0].id);
+      }
     }
-  }
 
-  const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
-  
-  let preOrderTotal = 0;
-  let depositAmount = 0;
-  let depositStatus = 'none';
-  const preOrderedItems = data.pre_ordered_items || data.items || [];
+    // Validate promotion_id to prevent foreign key constraint failure
+    let validPromotionId: number | null = null;
+    if (data.promotion_id) {
+      const [promoRows] = await connection.query<any[]>("SELECT id FROM promotions WHERE id = ? LIMIT 1", [data.promotion_id]);
+      if (promoRows.length > 0) {
+        validPromotionId = Number(promoRows[0].id);
+      }
+    }
 
-  if (preOrderedItems.length > 0) {
-    const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
-    const placeholders = itemIds.map(() => "?").join(",");
-    const menuItems = await query<any[]>(
-      `SELECT id, price FROM menu_items WHERE id IN (${placeholders})`,
-      itemIds
-    );
+    const code = `BK${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${Math.floor(1000 + Math.random() * 9000)}`;
     
-    const priceMap = new Map<string, number>();
-    menuItems.forEach((item) => {
-      priceMap.set(String(item.id), Number(item.price));
-    });
+    let preOrderTotal = 0;
+    let depositAmount = 0;
+    let depositStatus = 'none';
+    const preOrderedItems = data.pre_ordered_items || data.items || [];
 
-    preOrderedItems.forEach((item: any) => {
-      const price = priceMap.get(String(item.menu_item_id)) || 0;
-      preOrderTotal += price * item.quantity;
-    });
+    if (preOrderedItems.length > 0) {
+      const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
+      const placeholders = itemIds.map(() => "?").join(",");
+      const [menuItems] = await connection.query<any[]>(
+        `SELECT id, price FROM menu_items WHERE id IN (${placeholders})`,
+        itemIds
+      );
+      
+      const priceMap = new Map<string, number>();
+      menuItems.forEach((item: any) => {
+        priceMap.set(String(item.id), Number(item.price));
+      });
 
-    depositAmount = preOrderTotal * 0.20;
-    depositStatus = 'unpaid';
-  }
+      preOrderedItems.forEach((item: any) => {
+        const price = priceMap.get(String(item.menu_item_id)) || 0;
+        preOrderTotal += price * item.quantity;
+      });
 
-  const result = await query(`
-    INSERT INTO bookings (
-      table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email,
-      party_size, start_time, end_time, confirmation_code, status, 
-      guest_note, note, pre_order_total, deposit_amount, deposit_status
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
-  `, [
-    data.table_id,
-    validCustomerId,
-    validPromotionId,
-    data.guest_name,
-    data.guest_phone,
-    data.guest_email || data.email || null,
-    data.party_size,
-    data.start_time,
-    data.end_time,
-    code,
-    data.guest_note || null,
-    data.note || null,
-    preOrderTotal,
-    depositAmount,
-    depositStatus
-  ]);
-  const insertId = result.insertId;
+      depositAmount = preOrderTotal * 0.20;
+      depositStatus = 'unpaid';
+    }
 
-  const assignedTables = await query<AvailableBookingTable[]>(
-    `SELECT id, name, capacity, NULL AS area_name FROM tables WHERE id IN (${tablePlaceholders})`,
-    requestedTableIds,
-  );
-  const assignmentPlaceholders = assignedTables.map(() => "(?, ?, ?, ?)").join(",");
-  const assignmentValues: number[] = [];
-  for (const table of assignedTables) {
-    assignmentValues.push(
-      insertId,
-      Number(table.id),
-      Number(table.id) === requestedPrimaryTableId ? 1 : 0,
-      Number(table.capacity),
-    );
-  }
-  await query(
-    `INSERT INTO booking_table_assignments (booking_id, table_id, is_primary, allocated_capacity) VALUES ${assignmentPlaceholders}`,
-    assignmentValues,
-  );
-
-  if (preOrderedItems.length > 0) {
-    const placeholders = preOrderedItems.map(() => "(?, ?, ?, ?)").join(",");
-    const insertParams: any[] = [];
-    
-    const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
-    const menuItems = await query<any[]>(
-      `SELECT id, price FROM menu_items WHERE id IN (${itemIds.map(() => "?").join(",")})`,
-      itemIds
-    );
-    const priceMap = new Map<string, number>();
-    menuItems.forEach((item) => {
-      priceMap.set(String(item.id), Number(item.price));
-    });
-
-    preOrderedItems.forEach((item: any) => {
-      const price = priceMap.get(String(item.menu_item_id)) || 0;
-      insertParams.push(insertId, item.menu_item_id, item.quantity, price);
-    });
-
-    await query(
-      `INSERT INTO booking_menu_items (booking_id, menu_item_id, quantity, unit_price) VALUES ${placeholders}`,
-      insertParams
-    );
-
-    // Thêm logic của main branch: tạo ngay 1 đơn hàng pre_order và chi tiết order_items để chuyển xuống bếp
-    const orderResult = await query(`
-      INSERT INTO orders (table_id, booking_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
-      VALUES (?, ?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
+    const [result] = await connection.query<mysql.ResultSetHeader>(`
+      INSERT INTO bookings (
+        table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email,
+        party_size, start_time, end_time, confirmation_code, status, 
+        guest_note, note, pre_order_total, deposit_amount, deposit_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
     `, [
       data.table_id,
-      insertId,
-      validCustomerId || null,
-      1,
-      data.guest_note ? `[Booking ${code}] ${data.guest_note}` : `[Booking ${code}] Đơn đặt món trước`,
+      validCustomerId,
+      validPromotionId,
       data.guest_name,
       data.guest_phone,
-      data.party_size
+      data.guest_email || data.email || null,
+      data.party_size,
+      data.start_time,
+      data.end_time,
+      code,
+      data.guest_note || null,
+      data.note || null,
+      preOrderTotal,
+      depositAmount,
+      depositStatus
     ]);
-    const preOrderId = orderResult.insertId;
+    const insertId = result.insertId;
 
-    for (const item of preOrderedItems) {
-      if (!item.menu_item_id || !item.quantity) continue;
-      const price = priceMap.get(String(item.menu_item_id)) || 0;
-      await query(`
-        INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, kitchen_note, status)
-        VALUES (?, ?, ?, ?, ?, 'pre_order')
-      `, [
-        preOrderId,
-        item.menu_item_id,
-        item.quantity,
-        price,
-        data.note || `Món đặt trước - Booking ${code}`
-      ]);
+    const [assignedTables] = await connection.query<any[]>(
+      `SELECT id, name, capacity, NULL AS area_name FROM tables WHERE id IN (${tablePlaceholders})`,
+      requestedTableIds,
+    );
+    const assignmentPlaceholders = assignedTables.map(() => "(?, ?, ?, ?)").join(",");
+    const assignmentValues: number[] = [];
+    for (const table of assignedTables) {
+      assignmentValues.push(
+        insertId,
+        Number(table.id),
+        Number(table.id) === requestedPrimaryTableId ? 1 : 0,
+        Number(table.capacity),
+      );
     }
-  }
+    await connection.query(
+      `INSERT INTO booking_table_assignments (booking_id, table_id, is_primary, allocated_capacity) VALUES ${assignmentPlaceholders}`,
+      assignmentValues,
+    );
 
-  const bookingDetails = await getBookingById(insertId);
-  return bookingDetails;
+    if (preOrderedItems.length > 0) {
+      const placeholders = preOrderedItems.map(() => "(?, ?, ?, ?)").join(",");
+      const insertParams: any[] = [];
+      
+      const itemIds = preOrderedItems.map((item: any) => item.menu_item_id);
+      const [menuItems] = await connection.query<any[]>(
+        `SELECT id, price FROM menu_items WHERE id IN (${itemIds.map(() => "?").join(",")})`,
+        itemIds
+      );
+      const priceMap = new Map<string, number>();
+      menuItems.forEach((item: any) => {
+        priceMap.set(String(item.id), Number(item.price));
+      });
+
+      preOrderedItems.forEach((item: any) => {
+        const price = priceMap.get(String(item.menu_item_id)) || 0;
+        insertParams.push(insertId, item.menu_item_id, item.quantity, price);
+      });
+
+      await connection.query(
+        `INSERT INTO booking_menu_items (booking_id, menu_item_id, quantity, unit_price) VALUES ${placeholders}`,
+        insertParams
+      );
+
+      const [orderResult] = await connection.query<mysql.ResultSetHeader>(`
+        INSERT INTO orders (table_id, booking_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
+        VALUES (?, ?, ?, ?, 'pre_order', ?, ?, ?, ?, 'open')
+      `, [
+        data.table_id,
+        insertId,
+        validCustomerId || null,
+        1,
+        data.guest_note ? `[Booking ${code}] ${data.guest_note}` : `[Booking ${code}] Đơn đặt món trước`,
+        data.guest_name,
+        data.guest_phone,
+        data.party_size
+      ]);
+      const preOrderId = orderResult.insertId;
+
+      for (const item of preOrderedItems) {
+        if (!item.menu_item_id || !item.quantity) continue;
+        const price = priceMap.get(String(item.menu_item_id)) || 0;
+        await connection.query(`
+          INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, kitchen_note, status)
+          VALUES (?, ?, ?, ?, ?, 'pre_order')
+        `, [
+          preOrderId,
+          item.menu_item_id,
+          item.quantity,
+          price,
+          data.note || `Món đặt trước - Booking ${code}`
+        ]);
+      }
+    }
+
+    await connection.commit();
+    const bookingDetails = await getBookingById(insertId);
+    return bookingDetails;
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
 };
 
 export const transferBookingItemsToOrder = async (tableId: number, orderId: string): Promise<void> => {
@@ -2997,9 +3206,7 @@ export const payBookingDeposit = async (id: number): Promise<boolean> => {
   return true;
 };
 
-let earlyPaymentColumnsEnsured = false;
 export const ensureEarlyPaymentColumns = async (): Promise<void> => {
-  if (earlyPaymentColumnsEnsured) return;
   try {
     const earlyPaymentColumn = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -3010,15 +3217,12 @@ export const ensureEarlyPaymentColumns = async (): Promise<void> => {
       await query(`ALTER TABLE orders ADD COLUMN is_early_paid TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
       console.log("Migration: added orders.is_early_payment and orders.is_early_paid");
     }
-    earlyPaymentColumnsEnsured = true;
   } catch (err) {
     console.error("Error ensuring early payment columns:", err);
   }
 };
 
-let refundColumnsEnsured = false;
 export const ensureRefundColumns = async (): Promise<void> => {
-  if (refundColumnsEnsured) return;
   try {
     const colOrderItems = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -3041,15 +3245,109 @@ export const ensureRefundColumns = async (): Promise<void> => {
       await query(`ALTER TABLE orders ADD COLUMN has_refund TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
       console.log("Migration: added orders refund columns");
     }
-    refundColumnsEnsured = true;
   } catch (err) {
     console.error("Error ensuring refund columns:", err);
   }
 };
 
+export const ensureResmanagerTablesSchema = async (): Promise<void> => {
+  try {
+    await ensureEarlyPaymentColumns();
+    await ensureRefundColumns();
+
+    // 1. Ensure table_merges.status and extra columns
+    const tmCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges'`,
+    ).catch(() => []);
+    if (tmCols && tmCols.length > 0) {
+      const tmSet = new Set(tmCols.map((c) => String(c.COLUMN_NAME)));
+      if (!tmSet.has("status")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN status ENUM('active','resolved') NOT NULL DEFAULT 'active'`).catch(() => {});
+      }
+      if (!tmSet.has("primary_order_id")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN primary_order_id INT NULL`).catch(() => {});
+      }
+      if (!tmSet.has("merged_order_id")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN merged_order_id INT NULL`).catch(() => {});
+      }
+      if (!tmSet.has("merged_by")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN merged_by INT NULL`).catch(() => {});
+      }
+      if (!tmSet.has("resolved_at")) {
+        await query(`ALTER TABLE table_merges ADD COLUMN resolved_at DATETIME NULL`).catch(() => {});
+      }
+    }
+
+    // 2. Ensure tables.merged_into_table_id
+    const tCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tables' AND COLUMN_NAME = 'merged_into_table_id'`,
+    ).catch(() => []);
+    if (!tCols || tCols.length === 0) {
+      await query(`ALTER TABLE tables ADD COLUMN merged_into_table_id INT NULL`).catch(() => {});
+    }
+
+    // 3. Ensure orders.merged_into_order_id & booking_id & guest_count
+    const oCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'`,
+    ).catch(() => []);
+    if (oCols && oCols.length > 0) {
+      const oSet = new Set(oCols.map((c) => String(c.COLUMN_NAME)));
+      if (!oSet.has("merged_into_order_id")) {
+        await query(`ALTER TABLE orders ADD COLUMN merged_into_order_id INT NULL`).catch(() => {});
+      }
+      if (!oSet.has("booking_id")) {
+        await query(`ALTER TABLE orders ADD COLUMN booking_id INT NULL`).catch(() => {});
+      }
+      if (!oSet.has("guest_count")) {
+        await query(`ALTER TABLE orders ADD COLUMN guest_count INT NULL`).catch(() => {});
+      }
+    }
+
+    // 4. Ensure bookings deposit columns
+    const bCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
+    ).catch(() => []);
+    if (!bCols || bCols.length === 0) {
+      await query(`
+        ALTER TABLE bookings 
+        ADD COLUMN pre_order_total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'
+      `).catch(() => {});
+    }
+
+    // 5. Ensure table_splits.status and extra columns
+    const tsCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_splits'`,
+    ).catch(() => []);
+    if (tsCols && tsCols.length > 0) {
+      const tsSet = new Set(tsCols.map((c) => String(c.COLUMN_NAME)));
+      if (!tsSet.has("status")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active'`).catch(() => {});
+      }
+      if (!tsSet.has("split_session_id")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN split_session_id INT NULL`).catch(() => {});
+      }
+      if (!tsSet.has("guest_count")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN guest_count INT NOT NULL DEFAULT 1`).catch(() => {});
+      }
+      if (!tsSet.has("closed_at")) {
+        await query(`ALTER TABLE table_splits ADD COLUMN closed_at DATETIME NULL`).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error("Error in ensureResmanagerTablesSchema:", err);
+  }
+};
+
 // ===== RESMANAGER TABLE DATABASE OPERATIONS =====
 export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any[]> => {
-  await ensureEarlyPaymentColumns();
+  await ensureResmanagerTablesSchema();
   let sql = `
     SELECT t.*, a.name AS area_name,
            COALESCE(o.guest_name, b.guest_name) AS guest_name,
@@ -3140,7 +3438,7 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
     );
     const groupCapacity = groupPrimaryCluster.reduce((total, table) => total + Number(table.capacity), 0)
       + groupChildren.reduce((total, table) => total + Number(table.capacity), 0);
-    const splits = await query("SELECT child_label FROM table_splits WHERE parent_table_id = ?", [r.id]);
+    const splits = await query("SELECT child_label FROM table_splits WHERE parent_table_id = ? AND status = 'active'", [r.id]);
 
     let preOrderedItems: any[] = [];
     if (r.active_order_id && r.active_order_type === 'pre_order') {
@@ -3217,15 +3515,222 @@ export const getEmptyTablesForBooking = async (startTime?: string, endTime?: str
 
 
 
-export const transferResmanagerOrder = async (sourceTableId: number, targetTableId: number): Promise<boolean> => {
-  const rows = await query("SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving')", [sourceTableId]);
-  if (rows.length === 0) return false;
-  const orderId = rows[0].id;
+interface TableTransferTableRow extends mysql.RowDataPacket {
+  id: number;
+  name: string;
+  status: TableStatus;
+  merged_into_table_id: number | null;
+}
 
-  await query("UPDATE orders SET table_id = ? WHERE id = ?", [targetTableId, orderId]);
-  await query("UPDATE tables SET status = 'empty' WHERE id = ?", [sourceTableId]);
-  await query("UPDATE tables SET status = 'serving' WHERE id = ?", [targetTableId]);
-  return true;
+interface TableTransferOrderRow extends mysql.RowDataPacket {
+  id: number;
+  table_id: number;
+  booking_id: number | null;
+  status: string;
+}
+
+interface TableTransferBookingRow extends mysql.RowDataPacket {
+  start_time: Date;
+  table_name: string;
+}
+
+interface TableTransferClusterRow extends mysql.RowDataPacket {
+  id: number;
+}
+
+export interface TableTransferResult {
+  orderId: number;
+  bookingId: number | null;
+  sourceTableId: number;
+  targetTableId: number;
+  sourceTableName: string;
+  targetTableName: string;
+  sourceStatus: TableStatus;
+  targetStatus: TableStatus;
+}
+
+/** Error raised when an operational table transfer violates a business rule. */
+export class TableTransferValidationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "TableTransferValidationError";
+  }
+}
+
+/** Return a printable time label for a conflicting scheduled booking. */
+const formatTransferBookingTime = (startTime: Date | string): string => new Date(startTime).toLocaleTimeString("vi-VN", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** Transfer one standalone active order while retaining booking data and an immutable audit record. */
+export const transferResmanagerOrder = async (
+  sourceTableId: number,
+  targetTableId: number,
+  transferredBy: number | null,
+  reason?: string,
+): Promise<TableTransferResult> => {
+  if (!Number.isInteger(sourceTableId) || sourceTableId <= 0
+    || !Number.isInteger(targetTableId) || targetTableId <= 0) {
+    throw new TableTransferValidationError("ID bàn nguồn và bàn đích phải hợp lệ.");
+  }
+  if (sourceTableId === targetTableId) {
+    throw new TableTransferValidationError("Bàn nguồn và bàn đích phải khác nhau.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const [tableRows] = await connection.query<TableTransferTableRow[]>(
+      `SELECT id, name, status, merged_into_table_id
+       FROM tables
+       WHERE id IN (?, ?) AND is_deleted = 0
+       FOR UPDATE`,
+      [sourceTableId, targetTableId],
+    );
+    if (tableRows.length !== 2) {
+      throw new TableTransferValidationError("Không tìm thấy bàn nguồn hoặc bàn đích.");
+    }
+
+    const sourceTable = tableRows.find((table) => table.id === sourceTableId);
+    const targetTable = tableRows.find((table) => table.id === targetTableId);
+    if (!sourceTable || !targetTable) {
+      throw new TableTransferValidationError("Không thể xác định bàn nguồn hoặc bàn đích.");
+    }
+    if (targetTable.status !== TABLE_STATUS.EMPTY) {
+      throw new TableTransferValidationError(`Bàn ${targetTable.name} không trống, không thể chuyển khách vào.`);
+    }
+
+    const [mergeRows] = await connection.query<TableTransferClusterRow[]>(
+      `SELECT id
+       FROM table_merges
+       WHERE status = ?
+         AND (primary_table_id IN (?, ?) OR merged_table_id IN (?, ?))
+       FOR UPDATE`,
+      [TABLE_MERGE_STATUS.ACTIVE, sourceTableId, targetTableId, sourceTableId, targetTableId],
+    );
+    const [groupRows] = await connection.query<TableTransferClusterRow[]>(
+      `SELECT id
+       FROM table_group_seatings
+       WHERE status = ?
+         AND (primary_table_id IN (?, ?) OR assigned_table_id IN (?, ?))
+       FOR UPDATE`,
+      [GROUP_SEATING_STATUS.ACTIVE, sourceTableId, targetTableId, sourceTableId, targetTableId],
+    );
+    if (sourceTable.merged_into_table_id !== null || targetTable.merged_into_table_id !== null
+      || mergeRows.length > 0 || groupRows.length > 0) {
+      throw new TableTransferValidationError("Không thể chuyển bàn đang thuộc cụm gộp hoặc đoàn. Hãy tách/hoàn tất cụm trước.");
+    }
+
+    const [sourceOrders] = await connection.query<TableTransferOrderRow[]>(
+      `SELECT id, table_id, booking_id, status
+       FROM orders
+       WHERE table_id = ?
+         AND status IN (?, ?)
+         AND (order_type IS NULL OR order_type <> ?)
+       ORDER BY created_at DESC, id DESC
+       FOR UPDATE`,
+      [sourceTableId, ORDER_STATUS.OPEN, ORDER_STATUS.SERVING, ORDER_TYPE.PRE_ORDER],
+    );
+    if (sourceOrders.length === 0) {
+      throw new TableTransferValidationError(`Bàn ${sourceTable.name} không có order đang phục vụ để chuyển.`);
+    }
+    if (sourceOrders.length > 1) {
+      throw new TableTransferValidationError(`Bàn ${sourceTable.name} có nhiều order đang hoạt động, cần xử lý dữ liệu trước khi chuyển.`);
+    }
+
+    const [targetOrders] = await connection.query<TableTransferOrderRow[]>(
+      `SELECT id
+       FROM orders
+       WHERE table_id = ?
+         AND status IN (?, ?, ?)
+         AND (order_type IS NULL OR order_type <> ?)
+       FOR UPDATE`,
+      [targetTableId, ...ACTIVE_ORDER_STATUSES, ORDER_TYPE.PRE_ORDER],
+    );
+    if (targetOrders.length > 0) {
+      throw new TableTransferValidationError(`Bàn ${targetTable.name} đang có order hoạt động, không thể chuyển khách vào.`);
+    }
+
+    const bookingWindowEnd = new Date(Date.now() + MERGE_BOOKING_LOOKAHEAD_MINUTES * 60 * 1000);
+    const [upcomingBookings] = await connection.query<TableTransferBookingRow[]>(
+      `SELECT b.start_time, t.name AS table_name
+       FROM bookings b
+       JOIN tables t ON t.id = b.table_id
+       WHERE b.status IN (?, ?)
+         AND b.start_time >= NOW()
+         AND b.start_time < ?
+         AND (
+           b.table_id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM booking_table_assignments bta
+             WHERE bta.booking_id = b.id AND bta.table_id = ?
+           )
+         )
+       ORDER BY b.start_time ASC, b.id ASC
+       LIMIT 1
+       FOR UPDATE`,
+      [BOOKING_STATUS.PENDING, BOOKING_STATUS.CONFIRMED, bookingWindowEnd, targetTableId, targetTableId],
+    );
+    const blockingBooking = upcomingBookings[0];
+    if (blockingBooking) {
+      throw new TableTransferValidationError(
+        `Bàn ${blockingBooking.table_name} có lịch khách đặt lúc ${formatTransferBookingTime(blockingBooking.start_time)}.`,
+      );
+    }
+
+    const sourceOrder = sourceOrders[0];
+    if (!sourceOrder) {
+      throw new TableTransferValidationError("Không xác định được order cần chuyển.");
+    }
+    // Chuyển toàn bộ orders (bao gồm tất cả sub-orders thuộc bàn nếu có split session)
+    for (const sOrder of sourceOrders) {
+      await connection.query(
+        `UPDATE orders SET table_id = ? WHERE id = ?`,
+        [targetTableId, sOrder.id],
+      );
+    }
+    await connection.query(
+      `UPDATE table_splits SET parent_table_id = ? WHERE parent_table_id = ? AND status = 'active'`,
+      [targetTableId, sourceTableId],
+    );
+    await connection.query(
+      `UPDATE table_split_sessions SET parent_table_id = ? WHERE parent_table_id = ? AND status = 'active'`,
+      [targetTableId, sourceTableId],
+    );
+    await connection.query(
+      `UPDATE tables SET status = ? WHERE id = ?`,
+      [TABLE_STATUS.CLEANING, sourceTableId],
+    );
+    await connection.query(
+      `UPDATE tables SET status = ? WHERE id = ?`,
+      [TABLE_STATUS.SERVING, targetTableId],
+    );
+    await connection.query(
+      `INSERT INTO table_transfer_logs (
+        order_id, booking_id, from_table_id, to_table_id, transferred_by, reason
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [sourceOrder.id, sourceOrder.booking_id, sourceTableId, targetTableId, transferredBy, reason ?? null],
+    );
+
+    await connection.commit();
+    return {
+      orderId: sourceOrder.id,
+      bookingId: sourceOrder.booking_id,
+      sourceTableId,
+      targetTableId,
+      sourceTableName: sourceTable.name,
+      targetTableName: targetTable.name,
+      sourceStatus: TABLE_STATUS.CLEANING,
+      targetStatus: TABLE_STATUS.SERVING,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 };
 
 export const mergeResmanagerTables = async (primaryTableId: number, mergedTableIds: number[]): Promise<boolean> => {
@@ -3727,6 +4232,15 @@ export const mergeResmanagerTablesTransactionally = async (
       throw new TableMergeValidationError(`Bàn ${primaryTable.name} đang ở trạng thái không thể gộp.`);
     }
 
+    const checkSplitIds = [primaryTableId, ...uniqueMergedTableIds];
+    const [splitSessions] = await connection.query<any[]>(
+      `SELECT id FROM table_split_sessions WHERE parent_table_id IN (${checkSplitIds.map(() => "?").join(", ")}) AND status = 'active' FOR UPDATE`,
+      checkSplitIds
+    );
+    if (splitSessions.length > 0) {
+      throw new TableMergeValidationError("Không thể gộp bàn đang có phiên tách bàn (Sub-Orders) hoạt động.");
+    }
+
     const mergedTables = uniqueMergedTableIds.map((tableId) => {
       const table = tableRows.find((candidate) => candidate.id === tableId);
       if (!table) {
@@ -4039,45 +4553,7 @@ export const unmergeResmanagerTablesTransactionally = async (tableId: number): P
   }
 };
 
-export const splitResmanagerTable = async (
-  parentTableId: number,
-  childLabel: string,
-  targetTableId: number,
-  itemIds: number[]
-): Promise<{ success: boolean; newOrderId?: number }> => {
-  const rows = await query("SELECT * FROM orders WHERE table_id = ? AND status IN ('open', 'serving') LIMIT 1", [parentTableId]);
-  if (rows.length === 0) return { success: false };
-  const originalOrder = rows[0];
 
-
-  const result = await query(`
-    INSERT INTO orders (table_id, customer_id, created_by, order_type, split_label, status, guest_name, guest_phone)
-    VALUES (?, ?, ?, ?, ?, 'serving', ?, ?)
-  `, [
-    targetTableId,
-    originalOrder.customer_id,
-    originalOrder.created_by,
-    originalOrder.order_type,
-    childLabel,
-    originalOrder.guest_name,
-    originalOrder.guest_phone
-  ]);
-  const newOrderId = result.insertId;
-
-  if (itemIds.length > 0) {
-    const placeholders = itemIds.map(() => "?").join(", ");
-    await query(`
-      UPDATE order_items 
-      SET order_id = ? 
-      WHERE id IN (${placeholders})
-    `, [newOrderId, ...itemIds]);
-  }
-
-  await query("INSERT INTO table_splits (parent_table_id, child_label) VALUES (?, ?)", [parentTableId, childLabel]);
-  await query("UPDATE tables SET status = 'serving' WHERE id = ?", [targetTableId]);
-
-  return { success: true, newOrderId };
-};
 
 // ===== WAITER/MENU DATABASE OPERATIONS =====
 export const checkMenuItemAvailability = async (menuItemId: number): Promise<{ available: boolean; reason?: string; is_expired?: boolean; out_of_stock?: boolean }> => {
@@ -4245,7 +4721,7 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
 
 export const getAllResmanagerOrders = async (status?: string): Promise<any[]> => {
   let sql = `
-    SELECT o.*, t.name AS table_name, t.area_id, t.status AS table_status,
+    SELECT o.*, COALESCE(o.split_label, t.name) AS table_name, t.area_id, t.status AS table_status,
            u.full_name AS staff_name,
            c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email
     FROM orders o
@@ -4457,6 +4933,7 @@ export const refundInventoryForItem = async (orderItemId: string | number): Prom
 
 
 export const getResmanagerPayments = async (): Promise<any[]> => {
+  await ensureRefundColumns();
   const rows = await query<any[]>(`
     SELECT p.id,
            COALESCE(i.order_id, p.invoice_id) AS orderId,
@@ -5078,6 +5555,102 @@ export const getCustomerVouchers = async (): Promise<any[]> => {
   return query("SELECT * FROM vouchers WHERE is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())");
 };
 
+/** Returns the tier reward catalogue, including the customer's unlock and redemption state. */
+export const getTierRewardVouchersForCustomer = async (customerId: number): Promise<TierVoucherRow[]> => {
+  return query<TierVoucherRow[]>(
+    `SELECT
+       v.id, v.code, v.type, v.value, v.min_order, v.points_cost, v.required_member_level,
+       MAX(cv.id IS NOT NULL) AS is_redeemed
+     FROM vouchers v
+     LEFT JOIN customer_vouchers cv ON cv.voucher_id = v.id AND cv.customer_id = ?
+     WHERE v.required_member_level IS NOT NULL
+       AND v.is_active = 1
+       AND (v.expired_at IS NULL OR v.expired_at > NOW())
+     GROUP BY v.id, v.code, v.type, v.value, v.min_order, v.points_cost, v.required_member_level`,
+    [customerId],
+  );
+};
+
+/** Atomically exchanges one tier reward voucher and records its single-use ownership. */
+export const redeemTierRewardVoucher = async (
+  customerId: number,
+  voucherId: number,
+): Promise<{ loyaltyPoints: number; memberLevel: MemberLevel }> => {
+  const connection = await ensurePool().getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [customerRows] = await connection.query<LoyaltyCustomerRow[]>(
+      "SELECT id, loyalty_points, member_level FROM customers WHERE id = ? AND is_deleted = 0 FOR UPDATE",
+      [customerId],
+    );
+    const customer = customerRows[0];
+    if (!customer) {
+      throw new LoyaltyVoucherRedemptionError("Không tìm thấy thông tin khách hàng.", 404);
+    }
+
+    const [voucherRows] = await connection.query<VoucherRedemptionRow[]>(
+      `SELECT id, code, points_cost, max_uses, used_count, required_member_level
+       FROM vouchers
+       WHERE id = ? AND is_active = 1 AND required_member_level IS NOT NULL
+         AND (expired_at IS NULL OR expired_at > NOW())
+       FOR UPDATE`,
+      [voucherId],
+    );
+    const voucher = voucherRows[0];
+    if (!voucher) {
+      throw new LoyaltyVoucherRedemptionError("Voucher không tồn tại, không thuộc quà theo hạng hoặc đã hết hạn.", 404);
+    }
+
+    const customerLevel = normalizeMemberLevel(customer.member_level);
+    const requiredLevel = normalizeMemberLevel(voucher.required_member_level);
+    if (MEMBER_LEVEL_RANK[customerLevel] < MEMBER_LEVEL_RANK[requiredLevel]) {
+      throw new LoyaltyVoucherRedemptionError("Hạng thành viên hiện tại chưa mở khóa voucher này.");
+    }
+    if (voucher.max_uses !== null && voucher.used_count >= voucher.max_uses) {
+      throw new LoyaltyVoucherRedemptionError("Voucher này đã hết lượt sử dụng.");
+    }
+
+    const [ownedVoucherRows] = await connection.query<CustomerVoucherRow[]>(
+      "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? LIMIT 1 FOR UPDATE",
+      [customer.id, voucher.id],
+    );
+    if (ownedVoucherRows.length > 0) {
+      throw new LoyaltyVoucherRedemptionError("Bạn đã đổi voucher quà tặng của hạng này rồi.");
+    }
+
+    const pointsCost = Number(voucher.points_cost);
+    if (customer.loyalty_points < pointsCost) {
+      throw new LoyaltyVoucherRedemptionError(
+        `Không đủ điểm thưởng. Bạn cần ${pointsCost} điểm để đổi voucher này (hiện có ${customer.loyalty_points} điểm).`,
+      );
+    }
+
+    const loyaltyPoints = customer.loyalty_points - pointsCost;
+    const memberLevel = getMemberLevelFromPoints(loyaltyPoints);
+    await connection.query(
+      "UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?",
+      [loyaltyPoints, memberLevel, customer.id],
+    );
+    await connection.query(
+      "INSERT INTO loyalty_transactions (customer_id, points, type, note) VALUES (?, ?, 'redeem', ?)",
+      [customer.id, pointsCost, `Đổi ${pointsCost} điểm nhận voucher ${voucher.code}`],
+    );
+    await connection.query(
+      "INSERT INTO customer_vouchers (customer_id, voucher_id, is_used) VALUES (?, ?, 0)",
+      [customer.id, voucher.id],
+    );
+
+    await connection.commit();
+    return { loyaltyPoints, memberLevel };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 export const getPromotions = async (): Promise<any[]> => {
   return query("SELECT * FROM promotions WHERE is_active = 1 AND NOW() BETWEEN start_date AND end_date");
 };
@@ -5381,6 +5954,517 @@ export const updatePromotion = async (id: number | string, data: any): Promise<b
   values.push(id);
   const result = await query(`UPDATE promotions SET ${fields.join(", ")} WHERE id = ?`, values);
   return result.affectedRows > 0;
+};
+
+// ===== TABLE SPLIT & BILL SPLIT OPERATIONS =====
+export interface SplitGroupInput {
+  guest_count: number;
+  item_allocations?: { order_item_id: number; quantity: number }[];
+}
+
+export interface TableSplitResult {
+  splitSessionId: number;
+  parentTableId: number;
+  parentOrderId: number;
+  subOrders: {
+    splitId: number;
+    childOrderId: number;
+    childLabel: string;
+    guestCount: number;
+    totalAmount: number;
+  }[];
+}
+
+export class TableSplitValidationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "TableSplitValidationError";
+  }
+}
+
+/** Tách bàn vật lý thành các nhóm sub-orders theo phiên table_split_sessions */
+export const splitResmanagerTable = async (
+  parentTableId: number,
+  groups: SplitGroupInput[],
+  createdBy: number = 1
+): Promise<TableSplitResult> => {
+  if (!Number.isInteger(parentTableId) || parentTableId <= 0) {
+    throw new TableSplitValidationError("Mã bàn không hợp lệ.");
+  }
+  if (!Array.isArray(groups) || groups.length < 2) {
+    throw new TableSplitValidationError("Phải tách thành ít nhất 2 nhóm.");
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    if (!Number.isInteger(groups[i].guest_count) || groups[i].guest_count <= 0) {
+      throw new TableSplitValidationError(`Số lượng khách nhóm ${i + 1} phải lớn hơn 0.`);
+    }
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 1. Lock bàn vật lý
+    const [tables] = await connection.query<any[]>(
+      "SELECT id, name, capacity, status, merged_into_table_id FROM tables WHERE id = ? AND is_deleted = 0 FOR UPDATE",
+      [parentTableId]
+    );
+    if (tables.length === 0) {
+      throw new TableSplitValidationError("Không tìm thấy bàn vật lý.");
+    }
+    const table = tables[0];
+
+    if (table.status !== TABLE_STATUS.SERVING && table.status !== TABLE_STATUS.EMPTY) {
+      throw new TableSplitValidationError(`Bàn ${table.name} đang ở trạng thái '${table.status}', không thể tách bàn.`);
+    }
+
+    const totalGuests = groups.reduce((sum, g) => sum + g.guest_count, 0);
+    if (totalGuests > Number(table.capacity)) {
+      throw new TableSplitValidationError(`Tổng số khách các nhóm (${totalGuests}) vượt quá sức chứa bàn vật lý (${table.capacity} chỗ).`);
+    }
+
+    // 2. Chặn nếu bàn đang thuộc cụm gộp
+    const [merges] = await connection.query<any[]>(
+      "SELECT id FROM table_merges WHERE status = ? AND (primary_table_id = ? OR merged_table_id = ?)",
+      [TABLE_MERGE_STATUS.ACTIVE, parentTableId, parentTableId]
+    );
+    if (table.merged_into_table_id !== null || merges.length > 0) {
+      throw new TableSplitValidationError("Không thể tách bàn đang thuộc cụm gộp. Vui lòng gỡ gộp bàn trước.");
+    }
+
+    // 3. Chặn nếu bàn đang có 1 split session active
+    const [existingSessions] = await connection.query<any[]>(
+      "SELECT id FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active'",
+      [parentTableId]
+    );
+    if (existingSessions.length > 0) {
+      throw new TableSplitValidationError(`Bàn ${table.name} đang có phiên tách bàn hoạt động. Vui lòng hoàn tất phiên hiện tại trước.`);
+    }
+
+    // 4. Lấy đơn hàng active hiện tại (đơn vị order gốc)
+    let parentOrderId: number;
+    const [activeOrders] = await connection.query<any[]>(
+      "SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving') ORDER BY id DESC LIMIT 1 FOR UPDATE",
+      [parentTableId]
+    );
+
+    if (activeOrders.length === 0) {
+      // Nếu bàn chưa có order, tạo order gốc
+      const [newParentRes] = await connection.query<any>(
+        "INSERT INTO orders (table_id, created_by, order_type, status, guest_count) VALUES (?, ?, 'dine_in', 'serving', ?)",
+        [parentTableId, createdBy, groups[0].guest_count]
+      );
+      parentOrderId = newParentRes.insertId;
+    } else {
+      parentOrderId = activeOrders[0].id;
+    }
+
+    // 5. Kiểm tra ràng buộc món ăn với Kitchen status
+    const [existingItems] = await connection.query<any[]>(
+      `SELECT oi.id, oi.order_id, oi.menu_item_id, m.name AS item_name, oi.quantity, oi.unit_price, oi.status, oi.kitchen_note
+       FROM order_items oi
+       JOIN menu_items m ON oi.menu_item_id = m.id
+       WHERE oi.order_id = ? FOR UPDATE`,
+      [parentOrderId]
+    );
+
+    // Kiểm tra xem có món cooking / served nào bị yêu cầu chuyển sang nhóm 2..N không
+    for (let gIdx = 1; gIdx < groups.length; gIdx++) {
+      const allocations = groups[gIdx].item_allocations || [];
+      for (const alloc of allocations) {
+        const item = existingItems.find((i) => i.id === alloc.order_item_id);
+        if (item && (item.status === 'cooking' || item.status === 'served')) {
+          throw new TableSplitValidationError(
+            `Món '${item.item_name}' (đang ở trạng thái '${item.status}') không được chuyển sang nhóm khác. Món chế biến/phục vụ giữ nguyên ở nhóm ${table.name}:1.`
+          );
+        }
+      }
+    }
+
+    // 6. Tạo phiên split_session
+    const [sessionRes] = await connection.query<any>(
+      "INSERT INTO table_split_sessions (parent_table_id, parent_order_id, status) VALUES (?, ?, 'active')",
+      [parentTableId, parentOrderId]
+    );
+    const splitSessionId = sessionRes.insertId;
+
+    // 7. Tạo nhóm 1 (Dùng order gốc)
+    const label1 = `${table.name}:1`;
+    await connection.query(
+      "UPDATE orders SET split_label = ?, guest_count = ? WHERE id = ?",
+      [label1, groups[0].guest_count, parentOrderId]
+    );
+    const [split1Res] = await connection.query<any>(
+      "INSERT INTO table_splits (split_session_id, parent_table_id, parent_order_id, child_order_id, child_label, guest_count, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+      [splitSessionId, parentTableId, parentOrderId, parentOrderId, label1, groups[0].guest_count]
+    );
+
+    const subOrders = [
+      {
+        splitId: split1Res.insertId,
+        childOrderId: parentOrderId,
+        childLabel: label1,
+        guestCount: groups[0].guest_count,
+        totalAmount: 0,
+      },
+    ];
+
+    // 8. Tạo nhóm 2..N (Tạo các child orders mới)
+    for (let i = 1; i < groups.length; i++) {
+      const childLabel = `${table.name}:${i + 1}`;
+      const [childOrderRes] = await connection.query<any>(
+        "INSERT INTO orders (table_id, created_by, order_type, status, split_label, guest_count) VALUES (?, ?, 'dine_in', 'serving', ?, ?)",
+        [parentTableId, createdBy, childLabel, groups[i].guest_count]
+      );
+      const childOrderId = childOrderRes.insertId;
+
+      const [splitRes] = await connection.query<any>(
+        "INSERT INTO table_splits (split_session_id, parent_table_id, parent_order_id, child_order_id, child_label, guest_count, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+        [splitSessionId, parentTableId, parentOrderId, childOrderId, childLabel, groups[i].guest_count]
+      );
+
+      subOrders.push({
+        splitId: splitRes.insertId,
+        childOrderId,
+        childLabel,
+        guestCount: groups[i].guest_count,
+        totalAmount: 0,
+      });
+    }
+
+    // 9. Thực hiện phân bổ order_items cho từng nhóm
+    for (let gIdx = 0; gIdx < groups.length; gIdx++) {
+      const targetChildOrderId = subOrders[gIdx].childOrderId;
+      const allocations = groups[gIdx].item_allocations || [];
+
+      for (const alloc of allocations) {
+        const item = existingItems.find((i) => i.id === alloc.order_item_id);
+        if (!item) continue;
+        if (alloc.quantity <= 0) continue;
+
+        if (gIdx === 0) {
+          // Nhóm 1 (Order gốc): Cập nhật lại số lượng nếu có tách bớt
+          await connection.query(
+            "UPDATE order_items SET quantity = ? WHERE id = ?",
+            [alloc.quantity, item.id]
+          );
+        } else {
+          // Nhóm 2..N: Chuyển toàn bộ hoặc tạo dòng mới với số lượng tách
+          if (alloc.quantity === item.quantity) {
+            // Chuyển toàn bộ món sang order mới
+            await connection.query(
+              "UPDATE order_items SET order_id = ? WHERE id = ?",
+              [targetChildOrderId, item.id]
+            );
+          } else {
+            // Tách một phần số lượng sang order mới
+            const newChildQty = alloc.quantity;
+            await connection.query(
+              "INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status, kitchen_note) VALUES (?, ?, ?, ?, ?, ?)",
+              [targetChildOrderId, item.menu_item_id, newChildQty, item.unit_price, item.status, item.kitchen_note]
+            );
+            // Giảm số lượng ở order gốc
+            const remainQty = item.quantity - newChildQty;
+            await connection.query(
+              "UPDATE order_items SET quantity = ? WHERE id = ?",
+              [remainQty, item.id]
+            );
+          }
+        }
+      }
+    }
+
+    // 10. Tính toán lại tổng tiền cho tất cả sub-orders
+    for (const sub of subOrders) {
+      const [sumRows] = await connection.query<any[]>(
+        "SELECT COALESCE(SUM(quantity * unit_price), 0) as total FROM order_items WHERE order_id = ?",
+        [sub.childOrderId]
+      );
+      sub.totalAmount = Number(sumRows[0]?.total || 0);
+    }
+
+    // 11. Bàn vật lý giữ trạng thái SERVING
+    await connection.query("UPDATE tables SET status = ? WHERE id = ?", [TABLE_STATUS.SERVING, parentTableId]);
+
+    await connection.commit();
+
+    return {
+      splitSessionId,
+      parentTableId,
+      parentOrderId,
+      subOrders,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Lấy thông tin các nhóm sub-orders active của 1 bàn */
+export const getTableActiveSplits = async (tableId: number): Promise<any> => {
+  const sessions = await query<any[]>(
+    "SELECT * FROM table_split_sessions WHERE parent_table_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1",
+    [tableId]
+  );
+  if (!sessions || sessions.length === 0) return null;
+
+  const session = sessions[0];
+  const splits = await query<any[]>(
+    `SELECT ts.*, o.split_label, o.status AS order_status, o.created_at AS order_created_at
+     FROM table_splits ts
+     JOIN orders o ON o.id = ts.child_order_id
+     WHERE ts.split_session_id = ?
+     ORDER BY ts.id ASC`,
+    [session.id]
+  );
+
+  for (const split of splits) {
+    const items = await query<any[]>(
+      `SELECT oi.id, oi.menu_item_id, m.name AS item_name, oi.quantity, oi.unit_price, (oi.quantity * oi.unit_price) AS subtotal, oi.status, oi.kitchen_note
+       FROM order_items oi
+       JOIN menu_items m ON oi.menu_item_id = m.id
+       WHERE oi.order_id = ?`,
+      [split.child_order_id]
+    );
+    split.items = items;
+    split.total_amount = items.reduce((sum, item) => sum + Number(item.subtotal), 0);
+  }
+
+  return {
+    sessionId: session.id,
+    parentTableId: session.parent_table_id,
+    parentOrderId: session.parent_order_id,
+    sessionStatus: session.status,
+    createdAt: session.created_at,
+    splits,
+  };
+};
+
+/** Chuyển món/tách số lượng giữa các nhóm sub-orders trong cùng 1 phiên split active */
+export const moveSplitOrderItems = async (
+  tableId: number,
+  sourceChildOrderId: number,
+  targetChildOrderId: number,
+  orderItemId: number,
+  moveQuantity: number
+): Promise<boolean> => {
+  if (sourceChildOrderId === targetChildOrderId) {
+    throw new TableSplitValidationError("Nhóm nguồn và nhóm đích phải khác nhau.");
+  }
+  if (!Number.isInteger(moveQuantity) || moveQuantity <= 0) {
+    throw new TableSplitValidationError("Số lượng chuyển phải lớn hơn 0.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [items] = await connection.query<any[]>(
+      "SELECT id, order_id, menu_item_id, item_name, quantity, unit_price, status, notes FROM order_items WHERE id = ? AND order_id = ? FOR UPDATE",
+      [orderItemId, sourceChildOrderId]
+    );
+    if (items.length === 0) {
+      throw new TableSplitValidationError("Không tìm thấy món cần chuyển.");
+    }
+    const item = items[0];
+
+    // Bắt buộc món phải ở trạng thái pending
+    if (item.status !== 'pending') {
+      throw new TableSplitValidationError(
+        `Món '${item.item_name}' đang ở trạng thái '${item.status}'. Chỉ món ở trạng thái chờ ('pending') mới được phép chuyển giữa các nhóm.`
+      );
+    }
+
+    if (moveQuantity > item.quantity) {
+      throw new TableSplitValidationError(`Số lượng chuyển (${moveQuantity}) vượt quá số lượng hiện có (${item.quantity}).`);
+    }
+
+    if (moveQuantity === item.quantity) {
+      await connection.query("UPDATE order_items SET order_id = ? WHERE id = ?", [targetChildOrderId, item.id]);
+    } else {
+      const remainQty = item.quantity - moveQuantity;
+      await connection.query("UPDATE order_items SET quantity = ? WHERE id = ?", [remainQty, item.id]);
+
+      await connection.query(
+        "INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status, kitchen_note) VALUES (?, ?, ?, ?, ?, ?)",
+        [targetChildOrderId, item.menu_item_id, moveQuantity, item.unit_price, item.status, item.kitchen_note]
+      );
+    }
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Đóng 1 nhóm sub-order khi thanh toán và kiểm tra hoàn tất phiên tách bàn để giải phóng bàn vật lý */
+export const completeSubOrderPayment = async (childOrderId: number): Promise<{ isSplitOrder: boolean; sessionCompleted: boolean; tableReleased: boolean }> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 1. Cập nhật order status sang completed
+    await connection.query("UPDATE orders SET status = 'completed' WHERE id = ?", [childOrderId]);
+
+    // 2 & 3. Tìm thông tin split_session bằng JOIN với orders
+    const [splits] = await connection.query<any[]>(
+      `SELECT ts.id as split_id, ts.split_session_id, ts.parent_table_id 
+       FROM table_splits ts 
+       JOIN orders o ON ts.parent_table_id = o.table_id AND ts.child_label = o.split_label 
+       WHERE o.id = ? LIMIT 1`,
+      [childOrderId]
+    );
+
+    if (splits.length === 0) {
+      await connection.commit();
+      return { isSplitOrder: false, sessionCompleted: false, tableReleased: false };
+    }
+
+    const { split_id, split_session_id, parent_table_id } = splits[0];
+
+    // Cập nhật table_splits tương ứng sang status = 'paid'
+    await connection.query("UPDATE table_splits SET status = 'paid', closed_at = NOW() WHERE id = ?", [split_id]);
+
+    // 4. Kiểm tra xem phiên còn nhóm nào 'active' không
+    const [activeSplits] = await connection.query<any[]>(
+      "SELECT id FROM table_splits WHERE split_session_id = ? AND status = 'active'",
+      [split_session_id]
+    );
+
+    let sessionCompleted = false;
+    let tableReleased = false;
+
+    if (activeSplits.length === 0) {
+      // Đã thanh toán HẾT các nhóm trong phiên
+      sessionCompleted = true;
+      await connection.query(
+        "UPDATE table_split_sessions SET status = 'completed', closed_at = NOW() WHERE id = ?",
+        [split_session_id]
+      );
+
+      // Kiểm tra xem bàn vật lý còn bất kỳ order active nào khác không
+      const [otherActiveOrders] = await connection.query<any[]>(
+        "SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment') LIMIT 1",
+        [parent_table_id]
+      );
+
+      if (otherActiveOrders.length === 0) {
+        tableReleased = true;
+        await connection.query("UPDATE tables SET status = ? WHERE id = ?", [TABLE_STATUS.CLEANING, parent_table_id]);
+      }
+    }
+
+    await connection.commit();
+    return { isSplitOrder: true, sessionCompleted, tableReleased };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Tách hóa đơn theo món khi checkout và lưu vết invoice_item_splits */
+export const splitInvoiceByItems = async (
+  parentInvoiceId: number,
+  childBills: { items: { order_item_id: number; quantity: number; amount: number }[] }[]
+): Promise<number[]> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [parentInvoices] = await connection.query<any[]>("SELECT * FROM invoices WHERE id = ? FOR UPDATE", [parentInvoiceId]);
+    if (parentInvoices.length === 0) {
+      throw new Error("Không tìm thấy hóa đơn gốc.");
+    }
+    const parentInvoice = parentInvoices[0];
+
+    const childInvoiceIds: number[] = [];
+
+    for (let i = 0; i < childBills.length; i++) {
+      const bill = childBills[i];
+      const billTotal = bill.items.reduce((sum, item) => sum + Number(item.amount), 0);
+
+      const [res] = await connection.query<any>(
+        `INSERT INTO invoices (order_id, parent_invoice_id, subtotal, tax_amount, service_fee, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, 0, 0, 0, ?, 'unpaid', NOW())`,
+        [parentInvoice.order_id, parentInvoiceId, billTotal, billTotal]
+      );
+      const childInvoiceId = res.insertId;
+      childInvoiceIds.push(childInvoiceId);
+
+      for (const item of bill.items) {
+        await connection.query(
+          `INSERT INTO invoice_item_splits (parent_invoice_id, child_invoice_id, order_item_id, quantity, amount)
+           VALUES (?, ?, ?, ?, ?)`,
+          [parentInvoiceId, childInvoiceId, item.order_item_id, item.quantity, item.amount]
+        );
+      }
+    }
+
+    await connection.commit();
+    return childInvoiceIds;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Chia đều hóa đơn khi checkout với xử lý phần dư làm tròn chính xác */
+export const splitInvoiceEqually = async (
+  parentInvoiceId: number,
+  guestCount: number
+): Promise<{ childInvoiceIds: number[]; amounts: number[] }> => {
+  if (!Number.isInteger(guestCount) || guestCount <= 1) {
+    throw new Error("Số người chia hóa đơn phải lớn hơn 1.");
+  }
+
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [parentInvoices] = await connection.query<any[]>("SELECT * FROM invoices WHERE id = ? FOR UPDATE", [parentInvoiceId]);
+    if (parentInvoices.length === 0) {
+      throw new Error("Không tìm thấy hóa đơn gốc.");
+    }
+    const parentInvoice = parentInvoices[0];
+    const totalAmount = Number(parentInvoice.final_amount || parentInvoice.subtotal);
+
+    const baseAmount = Math.floor(totalAmount / guestCount);
+    const remainder = totalAmount - (baseAmount * guestCount);
+
+    const childInvoiceIds: number[] = [];
+    const amounts: number[] = [];
+
+    for (let i = 0; i < guestCount; i++) {
+      const childAmount = i === guestCount - 1 ? baseAmount + remainder : baseAmount;
+      amounts.push(childAmount);
+
+      const [res] = await connection.query<any>(
+        `INSERT INTO invoices (order_id, parent_invoice_id, subtotal, tax_amount, service_fee, discount_amount, final_amount, status, created_at)
+         VALUES (?, ?, ?, 0, 0, 0, ?, 'unpaid', NOW())`,
+        [parentInvoice.order_id, parentInvoiceId, childAmount, childAmount]
+      );
+      childInvoiceIds.push(res.insertId);
+    }
+
+    await connection.commit();
+    return { childInvoiceIds, amounts };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 };
 
 export const deletePromotion = async (id: number | string): Promise<boolean> => {

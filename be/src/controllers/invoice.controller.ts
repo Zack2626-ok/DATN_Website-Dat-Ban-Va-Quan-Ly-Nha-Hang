@@ -44,6 +44,7 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       createdAt: o.created_at,
       orderType: o.order_type,
       paymentMethod: o.paymentMethod || undefined,
+      is_early_payment: o.is_early_payment,
     }));
 
     // Nếu không có món nào (0 món) thì không đưa vào thu ngân
@@ -226,23 +227,27 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     await db.updateOrderStatus(id, "completed");
 
-    if (voucherCode) {
-      try {
-        await db.query(
-          "UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?",
-          [voucherCode]
-        );
-      } catch (err) {
-        console.error("Error updating voucher used_count:", err);
-      }
+    if (dbVoucherId) {
+      await db.query(
+        "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
+        [dbVoucherId],
+      );
     }
     if (order.table_id) {
       if (order.is_early_payment) {
         await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
         req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
       } else {
-        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
-        req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+        const subResult = await db.completeSubOrderPayment(Number(id));
+        if (subResult.isSplitOrder && !subResult.sessionCompleted) {
+          // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
+          req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
+        } else {
+          // Đã thanh toán HẾT các nhóm trong phiên split, HOẶC LÀ ĐƠN BÌNH THƯỜNG -> giải phóng bàn vật lý!
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+          req.app.get("io")?.emit("table:released", { tableId: Number(order.table_id) });
+        }
       }
     }
 
@@ -271,12 +276,6 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
             await db.query(
               "UPDATE customer_vouchers SET is_used = 1, used_at = NOW() WHERE id = ?",
               [customerVoucherRecordId]
-            );
-          }
-          if (dbVoucherId) {
-            await db.query(
-              "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
-              [dbVoucherId]
             );
           }
           // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)

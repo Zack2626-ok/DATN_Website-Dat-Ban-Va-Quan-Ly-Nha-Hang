@@ -362,10 +362,20 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const totalIncome = totalInvoiceIncome + totalReturnIncome;
 
     const expenseRow = await db.query(
-      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val FROM stock_in WHERE created_at BETWEEN ? AND ?`,
-      [startStr, endStr]
+      `SELECT COALESCE(
+        (SELECT SUM(quantity * unit_cost) FROM stock_in WHERE created_at BETWEEN ? AND ?)
+        -
+        (SELECT SUM(so.quantity * COALESCE(si.unit_cost, 0)) 
+         FROM stock_out so 
+         LEFT JOIN stock_in si ON so.stock_in_id = si.id 
+         WHERE so.reason = 'return_to_supplier' 
+           AND so.note NOT LIKE '%[LƯU TẠM]%' 
+           AND so.created_at BETWEEN ? AND ?),
+        0
+      ) AS val`,
+      [startStr, endStr, startStr, endStr]
     );
-    const totalExpenses = Number(expenseRow[0].val);
+    const totalExpenses = Math.max(0, Number(expenseRow[0].val));
     const netProfit = totalIncome - totalExpenses;
 
     // 2) Recent Transactions
@@ -389,6 +399,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           NULL as dueDate,
           NULL as batchCode,
           NULL as note,
+          0 as returnedQuantity,
           0 as hasRefund,
           0 as refundedTotal,
           'invoice' as txSubType
@@ -414,6 +425,13 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           si.due_date as dueDate,
           si.batch_code as batchCode,
           si.note as note,
+          COALESCE((
+            SELECT SUM(so.quantity) 
+            FROM stock_out so 
+            WHERE so.stock_in_id = si.id 
+              AND so.reason = 'return_to_supplier' 
+              AND so.note NOT LIKE '%[LƯU TẠM]%'
+          ), 0) as returnedQuantity,
           NULL as hasRefund,
           NULL as refundedTotal,
           'stock_import' as txSubType
@@ -441,6 +459,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           NULL as dueDate,
           si.batch_code as batchCode,
           so.note as note,
+          0 as returnedQuantity,
           NULL as hasRefund,
           NULL as refundedTotal,
           'return_supplier' as txSubType

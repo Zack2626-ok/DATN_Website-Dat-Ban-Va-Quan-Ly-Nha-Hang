@@ -10,6 +10,11 @@ export const ORDER_STATUS = {
 
 export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
 
+/** Distinguishes an operational dine-in order from a future pre-order reservation. */
+export const ORDER_TYPE = {
+  PRE_ORDER: "pre_order",
+} as const;
+
 /** Statuses that represent an order which can still receive items or payment. */
 export const ACTIVE_ORDER_STATUSES = [
   ORDER_STATUS.OPEN,

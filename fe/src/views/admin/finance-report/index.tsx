@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ArrowDownCircle, ArrowUpCircle, DollarSign, RefreshCw, Inbox, Loader2, ChevronDown, ChevronUp, Printer, CheckCircle2, Clock } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, DollarSign, RefreshCw, Inbox, Loader2, ChevronDown, ChevronUp, Printer, CheckCircle2, Clock, RotateCcw } from "lucide-react";
 import { formatCurrency } from "../../../utils/formatCurrency";
 import api from "../../../services/axiosInstance";
 import { toast } from "react-hot-toast";
@@ -200,9 +200,11 @@ export const FinanceReport: React.FC = () => {
         refundedTotal: Number(tx.refundedTotal || 0)
       }));
     
-    // Gom nhóm trả hàng NCC theo SLIP code
+    // Gom nhóm trả hàng NCC theo SLIP code & theo vết mã phiếu nhập (e.g. PN...)
     const returnList = rawList.filter((tx: any) => tx.type === "income" && tx.txSubType === "return_supplier");
     const returnGroups: { [key: string]: any } = {};
+    const returnedSlipMap: { [importTicketCode: string]: number } = {};
+
     returnList.forEach((tx: any) => {
       const noteStr = tx.note || "";
       const slipMatch = noteStr.match(/\[SLIP:([^\]]+)\]/);
@@ -214,6 +216,13 @@ export const FinanceReport: React.FC = () => {
       const qty = Math.abs(Number(tx.quantity) || 0);
       const price = Number(tx.unitCost) || 0;
       const total = qty * price;
+
+      // Extract referenced import slip code from note (e.g. "Trả hàng cho phiếu PN20260804N-1834")
+      const importRefMatch = noteStr.match(/PN\d{8}N?-\d+/);
+      if (importRefMatch) {
+        const importCode = importRefMatch[0];
+        returnedSlipMap[importCode] = (returnedSlipMap[importCode] || 0) + total;
+      }
 
       if (!returnGroups[groupKey]) {
         returnGroups[groupKey] = {
@@ -275,8 +284,10 @@ export const FinanceReport: React.FC = () => {
       const ticketCode = slipMatch ? slipMatch[1] : `PN${new Date(tx.date).getFullYear()}${String(new Date(tx.date).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.date).getDate()).padStart(2, '0')}-${String(tx.id).slice(-4)}`;
 
       const qty = Math.abs(Number(tx.quantity) || 0);
+      const returnedQty = Math.abs(Number(tx.returnedQuantity) || 0);
       const price = Number(tx.unitCost) || 0;
       const total = qty * price;
+      const returnedTotal = returnedQty * price;
 
       if (!expenseGroups[groupKey]) {
         expenseGroups[groupKey] = {
@@ -290,6 +301,8 @@ export const FinanceReport: React.FC = () => {
           dueDate: tx.dueDate,
           note: parts[1] || "",
           items: [],
+          originalAmount: 0,
+          returnedAmount: 0,
           amount: 0
         };
       }
@@ -297,24 +310,44 @@ export const FinanceReport: React.FC = () => {
       expenseGroups[groupKey].items.push({
         ingredientName: tx.ingredientName || "Nguyên liệu",
         quantity: qty,
+        returnedQuantity: returnedQty,
         unitCost: price,
         ingredientUnit: tx.ingredientUnit || "kg",
         batchCode: tx.batchCode || "-",
-        amount: total
+        amount: total,
+        returnedAmount: returnedTotal
       });
 
-      expenseGroups[groupKey].amount += total;
+      expenseGroups[groupKey].originalAmount += total;
+      expenseGroups[groupKey].returnedAmount += returnedTotal;
     });
 
     const processedExpenses = Object.values(expenseGroups).map((group: any) => {
+      const mapReturnedAmt = returnedSlipMap[group.ticketCode] || returnedSlipMap[group.id] || 0;
+      const returnedAmount = Math.max(group.returnedAmount, mapReturnedAmt);
+      const originalAmount = group.originalAmount;
+
+      const isReturned = returnedAmount >= originalAmount && originalAmount > 0;
+      const isPartiallyReturned = returnedAmount > 0 && !isReturned;
+      const netAmount = isReturned ? 0 : Math.max(0, originalAmount - returnedAmount);
+
       const totalItems = group.items.length;
       const firstItem = group.items[0];
-      const description = totalItems > 1 
+      let description = totalItems > 1 
         ? `Nhập kho: ${firstItem.ingredientName} (+${totalItems - 1} mặt hàng khác)`
         : `Nhập kho: ${firstItem.ingredientName}`;
 
+      if (isReturned) {
+        description = `Nhập kho (Đã xuất trả NCC): ${firstItem.ingredientName}` + (totalItems > 1 ? ` (+${totalItems - 1} mặt hàng khác)` : "");
+      }
+
       return {
         ...group,
+        amount: netAmount,
+        originalAmount,
+        returnedAmount,
+        isReturned,
+        isPartiallyReturned,
         description
       };
     });
@@ -532,26 +565,36 @@ export const FinanceReport: React.FC = () => {
                         <td className="px-5 py-4">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${
-                              row.type === "income"
+                              row.isReturned
+                                ? "bg-purple-50 text-purple-700 border-purple-200"
+                                : row.type === "income"
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 : "bg-rose-50 text-rose-700 border-rose-200"
                             }`}
                           >
                             <span
                               className={`h-1.5 w-1.5 rounded-full ${
-                                row.type === "income" ? "bg-emerald-500" : "bg-rose-500"
+                                row.isReturned ? "bg-purple-500" : row.type === "income" ? "bg-emerald-500" : "bg-rose-500"
                               }`}
                             />
-                            {row.type === "income" ? "Thu" : "Chi"}
+                            {row.isReturned ? "Đã trả hàng" : row.type === "income" ? "Thu" : "Chi"}
                           </span>
                         </td>
                         <td className="px-5 py-4 text-slate-700 text-xs font-medium">
                           {row.description}
-                          {row.type === "expense" && row.isCredit === 1 && (
+                          {row.isReturned ? (
+                            <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                              Đã trả hàng NCC
+                            </span>
+                          ) : row.isPartiallyReturned ? (
+                            <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                              Trả 1 phần NCC
+                            </span>
+                          ) : row.type === "expense" && row.isCredit === 1 ? (
                             <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                               Nợ
                             </span>
-                          )}
+                          ) : null}
                           {row.type === "income" && row.hasRefund && (
                             <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">
                               Hoàn tiền
@@ -566,10 +609,19 @@ export const FinanceReport: React.FC = () => {
                         <td
                           className={`px-5 py-4 text-right tabular-nums`}
                         >
-                          <div className={`font-black text-xs ${row.type === "income" ? "text-emerald-700" : "text-rose-700"}`}>
-                            {row.type === "income" ? "+" : "-"}
-                            {formatCurrency(Number(row.amount))}
+                          <div className={`font-black text-xs ${row.isReturned ? "text-purple-700" : row.type === "income" ? "text-emerald-700" : "text-rose-700"}`}>
+                            {row.isReturned ? "0 đ" : `${row.type === "income" ? "+" : "-"}${formatCurrency(Number(row.amount))}`}
                           </div>
+                          {row.isReturned && (
+                            <div className="text-[9px] text-purple-600 font-bold mt-0.5">
+                              (Đã trả {formatCurrency(row.returnedAmount || row.originalAmount)})
+                            </div>
+                          )}
+                          {!row.isReturned && row.isPartiallyReturned && (
+                            <div className="text-[9px] text-purple-600 font-bold mt-0.5">
+                              Đã trả NCC: -{formatCurrency(row.returnedAmount)}
+                            </div>
+                          )}
                           {row.type === "income" && row.hasRefund && row.refundedTotal > 0 && (
                             <div className="text-[9px] text-red-500 font-bold mt-0.5">
                               Hoàn: -{formatCurrency(row.refundedTotal)}
@@ -709,13 +761,23 @@ export const FinanceReport: React.FC = () => {
                                       </div>
                                       <div className="border-t border-dashed border-slate-200 my-2 pt-2 space-y-1">
                                         <div className="flex justify-between text-xs">
-                                          <span className="text-slate-500 font-semibold">Tổng tiền:</span>
-                                          <span className="font-black text-slate-900">{formatCurrency(row.amount)}</span>
+                                          <span className="text-slate-500 font-semibold">Tổng tiền gốc:</span>
+                                          <span className={`font-black ${row.isReturned ? "line-through text-slate-400" : "text-slate-900"}`}>{formatCurrency(row.originalAmount || row.amount)}</span>
+                                        </div>
+                                        {(row.isReturned || row.returnedAmount > 0) && (
+                                          <div className="flex justify-between text-xs">
+                                            <span className="text-slate-500 font-semibold">Đã xuất trả NCC:</span>
+                                            <span className="font-bold text-purple-700">-{formatCurrency(row.returnedAmount)}</span>
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between text-xs pt-1 border-t border-slate-100">
+                                          <span className="text-slate-500 font-bold">Chi phí ghi nhận:</span>
+                                          <span className="font-black text-emerald-700">{formatCurrency(row.amount)}</span>
                                         </div>
                                         <div className="flex justify-between text-xs">
-                                          <span className="text-slate-500 font-semibold">Đã trả:</span>
-                                          <span className={`font-bold ${row.isCredit ? "text-red-600" : "text-emerald-600"}`}>
-                                            {row.isCredit ? "0 đ (Ghi nợ NCC)" : formatCurrency(row.amount)}
+                                          <span className="text-slate-500 font-semibold">Đã trả tiền/nợ:</span>
+                                          <span className={`font-bold ${row.isReturned ? "text-purple-700" : row.isCredit ? "text-red-600" : "text-emerald-600"}`}>
+                                            {row.isReturned ? "0 đ (Đã xuất trả hàng)" : row.isCredit ? "0 đ (Ghi nợ NCC)" : formatCurrency(row.amount)}
                                           </span>
                                         </div>
                                       </div>
@@ -723,7 +785,15 @@ export const FinanceReport: React.FC = () => {
                                     <div className="space-y-1">
                                       <div className="flex items-center gap-2">
                                         <span className="text-slate-500 font-medium">Trạng thái nợ:</span>
-                                        {row.isCredit ? (
+                                        {row.isReturned ? (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 font-bold border border-purple-200">
+                                            <RotateCcw size={11} /> Đã xuất trả NCC (Đã xóa nợ)
+                                          </span>
+                                        ) : row.isPartiallyReturned ? (
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+                                            <RotateCcw size={11} /> Đã trả 1 phần NCC
+                                          </span>
+                                        ) : row.isCredit ? (
                                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">
                                             <Clock size={11} /> Công nợ
                                           </span>
@@ -733,7 +803,7 @@ export const FinanceReport: React.FC = () => {
                                           </span>
                                         )}
                                       </div>
-                                      {row.isCredit && row.dueDate && (
+                                      {row.isCredit && !row.isReturned && row.dueDate && (
                                         <div className="flex items-center gap-1 text-[10px] text-amber-600 font-bold mt-1 bg-amber-50/50 p-1.5 rounded-lg border border-amber-100 w-fit">
                                           <Clock size={10} />
                                           <span>Hạn trả nợ: {new Date(row.dueDate).toLocaleDateString("vi-VN")}</span>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, RefreshCw, Printer } from "lucide-react";
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
+import { Search, Utensils, Pause, Send, ArrowLeft, Minus, Plus, XCircle, Loader2, RefreshCw, RotateCcw, Printer, AlertTriangle } from "lucide-react";
 import { Modal } from "../../../components/Modal";
 import { VoidItemModal, type OrderItemStatus } from "./VoidItemModal";
 import { toast } from "react-hot-toast";
@@ -15,6 +15,7 @@ import {
   holdOrderItems,
   createOrder,
   markItemAsServed,
+  cancelPaymentRequest,
   requestPayment,
   type WaiterMenuItem,
   type WaiterCategory,
@@ -123,6 +124,8 @@ export const OrderPage: React.FC = () => {
       .finally(() => setMenuLoading(false));
   }, []);
 
+  const location = useLocation();
+  const queryOrderId = useMemo(() => new URLSearchParams(location.search).get("orderId"), [location.search]);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const fetchOrderData = useCallback(async (showToast = false) => {
@@ -137,6 +140,26 @@ export const OrderPage: React.FC = () => {
           if (found) setTable(found);
         })
         .catch(() => {});
+
+      if (queryOrderId) {
+        const targetId = Number(queryOrderId);
+        setOrderId(targetId);
+        const items = await getOrderItems(targetId);
+        setOrderItems(
+          items.map((i) => ({
+            id: i.id,
+            menuItemId: i.menu_item_id,
+            name: i.item_name,
+            price: Number(i.unit_price),
+            quantity: i.quantity,
+            status: i.status as OrderItemStatus,
+            kitchenNote: i.kitchen_note,
+            held: Boolean(i.is_held),
+          })),
+        );
+        if (showToast) toast.success("Đã làm mới dữ liệu gọi món");
+        return;
+      }
 
       const orders = await getOrdersByTable(Number(tableId));
       if (orders.length === 0) {
@@ -170,7 +193,7 @@ export const OrderPage: React.FC = () => {
       if (showToast) setRefreshing(false);
       else setOrderLoading(false);
     }
-  }, [tableId]);
+  }, [tableId, queryOrderId]);
 
   // Tải order hiện tại của bàn
   useEffect(() => {
@@ -190,16 +213,22 @@ export const OrderPage: React.FC = () => {
   const pendingCount = orderItems.filter((i) => i.status === "pending" && !i.held).length;
   const heldCount = orderItems.filter((i) => i.status === "pending" && i.held).length;
 
+  const clusterCap = table?.group_seating_capacity ?? table?.cluster_capacity ?? table?.capacity ?? 0;
+  const isOverCapacity = typeof table?.guest_count === "number" && clusterCap > 0 && table.guest_count > clusterCap;
+
+  const isPendingPayment = orderStatus === "pending_payment" || (!table?.is_split && table?.status === "pending_payment");
   const isOrderLocked =
-    table?.status === "pending_payment" ||
-    orderStatus === "pending_payment" ||
+    isPendingPayment ||
     orderStatus === "completed" ||
     orderStatus === "paid" ||
-    orderStatus === "cancelled";
+    orderStatus === "cancelled" ||
+    isOverCapacity;
 
   const handleAddItemToOrder = async (targetItem: WaiterMenuItem, qty: number, note?: string) => {
     if (isOrderLocked) {
-      if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
+      if (isOverCapacity) {
+        toast.error(`⚠️ Bàn đang vượt quá sức chứa (${table?.guest_count}/${clusterCap} khách). Vui lòng Chuyển bàn hoặc Gộp bàn tại Sơ đồ bàn trước khi gọi món!`);
+      } else if (table?.status === "pending_payment" || orderStatus === "pending_payment") {
         toast.error("⚠️ Bàn đang yêu cầu thanh toán (Chờ thanh toán). Hệ thống đã khóa gọi thêm món để tránh sai lệch hóa đơn!");
       } else {
         toast.error("⚠️ Đơn hàng đã hoàn tất hoặc đã hủy, không thể gọi thêm món!");
@@ -491,6 +520,18 @@ export const OrderPage: React.FC = () => {
     return `${import.meta.env.VITE_API_URL?.replace("/api", "")}/uploads/${item.image_url}`;
   };
 
+  const handleCancelPaymentRequest = async () => {
+    if (!orderId) return;
+    try {
+      await cancelPaymentRequest(orderId);
+      setOrderStatus("serving");
+      toast.success("Đã hủy yêu cầu thanh toán. Đơn hàng quay về trạng thái Đang phục vụ!");
+      fetchOrderData(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err.message || "Không thể hủy yêu cầu thanh toán");
+    }
+  };
+
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
@@ -518,6 +559,16 @@ export const OrderPage: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isPendingPayment && (
+            <button
+              onClick={handleCancelPaymentRequest}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition-all shadow-xs cursor-pointer"
+              title="Hủy trạng thái Chờ thanh toán để tiếp tục gọi món"
+            >
+              <RotateCcw size={16} />
+              <span>↩️ Hủy chờ thanh toán (Tiếp tục phục vụ)</span>
+            </button>
+          )}
           <button
             onClick={() => fetchOrderData(true)}
             disabled={refreshing || orderLoading}
@@ -566,19 +617,39 @@ export const OrderPage: React.FC = () => {
             ))}
           </div>
 
-          {/* Status banner when order is locked */}
-          {isOrderLocked && (
+          {/* Status banner when order is locked or over capacity */}
+          {isOverCapacity ? (
+            <div className="mb-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl p-3.5 flex items-center justify-between shadow-sm animate-fade-in">
+              <div className="flex items-center gap-3 text-xs">
+                <AlertTriangle size={20} className="text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-bold text-amber-900 text-sm">
+                    ⚠️ Bàn đang vượt quá sức chứa chuẩn ({table?.guest_count}/{clusterCap} khách)
+                  </p>
+                  <p className="mt-0.5 text-amber-700">
+                    Hệ thống đang <strong>khóa gọi món</strong>. Bạn bắt buộc phải quay lại Sơ đồ bàn để <strong>Chuyển bàn</strong> hoặc <strong>Gộp bàn</strong> mới có thể gọi món.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate("/waiter/tables", { state: { selectedTableId: tableId } })}
+                className="ml-3 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 cursor-pointer shadow-2xs transition-colors"
+              >
+                Đến Sơ đồ bàn
+              </button>
+            </div>
+          ) : isOrderLocked && (
             <div className="mb-4 bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-3.5 flex items-center gap-3 shadow-sm">
               <span className="text-xl">⚠️</span>
               <div className="text-xs">
                 <p className="font-bold">
-                  {table?.status === "pending_payment" || orderStatus === "pending_payment"
-                    ? "Bàn đang yêu cầu thanh toán (Chờ thanh toán)"
+                  {isPendingPayment
+                    ? "Đơn hàng đang yêu cầu thanh toán (Chờ thanh toán)"
                     : "Đơn hàng đã hoàn tất / hủy"}
                 </p>
                 <p className="mt-0.5">
-                  {table?.status === "pending_payment" || orderStatus === "pending_payment"
-                    ? "Hệ thống đã khóa gọi thêm món khi bàn đang ở trạng thái Chờ thanh toán để tránh sai lệch hóa đơn."
+                  {isPendingPayment
+                    ? "Hệ thống đã khóa gọi thêm món khi đơn hàng đang ở trạng thái Chờ thanh toán để tránh sai lệch hóa đơn."
                     : "Đơn hàng này không còn chấp nhận gọi thêm món."}
                 </p>
               </div>

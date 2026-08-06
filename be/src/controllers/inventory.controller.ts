@@ -234,8 +234,9 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
 
     const qty = Number(quantity);
     const isDraft = status === "draft";
-    const cleanReason = (reasonOrSupplier || "").replace(/^\[LƯU TẠM\]\s*/g, "").trim();
-    const noteWithDraft = isDraft ? `[LƯU TẠM] ${cleanReason}`.trim() : cleanReason;
+    const isCompleted = status === "completed";
+    const cleanReason = (reasonOrSupplier || "").replace(/^\[LƯU TẠM\]\s*/g, "").replace(/^\[HOÀN THÀNH\]\s*/g, "").trim();
+    const noteWithPrefix = isDraft ? `[LƯU TẠM] ${cleanReason}` : isCompleted ? `[HOÀN THÀNH] ${cleanReason}` : cleanReason;
 
     // Cleanup previous draft transaction if editing an existing draft slip
     if (draftTxId) {
@@ -243,16 +244,16 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       if (cleanDraftId) {
         const oldStockIn = await db.query<any[]>("SELECT id, ingredient_id, quantity, note FROM stock_in WHERE id = ?", [cleanDraftId]);
         if (oldStockIn.length > 0) {
-          const wasOldDraft = (oldStockIn[0].note || "").includes("[LƯU TẠM]");
-          if (!wasOldDraft) {
+          const wasOldDraftOrCompleted = (oldStockIn[0].note || "").includes("[LƯU TẠM]") || (oldStockIn[0].note || "").includes("[HOÀN THÀNH]");
+          if (!wasOldDraftOrCompleted) {
             await db.query("UPDATE ingredients SET current_stock = GREATEST(0, current_stock - ?) WHERE id = ?", [oldStockIn[0].quantity, oldStockIn[0].ingredient_id]);
           }
           await db.query("DELETE FROM stock_in WHERE id = ?", [cleanDraftId]);
         }
         const oldStockOut = await db.query<any[]>("SELECT id, ingredient_id, quantity, note FROM stock_out WHERE id = ?", [cleanDraftId]);
         if (oldStockOut.length > 0) {
-          const wasOldDraft = (oldStockOut[0].note || "").includes("[LƯU TẠM]");
-          if (!wasOldDraft) {
+          const wasOldDraftOrCompleted = (oldStockOut[0].note || "").includes("[LƯU TẠM]") || (oldStockOut[0].note || "").includes("[HOÀN THÀNH]");
+          if (!wasOldDraftOrCompleted) {
             await db.query("UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?", [oldStockOut[0].quantity, oldStockOut[0].ingredient_id]);
           }
           await db.query("DELETE FROM stock_out WHERE id = ?", [cleanDraftId]);
@@ -261,8 +262,8 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
     }
 
     if (type === "import") {
-      // ONLY update current_stock in ingredients if it is NOT a draft
-      if (!isDraft) {
+      // ONLY update current_stock in ingredients if it is NOT a draft and NOT completed
+      if (!isDraft && !isCompleted) {
         await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, ingredientIdNum]);
       }
       
@@ -288,11 +289,11 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
 
       await db.query(
         `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [ingredientIdNum, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, noteWithDraft || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
+        [ingredientIdNum, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, noteWithPrefix || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
       );
 
       // TASK 5: Nhập hàng CHỊU (mua chịu) + có chọn NCC → cộng nợ cho NCC đó (CHỈ KHI KÍCH HOẠT LƯU THẬT)
-      if (isCredit && supplierId && !isDraft) {
+      if (isCredit && supplierId && (!isDraft && !isCompleted)) {
         const cost = qty * (Number(unitCost) || 0);
         if (cost > 0) {
           await db.query(
@@ -302,8 +303,10 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
         }
       }
     } else if (type === "export" || type === "adjust" || type === "waste") {
-      // ONLY update current_stock in ingredients if it is NOT a draft
-      if (!isDraft) {
+      const isReturnToSupplier = reasonType === "return_to_supplier" || reasonType === "return_supplier" || (reasonOrSupplier || "").toLowerCase().includes("trả ncc");
+
+      // ONLY update current_stock in ingredients if it is NOT a draft and NOT completed
+      if (!isDraft && !isCompleted) {
         await db.query(`UPDATE ingredients SET current_stock = GREATEST(0, current_stock - ?) WHERE id = ?`, [qty, ingredientIdNum]);
       }
 
@@ -334,7 +337,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
         if (remainingToDeduct <= 0) break;
         const deductQty = Math.min(batch.remaining_quantity, remainingToDeduct);
         
-        if (!isDraft) {
+        if (!isDraft && !isCompleted) {
           await db.query(
             `UPDATE stock_in SET remaining_quantity = GREATEST(0, remaining_quantity - ?) WHERE id = ?`,
             [deductQty, batch.id]
@@ -343,7 +346,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
 
         await db.query(
           `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-          [ingredientIdNum, batch.id, deductQty, exportReason, noteWithDraft || 'Xuất/Điều chỉnh/Tiêu hủy kho thủ công', 1]
+          [ingredientIdNum, batch.id, deductQty, exportReason, noteWithPrefix || 'Xuất/Điều chỉnh/Tiêu hủy kho thủ công', 1]
         );
 
         remainingToDeduct -= deductQty;
@@ -352,7 +355,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       if (remainingToDeduct > 0) {
         await db.query(
           `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by) VALUES (?, ?, ?, ?, ?)`,
-          [ingredientIdNum, remainingToDeduct, exportReason, noteWithDraft || 'Xuất/Điều chỉnh/Tiêu hủy kho (âm/không rõ lô)', 1]
+          [ingredientIdNum, remainingToDeduct, exportReason, noteWithPrefix || 'Xuất/Điều chỉnh/Tiêu hủy kho (âm/không rõ lô)', 1]
         );
       }
 
@@ -362,7 +365,7 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
         exportReason === "return_to_supplier" &&
         isCredit &&
         supplierId &&
-        !isDraft
+        !isDraft && !isCompleted
       ) {
         const returnAmount = qty * (Number(unitCost) || 0);
         if (returnAmount > 0) {

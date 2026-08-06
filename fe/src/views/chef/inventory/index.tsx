@@ -157,6 +157,7 @@ export const InventoryControl: React.FC = () => {
   // Sub tab for Xuất kho (Hàng trả NCC vs Trừ kho tự động)
   const [returnSubTab, setReturnSubTab] = useState<"supplier_return" | "auto_deduction">("supplier_return");
 
+  const [stocktakeValues, setStocktakeValues] = useState<Record<string, string>>({});
   // Printable Stocktake Receipt state (Matching Image 5)
   const [printStocktakeData, setPrintStocktakeData] = useState<any>(null);
   const [showStocktakePrintModal, setShowStocktakePrintModal] = useState<boolean>(false);
@@ -709,6 +710,41 @@ export const InventoryControl: React.FC = () => {
     }
   };
 
+  // Perform Stocktake adjustment
+  // @ts-ignore
+  const handleApplyStocktake = async () => {
+    let changed = false;
+
+    for (const ing of reduxIngredients) {
+      const val = stocktakeValues[ing.id];
+      if (val !== undefined && val.trim() !== "") {
+        const actualQty = Number(val);
+        const discrepancy = actualQty - ing.stock;
+
+        if (discrepancy !== 0) {
+          try {
+            await updateInventoryQuantityApi(ing.id, {
+              quantity: Math.abs(discrepancy),
+              type: discrepancy > 0 ? "import" : "adjust",
+              reasonOrSupplier: `Cân đối kiểm kê thực tế (${discrepancy > 0 ? "+" : ""}${discrepancy.toFixed(1)} ${ing.unit})`
+            });
+            changed = true;
+          } catch (e) {
+            console.error("Lỗi cập nhật", e);
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      getIngredientsApi().then((data) => setReduxIngredients(data));
+      getInventoryTransactionsApi().then(data => setTransactions(data));
+      setStocktakeValues({});
+      toast.success("✅ Cân đối kho thành công! Số lượng thực tế đã được cập nhật.");
+    } else {
+      toast.error("Chưa có số lượng kiểm kê thực tế nào được nhập hoặc không có chênh lệch.");
+    }
+  };
 
 
   // Check how many days until expiry
@@ -1262,15 +1298,17 @@ export const InventoryControl: React.FC = () => {
       const cleanSupplier = rawSupplierText
         .replace(/\[SLIP:[^\]]+\]\s*/g, "")
         .replace("[LƯU TẠM] ", "")
+        .replace("[HOÀN THÀNH] ", "")
         .replace("Nhập hàng từ ", "")
         .trim() || "Nhà cung cấp";
       
       const isDraft = reasonStr.includes("[LƯU TẠM]") || (tx as any).status === "draft" || (tx as any).note?.includes("[LƯU TẠM]");
+      const isCompleted = reasonStr.includes("[HOÀN THÀNH]") || (tx as any).note?.includes("[HOÀN THÀNH]");
       const isCreditTx = Boolean(tx.isCredit || (tx as any).is_credit || reasonStr.includes("Công nợ") || reasonStr.includes("chịu"));
       
       const slipMatch = reasonStr.match(/\[SLIP:([^\]]+)\]/);
       const dateMinuteStr = new Date(tx.timestamp).toISOString().slice(0, 16);
-      const groupKey = slipMatch ? slipMatch[1] : `${dateMinuteStr}_${cleanSupplier}_${isDraft ? 'draft' : 'done'}`;
+      const groupKey = slipMatch ? slipMatch[1] : `${dateMinuteStr}_${cleanSupplier}_${isDraft ? 'draft' : isCompleted ? 'completed' : 'done'}`;
       const ticketCode = slipMatch ? slipMatch[1] : `PN${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}-${String(tx.id).slice(-4)}`;
 
       const qty = Math.abs(Number(tx.quantity) || 0);
@@ -1285,6 +1323,7 @@ export const InventoryControl: React.FC = () => {
           supplierName: cleanSupplier,
           userName: "Nhân viên kho",
           isDraft,
+          isCompleted,
           isCredit: isCreditTx,
           note: parts[1] || "",
           items: [],
@@ -1331,17 +1370,19 @@ export const InventoryControl: React.FC = () => {
       const cleanSupplier = rawSupplierText
         .replace(/\[SLIP:[^\]]+\]\s*/g, "")
         .replace("[LƯU TẠM] ", "")
+        .replace("[HOÀN THÀNH] ", "")
         .replace("Trả hàng cho ", "")
         .replace(" - Trừ công nợ", "")
         .replace(" - Trừ nợ NCC", "")
         .trim() || "Nhà cung cấp";
       
       const isDraft = reasonStr.includes("[LƯU TẠM]") || (tx as any).status === "draft" || (tx as any).note?.includes("[LƯU TẠM]");
+      const isCompleted = reasonStr.includes("[HOÀN THÀNH]") || (tx as any).note?.includes("[HOÀN THÀNH]");
       const isCreditTx = Boolean(tx.isCredit || (tx as any).is_credit || reasonStr.toLowerCase().includes("công nợ") || reasonStr.toLowerCase().includes("trừ nợ"));
       
       const slipMatch = reasonStr.match(/\[SLIP:([^\]]+)\]/);
       const dateMinuteStr = new Date(tx.timestamp).toISOString().slice(0, 16);
-      const groupKey = slipMatch ? slipMatch[1] : `${dateMinuteStr}_${cleanSupplier}_${isDraft ? 'draft' : 'done'}`;
+      const groupKey = slipMatch ? slipMatch[1] : `${dateMinuteStr}_${cleanSupplier}_${isDraft ? 'draft' : isCompleted ? 'completed' : 'done'}`;
       const ticketCode = slipMatch ? slipMatch[1] : `TXT${new Date(tx.timestamp).getFullYear()}${String(new Date(tx.timestamp).getMonth() + 1).padStart(2, '0')}${String(new Date(tx.timestamp).getDate()).padStart(2, '0')}-${String(tx.id).slice(-4)}`;
 
       const qty = Math.abs(Number(tx.quantity) || 0);
@@ -1356,6 +1397,7 @@ export const InventoryControl: React.FC = () => {
           supplierName: cleanSupplier,
           userName: "Quản trị viên",
           isDraft,
+          isCompleted,
           isCredit: isCreditTx,
           note: parts[1] || "",
           items: [],
@@ -1748,6 +1790,7 @@ export const InventoryControl: React.FC = () => {
                       onClick={() => {
                         setCurrentView("returnGoods");
                         setSelectedIngredients([]);
+                        setReturnBatchData(null);
                       }}
                       className="px-3 py-1 bg-white text-rose-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-rose-50 transition-colors cursor-pointer"
                     >
@@ -2329,14 +2372,52 @@ export const InventoryControl: React.FC = () => {
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-purple-50 text-purple-800 border border-purple-200">
                                   XUẤT TRẢ NCC
                                 </span>
-                              ) : (
+                              ) : slip.isCompleted ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-emerald-50 text-emerald-800 border border-emerald-200">
                                   HOÀN THÀNH
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-blue-50 text-blue-800 border border-blue-200">
+                                  ĐÃ NHẬP HÀNG
                                 </span>
                               )}
                             </td>
                             <td className="px-5 py-3 text-center">
                               <div className="flex items-center justify-center gap-2">
+                                {(slip.isDraft || slip.isCompleted) && (
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      if (!window.confirm("Tất cả nguyên liệu sẽ được cộng vào bên trong kho, bạn chắc chứ?")) return;
+                                      try {
+                                        await Promise.all(slip.items.map((item: any) => 
+                                          updateInventoryQuantityApi(item.ingredientId, {
+                                            type: "import",
+                                            status: "imported",
+                                            quantity: item.quantity,
+                                            unitCost: item.unitCost,
+                                            supplierId: suppliers.find(s => s.name === slip.supplierName)?.id || undefined,
+                                            isCredit: slip.isCredit,
+                                            expiryDate: item.expiryDate && item.expiryDate !== "-" ? new Date(item.expiryDate.split('/').reverse().join('-')) : undefined,
+                                            batchNo: item.batchNo,
+                                            reasonOrSupplier: `[SLIP:${slip.ticketCode}] Nhập hàng từ ${slip.supplierName}` + (slip.note ? ` - Ghi chú: ${slip.note}` : ''),
+                                            ingredientName: item.ingredientName,
+                                            draftTxId: item.draftTxId
+                                          })
+                                        ));
+                                        toast.success("Đã xác nhận nhập kho thành công!");
+                                        getIngredientsApi().then(setReduxIngredients);
+                                        getInventoryTransactionsApi().then(setTransactions);
+                                      } catch (error: any) {
+                                        toast.error(error?.response?.data?.message || "Lỗi khi nhập kho");
+                                      }
+                                    }}
+                                    className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-bold text-[11px] transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                                    title="Xác nhận nhập vào kho"
+                                  >
+                                    <Check size={14} /> Nhập kho
+                                  </button>
+                                )}
                                 {slip.isDraft && (
                                   <button
                                     className="p-1 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
@@ -2659,9 +2740,6 @@ export const InventoryControl: React.FC = () => {
                               <td className="px-5 py-3 font-extrabold text-blue-600 whitespace-nowrap flex items-center gap-1.5">
                                 {expandedTxId === slip.id ? <ChevronDown size={14} className="text-blue-600" /> : <ChevronRight size={14} className="text-slate-400" />}
                                 {slip.ticketCode}
-                                {slip.isDraft && (
-                                  <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9px] font-black uppercase">LƯU TẠM</span>
-                                )}
                               </td>
                               <td className="px-5 py-3 text-slate-600 font-medium whitespace-nowrap">
                                 {new Date(slip.timestamp).toLocaleString("vi-VN", {
@@ -2694,15 +2772,53 @@ export const InventoryControl: React.FC = () => {
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">
                                     Lưu tạm / Chờ xuất
                                   </span>
-                                ) : (
+                                ) : slip.isCompleted ? (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                    Hoàn thành / Đã xuất
+                                    HOÀN THÀNH
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-purple-50 text-purple-800 border border-purple-200">
+                                    ĐÃ TRẢ HÀNG
                                   </span>
                                 )}
                               </td>
                               <td className="px-5 py-3 text-slate-600 font-medium max-w-[200px] truncate">{slip.note || "-"}</td>
                               <td className="px-5 py-3 text-center relative">
                                 <div className="flex items-center justify-center gap-2">
+                                  {(slip.isDraft || slip.isCompleted) && (
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        if (!window.confirm("Nguyên liệu sẽ bị trừ khỏi kho, bạn chắc chứ?")) return;
+                                        try {
+                                          await Promise.all(slip.items.map((item: any) => 
+                                            updateInventoryQuantityApi(item.ingredientId, {
+                                              type: "export",
+                                              status: "imported",
+                                              reasonType: "return_to_supplier",
+                                              quantity: item.quantity,
+                                              unitCost: item.unitCost,
+                                              supplierId: suppliers.find(s => s.name === slip.supplierName)?.id || undefined,
+                                              isCredit: slip.isCredit,
+                                              batchNo: item.batchNo,
+                                              reasonOrSupplier: `[SLIP:${slip.ticketCode}] Trả hàng cho ${slip.supplierName}` + (slip.isCredit ? " - Trừ công nợ" : "") + (slip.note ? ` - Ghi chú: ${slip.note}` : ''),
+                                              ingredientName: item.ingredientName,
+                                              draftTxId: item.draftTxId
+                                            })
+                                          ));
+                                          toast.success("Đã xác nhận trả hàng thành công!");
+                                          getIngredientsApi().then(setReduxIngredients);
+                                          getInventoryTransactionsApi().then(setTransactions);
+                                        } catch (error: any) {
+                                          toast.error(error?.response?.data?.message || "Lỗi khi xác nhận trả hàng");
+                                        }
+                                      }}
+                                      className="p-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                                      title="Xác nhận đã trả hàng"
+                                    >
+                                      <Check size={14} /> Đã trả hàng
+                                    </button>
+                                  )}
                                   {slip.isDraft && (
                                     <button
                                       className="p-1 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
