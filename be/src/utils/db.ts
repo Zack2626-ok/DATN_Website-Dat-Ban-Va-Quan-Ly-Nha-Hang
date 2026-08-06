@@ -967,8 +967,9 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: added stock_in_id to stock_out table");
     }
+    await ensureRefundColumns();
+    await ensureEarlyPaymentColumns();
 
-<<<<<<< HEAD
     // Ensure table_split_sessions table exists
     const splitSessionsExists = await query<any[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
@@ -1057,71 +1058,6 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: created invoice_item_splits table");
     }
 
-=======
-    await ensureRefundColumns();
-    await ensureEarlyPaymentColumns();
-
-    await query(`
-      CREATE TABLE IF NOT EXISTS table_split_sessions (
-        id INT NOT NULL AUTO_INCREMENT,
-        parent_table_id INT NOT NULL,
-        parent_order_id INT NOT NULL,
-        status ENUM('active', 'completed', 'cancelled') NOT NULL DEFAULT 'active',
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        closed_at DATETIME NULL,
-        PRIMARY KEY (id),
-        INDEX idx_split_sessions_table (parent_table_id),
-        INDEX idx_split_sessions_order (parent_order_id),
-        INDEX idx_split_sessions_status (status),
-        CONSTRAINT fk_split_session_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
-        CONSTRAINT fk_split_session_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `).catch(() => {});
-
-    await query(`
-      CREATE TABLE IF NOT EXISTS table_splits (
-        id INT NOT NULL AUTO_INCREMENT,
-        split_session_id INT NOT NULL,
-        parent_table_id INT NOT NULL,
-        parent_order_id INT NOT NULL,
-        child_order_id INT NOT NULL,
-        child_label VARCHAR(100) NOT NULL,
-        guest_count INT NOT NULL DEFAULT 1,
-        status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active',
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        closed_at DATETIME NULL,
-        PRIMARY KEY (id),
-        INDEX idx_splits_session (split_session_id),
-        INDEX idx_splits_parent_table (parent_table_id),
-        INDEX idx_splits_parent_order (parent_order_id),
-        INDEX idx_splits_child_order (child_order_id),
-        INDEX idx_splits_status (status),
-        CONSTRAINT fk_splits_session FOREIGN KEY (split_session_id) REFERENCES table_split_sessions(id) ON DELETE CASCADE,
-        CONSTRAINT fk_splits_parent_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
-        CONSTRAINT fk_splits_parent_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE,
-        CONSTRAINT fk_splits_child_order FOREIGN KEY (child_order_id) REFERENCES orders(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `).catch(() => {});
-
-    await query(`
-      CREATE TABLE IF NOT EXISTS invoice_item_splits (
-        id INT NOT NULL AUTO_INCREMENT,
-        parent_invoice_id INT NOT NULL,
-        child_invoice_id INT NOT NULL,
-        order_item_id INT NOT NULL,
-        quantity INT NOT NULL,
-        amount DECIMAL(12,2) NOT NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        INDEX idx_item_splits_parent (parent_invoice_id),
-        INDEX idx_item_splits_child (child_invoice_id),
-        INDEX idx_item_splits_order_item (order_item_id),
-        CONSTRAINT fk_item_splits_parent FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
-        CONSTRAINT fk_item_splits_child FOREIGN KEY (child_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
-        CONSTRAINT fk_item_splits_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `).catch(() => {});
-
     // Migration: Ensure debt_payments table exists
     await query(`
       CREATE TABLE IF NOT EXISTS debt_payments (
@@ -1136,7 +1072,6 @@ const runSchemaMigrations = async (): Promise<void> => {
         CONSTRAINT fk_debt_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
->>>>>>> 4b5d994736d483f2d3fc05aa5c3b277cc7399714
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }

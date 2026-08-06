@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { io } from "socket.io-client";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   fetchInvoices,
@@ -42,12 +43,47 @@ export const CashierPaymentPage: React.FC = () => {
     dispatch(fetchInvoices());
     dispatch(fetchTables());
     dispatch(fetchOrders());
-    const interval = setInterval(() => {
+
+    // Thiết lập Socket.io cập nhật thời gian thực cho trang Hóa đơn
+    const socketUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      console.log("⚡ Connected to Socket.io Server for Cashier Payment Page");
+    });
+
+    const triggerRefresh = () => {
       dispatch(fetchInvoices());
       dispatch(fetchTables());
       dispatch(fetchOrders());
-    }, 15000);
-    return () => clearInterval(interval);
+    };
+
+    socket.on("table:status_changed", triggerRefresh);
+    socket.on("table:transferred", triggerRefresh);
+    socket.on("table:merged", triggerRefresh);
+    socket.on("table:merge_resolved", triggerRefresh);
+    socket.on("table:group_seating_changed", triggerRefresh);
+    socket.on("order_updated", triggerRefresh);
+    socket.on("kds_updated", triggerRefresh);
+    socket.on("payment:request", triggerRefresh);
+    socket.on("invoice_refunded", triggerRefresh);
+
+    return () => {
+      socket.off("connect");
+      socket.off("table:status_changed");
+      socket.off("table:transferred");
+      socket.off("table:merged");
+      socket.off("table:merge_resolved");
+      socket.off("table:group_seating_changed");
+      socket.off("order_updated");
+      socket.off("kds_updated");
+      socket.off("payment:request");
+      socket.off("invoice_refunded");
+      socket.disconnect();
+      console.log("🔌 Disconnected Socket.io Client for Cashier Payment Page");
+    };
   }, [dispatch]);
 
   useEffect(() => {

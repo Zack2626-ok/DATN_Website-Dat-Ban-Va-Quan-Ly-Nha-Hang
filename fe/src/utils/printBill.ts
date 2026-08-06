@@ -155,32 +155,35 @@ export const printCashierInvoice = (
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
             font-family: 'Courier New', Courier, monospace;
-            font-size: 11px;
-            width: 80mm;
-            padding: 8px 8px;
+            font-size: 12px;
+            width: 76mm;
+            margin: 0 auto;
+            padding: 4mm 2mm;
             color: #000;
             background-color: #fff;
           }
           .center { text-align: center; }
           .bold { font-weight: bold; }
-          .lg { font-size: 13px; }
-          .xl { font-size: 15px; }
-          .divider { border-top: 1px dashed #000; margin: 8px 0; }
-          .row { display: flex; justify-content: space-between; margin: 4px 0; }
-          .total-row { font-size: 13px; font-weight: bold; margin-top: 6px; }
-          .note { font-size: 9px; color: #333; font-style: italic; margin-top: 4px; }
-          .item-note { font-size: 9px; color: #555; padding-left: 10px; margin-top: 1px; }
-          .qr-section { text-align: center; margin-top: 10px; padding: 8px; border: 1px dashed #000; border-radius: 4px; }
-          .qr-section img { width: 130px; height: 130px; margin-top: 4px; }
-          .qr-section p { font-size: 9px; margin-top: 2px; }
-          .item-block { margin: 6px 0; }
+          .lg { font-size: 14px; }
+          .xl { font-size: 16px; }
+          .divider { border-top: 1px dashed #000; margin: 6px 0; }
+          .row { display: flex; justify-content: space-between; margin: 3px 0; }
+          .total-row { font-size: 14px; font-weight: bold; margin-top: 4px; }
+          .note { font-size: 10px; color: #333; font-style: italic; margin-top: 4px; }
+          .item-note { font-size: 10px; color: #555; padding-left: 10px; margin-top: 1px; }
+          .qr-section { text-align: center; margin-top: 8px; padding: 6px; border: 1px dashed #000; border-radius: 4px; }
+          .qr-section img { width: 120px; height: 120px; margin-top: 4px; }
+          .qr-section p { font-size: 10px; margin-top: 2px; }
+          .item-block { margin: 4px 0; }
           @media print {
             @page {
-              size: auto;
-              margin: 0mm;
+              size: 80mm auto;
+              margin: 0;
             }
             body {
-              margin: 8mm 6mm;
+              width: 76mm;
+              margin: 0 auto;
+              padding: 2mm 0mm;
             }
           }
         </style>
