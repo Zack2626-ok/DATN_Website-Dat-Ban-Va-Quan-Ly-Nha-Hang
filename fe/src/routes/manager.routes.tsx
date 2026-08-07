@@ -10,6 +10,7 @@ import {
   PromotionManagement,
   BookingListPage,
   CRMManagement,
+  InvoiceManagement,
 } from "../views/manager";
 import { FinanceReport, LossDebtReport } from "../views/admin";
 import UserManagement from "../views/manager/UserManagement";
@@ -37,6 +38,7 @@ export const ManagerRoutes = () => (
       <Route path="loss-debt-report" element={<LossDebtReport />} />
       <Route path="promotions" element={<PromotionManagement />} />
       <Route path="crm" element={<CRMManagement />} />
+      <Route path="invoices" element={<InvoiceManagement />} />
     </Route>
 
     {/* Tạo tài khoản nhân viên — chỉ admin/manager mới truy cập được */}

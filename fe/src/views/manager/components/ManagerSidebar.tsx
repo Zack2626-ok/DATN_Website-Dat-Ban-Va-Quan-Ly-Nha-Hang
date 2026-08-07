@@ -16,6 +16,7 @@ import {
   Database,
   ChevronDown,
   Minus,
+  Receipt,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 
@@ -51,7 +52,8 @@ export const ManagerSidebar: React.FC = () => {
   const isManagementActive =
     location.pathname.startsWith("/manager/staff") ||
     location.pathname.startsWith("/manager/menu") ||
-    location.pathname.startsWith("/manager/crm");
+    location.pathname.startsWith("/manager/crm") ||
+    location.pathname.startsWith("/manager/invoices");
 
   const isReportsActive =
     location.pathname.startsWith("/manager/analytics") ||
@@ -236,6 +238,18 @@ export const ManagerSidebar: React.FC = () => {
                     >
                       <BadgeCheck size={16} strokeWidth={1.5} />
                       Quản lý khách hàng
+                    </Link>
+
+                    <Link
+                      to="/manager/invoices"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/invoices")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <Receipt size={16} strokeWidth={1.5} />
+                      Quản lý hóa đơn
                     </Link>
                   </div>
                 )}
