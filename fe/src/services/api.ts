@@ -68,6 +68,14 @@ export const getKdsVoidAlertsApi = async (): Promise<any[]> => {
 };
 
 /**
+ * Reuse a cooked cancelled item for another waiting table
+ */
+export const reuseKdsItemApi = async (cancelledItemId: string | number, targetItemId: string | number): Promise<any> => {
+  const response = await api.post(`/kds/items/${cancelledItemId}/reuse-to/${targetItemId}`);
+  return response.data.data;
+};
+
+/**
  * Fetch notifications, optionally filtered by user role
  */
 export const getNotificationsApi = async (role?: string): Promise<any[]> => {

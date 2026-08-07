@@ -142,6 +142,16 @@ export const voidOrderItemHandler = async (req: Request, res: Response): Promise
     const { orderId, itemId } = req.params;
     const { reason } = req.body;
 
+    // Kiểm tra trạng thái hiện tại của món ăn
+    const items = await db.query<any[]>("SELECT status FROM order_items WHERE id = ?", [Number(itemId)]);
+    if (items && items.length > 0) {
+      const currentStatus = items[0].status;
+      if (currentStatus === "cooking") {
+        sendError(res, "Không thể hủy món ăn khi bếp đang nấu!", 400);
+        return;
+      }
+    }
+
     const success = await db.voidResmanagerOrderItem(Number(itemId), reason || "Waiter cancelled");
     if (!success) {
       sendError(res, "Không tìm thấy món", 404);
@@ -174,6 +184,10 @@ export const sendItemsToKitchenHandler = async (req: Request, res: Response): Pr
 
     await db.sendResmanagerOrderItemsToKitchen(item_ids.map(Number));
 
+    // Báo Socket.io cập nhật KDS và Order
+    req.app.get("io")?.emit("kds_updated");
+    req.app.get("io")?.emit("order_updated");
+
     sendSuccess(res, { orderId, sent: item_ids.length }, "Đã gửi món xuống bếp");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -200,6 +214,9 @@ export const holdOrderItemsHandler = async (req: Request, res: Response): Promis
       sendError(res, "Không thể cập nhật trạng thái hold", 400);
       return;
     }
+
+    // Báo Socket.io cập nhật Order
+    req.app.get("io")?.emit("order_updated");
 
     sendSuccess(res, { orderId, item_ids, held }, held ? "Đã hold món" : "Đã bỏ hold món");
   } catch (error) {
