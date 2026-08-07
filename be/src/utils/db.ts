@@ -1,4 +1,4 @@
-import mysql from "mysql2/promise";
+﻿import mysql from "mysql2/promise";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import fs from "fs";
@@ -45,13 +45,13 @@ export const query = async <T = any>(sql: string, params: any[] = []): Promise<T
 export const isDbAvailable = (): boolean => dbAvailable;
 
 const MOCK_USERS: User[] = [
-  { id: "1", full_name: "System Admin", email: "admin@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "admin", phone: "0900000001", createdAt: new Date().toISOString() },
-  { id: "2", full_name: "Restaurant Manager", email: "manager@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "manager", phone: "0900000002", createdAt: new Date().toISOString() },
-  { id: "3", full_name: "Cashier 1", email: "cashier@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "cashier", phone: "0900000003", createdAt: new Date().toISOString() },
-  { id: "4", full_name: "Waiter 1", email: "waiter1@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "waiter", phone: "0900000004", createdAt: new Date().toISOString() },
-  { id: "5", full_name: "Waiter 2", email: "waiter2@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "waiter", phone: "0900000005", createdAt: new Date().toISOString() },
-  { id: "6", full_name: "Chef 1", email: "chef1@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "chef", phone: "0900000006", createdAt: new Date().toISOString() },
-  { id: "7", full_name: "Sales Event 1", email: "sales@gmail.com", password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa", role_name: "sales_event", phone: "0900000007", createdAt: new Date().toISOString() },
+  { id: "1", full_name: "System Admin", email: "admin@gmail.com", password: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", role_name: "admin", phone: "0900000001", createdAt: new Date().toISOString() },
+  { id: "2", full_name: "Restaurant Manager", email: "manager@gmail.com", password: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", role_name: "manager", phone: "0900000002", createdAt: new Date().toISOString() },
+  { id: "3", full_name: "Cashier 1", email: "cashier@gmail.com", password: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", role_name: "cashier", phone: "0900000003", createdAt: new Date().toISOString() },
+  { id: "4", full_name: "Waiter 1", email: "waiter1@gmail.com", password: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", role_name: "waiter", phone: "0900000004", createdAt: new Date().toISOString() },
+  { id: "5", full_name: "Waiter 2", email: "waiter2@gmail.com", password: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", role_name: "waiter", phone: "0900000005", createdAt: new Date().toISOString() },
+  { id: "6", full_name: "Chef 1", email: "chef1@gmail.com", password: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", role_name: "chef", phone: "0900000006", createdAt: new Date().toISOString() },
+  { id: "7", full_name: "Sales Event 1", email: "sales@gmail.com", password: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", role_name: "sales_event", phone: "0900000007", createdAt: new Date().toISOString() },
 ];
 
 export interface Order {
@@ -864,6 +864,7 @@ export interface TableArea {
 }
 
 export const getTableAreas = async (): Promise<TableArea[]> => {
+  if (!dbAvailable) return MOCK_TABLE_AREAS;
   try {
     const rows = await query<any[]>("SELECT * FROM table_areas WHERE is_active = 1 ORDER BY id ASC");
     return rows.map(row => ({
@@ -2027,6 +2028,9 @@ export const payBookingDeposit = async (id: number): Promise<boolean> => {
 
 // ===== RESMANAGER TABLE DATABASE OPERATIONS =====
 export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any[]> => {
+  if (!dbAvailable) {
+    return areaId ? MOCK_TABLES.filter(t => t.area_id === areaId) : MOCK_TABLES;
+  }
   let sql = `
     SELECT t.*, a.name AS area_name,
            COALESCE(o.guest_name, b.guest_name) AS guest_name,
@@ -2112,6 +2116,7 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
 };
 
 export const getEmptyTablesForBooking = async (startTime?: string): Promise<any[]> => {
+  if (!dbAvailable) return MOCK_TABLES.filter(t => t.status === "empty");
   let sql = `
     SELECT t.*, a.name AS area_name
     FROM tables t
@@ -3071,7 +3076,41 @@ export const removeFromWaitlist = async (id: number): Promise<boolean> => {
 };
 
 // ===== CUSTOMER DATABASE OPERATIONS =====
-const MOCK_CUSTOMERS: any[] = [];
+const MOCK_CUSTOMERS: any[] = [
+  {
+    id: 1,
+    name: "Khách Hàng Test",
+    email: "khachhang@gmail.com",
+    password_hash: "$2b$10$JmKRHVj8YPlkdRKFbZj5V.g.XIySeQc7Br9CSJmRNGV1VJW8IIwBK", // 123456
+    phone: "0999999999",
+    is_deleted: 0
+  }
+];
+
+// ===== TABLE & AREA OPERATIONS =====
+const MOCK_TABLE_AREAS = [
+  { id: 1, name: "Tầng 1 (12 Bàn)", description: "Khu vực tầng trệt", is_active: 1 },
+  { id: 2, name: "Tầng 2 (12 Bàn)", description: "Khu vực tầng 2", is_active: 1 },
+  { id: 3, name: "Sân Thượng (8 Bàn)", description: "Khu vực ngoài trời", is_active: 1 },
+  { id: 4, name: "Phòng VIP (4 Bàn)", description: "Khu vực phòng riêng VIP", is_active: 1 }
+];
+
+const MOCK_TABLES = [
+  { id: 1, area_id: 1, name: "B01", capacity: 4, row_pos: "A", col_pos: 1, status: "pending_payment", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 2, area_id: 1, name: "B02", capacity: 4, row_pos: "A", col_pos: 2, status: "cleaning", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 3, area_id: 1, name: "B03", capacity: 6, row_pos: "A", col_pos: 3, status: "reserved", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 4, area_id: 1, name: "B04", capacity: 8, row_pos: "A", col_pos: 4, status: "serving", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 5, area_id: 1, name: "B05", capacity: 4, row_pos: "B", col_pos: 1, status: "pending_payment", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 6, area_id: 1, name: "B06", capacity: 4, row_pos: "B", col_pos: 2, status: "reserved", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 7, area_id: 1, name: "B07", capacity: 6, row_pos: "B", col_pos: 3, status: "serving", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 8, area_id: 1, name: "B08", capacity: 8, row_pos: "B", col_pos: 4, status: "serving", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 9, area_id: 1, name: "B09", capacity: 10, row_pos: "C", col_pos: 1, status: "maintenance", maintenance_note: "Bàn bị hỏng chân", area_name: "Tầng 1 (12 Bàn)" },
+  { id: 10, area_id: 1, name: "B10", capacity: 4, row_pos: "C", col_pos: 2, status: "empty", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 11, area_id: 1, name: "B11", capacity: 4, row_pos: "C", col_pos: 3, status: "empty", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 12, area_id: 1, name: "B12", capacity: 4, row_pos: "C", col_pos: 4, status: "empty", maintenance_note: null, area_name: "Tầng 1 (12 Bàn)" },
+  { id: 13, area_id: 2, name: "B13", capacity: 4, row_pos: "A", col_pos: 1, status: "empty", maintenance_note: null, area_name: "Tầng 2 (12 Bàn)" },
+  { id: 14, area_id: 2, name: "B14", capacity: 4, row_pos: "A", col_pos: 2, status: "empty", maintenance_note: null, area_name: "Tầng 2 (12 Bàn)" }
+];
 
 export const findCustomerByEmail = async (email: string): Promise<any | null> => {
   if (!dbAvailable) return MOCK_CUSTOMERS.find((c) => c.email === email && !c.is_deleted) || null;
@@ -3446,6 +3485,7 @@ export const deletePromotion = async (id: number | string): Promise<boolean> => 
 
 // ===== RESTAURANT INFO OPERATIONS =====
 export const getRestaurantInfo = async (): Promise<any> => {
+    if (!dbAvailable) return { id: 1, name: "ResManager Bistro", address: "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM", hotline: "028 3829 4000", hotline_hours: "Hỗ trợ 10:00–22:00 hàng ngày", email: "contact@resmanager.vn", opening_hours: "Thứ 2 – Chủ nhật: 10:00 – 22:00", happy_hour: "Happy Hour: 17:00 – 19:00", map_url: null, tax_rate: 10.0, service_fee_rate: 5.0 };
   const rows = await query<any[]>("SELECT * FROM restaurant_info WHERE id = 1");
   if (rows[0]) return rows[0];
   // Fallback nếu chưa seed

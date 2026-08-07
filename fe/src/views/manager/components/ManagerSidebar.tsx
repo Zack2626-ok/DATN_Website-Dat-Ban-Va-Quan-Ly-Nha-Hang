@@ -16,6 +16,7 @@ import {
   Database,
   ChevronDown,
   Minus,
+  QrCode,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 
@@ -46,6 +47,7 @@ export const ManagerSidebar: React.FC = () => {
   const isOpsActive =
     location.pathname.startsWith("/manager/tables") ||
     location.pathname.startsWith("/manager/bookings") ||
+    location.pathname.startsWith("/manager/qrcodes") ||
     location.pathname.startsWith("/manager/shifts");
 
   const isManagementActive =
@@ -154,6 +156,18 @@ export const ManagerSidebar: React.FC = () => {
                         Quản lý đặt bàn
                       </span>
                       <span className="h-2 w-2 rounded-full bg-[#EC4899]" />
+                    </Link>
+
+                    <Link
+                      to="/manager/qrcodes"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/qrcodes")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <QrCode size={16} strokeWidth={1.5} />
+                      Thiết lập QR Code
                     </Link>
 
                     <Link

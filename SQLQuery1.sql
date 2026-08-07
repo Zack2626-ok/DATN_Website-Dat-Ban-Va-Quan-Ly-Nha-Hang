@@ -62,12 +62,12 @@ CREATE TABLE users (
 
 -- password thật: "123456", hash bcrypt cost 10
 INSERT INTO users (role_id, employee_code, full_name, email, password_hash, phone) VALUES
- (1, 'NV001', 'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
- (2, 'NV002', 'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
- (4, 'NV003', 'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
- (3, 'NV004', 'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
- (3, 'NV005', 'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
- (5, 'NV006', 'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006');
+ (1, 'NV001', 'System Admin',       'admin@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000001'),
+ (2, 'NV002', 'Restaurant Manager', 'manager@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000002'),
+ (4, 'NV003', 'Cashier 1',          'cashier@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000003'),
+ (3, 'NV004', 'Waiter 1',           'waiter1@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000004'),
+ (3, 'NV005', 'Waiter 2',           'waiter2@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000005'),
+ (5, 'NV006', 'Chef 1',             'chef1@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000006');
 
 CREATE TABLE customers (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -87,10 +87,10 @@ CREATE TABLE customers (
 -- password_hash cho customer 1 (silver) và customer 4 (vip): "123456"
 -- customer 2,3,5: chưa đăng ký tài khoản online (NULL hash)
 INSERT INTO customers (name, phone, email, password_hash, member_level, loyalty_points) VALUES
- ('Nguyen Van A', '0911111111', 'a@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', 'silver', 172),
+ ('Nguyen Van A', '0911111111', 'a@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', 'silver', 172),
  ('Tran Thi B',   '0922222222', 'b@gmail.com', NULL,                                                              'gold',   400),
  ('Le Van C',     '0933333333', 'c@gmail.com', NULL,                                                              'bronze',  50),
- ('Pham Thi D',   '0944444444', 'd@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', 'vip',    500),
+ ('Pham Thi D',   '0944444444', 'd@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', 'vip',    500),
  ('Hoang Van E',  '0955555555', 'e@gmail.com', NULL,                                                              'gold',   300);
 
 CREATE TABLE loyalty_transactions (

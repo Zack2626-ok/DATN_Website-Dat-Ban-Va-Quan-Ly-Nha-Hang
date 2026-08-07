@@ -168,11 +168,16 @@ const CustomerOrderPage = () => {
     : menuItems;
 
   return (
-    <div className="min-h-screen bg-client-bg pb-32">
-      <div className="bg-gradient-to-r from-[#2a221c] to-[#3d3229] text-white px-4 py-4 sticky top-0 z-10 shadow-md">
-        <h1 className="text-lg font-bold font-display text-client-secondary">Thực đơn tại bàn — Bàn #{tableIdFromUrl}</h1>
+    <div className="bg-client-bg min-h-screen pb-24 font-sans selection:bg-client-primary/20 relative">
+      {!isConnected && (
+        <div className="bg-red-500 text-white px-4 py-2 text-center text-xs font-bold sticky top-0 z-50 animate-pulse">
+          Đang mất kết nối mạng! Vui lòng chờ kết nối lại...
+        </div>
+      )}
+      <div className="bg-gradient-to-r from-[#2a221c] to-[#3d3229] text-white px-4 py-4 sticky top-[env(safe-area-inset-top)] z-10 shadow-md">
+        <h1 className="text-lg font-bold font-display text-client-secondary">Thực đơn tại bàn - Bàn #{tableIdFromUrl}</h1>
         <p className="text-xs text-[#c9bfae]">
-          {isConnected ? "🟢 Kết nối ổn định" : "🔴 Đang kết nối..."}
+          {isConnected ? "🟢 Kết nối ổn định" : "🔴 Mất kết nối mạng"}
         </p>
       </div>
 
@@ -222,7 +227,8 @@ const CustomerOrderPage = () => {
                     {qty === 0 ? (
                       <button
                         onClick={() => addToCart(item)}
-                        className="flex-shrink-0 w-9 h-9 rounded-full bg-client-primary hover:bg-client-primary-hover text-white flex items-center justify-center text-lg font-bold shadow-xs cursor-pointer"
+                        disabled={!isConnected}
+                        className="flex-shrink-0 w-9 h-9 rounded-full bg-client-primary hover:bg-client-primary-hover text-white flex items-center justify-center text-lg font-bold shadow-xs cursor-pointer disabled:opacity-50"
                       >
                         +
                       </button>
@@ -230,14 +236,16 @@ const CustomerOrderPage = () => {
                       <div className="flex-shrink-0 flex items-center gap-2">
                         <button
                           onClick={() => updateQuantity(cartItemId, -1)}
-                          className="w-8 h-8 rounded-full bg-[#f0eae1] text-client-text hover:bg-client-accent flex items-center justify-center font-bold cursor-pointer"
+                          disabled={!isConnected}
+                          className="w-8 h-8 rounded-full bg-[#f0eae1] text-client-text hover:bg-client-accent flex items-center justify-center font-bold cursor-pointer disabled:opacity-50"
                         >
                           −
                         </button>
                         <span className="w-6 text-center font-bold text-sm text-client-text">{qty}</span>
                         <button
                           onClick={() => updateQuantity(cartItemId, 1)}
-                          className="w-8 h-8 rounded-full bg-client-primary hover:bg-client-primary-hover text-white flex items-center justify-center font-bold cursor-pointer"
+                          disabled={!isConnected}
+                          className="w-8 h-8 rounded-full bg-client-primary hover:bg-client-primary-hover text-white flex items-center justify-center font-bold cursor-pointer disabled:opacity-50"
                         >
                           +
                         </button>
@@ -278,10 +286,10 @@ const CustomerOrderPage = () => {
             </div>
             <button
               onClick={handleSubmitOrder}
-              disabled={submitting}
+              disabled={submitting || !isConnected}
               className="px-6 py-3 bg-client-primary hover:bg-client-primary-hover text-white rounded-xl font-bold text-sm shadow-md disabled:opacity-50 cursor-pointer"
             >
-              {submitting ? "Đang gửi đơn..." : "Gửi yêu cầu gọi món"}
+              {!isConnected ? "Mất kết nối..." : (submitting ? "Đang gửi đơn..." : "Gửi yêu cầu gọi món")}
             </button>
           </div>
         </div>

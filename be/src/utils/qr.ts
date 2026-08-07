@@ -31,7 +31,7 @@ export const qrUtils = {
   // Tạo URL QR Code đầy đủ
   // FE_URL là đường dẫn đến web client của bạn
   generateQRCodeUrl: (tableId: number | string, token: string): string => {
-    const baseUrl = process.env.FE_URL || "http://localhost:5173";
-    return `${baseUrl}/client/order?table_id=${tableId}&token=${token}`;
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    return `${baseUrl}/order?table_id=${tableId}&token=${token}`;
   }
 };

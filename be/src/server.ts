@@ -54,7 +54,7 @@ const frontendOrigins = [
 // ✅ Socket.io server
 export const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: frontendOrigins,
+    origin: true,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -113,7 +113,7 @@ initDb()
  
 app.use(
   cors({
-    origin: frontendOrigins,
+    origin: true,
     credentials: true,
   }),
 );
