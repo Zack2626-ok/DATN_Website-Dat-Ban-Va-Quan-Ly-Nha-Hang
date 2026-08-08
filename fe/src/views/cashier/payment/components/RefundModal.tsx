@@ -19,7 +19,9 @@ export const RefundModal: React.FC<RefundModalProps> = ({
   onSuccess,
 }) => {
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
-  const [reason, setReason] = useState<string>("Khách lỡ trả tiền trước - Đổi ý không ăn món này nữa");
+  const [selectedReasonOption, setSelectedReasonOption] = useState<string>("Làm sai món");
+  const [customReasonNote, setCustomReasonNote] = useState<string>("Khách yêu cầu hoàn do món bị sai");
+  const [executorName, setExecutorName] = useState<string>("Quản lý");
   const [refundMethod, setRefundMethod] = useState<"cash" | "transfer">("cash");
   const [loading, setLoading] = useState<boolean>(false);
   const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
@@ -28,12 +30,23 @@ export const RefundModal: React.FC<RefundModalProps> = ({
     getRestaurantInfo()
       .then(setResInfo)
       .catch(() => {});
+
+    try {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const u = JSON.parse(userStr);
+        if (u.name || u.username) {
+          setExecutorName(u.name || u.username);
+        }
+      }
+    } catch (e) {}
   }, []);
 
   useEffect(() => {
     if (isOpen && invoice) {
       setSelectedItemIds([]);
-      setReason("Khách lỡ trả tiền trước - Đổi ý không ăn món này nữa");
+      setSelectedReasonOption("Làm sai món");
+      setCustomReasonNote("Khách yêu cầu hoàn do món bị sai");
       setRefundMethod("cash");
     }
   }, [isOpen, invoice]);
@@ -90,7 +103,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
       <html lang="vi">
       <head>
         <meta charset="UTF-8" />
-        <title>PHIẾU HOÀN TIỀN - HÓA ĐƠN #${invoice.id}</title>
+        <title>PHIẾU HOÀN TIỀN - HÓA ĐƠN ${invoice.order_code || `#${invoice.id}`}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
@@ -118,9 +131,10 @@ export const RefundModal: React.FC<RefundModalProps> = ({
         <div class="divider"></div>
         <div class="center bold xl" style="margin: 4px 0; color: #dc2626;">PHIẾU HOÀN TIỀN</div>
         <div class="divider"></div>
-        <div class="row"><span>Mã Order gốc:</span><span class="bold">#${invoice.id}</span></div>
+        <div class="row"><span>Mã Order gốc:</span><span class="bold">${invoice.order_code || `#${invoice.id}`}</span></div>
         <div class="row"><span>Thời gian hoàn:</span><span>${printDate} ${printTime}</span></div>
         <div class="row"><span>Hình thức trả:</span><span>${refundMethod === "cash" ? "Tiền mặt" : "Chuyển khoản"}</span></div>
+        <div class="row"><span>Người thực hiện:</span><span>${executorName}</span></div>
         <div class="divider"></div>
         <div class="bold" style="margin-bottom: 4px;">DANH SÁCH MÓN HOÀN TRẢ:</div>
         ${itemsHtml}
@@ -135,7 +149,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
           <span>${totalRefundAmount.toLocaleString("vi-VN")} đ</span>
         </div>
         <div class="divider"></div>
-        <div class="note">Lý do hoàn: ${refundData.reason || reason}</div>
+        <div class="note">Lý do hoàn: ${refundData.reason || "Làm sai món"}</div>
         <div class="divider"></div>
         <div style="display: flex; justify-content: space-between; text-align: center; margin-top: 15px; font-size: 10px;">
           <div>
@@ -143,8 +157,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
             (Ký tên)
           </div>
           <div>
-            <b>Thu ngân</b><br><br><br>
-            (Ký tên)
+            <b>Người lập phiếu</b><br>(${executorName})<br><br><br>
           </div>
         </div>
         <script>
@@ -161,8 +174,13 @@ export const RefundModal: React.FC<RefundModalProps> = ({
       toast.error("Vui lòng chọn ít nhất một món ăn cần hoàn tiền bằng cách nhấn nút [-]");
       return;
     }
-    if (!reason.trim()) {
-      toast.error("Vui lòng nhập lý do hoàn tiền món ăn");
+
+    const finalReason = selectedReasonOption === "Khác"
+      ? (customReasonNote.trim() || "Lý do khác")
+      : (selectedReasonOption + (customReasonNote.trim() ? `: ${customReasonNote.trim()}` : ""));
+
+    if (selectedReasonOption === "Khác" && !customReasonNote.trim()) {
+      toast.error("Vui lòng nhập chi tiết lý do hoàn tiền");
       return;
     }
 
@@ -170,7 +188,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
     try {
       const result = await refundInvoiceItemsApi(invoice.id, {
         itemIds: selectedItemIds,
-        reason: reason.trim(),
+        reason: finalReason,
         refundMethod,
       });
 
@@ -220,7 +238,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
           <div className="space-y-1 text-[11px]">
             <div className="flex justify-between">
               <span className="text-slate-400">Mã Order:</span>
-              <span className="font-bold">#{invoice.id}</span>
+              <span className="font-bold">{invoice.order_code || `#${invoice.id}`}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400 flex items-center gap-1"><Clock size={10} /> Ngày giờ:</span>
@@ -358,14 +376,49 @@ export const RefundModal: React.FC<RefundModalProps> = ({
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Lý do hoàn tiền:</label>
-              <input
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Nhập lý do hoàn..."
-                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[11px] focus:ring-1 focus:ring-sky-500 outline-none font-sans"
-              />
+              <label className="font-bold text-slate-700 block mb-1.5">Lý do hoàn tiền:</label>
+              <div className="grid grid-cols-2 gap-1.5 mb-2 font-sans text-[10px]">
+                {["Làm sai món", "Món có vấn đề", "Khách hủy món", "Phục vụ chậm", "Khác"].map((opt) => (
+                  <label
+                    key={opt}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[10px] font-bold cursor-pointer transition-all ${
+                      selectedReasonOption === opt
+                        ? "bg-[#3E2016]/5 border-[#3E2016] text-[#3E2016]"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="refundReasonOption"
+                      value={opt}
+                      checked={selectedReasonOption === opt}
+                      onChange={() => setSelectedReasonOption(opt)}
+                      className="accent-[#3E2016]"
+                    />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+              
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block mb-0.5">Ghi chú chi tiết:</label>
+                <textarea
+                  value={customReasonNote}
+                  onChange={(e) => setCustomReasonNote(e.target.value)}
+                  placeholder={
+                    selectedReasonOption === "Khác"
+                      ? "Vui lòng nhập chi tiết lý do hoàn tiền..."
+                      : "Nhập ghi chú thêm nếu cần..."
+                  }
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] focus:ring-1 focus:ring-[#3E2016] focus:border-[#3E2016] outline-none font-sans h-12 resize-none"
+                  required={selectedReasonOption === "Khác"}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center text-[10px] border-t border-slate-100 pt-2 font-sans">
+              <span className="text-slate-400">Người thực hiện hoàn tiền:</span>
+              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">{executorName}</span>
             </div>
           </div>
         </div>
