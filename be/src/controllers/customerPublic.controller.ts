@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 import { parseBookingIntentWithAI } from "../utils/aiBookingAgent";
+import { getBookingTimeValidationError } from "../utils/bookingTime";
+import { BOOKING_CHANNEL } from "../constants/booking";
 import { io } from "../server";
 import { notifyWaitersAboutBooking } from "../utils/telegram";
 
@@ -84,6 +86,24 @@ export const handleAIChatHandler = async (req: Request, res: Response): Promise<
 
     if (aiResult.is_complete && aiResult.party_size && aiResult.booking_date && aiResult.booking_time && aiResult.guest_name && aiResult.guest_phone) {
       const startTime = `${aiResult.booking_date} ${aiResult.booking_time}:00`;
+
+      // Hard backend validation for online booking time boundaries (Lunch: 10:00-13:45, Dinner: 17:00-20:30)
+      const bookingTimeError = getBookingTimeValidationError(startTime, BOOKING_CHANNEL.ONLINE);
+      if (bookingTimeError) {
+        aiResult.is_complete = false;
+        aiResult.reply_prompt = bookingTimeError;
+        sendSuccess(
+          res,
+          {
+            reply: bookingTimeError,
+            booking_created: false,
+            ai_parsed: aiResult,
+          },
+          "Booking time validation failed"
+        );
+        return;
+      }
+
       const endTime = `${aiResult.booking_date} ${Number(aiResult.booking_time.slice(0, 2)) + 2}:00:00`;
       let options = await db.getAvailableBookingTableOptions(aiResult.party_size, startTime, endTime);
 
