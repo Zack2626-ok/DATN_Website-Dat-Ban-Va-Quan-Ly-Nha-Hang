@@ -20,6 +20,7 @@ export interface Invoice {
   status: string;
   invoiceStatus: InvoiceStatus;
   createdAt: string;
+  arrivedAt?: string;
   orderType?: string;
   paymentMethod?: string;
   staffName?: string;
