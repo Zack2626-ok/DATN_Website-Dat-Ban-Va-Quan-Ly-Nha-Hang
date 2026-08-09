@@ -24,7 +24,7 @@ export const printCashierInvoice = (
     const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
     const tableName = invoice.tableName || invoice.table_name || "Khách lẻ";
-    const invId = invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A";
+    const invId = invoice.order_code || (invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A");
     const guestName = invoice.customerName || invoice.customer_name || invoice.guestName || invoice.guest_name || "";
     const guestPhone = invoice.customerPhone || invoice.customer_phone || invoice.guestPhone || invoice.guest_phone || "";
     const allItems = (invoice.items || []).filter((item: any) => item.status !== "cancelled");

@@ -4,6 +4,7 @@ export type InvoiceStatus = "unpaid" | "pending" | "paid" | "cancelled";
 
 export interface Invoice {
   id: string;
+  order_code?: string;
   tableId?: string;
   tableName?: string;
   customerName?: string;
