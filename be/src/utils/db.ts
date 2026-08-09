@@ -2175,6 +2175,7 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
     );
     order.subtotal = subtotal;
     order.totalAmount = subtotal;
+    order.arrivedAt = order.created_at || order.createdAt || null;
 
     // Check deposit from bookings table (where deposit_status is paid or completed)
     let depositAmount = 0;
