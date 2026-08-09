@@ -579,11 +579,11 @@ export const getTodayCheckList = async (_req: Request, res: Response): Promise<v
 export const paySupplierDebt = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { amount, method = "cash", note } = req.body;
-    const userId = (req as any).user?.id ?? 1;
+    const { amount, method, note, proofImage } = req.body;
+    const userId = (req as any).user?.id || null;
 
     if (!amount || Number(amount) <= 0) {
-      sendError(res, "Số tiền không hợp lệ", 400);
+      sendError(res, "Số tiền thanh toán phải lớn hơn 0", 400);
       return;
     }
 
@@ -598,7 +598,14 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
     }
 
     const supplier = suppliers[0];
-    const payAmount = Math.min(Number(amount), Number(supplier.total_debt));
+    const currentDebt = Number(supplier.total_debt || 0);
+
+    if (Number(amount) > currentDebt) {
+      sendError(res, `Số tiền thanh toán (${Number(amount).toLocaleString('vi-VN')} đ) không được lớn hơn tổng số nợ hiện tại (${currentDebt.toLocaleString('vi-VN')} đ)`, 400);
+      return;
+    }
+
+    const payAmount = Number(amount);
 
     // Trừ nợ
     await db.query(
@@ -608,9 +615,9 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
 
     // Ghi lịch sử thanh toán nợ
     const payRes = await db.query(
-      `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [id, payAmount, method, note || null, userId]
+      `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by, proof_image)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, payAmount, method, note || null, userId, proofImage || null]
     );
 
     // Lấy nợ còn lại
@@ -642,9 +649,9 @@ export const getDebtHistory = async (req: Request, res: Response): Promise<void>
     const rows = await db.query(
       `
       SELECT dp.id, dp.amount, dp.method, dp.note, dp.paid_at,
-             u.full_name AS paid_by_name
+             COALESCE(u.full_name, 'Hệ thống') AS paid_by_name
       FROM debt_payments dp
-      JOIN users u ON dp.paid_by = u.id
+      LEFT JOIN users u ON dp.paid_by = u.id
       WHERE dp.supplier_id = ?
       ORDER BY dp.paid_at DESC
       LIMIT 50
@@ -827,6 +834,7 @@ export const getAllBatches = async (req: Request, res: Response): Promise<void> 
          si.batch_code as batchNo, 
          si.remaining_quantity as quantity, 
          si.expiry_date as expiryDate, 
+         COALESCE(si.unit_cost, 0) as unitCost,
          i.name as ingredientName,
          i.unit
        FROM stock_in si
