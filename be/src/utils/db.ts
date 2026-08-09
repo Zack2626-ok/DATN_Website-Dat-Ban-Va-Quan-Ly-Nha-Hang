@@ -1058,7 +1058,7 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: created invoice_item_splits table");
     }
 
-    // Migration: Ensure debt_payments table exists
+    // Migration: Ensure debt_payments table exists and has proof_image column
     await query(`
       CREATE TABLE IF NOT EXISTS debt_payments (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1066,12 +1066,16 @@ const runSchemaMigrations = async (): Promise<void> => {
         amount DECIMAL(14,2) NOT NULL,
         method VARCHAR(50) NOT NULL DEFAULT 'transfer',
         note TEXT NULL,
+        proof_image LONGTEXT NULL,
         paid_by INT NULL,
         paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_debt_payments_supplier (supplier_id),
         CONSTRAINT fk_debt_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
+
+    await query(`ALTER TABLE debt_payments ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
+    await query(`ALTER TABLE debt_payments MODIFY COLUMN paid_by INT NULL`).catch(() => {});
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }

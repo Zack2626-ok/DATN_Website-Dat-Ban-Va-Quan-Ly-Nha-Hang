@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Minus,
   Receipt,
+  Boxes,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 
@@ -52,6 +53,7 @@ export const ManagerSidebar: React.FC = () => {
   const isManagementActive =
     location.pathname.startsWith("/manager/staff") ||
     location.pathname.startsWith("/manager/menu") ||
+    location.pathname.startsWith("/manager/inventory") ||
     location.pathname.startsWith("/manager/crm") ||
     location.pathname.startsWith("/manager/invoices");
 
@@ -229,6 +231,18 @@ export const ManagerSidebar: React.FC = () => {
                     </Link>
 
                     <Link
+                      to="/manager/inventory"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/inventory")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <Boxes size={16} strokeWidth={1.5} />
+                      Quản lý kho
+                    </Link>
+
+                    <Link
                       to="/manager/crm"
                       className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
                         isRouteActive("/manager/crm")
@@ -320,7 +334,7 @@ export const ManagerSidebar: React.FC = () => {
                         }`}
                       >
                         <TrendingDown size={16} strokeWidth={1.5} />
-                        Hao hụt & Công nợ
+                        Công nợ NCC
                       </Link>
                     </div>
                   )}
