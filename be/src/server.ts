@@ -57,6 +57,8 @@ export const io = new SocketIOServer(httpServer, {
   },
 });
 
+app.set("io", io);
+
 io.on("connection", (socket) => {
   console.log(`🔌 Socket.io client connected: ${socket.id}`);
   socket.on("disconnect", () => {
