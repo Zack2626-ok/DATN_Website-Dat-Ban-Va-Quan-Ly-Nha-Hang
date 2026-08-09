@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   fetchInvoices,
@@ -21,6 +21,7 @@ import { MergeBillModal } from "./components/MergeBillModal";
 import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 import { printCashierInvoice } from "../../../utils/printBill";
+import { io, type Socket } from "socket.io-client";
 
 export const CashierPaymentPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -35,6 +36,12 @@ export const CashierPaymentPage: React.FC = () => {
   const [mergeOpen, setMergeOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  const showSuccess = useCallback((msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3000);
+  }, []);
 
   useEffect(() => {
     dispatch(fetchInvoices());
@@ -53,6 +60,49 @@ export const CashierPaymentPage: React.FC = () => {
       .then(setRestaurantInfo)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("⚡ Cashier connected to payment socket");
+    });
+
+    socket.on("payment:request", (data: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string }) => {
+      const label = data.tableName || (data.tableId ? `bàn ${data.tableId}` : `đơn #${data.orderId || ""}`);
+      showSuccess(`Có yêu cầu thanh toán mới cho ${label}`);
+      dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+    });
+
+    socket.on("payment:updated", () => {
+      dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+    });
+
+    socket.on("invoice:updated", () => {
+      dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("payment:request");
+      socket.off("payment:updated");
+      socket.off("invoice:updated");
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [dispatch, showSuccess]);
 
   useEffect(() => {
     if (error) {
@@ -130,11 +180,6 @@ export const CashierPaymentPage: React.FC = () => {
     () => invoices.find((inv) => inv.id === selectedInvoiceId) || null,
     [invoices, selectedInvoiceId],
   );
-
-  const showSuccess = useCallback((msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3000);
-  }, []);
 
   const handleSelectInvoice = useCallback(
     (id: string) => {
