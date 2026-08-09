@@ -126,6 +126,7 @@ export const printCashierInvoice = (
         <div class="center bold lg" style="margin-bottom:6px;">${tableName}</div>
         <div class="divider"></div>
         <div class="row"><span>Mã Hóa Đơn:</span><span class="bold">${invId}</span></div>
+        ${invoice.arrivedAt ? `<div class="row"><span>Vào bàn:</span><span>${new Date(invoice.arrivedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</span></div>` : ""}
         <div class="row"><span>Thời gian in:</span><span>${printDate} ${printTime}</span></div>
         <div class="row"><span>Hình thức thanh toán:</span><span class="bold">${methodLabel}</span></div>
         ${guestName || guestPhone ? `
