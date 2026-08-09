@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Search, ArrowLeft, Save, UploadCloud, CheckCircle, ClipboardCheck } from "lucide-react";
+import { Search, ArrowLeft, Save, UploadCloud, ClipboardCheck } from "lucide-react";
 import toast from "react-hot-toast";
-import { getIngredientsApi, submitStockCheckApi } from "../../../services/api";
+import * as XLSX from "xlsx";
+import { getIngredientsApi } from "../../../services/api";
 
 interface InventoryCheckProps {
   onBack: () => void;
@@ -49,6 +50,109 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
     setCheckItems(updated);
   };
 
+  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: "binary" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        if (!rows || rows.length === 0) {
+          toast.error("File Excel trống hoặc không đúng định dạng!");
+          return;
+        }
+
+        // Tìm dòng header (chứa "Tên nguyên liệu" hoặc "Mã NL" hoặc "Mã nguyên liệu")
+        let headerRowIndex = -1;
+        for (let i = 0; i < Math.min(10, rows.length); i++) {
+          const rowStr = (rows[i] || []).join(" ").toLowerCase();
+          if (rowStr.includes("tên nguyên liệu") || rowStr.includes("mã nl") || rowStr.includes("nguyên liệu")) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        if (headerRowIndex === -1) {
+          toast.error("Không tìm thấy cột tiêu đề 'Tên nguyên liệu' hoặc 'Mã NL' trong file Excel!");
+          return;
+        }
+
+        const headers = rows[headerRowIndex].map((h: any) => String(h || "").trim().toLowerCase());
+        const nameIdx = headers.findIndex((h: string) => h.includes("tên nguyên liệu") || h.includes("hàng hóa") || h.includes("nguyên liệu"));
+        const codeIdx = headers.findIndex((h: string) => h.includes("mã nl") || h.includes("mã nguyên liệu") || h.includes("mã"));
+        const actualIdx = headers.findIndex((h: string) => h.includes("thực tế") || h.includes("thực tế kiểm đếm") || h.includes("thực tế kiểm"));
+
+        if (actualIdx === -1) {
+          toast.error("File Excel thiếu cột 'Thực tế kiểm đếm'! Vui lòng dùng file mẫu từ hệ thống.");
+          return;
+        }
+
+        let updatedCount = 0;
+        let errors: string[] = [];
+
+        const newItems = [...checkItems];
+
+        for (let i = headerRowIndex + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) continue;
+
+          const nameVal = nameIdx !== -1 ? String(row[nameIdx] || "").trim() : "";
+          const codeVal = codeIdx !== -1 ? String(row[codeIdx] || "").trim() : "";
+          const rawActual = row[actualIdx];
+
+          if (!nameVal && !codeVal) continue; // Dòng trống
+
+          if (rawActual === undefined || rawActual === null || String(rawActual).trim() === "") {
+            // Chưa điền thực tế ở dòng này
+            continue;
+          }
+
+          const parsedActual = parseFloat(String(rawActual).replace(",", "."));
+          if (isNaN(parsedActual) || parsedActual < 0) {
+            errors.push(`Dòng ${i + 1} (${nameVal || codeVal}): Số lượng thực tế '${rawActual}' không hợp lệ.`);
+            continue;
+          }
+
+          // Khớp mặt hàng trong danh sách checkItems
+          const matchIdx = newItems.findIndex(item => {
+            if (codeVal && item.code.toLowerCase() === codeVal.toLowerCase()) return true;
+            if (codeVal && item.ingredientId.toString() === codeVal.replace(/\D/g, "")) return true;
+            if (nameVal && item.ingredientName.toLowerCase() === nameVal.toLowerCase()) return true;
+            return false;
+          });
+
+          if (matchIdx !== -1) {
+            newItems[matchIdx].actualStock = parsedActual;
+            updatedCount++;
+          }
+        }
+
+        if (errors.length > 0) {
+          toast.error(errors.slice(0, 3).join("\n"), { duration: 5000 });
+        }
+
+        if (updatedCount > 0) {
+          setCheckItems(newItems);
+          toast.success(`Đã đồng bộ số liệu từ Excel cho ${updatedCount} nguyên liệu!`);
+        } else if (errors.length === 0) {
+          toast.error("Không tìm thấy nguyên liệu trùng khớp hoặc cột Thực tế đang trống!");
+        }
+      } catch (err: any) {
+        console.error("Lỗi đọc file Excel:", err);
+        toast.error("Lỗi đọc file Excel: " + (err?.message || "File không đúng định dạng"));
+      } finally {
+        e.target.value = "";
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const handleSaveDraft = () => {
     const draft = {
       id: draftData?.id || Date.now().toString(),
@@ -68,47 +172,6 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
     localStorage.setItem("inventory_drafts", JSON.stringify(updatedDrafts));
     toast.success("Lưu phiếu kiểm kê tạm (Đang kiểm) thành công!");
     onBack();
-  };
-
-  const handleBalance = async () => {
-    if (!window.confirm("Cân bằng kho sẽ ghi đè tồn kho hệ thống bằng số lượng kiểm đếm thực tế. Bạn có chắc chắn?")) {
-      return;
-    }
-
-    try {
-      // Gửi toàn bộ danh sách kiểm kê lên API stock-check
-      // API này chỉ ghi vào stock_inventory + cập nhật current_stock
-      // KHÔNG tạo stock_in → không xuất hiện ở tab Nhập hàng
-      const records = checkItems.map(item => ({
-        ingredient_id: Number(item.ingredientId),
-        actual_stock: Number(item.actualStock),
-      }));
-
-      await submitStockCheckApi(records);
-
-      // Remove draft if it was one
-      if (draftData?.id) {
-        const existingDrafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
-        localStorage.setItem("inventory_drafts", JSON.stringify(existingDrafts.filter((d: any) => d.id !== draftData.id)));
-      }
-
-      // Add to completed history in localStorage for UI
-      const completed = {
-        id: draftData?.id || Date.now().toString(),
-        ticketName,
-        note,
-        status: "completed",
-        date: new Date().toISOString(),
-        items: checkItems
-      };
-      const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
-      localStorage.setItem("inventory_history", JSON.stringify([completed, ...history]));
-
-      toast.success("Cân bằng kho thành công!");
-      onBack();
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "Có lỗi xảy ra khi cân bằng kho");
-    }
   };
 
   const filteredItems = checkItems.filter(item => 
@@ -137,14 +200,21 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
             </button>
           ) : (
             <>
-              <button className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+              <input
+                type="file"
+                id="excel-check-input"
+                accept=".xlsx, .xls"
+                className="hidden"
+                onChange={handleExcelUpload}
+              />
+              <button 
+                onClick={() => document.getElementById("excel-check-input")?.click()}
+                className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm"
+              >
                 <UploadCloud size={16} /> Nhập từ Excel
               </button>
               <button onClick={handleSaveDraft} className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
                 <Save size={16} /> Lưu (Đang kiểm)
-              </button>
-              <button onClick={handleBalance} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-                <CheckCircle size={16} /> Cân bằng kho
               </button>
             </>
           )}

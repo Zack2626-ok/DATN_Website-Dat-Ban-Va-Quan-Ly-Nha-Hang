@@ -363,21 +363,51 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const totalReturnIncome = Number(returnIncomeRow[0].val);
     const totalIncome = totalInvoiceIncome + totalReturnIncome;
 
-    const expenseRow = await db.query(
-      `SELECT COALESCE(
-        (SELECT SUM(quantity * unit_cost) FROM stock_in WHERE created_at BETWEEN ? AND ?)
-        -
-        (SELECT SUM(so.quantity * COALESCE(si.unit_cost, 0)) 
-         FROM stock_out so 
-         LEFT JOIN stock_in si ON so.stock_in_id = si.id 
-         WHERE so.reason = 'return_to_supplier' 
-           AND so.note NOT LIKE '%[LƯU TẠM]%' 
-           AND so.created_at BETWEEN ? AND ?),
-        0
-      ) AS val`,
-      [startStr, endStr, startStr, endStr]
+    // 1. Paid import expenses (only where is_credit = 0 or NULL and not draft)
+    const paidImportRow = await db.query(
+      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val 
+       FROM stock_in 
+       WHERE (is_credit IS NULL OR is_credit = 0)
+         AND (note IS NULL OR note NOT LIKE '%[LƯU TẠM]%')
+         AND created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
     );
-    const totalExpenses = Math.max(0, Number(expenseRow[0].val));
+    const paidImportExpenses = Number(paidImportRow[0].val);
+
+    // 2. Debt payments made to suppliers in period
+    const debtPayRow = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS val
+       FROM debt_payments
+       WHERE paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const debtPaymentsExpense = Number(debtPayRow[0].val);
+
+    // 3. Stock waste/expired loss expenses
+    const wasteRow = await db.query(
+      `SELECT COALESCE(SUM(so.quantity * COALESCE(si.unit_cost, 0)), 0) AS val
+       FROM stock_out so
+       LEFT JOIN stock_in si ON so.stock_in_id = si.id
+       WHERE so.reason IN ('waste', 'expired')
+         AND (so.note IS NULL OR so.note NOT LIKE '%[LƯU TẠM]%')
+         AND so.created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const wasteExpenses = Number(wasteRow[0].val);
+
+    // 4. Refunds received from supplier returns (cash/transfer)
+    const returnExpenseRow = await db.query(
+      `SELECT COALESCE(SUM(so.quantity * COALESCE(si.unit_cost, 0)), 0) AS val
+       FROM stock_out so
+       LEFT JOIN stock_in si ON so.stock_in_id = si.id
+       WHERE so.reason = 'return_to_supplier'
+         AND (so.note NOT LIKE '%Trừ công nợ%' AND so.note NOT LIKE '%deduct%' AND (so.note IS NULL OR so.note NOT LIKE '%[LƯU TẠM]%'))
+         AND so.created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const returnRefunds = Number(returnExpenseRow[0].val);
+
+    const totalExpenses = Math.max(0, paidImportExpenses + debtPaymentsExpense + wasteExpenses - returnRefunds);
     const netProfit = totalIncome - totalExpenses;
 
     // 2) Recent Transactions
@@ -440,7 +470,66 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         FROM stock_in si
         JOIN ingredients ing ON si.ingredient_id = ing.id
         LEFT JOIN suppliers sup ON si.supplier_id = sup.id
-        WHERE si.created_at BETWEEN ? AND ?
+        WHERE (si.is_credit IS NULL OR si.is_credit = 0)
+          AND (si.note IS NULL OR si.note NOT LIKE '%[LƯU TẠM]%')
+          AND si.created_at BETWEEN ? AND ?
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('PAY-', dp.id) as id,
+          'expense' as type,
+          CONCAT('Thanh toán nợ NCC: ', sup.name) as description,
+          dp.amount as amount,
+          dp.paid_at as date,
+          'completed' as status,
+          NULL as orderId,
+          NULL as ingredientName,
+          NULL as quantity,
+          NULL as unitCost,
+          NULL as ingredientUnit,
+          sup.name as supplierName,
+          0 as isCredit,
+          NULL as dueDate,
+          NULL as batchCode,
+          dp.note as note,
+          0 as returnedQuantity,
+          NULL as hasRefund,
+          NULL as refundedTotal,
+          'debt_payment' as txSubType
+        FROM debt_payments dp
+        JOIN suppliers sup ON dp.supplier_id = sup.id
+        WHERE dp.paid_at BETWEEN ? AND ?
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('WASTE-', so.id) as id,
+          'expense' as type,
+          CONCAT('Hao hụt/Xuất hủy: ', ing.name) as description,
+          (so.quantity * COALESCE(si.unit_cost, 0)) as amount,
+          so.created_at as date,
+          'completed' as status,
+          NULL as orderId,
+          ing.name as ingredientName,
+          so.quantity as quantity,
+          COALESCE(si.unit_cost, 0) as unitCost,
+          ing.unit as ingredientUnit,
+          NULL as supplierName,
+          0 as isCredit,
+          NULL as dueDate,
+          si.batch_code as batchCode,
+          so.note as note,
+          0 as returnedQuantity,
+          NULL as hasRefund,
+          NULL as refundedTotal,
+          'waste' as txSubType
+        FROM stock_out so
+        JOIN ingredients ing ON so.ingredient_id = ing.id
+        LEFT JOIN stock_in si ON so.stock_in_id = si.id
+        WHERE so.reason IN ('waste', 'expired')
+          AND (so.note IS NULL OR so.note NOT LIKE '%[LƯU TẠM]%')
+          AND so.created_at BETWEEN ? AND ?
       )
       UNION ALL
       (
@@ -476,7 +565,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       ORDER BY date DESC
       LIMIT 100
       `,
-      [startStr, endStr, startStr, endStr, startStr, endStr]
+      [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr]
     );
 
     sendSuccess(

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, deleteInventoryTransactionApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi } from "../../../services/api";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, deleteInventoryTransactionApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi, submitStockCheckApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
@@ -201,6 +201,83 @@ export const InventoryControl: React.FC = () => {
   const [importFileTarget, setImportFileTarget] = useState<"ingredients" | "categories" | "suppliers" | "transactions" | "stocktake" | "expiry">("ingredients");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importFileError, setImportFileError] = useState<string | null>(null);
+
+  // Waste / Spoiled goods disposal modal state
+  const [showWasteModal, setShowWasteModal] = useState(false);
+  const [wasteForm, setWasteForm] = useState({
+    ingredientId: "",
+    batchNo: "",
+    quantity: 1,
+    reason: "Ôi thiu / Mốc",
+    note: ""
+  });
+
+  const handleExportBlankCheckSheet = () => {
+    const nowStr = new Date().toLocaleString("vi-VN");
+    const data: any[][] = [
+      ["PHIẾU KIỂM KÊ CÂN ĐỐI TỒN KHO"],
+      [`Ngày xuất: ${nowStr}`],
+      [],
+      ["Mã NL", "Tên nguyên liệu", "Tồn hệ thống", "Thực tế kiểm đếm", "Đơn vị", "Chênh lệch"]
+    ];
+
+    reduxIngredients.forEach((ing: any) => {
+      const code = `SP${ing.id.toString().padStart(6, '0')}`;
+      data.push([
+        code,
+        ing.name,
+        ing.stock,
+        "", // Column left empty for physical counting
+        ing.unit,
+        ""  // Column left empty for variance
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws["!cols"] = [
+      { wch: 12 },
+      { wch: 30 },
+      { wch: 15 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 15 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "PhieuKiemKho");
+    XLSX.writeFile(wb, `PHIEU_KIEM_KE_CAN_DOI_TON_KHO_${Date.now()}.xlsx`);
+    toast.success("Đã xuất file Excel phiếu kiểm kho trống thành công!");
+  };
+
+  const handleWasteSubmit = async () => {
+    if (!wasteForm.ingredientId || Number(wasteForm.quantity) <= 0) {
+      toast.error("Vui lòng chọn nguyên liệu và nhập số lượng xuất hủy hợp lệ.");
+      return;
+    }
+    const ingId = Number(wasteForm.ingredientId);
+    const selectedIng = reduxIngredients.find((i: any) => Number(i.id) === ingId);
+    try {
+      await updateInventoryQuantityApi(ingId, {
+        quantity: Number(wasteForm.quantity),
+        type: "export",
+        reasonOrSupplier: `Xuất hủy: ${wasteForm.reason}${wasteForm.note ? ` (${wasteForm.note})` : ""}`,
+        reasonType: "waste",
+        unitCost: selectedIng?.unitCost || selectedIng?.cost || 0,
+        note: `[XUẤT HỦY HỎNG] ${wasteForm.reason}${wasteForm.note ? `: ${wasteForm.note}` : ""}`
+      });
+
+      toast.success(`Đã xuất hủy ${wasteForm.quantity} ${selectedIng?.unit || ""} ${selectedIng?.name || ""} thành công!`);
+      setShowWasteModal(false);
+      setWasteForm({ ingredientId: "", batchNo: "", quantity: 1, reason: "Ôi thiu / Mốc", note: "" });
+
+      // Refresh inventory & batches
+      getIngredientsApi().then(setReduxIngredients).catch(console.error);
+      getInventoryTransactionsApi().then(setTransactions).catch(console.error);
+      fetchAllBatchesData();
+    } catch (err: any) {
+      console.error("Lỗi xuất hủy hàng hỏng:", err);
+      toast.error("Xuất hủy thất bại: " + (err?.response?.data?.message || err?.message || "Có lỗi xảy ra"));
+    }
+  };
 
   // New Expiry Batch manual modal state
   const [showAddExpiryModal, setShowAddExpiryModal] = useState(false);
@@ -1127,33 +1204,70 @@ export const InventoryControl: React.FC = () => {
             <table className="w-full border-collapse border border-slate-900 text-xs mb-6">
               <thead>
                 <tr className="bg-slate-100 font-extrabold text-slate-900 border-b border-slate-900 text-center">
-                  <th className="border border-slate-900 px-2 py-2 w-10">STT</th>
-                  <th className="border border-slate-900 px-2 py-2 text-left w-24">Mã hàng</th>
-                  <th className="border border-slate-900 px-2 py-2 text-left">Hàng hóa</th>
-                  <th className="border border-slate-900 px-2 py-2 w-16 text-center">SL sổ</th>
-                  <th className="border border-slate-900 px-2 py-2 w-16 text-center">SL thực</th>
-                  <th className="border border-slate-900 px-2 py-2 w-20 text-center">Chênh lệch</th>
+                  <th className="border border-slate-900 px-3 py-2 text-left">Tên nguyên liệu</th>
+                  <th className="border border-slate-900 px-3 py-2 text-center w-24">Tồn trên máy</th>
+                  <th className="border border-slate-900 px-3 py-2 text-center w-24">Thực tế đếm</th>
+                  <th className="border border-slate-900 px-3 py-2 text-center w-32">Số lượng lệch (Hao hụt)</th>
+                  <th className="border border-slate-900 px-3 py-2 text-right w-28">Giá nhập gần nhất</th>
+                  <th className="border border-slate-900 px-3 py-2 text-right w-36">Giá trị hao hụt (VND)</th>
                 </tr>
               </thead>
               <tbody>
                 {d.items && d.items.length > 0 ? (
-                  d.items.map((it: any, idx: number) => {
-                    const sys = Number(it.systemStock ?? it.system ?? 0);
-                    const act = Number(it.actualStock ?? it.actual ?? 0);
-                    const diff = sys - act;
+                  (() => {
+                    let totalLossSum = 0;
+                    const rows = d.items.map((it: any, idx: number) => {
+                      const ingObj = reduxIngredients.find((i: any) => Number(i.id) === Number(it.ingredientId) || i.name === (it.ingredientName || it.name));
+                      const sys = Number(it.systemStock ?? it.system ?? 0);
+                      const act = Number(it.actualStock ?? it.actual ?? 0);
+                      const diff = act - sys;
+                      const unitCost = Number(it.unitCost || ingObj?.unitCost || ingObj?.cost || 200000);
+                      const absDiff = Math.abs(diff);
+                      const lossVal = diff < 0 ? absDiff * unitCost : 0;
+                      totalLossSum += lossVal;
+
+                      return (
+                        <tr key={idx} className="border-b border-slate-400">
+                          <td className="border border-slate-900 px-3 py-2 font-extrabold text-slate-800">
+                            {it.ingredientName || it.name}
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-center font-bold text-slate-700">
+                            {sys} {it.unit || ingObj?.unit || "kg"}
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-center font-black text-blue-600">
+                            {act} {it.unit || ingObj?.unit || "kg"}
+                          </td>
+                          <td className={`border border-slate-900 px-3 py-2 text-center font-black ${diff < 0 ? 'text-rose-600' : diff > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
+                            {diff === 0 ? "0" : `${diff > 0 ? "+" : ""}${diff} ${it.unit || ingObj?.unit || "kg"}`}
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-right font-medium text-slate-700">
+                            {unitCost.toLocaleString("vi-VN")} đ
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-right font-extrabold text-slate-900">
+                            {lossVal > 0 ? (
+                              <span>{lossVal.toLocaleString("vi-VN")} đ <em className="text-[10px] text-slate-500 font-normal">({absDiff} {it.unit || "kg"} x {Math.round(unitCost/1000)}k)</em></span>
+                            ) : (
+                              "0 đ"
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
+
                     return (
-                      <tr key={idx} className="border-b border-slate-400">
-                        <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{idx + 1}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 font-bold text-slate-700">{it.code || `SP${(it.ingredientId || idx+1).toString().padStart(6, '0')}`}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 font-extrabold text-slate-800">{it.ingredientName || it.name}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{sys}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 text-center font-black text-blue-600">{act}</td>
-                        <td className={`border border-slate-900 px-2 py-1.5 text-center font-black ${diff !== 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                          {diff}
-                        </td>
-                      </tr>
+                      <>
+                        {rows}
+                        <tr className="bg-slate-100 font-black text-sm border-t-2 border-slate-900">
+                          <td colSpan={5} className="border border-slate-900 px-3 py-3 uppercase tracking-wider">
+                            TỔNG CỘNG TỔN THẤT HAO HỤT
+                          </td>
+                          <td className="border border-slate-900 px-3 py-3 text-right text-rose-600 font-black">
+                            {totalLossSum.toLocaleString("vi-VN")} đ
+                          </td>
+                        </tr>
+                      </>
                     );
-                  })
+                  })()
                 ) : (
                   <tr>
                     <td colSpan={6} className="border border-slate-900 px-2 py-4 text-center text-slate-500 italic">Không có chi tiết hàng hóa kiểm kê</td>
@@ -1767,6 +1881,29 @@ export const InventoryControl: React.FC = () => {
                   <option value="low">Tồn kho thấp</option>
                   <option value="normal">Bình thường</option>
                 </select>
+
+                <button
+                  onClick={handleExportBlankCheckSheet}
+                  className="px-3.5 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Xuất file Excel danh sách nguyên liệu với cột Thực tế để trống cho nhân viên đếm bằng tay"
+                >
+                  <FileSpreadsheet size={15} className="text-emerald-600" /> In phiếu kiểm kho
+                </button>
+
+                <button
+                  onClick={() => setShowWasteModal(true)}
+                  className="px-3.5 py-2 bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Ghi nhận tiêu hủy nguyên liệu/lô hàng bị hỏng, mốc, ôi thiu"
+                >
+                  <Trash2 size={15} className="text-rose-600" /> Xuất hủy hàng hỏng
+                </button>
+
+                <button
+                  onClick={() => setShowAddIngModal(true)}
+                  className="px-3.5 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                >
+                  <Plus size={15} /> Thêm nguyên liệu
+                </button>
               </div>
             </div>
 
@@ -3200,20 +3337,75 @@ export const InventoryControl: React.FC = () => {
                             <td className="px-5 py-3.5 text-center">
                               <div className="flex items-center justify-center gap-3">
                                 {isDraft && (
-                                  <button
-                                    onClick={() => {
-                                      if (window.confirm("Xóa phiếu kiểm kê này?")) {
-                                        const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
-                                        localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d: any) => d.id !== item.id)));
-                                        toast.success("Đã xóa phiếu nháp");
-                                        window.dispatchEvent(new Event('storage'));
-                                      }
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                    title="Xóa phiếu"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={async () => {
+                                        if (!window.confirm("Số lượng của phiếu excel sẽ đồng bộ vào trong dữ liệu kho với số lượng hao hụt trong excel bạn chắc chứ?")) {
+                                          return;
+                                        }
+
+                                        try {
+                                          const records = (item.items || []).map((it: any) => ({
+                                            ingredient_id: Number(it.ingredientId),
+                                            actual_stock: Number(it.actualStock ?? it.stock ?? 0)
+                                          }));
+
+                                          if (records.length > 0) {
+                                            await submitStockCheckApi(records);
+                                          }
+
+                                          // Move draft to history
+                                          const drafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                          localStorage.setItem("inventory_drafts", JSON.stringify(drafts.filter((d: any) => d.id !== item.id)));
+
+                                          const completed = {
+                                            ...item,
+                                            status: "completed",
+                                            completedAt: new Date().toISOString()
+                                          };
+                                          const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
+                                          localStorage.setItem("inventory_history", JSON.stringify([completed, ...history]));
+
+                                          toast.success("Đã đồng bộ dữ liệu kho và cân bằng kho thành công!");
+                                          getIngredientsApi().then(setReduxIngredients).catch(console.error);
+
+                                          // Show print modal with exact columns as Image 3
+                                          setPrintStocktakeData({
+                                            ticketCode,
+                                            createdDate: dateStr !== "(Chưa có)" ? dateStr : new Date().toLocaleString("vi-VN"),
+                                            approvedDate: new Date().toLocaleString("vi-VN"),
+                                            creator: creatorStr !== "(Chưa có)" ? creatorStr : "Bếp trưởng",
+                                            approver: "Quản lý kho",
+                                            note: item.note || "Đã đồng bộ cân bằng kho từ phiếu kiểm kê",
+                                            items: item.items || []
+                                          });
+                                          setShowStocktakePrintModal(true);
+                                        } catch (err: any) {
+                                          console.error("Lỗi cân bằng kho:", err);
+                                          toast.error(err?.response?.data?.message || "Có lỗi xảy ra khi đồng bộ cân bằng kho");
+                                        }
+                                      }}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                                      title="Đồng bộ file Excel / Dữ liệu kiểm kê vào kho"
+                                    >
+                                      <CheckCircle size={12} /> Đồng bộ / Cân bằng kho
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm("Xóa phiếu kiểm kê này?")) {
+                                          const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                          localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d: any) => d.id !== item.id)));
+                                          toast.success("Đã xóa phiếu nháp");
+                                          window.dispatchEvent(new Event('storage'));
+                                        }
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                      title="Xóa phiếu"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
                                 )}
                                 <button
                                   onClick={() => {
@@ -3274,6 +3466,12 @@ export const InventoryControl: React.FC = () => {
                   className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow hover:bg-blue-700"
                 >
                   <Plus size={12} /> Thêm lô hàng mới
+                </button>
+                <button
+                  onClick={() => setShowWasteModal(true)}
+                  className="px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow hover:bg-rose-100"
+                >
+                  <Trash2 size={12} className="text-rose-600" /> Xuất hủy hàng hỏng
                 </button>
                 <button
                   onClick={handleWasteExpiredBatches}
@@ -3589,6 +3787,135 @@ export const InventoryControl: React.FC = () => {
         </div>
 
       {/* MODALS */}
+
+      {/* Modal Xuất hủy hàng hỏng / Mốc / Ôi thiu */}
+      {showWasteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowWasteModal(false)}
+              className="absolute right-4 top-4 p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-800">Xuất hủy lô hàng hỏng</h3>
+                <p className="text-xs text-slate-500 font-semibold">Ghi nhận tiêu hủy nguyên liệu bị mốc, ôi thiu, hỏng bảo quản</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 text-xs">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wide">Chọn nguyên liệu xuất hủy *</label>
+                <select
+                  value={wasteForm.ingredientId}
+                  onChange={(e) => {
+                    const ingId = e.target.value;
+                    setWasteForm({ ...wasteForm, ingredientId: ingId, quantity: 1 });
+                  }}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white"
+                >
+                  <option value="">-- Select nguyên liệu --</option>
+                  {reduxIngredients.map((ing) => (
+                    <option key={ing.id} value={ing.id}>
+                      {ing.name} (Tồn: {ing.stock} {ing.unit})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {wasteForm.ingredientId && (() => {
+                const ing = reduxIngredients.find(i => Number(i.id) === Number(wasteForm.ingredientId));
+                const unitCost = ing?.unitCost || ing?.cost || 0;
+                const totalLoss = Number(wasteForm.quantity || 0) * unitCost;
+
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wide">Số lượng tiêu hủy *</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            max={ing?.stock || 9999}
+                            value={wasteForm.quantity}
+                            onChange={(e) => setWasteForm({ ...wasteForm, quantity: parseFloat(e.target.value) || 0 })}
+                            className="w-full p-2.5 pl-3 pr-10 bg-slate-50 border border-slate-300 rounded-xl font-black text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white text-base"
+                          />
+                          <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">{ing?.unit}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wide">Tồn hiện tại</label>
+                        <div className="p-2.5 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-700 text-sm">
+                          {ing?.stock} {ing?.unit}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wide">Lý do tiêu hủy *</label>
+                      <select
+                        value={wasteForm.reason}
+                        onChange={(e) => setWasteForm({ ...wasteForm, reason: e.target.value })}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white"
+                      >
+                        <option value="Ôi thiu / Mốc">Ôi thiu / Mốc (Do thời tiết/nhiệt độ)</option>
+                        <option value="Hỏng tủ lạnh / Bảo quản">Hỏng thiết bị bảo quản / Tủ lạnh</option>
+                        <option value="Quá hạn sử dụng">Quá hạn sử dụng</option>
+                        <option value="Sơ chế hỏng / Rơi vãi">Hư hỏng trong lúc sơ chế / Rơi vãi</option>
+                        <option value="Khác">Lý do khác (Ghi rõ bên dưới)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wide">Ghi chú chi tiết</label>
+                      <textarea
+                        value={wasteForm.note}
+                        onChange={(e) => setWasteForm({ ...wasteForm, note: e.target.value })}
+                        placeholder="Mô tả tình trạng hỏng hóc..."
+                        className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white h-16"
+                      />
+                    </div>
+
+                    {unitCost > 0 && (
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex justify-between items-center text-rose-900">
+                        <span className="font-bold text-xs">Giá trị tiền hàng hủy:</span>
+                        <span className="font-black text-sm">{totalLoss.toLocaleString('vi-VN')} đ</span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowWasteModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleWasteSubmit}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                >
+                  <Trash2 size={14} /> Xác nhận xuất hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal E: Nhập từ File chung (Import File Modal) */}
       {

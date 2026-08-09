@@ -606,8 +606,8 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
       [payAmount, id]
     );
 
-    // Ghi lịch sử
-    await db.query(
+    // Ghi lịch sử thanh toán nợ
+    const payRes = await db.query(
       `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by)
        VALUES (?, ?, ?, ?, ?)`,
       [id, payAmount, method, note || null, userId]
@@ -619,9 +619,14 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
     sendSuccess(
       res,
       {
-        supplierId: id,
+        paymentId: payRes.insertId,
+        supplierId: Number(id),
+        supplierName: supplier.name,
         paid: payAmount,
         remaining: Number(updated[0].total_debt),
+        method,
+        note: note || "",
+        paidAt: new Date().toISOString(),
       },
       "Thanh toán công nợ thành công"
     );

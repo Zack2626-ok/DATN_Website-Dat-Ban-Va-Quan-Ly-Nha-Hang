@@ -18,6 +18,8 @@ export const PayDebtModal: React.FC<Props> = ({ supplier, onClose, onSuccess }) 
 
   const remaining = supplier.amount - amount;
 
+  const [receiptData, setReceiptData] = useState<any>(null);
+
   const handleSubmit = async () => {
     if (amount <= 0 || amount > supplier.amount) {
       toast.error("Số tiền không hợp lệ");
@@ -25,15 +27,81 @@ export const PayDebtModal: React.FC<Props> = ({ supplier, onClose, onSuccess }) 
     }
     setLoading(true);
     try {
-      await api.patch(`/v1/inventory/suppliers/${supplier.rawId}/pay`, { amount, method, note });
+      const res = await api.patch(`/v1/inventory/suppliers/${supplier.rawId}/pay`, { amount, method, note });
       toast.success("Thanh toán thành công!");
-      onSuccess();
+      if (res.data?.success && res.data?.data) {
+        setReceiptData(res.data.data);
+      } else {
+        onSuccess();
+      }
     } catch {
       toast.error("Thanh toán thất bại");
     } finally {
       setLoading(false);
     }
   };
+
+  if (receiptData) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="w-full max-w-lg rounded-3xl bg-white p-7 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="text-center pb-4 border-b border-slate-200">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 mb-2">
+              <CheckCircle size={32} />
+            </div>
+            <h3 className="text-2xl font-black text-slate-800">PHIẾU CHI THANH TOÁN CÔNG NỢ</h3>
+            <p className="text-xs text-slate-500 font-semibold">Mã phiếu: PC-NCC-{receiptData.paymentId || Date.now()}</p>
+          </div>
+
+          <div className="py-5 space-y-3 text-sm">
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-semibold">Nhà cung cấp:</span>
+              <span className="font-bold text-slate-800">{receiptData.supplierName || supplier.supplierName}</span>
+            </div>
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-semibold">Số tiền đã trả:</span>
+              <span className="font-black text-emerald-600 text-lg">{formatCurrency(receiptData.paid)}</span>
+            </div>
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-semibold">Nợ còn lại:</span>
+              <span className={`font-black ${receiptData.remaining > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                {formatCurrency(receiptData.remaining)} {receiptData.remaining > 0 ? '(Còn thiếu)' : '(Đã hết nợ)'}
+              </span>
+            </div>
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-semibold">Hình thức:</span>
+              <span className="font-bold text-slate-700">{receiptData.method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</span>
+            </div>
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-semibold">Ngày thực hiện:</span>
+              <span className="font-bold text-slate-700">{new Date(receiptData.paidAt || Date.now()).toLocaleString('vi-VN')}</span>
+            </div>
+            {receiptData.note && (
+              <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+                <span className="text-slate-500 font-semibold">Ghi chú:</span>
+                <span className="font-medium text-slate-700">{receiptData.note}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-4 flex gap-3 justify-end border-t border-slate-100">
+            <button
+              onClick={() => window.print()}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition-colors flex items-center gap-2 cursor-pointer shadow-md"
+            >
+              <ReceiptText size={16} /> In phiếu chi
+            </button>
+            <button
+              onClick={onSuccess}
+              className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm rounded-xl transition-colors cursor-pointer"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
