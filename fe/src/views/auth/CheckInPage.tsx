@@ -39,8 +39,12 @@ export default function CheckInPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    intervalRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(intervalRef.current);
+    intervalRef.current = window.setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => {
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+      }
+    };
   }, []);
 
   const redirectToWork = (delay = 800) => {
