@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
-import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, deleteInventoryTransactionApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi } from "../../../services/api";
+import { getIngredientsApi, getInventoryTransactionsApi, createIngredientApi, updateInventoryQuantityApi, deleteInventoryTransactionApi, uploadInventoryExcelApi, getSuppliersApi, addSupplierApi, updateSupplierApi, deleteSupplierApi, getIngredientBatchesApi, wasteExpiredBatchesApi, paySupplierDebtApi, getAllBatchesApi, submitStockCheckApi } from "../../../services/api";
 import { toast } from "react-hot-toast";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
@@ -37,7 +37,8 @@ import {
   ChevronRight,
   Package,
   DollarSign,
-  CreditCard
+  CreditCard,
+  Lock
 } from "lucide-react";
 
 // Types for local interactive states
@@ -118,6 +119,7 @@ export const InventoryControl: React.FC = () => {
         quantity: b.quantity,
         unit: b.unit,
         batchNo: b.batchNo,
+        unitCost: Number(b.unitCost || b.unit_cost || 0),
         expiryDate: b.expiryDate ? b.expiryDate.split("T")[0] : ""
       }));
       setExpiryBatches(mapped);
@@ -201,6 +203,224 @@ export const InventoryControl: React.FC = () => {
   const [importFileTarget, setImportFileTarget] = useState<"ingredients" | "categories" | "suppliers" | "transactions" | "stocktake" | "expiry">("ingredients");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importFileError, setImportFileError] = useState<string | null>(null);
+
+  // Unit conversion helper for mass (kg/g) and volume (lit/ml)
+  const getUnitConversion = (baseUnit: string, selectedUnit?: string) => {
+    const norm = (baseUnit || "kg").trim().toLowerCase();
+
+    if (norm === "kg" || norm === "kilogram" || norm === "kilo") {
+      const unitOptions = [
+        { key: "kg", label: "kg", factor: 1 },
+        { key: "g", label: "gam (g)", factor: 0.001 }
+      ];
+      const active = unitOptions.find(u => u.key === selectedUnit) || unitOptions[0];
+      return { unitOptions, activeUnit: active.key, factor: active.factor, baseUnitName: "kg" };
+    }
+
+    if (norm === "l" || norm === "lit" || norm === "lít") {
+      const unitOptions = [
+        { key: "lit", label: "lít", factor: 1 },
+        { key: "ml", label: "ml", factor: 0.001 }
+      ];
+      const active = unitOptions.find(u => u.key === selectedUnit) || unitOptions[0];
+      return { unitOptions, activeUnit: active.key, factor: active.factor, baseUnitName: "lít" };
+    }
+
+    if (norm === "g" || norm === "gam" || norm === "gram") {
+      const unitOptions = [
+        { key: "g", label: "gam (g)", factor: 1 },
+        { key: "kg", label: "kg", factor: 1000 }
+      ];
+      const active = unitOptions.find(u => u.key === selectedUnit) || unitOptions[0];
+      return { unitOptions, activeUnit: active.key, factor: active.factor, baseUnitName: "g" };
+    }
+
+    return {
+      unitOptions: [{ key: baseUnit, label: baseUnit, factor: 1 }],
+      activeUnit: baseUnit,
+      factor: 1,
+      baseUnitName: baseUnit
+    };
+  };
+
+  // Waste / Spoiled goods disposal modal state
+  const [showWasteModal, setShowWasteModal] = useState(false);
+  const [wasteForm, setWasteForm] = useState<{
+    ingredientId: string;
+    batchNo: string;
+    batchStock?: number;
+    quantity: number;
+    wasteUnit?: string;
+    reason: string;
+    note: string;
+  }>({
+    ingredientId: "",
+    batchNo: "",
+    batchStock: 0,
+    quantity: 1,
+    wasteUnit: "",
+    reason: "Ôi thiu / Mốc",
+    note: ""
+  });
+
+  const handleExportBlankCheckSheet = () => {
+    const nowStr = new Date().toLocaleString("vi-VN");
+    const data: any[][] = [
+      ["PHIẾU KIỂM KÊ CÂN ĐỐI TỒN KHO"],
+      [`Ngày xuất: ${nowStr}`],
+      [],
+      ["Mã NL", "Tên nguyên liệu", "Tồn hệ thống", "Thực tế kiểm đếm", "Đơn vị", "Chênh lệch"]
+    ];
+
+    reduxIngredients.forEach((ing: any) => {
+      const code = `SP${ing.id.toString().padStart(6, '0')}`;
+      data.push([
+        code,
+        ing.name,
+        ing.stock,
+        "", // Column left empty for physical counting
+        ing.unit,
+        ""  // Column left empty for variance
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws["!cols"] = [
+      { wch: 12 },
+      { wch: 30 },
+      { wch: 15 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 15 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "PhieuKiemKho");
+    XLSX.writeFile(wb, `PHIEU_KIEM_KE_CAN_DOI_TON_KHO_${Date.now()}.xlsx`);
+    toast.success("Đã xuất file Excel phiếu kiểm kho trống thành công!");
+  };
+
+  const handleWasteSubmit = async () => {
+    const ingId = Number(wasteForm.ingredientId);
+    const selectedIng = reduxIngredients.find((i: any) => Number(i.id) === ingId);
+    const baseUnit = selectedIng?.unit || "kg";
+    const conv = getUnitConversion(baseUnit, wasteForm.wasteUnit);
+    const baseQuantity = Number(wasteForm.quantity || 0) * conv.factor;
+
+    if (!wasteForm.ingredientId || baseQuantity <= 0) {
+      toast.error("Vui lòng chọn nguyên liệu và nhập số lượng xuất hủy hợp lệ.");
+      return;
+    }
+
+    if (wasteForm.reason === "Khác" && !wasteForm.note.trim()) {
+      toast.error("Vui lòng nhập lý do tiêu hủy cụ thể.");
+      return;
+    }
+
+    // Validate quantity against current batch stock or total ingredient stock
+    const batchObj = expiryBatches.find(b => b.batchNo === wasteForm.batchNo);
+    const currentBatchStock = wasteForm.batchNo
+      ? (batchObj ? Number(batchObj.quantity) : (wasteForm.batchStock || 0))
+      : (selectedIng ? Number(selectedIng.stock) : 0);
+
+    if (currentBatchStock > 0 && baseQuantity > currentBatchStock) {
+      const displayInput = conv.activeUnit !== conv.baseUnitName 
+        ? `${wasteForm.quantity} ${conv.activeUnit} (${baseQuantity} ${conv.baseUnitName})`
+        : `${wasteForm.quantity} ${conv.baseUnitName}`;
+      toast.error(
+        `Số lượng xuất hủy (${displayInput}) không được lớn hơn số lượng tồn hiện tại của lô (${currentBatchStock} ${conv.baseUnitName}).`
+      );
+      return;
+    }
+
+    const confirmMsg = "Nếu bạn tiêu hủy hệ thống sẽ trừ vào nguyên liệu chính và giá trừ sẽ lấy số tiền nhập gần nhất để trừ, bạn chắc chứ?";
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+    
+    // Determine unit cost: prioritize specific batch unit_cost if batchNo is specified
+    let batchUnitCost = Number(batchObj?.unitCost || 0);
+    if (!batchUnitCost && wasteForm.batchNo) {
+      const batchTx = transactions.find(
+        (t: any) =>
+          t.type === "import" &&
+          (t.batchNo === wasteForm.batchNo || (t.reasonOrSupplier && t.reasonOrSupplier.includes(wasteForm.batchNo))) &&
+          Number(t.unit_cost || (t as any).unitCost || 0) > 0
+      );
+      if (batchTx) {
+        batchUnitCost = Number(batchTx.unit_cost || (batchTx as any).unitCost || 0);
+      }
+    }
+
+    const recentImport = transactions.find(
+      (t: any) =>
+        (Number(t.ingredientId) === ingId || (t.ingredientName && selectedIng?.name && t.ingredientName.trim().toLowerCase() === selectedIng.name.trim().toLowerCase())) &&
+        t.type === "import" &&
+        Number(t.unit_cost || (t as any).unitCost || 0) > 0
+    );
+    const latestUnitCost = batchUnitCost > 0
+      ? batchUnitCost
+      : Number(recentImport?.unit_cost || (recentImport as any)?.unitCost || selectedIng?.unitCost || selectedIng?.cost || 0);
+
+    try {
+      const loadingToast = toast.loading("Đang ghi nhận xuất hủy kho...");
+      const slipCode = `EX${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}-${Date.now().toString().slice(-4)}`;
+      const reasonText = wasteForm.reason === "Khác"
+        ? wasteForm.note.trim()
+        : (wasteForm.note.trim() ? `${wasteForm.reason}: ${wasteForm.note.trim()}` : wasteForm.reason);
+
+      const displayQtyText = conv.activeUnit !== conv.baseUnitName
+        ? `${wasteForm.quantity} ${conv.activeUnit} (${baseQuantity} ${conv.baseUnitName})`
+        : `${wasteForm.quantity} ${conv.baseUnitName}`;
+
+      await updateInventoryQuantityApi(ingId, {
+        quantity: baseQuantity,
+        type: "export",
+        reasonType: "waste",
+        batchNo: wasteForm.batchNo || undefined,
+        unitCost: latestUnitCost,
+        reasonOrSupplier: `[SLIP:${slipCode}] Xuất hủy ${wasteForm.batchNo ? `lô ${wasteForm.batchNo}` : "hàng hỏng"} (${displayQtyText}): ${reasonText}`,
+        note: `[XUẤT HỦY HỎNG] [${displayQtyText}] ${reasonText}`
+      });
+
+      toast.success(`Đã xuất hủy ${displayQtyText} ${selectedIng?.name || ""} thành công!`, { id: loadingToast });
+      setShowWasteModal(false);
+      setWasteForm({ ingredientId: "", batchNo: "", quantity: 1, wasteUnit: "", reason: "Ôi thiu / Mốc", note: "" });
+
+      // Refresh inventory & transactions & batches
+      const [ingRes, txRes] = await Promise.all([
+        getIngredientsApi(),
+        getInventoryTransactionsApi()
+      ]);
+      setReduxIngredients(ingRes);
+      setTransactions(txRes);
+      fetchAllBatchesData();
+    } catch (err: any) {
+      console.error("Lỗi xuất hủy hàng hỏng:", err);
+      toast.error("Xuất hủy thất bại: " + (err?.response?.data?.message || err?.message || "Có lỗi xảy ra"));
+    }
+  };
+
+  const handleDeleteWasteTransaction = async (txId: string) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa bản ghi lịch sử tiêu hủy này không?")) {
+      return;
+    }
+    try {
+      const loadingToast = toast.loading("Đang xóa bản ghi tiêu hủy...");
+      await deleteInventoryTransactionApi(txId);
+      toast.success("Đã xóa bản ghi lịch sử tiêu hủy thành công!", { id: loadingToast });
+
+      const [ingRes, txRes] = await Promise.all([
+        getIngredientsApi(),
+        getInventoryTransactionsApi()
+      ]);
+      setReduxIngredients(ingRes);
+      setTransactions(txRes);
+      fetchAllBatchesData();
+    } catch (err: any) {
+      console.error("Lỗi xóa bản ghi tiêu hủy:", err);
+      toast.error(err?.response?.data?.message || "Không thể xóa bản ghi tiêu hủy.");
+    }
+  };
 
   // New Expiry Batch manual modal state
   const [showAddExpiryModal, setShowAddExpiryModal] = useState(false);
@@ -1144,33 +1364,70 @@ export const InventoryControl: React.FC = () => {
             <table className="w-full border-collapse border border-slate-900 text-xs mb-6">
               <thead>
                 <tr className="bg-slate-100 font-extrabold text-slate-900 border-b border-slate-900 text-center">
-                  <th className="border border-slate-900 px-2 py-2 w-10">STT</th>
-                  <th className="border border-slate-900 px-2 py-2 text-left w-24">Mã hàng</th>
-                  <th className="border border-slate-900 px-2 py-2 text-left">Hàng hóa</th>
-                  <th className="border border-slate-900 px-2 py-2 w-16 text-center">SL sổ</th>
-                  <th className="border border-slate-900 px-2 py-2 w-16 text-center">SL thực</th>
-                  <th className="border border-slate-900 px-2 py-2 w-20 text-center">Chênh lệch</th>
+                  <th className="border border-slate-900 px-3 py-2 text-left">Tên nguyên liệu</th>
+                  <th className="border border-slate-900 px-3 py-2 text-center w-24">Tồn trên máy</th>
+                  <th className="border border-slate-900 px-3 py-2 text-center w-24">Thực tế đếm</th>
+                  <th className="border border-slate-900 px-3 py-2 text-center w-32">Số lượng lệch (Hao hụt)</th>
+                  <th className="border border-slate-900 px-3 py-2 text-right w-28">Giá nhập gần nhất</th>
+                  <th className="border border-slate-900 px-3 py-2 text-right w-36">Giá trị hao hụt (VND)</th>
                 </tr>
               </thead>
               <tbody>
                 {d.items && d.items.length > 0 ? (
-                  d.items.map((it: any, idx: number) => {
-                    const sys = Number(it.systemStock ?? it.system ?? 0);
-                    const act = Number(it.actualStock ?? it.actual ?? 0);
-                    const diff = sys - act;
+                  (() => {
+                    let totalLossSum = 0;
+                    const rows = d.items.map((it: any, idx: number) => {
+                      const ingObj = reduxIngredients.find((i: any) => Number(i.id) === Number(it.ingredientId) || i.name === (it.ingredientName || it.name));
+                      const sys = Number(it.systemStock ?? it.system ?? 0);
+                      const act = Number(it.actualStock ?? it.actual ?? 0);
+                      const diff = act - sys;
+                      const unitCost = Number(it.unitCost || ingObj?.unitCost || ingObj?.cost || 200000);
+                      const absDiff = Math.abs(diff);
+                      const lossVal = diff < 0 ? absDiff * unitCost : 0;
+                      totalLossSum += lossVal;
+
+                      return (
+                        <tr key={idx} className="border-b border-slate-400">
+                          <td className="border border-slate-900 px-3 py-2 font-extrabold text-slate-800">
+                            {it.ingredientName || it.name}
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-center font-bold text-slate-700">
+                            {sys} {it.unit || ingObj?.unit || "kg"}
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-center font-black text-blue-600">
+                            {act} {it.unit || ingObj?.unit || "kg"}
+                          </td>
+                          <td className={`border border-slate-900 px-3 py-2 text-center font-black ${diff < 0 ? 'text-rose-600' : diff > 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
+                            {diff === 0 ? "0" : `${diff > 0 ? "+" : ""}${diff} ${it.unit || ingObj?.unit || "kg"}`}
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-right font-medium text-slate-700">
+                            {unitCost.toLocaleString("vi-VN")} đ
+                          </td>
+                          <td className="border border-slate-900 px-3 py-2 text-right font-extrabold text-slate-900">
+                            {lossVal > 0 ? (
+                              <span>{lossVal.toLocaleString("vi-VN")} đ <em className="text-[10px] text-slate-500 font-normal">({absDiff} {it.unit || "kg"} x {Math.round(unitCost/1000)}k)</em></span>
+                            ) : (
+                              "0 đ"
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
+
                     return (
-                      <tr key={idx} className="border-b border-slate-400">
-                        <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{idx + 1}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 font-bold text-slate-700">{it.code || `SP${(it.ingredientId || idx+1).toString().padStart(6, '0')}`}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 font-extrabold text-slate-800">{it.ingredientName || it.name}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{sys}</td>
-                        <td className="border border-slate-900 px-2 py-1.5 text-center font-black text-blue-600">{act}</td>
-                        <td className={`border border-slate-900 px-2 py-1.5 text-center font-black ${diff !== 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                          {diff}
-                        </td>
-                      </tr>
+                      <>
+                        {rows}
+                        <tr className="bg-slate-100 font-black text-sm border-t-2 border-slate-900">
+                          <td colSpan={5} className="border border-slate-900 px-3 py-3 uppercase tracking-wider">
+                            TỔNG CỘNG TỔN THẤT HAO HỤT
+                          </td>
+                          <td className="border border-slate-900 px-3 py-3 text-right text-rose-600 font-black">
+                            {totalLossSum.toLocaleString("vi-VN")} đ
+                          </td>
+                        </tr>
+                      </>
                     );
-                  })
+                  })()
                 ) : (
                   <tr>
                     <td colSpan={6} className="border border-slate-900 px-2 py-4 text-center text-slate-500 italic">Không có chi tiết hàng hóa kiểm kê</td>
@@ -1784,6 +2041,29 @@ export const InventoryControl: React.FC = () => {
                   <option value="low">Tồn kho thấp</option>
                   <option value="normal">Bình thường</option>
                 </select>
+
+                <button
+                  onClick={handleExportBlankCheckSheet}
+                  className="px-3.5 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Xuất file Excel danh sách nguyên liệu với cột Thực tế để trống cho nhân viên đếm bằng tay"
+                >
+                  <FileSpreadsheet size={15} className="text-emerald-600" /> In phiếu kiểm kho
+                </button>
+
+                <button
+                  onClick={() => setShowWasteModal(true)}
+                  className="px-3.5 py-2 bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Ghi nhận tiêu hủy nguyên liệu/lô hàng bị hỏng, mốc, ôi thiu"
+                >
+                  <Trash2 size={15} className="text-rose-600" /> Xuất hủy hàng hỏng
+                </button>
+
+                <button
+                  onClick={() => setShowAddIngModal(true)}
+                  className="px-3.5 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                >
+                  <Plus size={15} /> Thêm nguyên liệu
+                </button>
               </div>
             </div>
 
@@ -1804,16 +2084,7 @@ export const InventoryControl: React.FC = () => {
                     >
                       Nhập hàng
                     </button>
-                    <button
-                      onClick={() => {
-                        setCurrentView("returnGoods");
-                        setSelectedIngredients([]);
-                        setReturnBatchData(null);
-                      }}
-                      className="px-3 py-1 bg-white text-rose-700 rounded text-[10px] font-black uppercase shadow-xs hover:bg-rose-50 transition-colors cursor-pointer"
-                    >
-                      Trả hàng
-                    </button>
+
                     <button
                       onClick={() => {
                         setSelectedDraft(null);
@@ -1993,19 +2264,18 @@ export const InventoryControl: React.FC = () => {
                                                       type="button"
                                                       onClick={(e) => {
                                                         e.stopPropagation();
-                                                        setReturnBatchData({
-                                                          ingId: ing.id,
+                                                        setWasteForm({
+                                                          ingredientId: String(ing.id),
                                                           batchNo: b.batch_code,
-                                                          maxQty: Number(b.remaining_quantity),
-                                                          unit: ing.unit,
-                                                          name: ing.name,
-                                                          supplier_id: b.supplier_id
+                                                          quantity: Number(b.remaining_quantity),
+                                                          reason: "Ôi thiu / Mốc",
+                                                          note: `Xuất hủy lô ${b.batch_code}`
                                                         });
-                                                        setCurrentView("returnGoods");
+                                                        setShowWasteModal(true);
                                                       }}
-                                                      className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-extrabold uppercase rounded border border-purple-200 transition-colors"
+                                                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-extrabold uppercase rounded border border-rose-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
                                                     >
-                                                      Trả hàng
+                                                      <Trash2 size={11} /> Xuất hủy hỏng
                                                     </button>
                                                   )}
                                                 </td>
@@ -3217,20 +3487,75 @@ export const InventoryControl: React.FC = () => {
                             <td className="px-5 py-3.5 text-center">
                               <div className="flex items-center justify-center gap-3">
                                 {isDraft && (
-                                  <button
-                                    onClick={() => {
-                                      if (window.confirm("Xóa phiếu kiểm kê này?")) {
-                                        const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
-                                        localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d: any) => d.id !== item.id)));
-                                        toast.success("Đã xóa phiếu nháp");
-                                        window.dispatchEvent(new Event('storage'));
-                                      }
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                    title="Xóa phiếu"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={async () => {
+                                        if (!window.confirm("Số lượng của phiếu excel sẽ đồng bộ vào trong dữ liệu kho với số lượng hao hụt trong excel bạn chắc chứ?")) {
+                                          return;
+                                        }
+
+                                        try {
+                                          const records = (item.items || []).map((it: any) => ({
+                                            ingredient_id: Number(it.ingredientId),
+                                            actual_stock: Number(it.actualStock ?? it.stock ?? 0)
+                                          }));
+
+                                          if (records.length > 0) {
+                                            await submitStockCheckApi(records);
+                                          }
+
+                                          // Move draft to history
+                                          const drafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                          localStorage.setItem("inventory_drafts", JSON.stringify(drafts.filter((d: any) => d.id !== item.id)));
+
+                                          const completed = {
+                                            ...item,
+                                            status: "completed",
+                                            completedAt: new Date().toISOString()
+                                          };
+                                          const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
+                                          localStorage.setItem("inventory_history", JSON.stringify([completed, ...history]));
+
+                                          toast.success("Đã đồng bộ dữ liệu kho và cân bằng kho thành công!");
+                                          getIngredientsApi().then(setReduxIngredients).catch(console.error);
+
+                                          // Show print modal with exact columns as Image 3
+                                          setPrintStocktakeData({
+                                            ticketCode,
+                                            createdDate: dateStr !== "(Chưa có)" ? dateStr : new Date().toLocaleString("vi-VN"),
+                                            approvedDate: new Date().toLocaleString("vi-VN"),
+                                            creator: creatorStr !== "(Chưa có)" ? creatorStr : "Bếp trưởng",
+                                            approver: "Quản lý kho",
+                                            note: item.note || "Đã đồng bộ cân bằng kho từ phiếu kiểm kê",
+                                            items: item.items || []
+                                          });
+                                          setShowStocktakePrintModal(true);
+                                        } catch (err: any) {
+                                          console.error("Lỗi cân bằng kho:", err);
+                                          toast.error(err?.response?.data?.message || "Có lỗi xảy ra khi đồng bộ cân bằng kho");
+                                        }
+                                      }}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                                      title="Đồng bộ file Excel / Dữ liệu kiểm kê vào kho"
+                                    >
+                                      <CheckCircle size={12} /> Đồng bộ / Cân bằng kho
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm("Xóa phiếu kiểm kê này?")) {
+                                          const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                          localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d: any) => d.id !== item.id)));
+                                          toast.success("Đã xóa phiếu nháp");
+                                          window.dispatchEvent(new Event('storage'));
+                                        }
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                      title="Xóa phiếu"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
                                 )}
                                 <button
                                   onClick={() => {
@@ -3292,6 +3617,7 @@ export const InventoryControl: React.FC = () => {
                 >
                   <Plus size={12} /> Thêm lô hàng mới
                 </button>
+
                 <button
                   onClick={handleWasteExpiredBatches}
                   className="px-3 py-1.5 bg-white text-rose-600 border border-rose-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm hover:shadow hover:bg-rose-50"
@@ -3337,7 +3663,8 @@ export const InventoryControl: React.FC = () => {
                 {[
                   { id: "all", label: "Tất cả (Cận & Hết hạn)" },
                   { id: "near", label: "Cận hạn" },
-                  { id: "expired", label: "Đã hết hạn" }
+                  { id: "expired", label: "Đã hết hạn" },
+                  { id: "waste_history", label: "Lịch sử tiêu hủy" }
                 ].map((f) => (
                   <button
                     key={f.id}
@@ -3355,125 +3682,241 @@ export const InventoryControl: React.FC = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
-                  <tr>
-                    <th scope="col" className="px-5 py-3 text-left">Mã Lô hàng (Batch No)</th>
-                    <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
-                    <th scope="col" className="px-5 py-3 text-center">Số lượng nhập</th>
-                    <th scope="col" className="px-5 py-3 text-left">Ngày hết hạn</th>
-                    <th scope="col" className="px-5 py-3 text-left">Tình trạng hạn</th>
-                    <th scope="col" className="px-5 py-3 text-right">Thao tác tiêu hủy</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
-                  {(() => {
-                    const alertBatches = expiryBatches.filter((b) => {
-                      const st = getExpiryLabel(b.expiryDate).status;
-                      if (st === "good") return false; // Exclude safe items from Expiry Tracking tab
-                      if (expiryFilter === "all") return st === "near" || st === "expired";
-                      return st === expiryFilter;
-                    });
+            {expiryFilter === "waste_history" ? (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-rose-50/60 text-[10px] font-black text-rose-900 uppercase tracking-wider">
+                    <tr>
+                      <th scope="col" className="px-5 py-3 text-left">Mã phiếu / Lô</th>
+                      <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
+                      <th scope="col" className="px-5 py-3 text-center">Số lượng tiêu hủy</th>
+                      <th scope="col" className="px-5 py-3 text-right">Giá nhập gần nhất</th>
+                      <th scope="col" className="px-5 py-3 text-right">Tổng thiệt hại (VND)</th>
+                      <th scope="col" className="px-5 py-3 text-left">Lý do & Ghi chú</th>
+                      <th scope="col" className="px-5 py-3 text-left">Thời gian tiêu hủy</th>
+                      <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
+                    {(() => {
+                      const wasteList = transactions.filter((t: any) => {
+                        const reasonStr = (t.reasonOrSupplier || t.note || t.reasonType || "").toLowerCase();
+                        return (
+                          t.type === "export" &&
+                          (t.reasonType === "waste" ||
+                            t.reasonType === "expired" ||
+                            reasonStr.includes("xuất hủy") ||
+                            reasonStr.includes("tiêu hủy") ||
+                            reasonStr.includes("hao hụt") ||
+                            reasonStr.includes("hỏng") ||
+                            reasonStr.includes("thiu"))
+                        );
+                      });
 
-                    if (alertBatches.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={6} className="px-5 py-12 text-center text-slate-500 font-medium">
-                            <div className="flex flex-col items-center justify-center gap-2 py-4">
-                              <CheckCircle size={32} className="text-emerald-500" />
-                              <span className="font-bold text-slate-700">Không có lô hàng nào cần xử lý</span>
-                              <span className="text-xs text-slate-400">Tất cả các lô nguyên liệu trong kho hiện tại đều an toàn.</span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    }
+                      if (wasteList.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={8} className="px-5 py-12 text-center text-slate-500 font-medium">
+                              <div className="flex flex-col items-center justify-center gap-2 py-4">
+                                <Trash2 size={32} className="text-slate-300" />
+                                <span className="font-bold text-slate-700">Chưa có lịch sử tiêu hủy nào</span>
+                                <span className="text-xs text-slate-400">
+                                  Các giao dịch xuất hủy hàng hỏng, mốc, hết hạn sẽ hiển thị tại đây.
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
 
-                    return alertBatches.map((b) => {
-                      const expiryInfo = getExpiryLabel(b.expiryDate);
-                      return (
-                        <tr key={b.id} className="hover:bg-slate-50/50">
-                          <td className="px-5 py-3 font-mono font-bold text-slate-700">{b.batchNo}</td>
-                          <td className="px-5 py-3 font-extrabold text-slate-800">{b.ingredientName}</td>
-                          <td className="px-5 py-3 text-center font-bold">{b.quantity} {b.unit}</td>
-                          <td className="px-5 py-3 whitespace-nowrap text-slate-600">{b.expiryDate}</td>
-                          <td className="px-5 py-3">
-                            {expiryInfo.status === "expired" && (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
-                                <AlertTriangle size={10} /> ĐÃ HẾT HẠN
-                              </span>
-                            )}
-                            {expiryInfo.status === "near" && (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-250">
-                                <AlertTriangle size={10} /> CẬN HẠN
-                              </span>
-                            )}
-                            {expiryInfo.status === "good" && (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
-                                <Check size={10} /> AN TOÀN
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            <div className="flex justify-end gap-1.5 items-center">
+                      return wasteList.map((t: any) => {
+                        const ingObj = reduxIngredients.find(
+                          (i: any) => Number(i.id) === Number(t.ingredientId) || i.name === t.ingredientName
+                        );
+                        const qty = Math.abs(Number(t.quantity) || 0);
+
+                        // Find most recent unit_cost for this ingredient
+                        const recentImport = transactions.find(
+                          (it: any) =>
+                            (Number(it.ingredientId) === Number(t.ingredientId) ||
+                              (it.ingredientName &&
+                                t.ingredientName &&
+                                it.ingredientName.trim().toLowerCase() === t.ingredientName.trim().toLowerCase())) &&
+                            it.type === "import" &&
+                            Number(it.unit_cost || (it as any).unitCost || 0) > 0
+                        );
+                        const unitPrice = Number(
+                          t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || ingObj?.cost || 0
+                        );
+                        const totalLoss = qty * unitPrice;
+                        const slipCode =
+                          (t.reasonOrSupplier || t.note || "").match(/\[SLIP:([^\]]+)\]/)?.[1] ||
+                          t.batchNo ||
+                          `EX-${String(t.id).slice(-6)}`;
+
+                        let cleanReason = (t.reasonOrSupplier || t.note || "Xuất hủy kho")
+                          .replace(/\[SLIP:[^\]]+\]\s*/g, "")
+                          .replace("[XUẤT HỦY HỎNG] ", "")
+                          .replace("Xuất hủy: ", "")
+                          .trim();
+
+                        return (
+                          <tr key={t.id} className="hover:bg-rose-50/20">
+                            <td className="px-5 py-3 font-mono font-bold text-rose-700">{slipCode}</td>
+                            <td className="px-5 py-3 font-extrabold text-slate-800">{t.ingredientName}</td>
+                            <td className="px-5 py-3 text-center font-bold text-rose-600">
+                              {qty} {t.unit || ingObj?.unit || "kg"}
+                            </td>
+                            <td className="px-5 py-3 text-right font-medium text-slate-600">
+                              {unitPrice > 0 ? `${unitPrice.toLocaleString("vi-VN")} đ` : "N/A"}
+                            </td>
+                            <td className="px-5 py-3 text-right font-black text-rose-600">
+                              {totalLoss > 0 ? `${totalLoss.toLocaleString("vi-VN")} đ` : "0 đ"}
+                            </td>
+                            <td className="px-5 py-3 text-slate-600 max-w-xs truncate" title={cleanReason}>
+                              {cleanReason}
+                            </td>
+                            <td className="px-5 py-3 text-slate-500 whitespace-nowrap">
+                              {t.timestamp ? new Date(t.timestamp).toLocaleString("vi-VN") : "Gần đây"}
+                            </td>
+                            <td className="px-5 py-3 text-center">
                               <button
-                                onClick={() => {
-                                  const ing = reduxIngredients.find(i => i.name === b.ingredientName);
-                                  if (ing) {
-                                    setInitialImportData([ing]);
-                                    setCurrentView("importGoods");
-                                  } else {
-                                    toast.error("Không tìm thấy nguyên liệu này trong danh sách để nhập.");
-                                  }
-                                }}
-                                className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-[10px] font-bold cursor-pointer transition-colors border border-blue-200"
+                                type="button"
+                                onClick={() => handleDeleteWasteTransaction(t.id)}
+                                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[10px] font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                title="Xóa bản ghi tiêu hủy này"
                               >
-                                Nhập hàng
+                                <Trash2 size={11} /> Xóa
                               </button>
-                              {(expiryInfo.status === "expired" || expiryInfo.status === "near") && (
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200/80 rounded-xl">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-wider">
+                    <tr>
+                      <th scope="col" className="px-5 py-3 text-left">Mã Lô hàng (Batch No)</th>
+                      <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
+                      <th scope="col" className="px-5 py-3 text-center">Số lượng nhập</th>
+                      <th scope="col" className="px-5 py-3 text-left">Ngày hết hạn</th>
+                      <th scope="col" className="px-5 py-3 text-left">Tình trạng hạn</th>
+                      <th scope="col" className="px-5 py-3 text-right">Thao tác tiêu hủy</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
+                    {(() => {
+                      const alertBatches = expiryBatches.filter((b) => {
+                        const st = getExpiryLabel(b.expiryDate).status;
+                        if (st === "good") return false; // Exclude safe items from Expiry Tracking tab
+                        if (expiryFilter === "all") return st === "near" || st === "expired";
+                        return st === expiryFilter;
+                      });
+
+                      if (alertBatches.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-12 text-center text-slate-500 font-medium">
+                              <div className="flex flex-col items-center justify-center gap-2 py-4">
+                                <CheckCircle size={32} className="text-emerald-500" />
+                                <span className="font-bold text-slate-700">Không có lô hàng nào cần xử lý</span>
+                                <span className="text-xs text-slate-400">Tất cả các lô nguyên liệu trong kho hiện tại đều an toàn.</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return alertBatches.map((b) => {
+                        const expiryInfo = getExpiryLabel(b.expiryDate);
+                        return (
+                          <tr key={b.id} className="hover:bg-slate-50/50">
+                            <td className="px-5 py-3 font-mono font-bold text-slate-700">{b.batchNo}</td>
+                            <td className="px-5 py-3 font-extrabold text-slate-800">{b.ingredientName}</td>
+                            <td className="px-5 py-3 text-center font-bold">{b.quantity} {b.unit}</td>
+                            <td className="px-5 py-3 whitespace-nowrap text-slate-600">{b.expiryDate}</td>
+                            <td className="px-5 py-3">
+                              {expiryInfo.status === "expired" && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-250 animate-pulse">
+                                  <AlertTriangle size={10} /> ĐÃ HẾT HẠN
+                                </span>
+                              )}
+                              {expiryInfo.status === "near" && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded border border-amber-250">
+                                  <AlertTriangle size={10} /> CẬN HẠN
+                                </span>
+                              )}
+                              {expiryInfo.status === "good" && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-250">
+                                  <Check size={10} /> AN TOÀN
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              <div className="flex justify-end gap-1.5 items-center">
                                 <button
-                                  onClick={async () => {
-                                    if (window.confirm(`Bạn có muốn tiêu hủy ${b.quantity} ${b.unit} của lô ${b.batchNo}?`)) {
-                                      try {
-                                        const ing = reduxIngredients.find(i => i.name === b.ingredientName);
-                                        if (ing) {
-                                          await updateInventoryQuantityApi(ing.id as string, {
-                                            quantity: Number(b.quantity),
-                                            type: "waste",
-                                            batchNo: b.batchNo,
-                                            reasonType: "expired",
-                                            reasonOrSupplier: `Tiêu hủy lô hàng (${b.batchNo})`,
-                                            isCredit: false
-                                          });
-                                          toast.success("Tiêu hủy thành công!");
-                                          setExpiryBatches(prev => prev.filter(item => item.id !== b.id));
-                                          fetchAllBatchesData();
-                                          getIngredientsApi().then((data) => setReduxIngredients(data));
-                                          getInventoryTransactionsApi().then((data) => setTransactions(data));
-                                        } else {
-                                          toast.error("Không tìm thấy nguyên liệu trong danh sách!");
-                                        }
-                                      } catch (err: any) {
-                                        console.error("Waste batch error:", err);
-                                        toast.error(err?.response?.data?.message || "Lỗi khi tiêu hủy lô hàng!");
-                                      }
+                                  onClick={() => {
+                                    const ing = reduxIngredients.find(i => i.name === b.ingredientName);
+                                    if (ing) {
+                                      setInitialImportData([ing]);
+                                      setCurrentView("importGoods");
+                                    } else {
+                                      toast.error("Không tìm thấy nguyên liệu này trong danh sách để nhập.");
                                     }
                                   }}
-                                  className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[10px] font-bold cursor-pointer transition-colors border border-rose-200/50"
+                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-[10px] font-bold cursor-pointer transition-colors border border-blue-200"
                                 >
-                                  Tiêu hủy
+                                  Nhập hàng
                                 </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
+                                {(expiryInfo.status === "expired" || expiryInfo.status === "near") && (
+                                  <button
+                                    onClick={async () => {
+                                      if (window.confirm(`Bạn có muốn tiêu hủy ${b.quantity} ${b.unit} của lô ${b.batchNo}?`)) {
+                                        try {
+                                          const ing = reduxIngredients.find(i => i.name === b.ingredientName);
+                                          if (ing) {
+                                            await updateInventoryQuantityApi(ing.id as string, {
+                                              quantity: Number(b.quantity),
+                                              type: "waste",
+                                              batchNo: b.batchNo,
+                                              reasonType: "expired",
+                                              reasonOrSupplier: `Tiêu hủy lô hàng (${b.batchNo})`,
+                                              isCredit: false
+                                            });
+                                            toast.success("Tiêu hủy thành công!");
+                                            setExpiryBatches(prev => prev.filter(item => item.id !== b.id));
+                                            fetchAllBatchesData();
+                                            getIngredientsApi().then((data) => setReduxIngredients(data));
+                                            getInventoryTransactionsApi().then((data) => setTransactions(data));
+                                          } else {
+                                            toast.error("Không tìm thấy nguyên liệu trong danh sách!");
+                                          }
+                                        } catch (err: any) {
+                                          console.error("Waste batch error:", err);
+                                          toast.error(err?.response?.data?.message || "Lỗi khi tiêu hủy lô hàng!");
+                                        }
+                                      }
+                                    }}
+                                    className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[10px] font-bold cursor-pointer transition-colors border border-rose-200/50"
+                                  >
+                                    Tiêu hủy
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -3784,6 +4227,246 @@ export const InventoryControl: React.FC = () => {
         )
       }
 
+
+      {/* Modal G: Ghi nhận Xuất hủy lô hàng / hàng hỏng */}
+      {showWasteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => {
+                setShowWasteModal(false);
+                setWasteForm({ ingredientId: "", batchNo: "", quantity: 1, reason: "Ôi thiu / Mốc", note: "" });
+              }}
+              className="absolute right-4 top-4 p-1 rounded-lg text-slate-600 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="p-2 bg-rose-100 text-rose-600 rounded-lg shrink-0">
+                <Trash2 size={18} />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide">Xuất hủy lô hàng hỏng</h3>
+                <p className="text-slate-500 text-[10px] font-semibold mt-0.5">
+                  {wasteForm.batchNo ? (
+                    <>Mã lô: <span className="font-bold text-rose-600">{wasteForm.batchNo}</span></>
+                  ) : (
+                    "Ghi nhận tiêu hủy nguyên liệu bị hỏng, mốc, ôi thiu"
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleWasteSubmit(); }} className="flex flex-col gap-4 text-xs">
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700 flex items-center justify-between">
+                  <span>Nguyên liệu <span className="text-rose-500">*</span></span>
+                  {wasteForm.batchNo && (
+                    <span className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
+                      <Lock size={11} /> Cố định theo lô
+                    </span>
+                  )}
+                </label>
+                <select
+                  required
+                  disabled={!!wasteForm.batchNo}
+                  value={wasteForm.ingredientId}
+                  onChange={(e) => setWasteForm({ ...wasteForm, ingredientId: e.target.value })}
+                  className={`px-3 py-2 border rounded-xl focus:outline-none font-semibold ${
+                    wasteForm.batchNo
+                      ? "border-slate-200 bg-slate-100 text-slate-600 cursor-not-allowed"
+                      : "border-slate-300 bg-white focus:border-rose-500"
+                  }`}
+                >
+                  <option value="">-- Chọn nguyên liệu --</option>
+                  {reduxIngredients.map((i: any) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} (Tồn kho: {i.stock} {i.unit})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {wasteForm.batchNo && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700">Mã lô xuất hủy</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={wasteForm.batchNo}
+                      className="px-3 py-2 border border-slate-200 rounded-xl bg-slate-100 font-bold text-slate-600 cursor-not-allowed"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-extrabold text-slate-700 flex items-center justify-between">
+                      <span>Số lượng hiện tại của lô</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">(Không thể sửa)</span>
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      readOnly
+                      value={`${(() => {
+                        const batchObjInModal = expiryBatches.find(b => b.batchNo === wasteForm.batchNo);
+                        return batchObjInModal ? Number(batchObjInModal.quantity) : (wasteForm.batchStock || 0);
+                      })()} ${reduxIngredients.find((i: any) => String(i.id) === String(wasteForm.ingredientId))?.unit || "kg"}`}
+                      className="px-3 py-2 border border-slate-250 rounded-xl bg-slate-100 font-extrabold text-emerald-700 cursor-not-allowed"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                {(() => {
+                  const currentSelectedIng = reduxIngredients.find((i: any) => String(i.id) === String(wasteForm.ingredientId));
+                  const baseUnit = currentSelectedIng?.unit || "kg";
+                  const conv = getUnitConversion(baseUnit, wasteForm.wasteUnit);
+
+                  const batchObjInModal = expiryBatches.find(b => b.batchNo === wasteForm.batchNo);
+                  const currentBatchStock = wasteForm.batchNo
+                    ? (batchObjInModal ? Number(batchObjInModal.quantity) : (wasteForm.batchStock || 0))
+                    : (currentSelectedIng ? Number(currentSelectedIng.stock) : 0);
+
+                  const baseQuantity = Number(wasteForm.quantity || 0) * conv.factor;
+                  const isInvalidOverQty = currentBatchStock > 0 && baseQuantity > currentBatchStock;
+
+                  const displayBatchStock = conv.factor !== 1 && conv.factor > 0
+                    ? `${(currentBatchStock / conv.factor).toLocaleString("vi-VN")} ${conv.activeUnit} (${currentBatchStock} ${conv.baseUnitName})`
+                    : `${currentBatchStock} ${conv.baseUnitName}`;
+
+                  return (
+                    <>
+                      <label className="font-extrabold text-slate-700 flex items-center justify-between">
+                        <span>Số lượng xuất hủy <span className="text-rose-500">*</span></span>
+                        {conv.activeUnit !== conv.baseUnitName && baseQuantity > 0 && (
+                          <span className="text-[10px] text-sky-700 font-bold bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
+                            = {baseQuantity.toFixed(3).replace(/\.?0+$/, "")} {conv.baseUnitName}
+                          </span>
+                        )}
+                      </label>
+
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="number"
+                            required
+                            min={conv.activeUnit === "g" || conv.activeUnit === "ml" ? "1" : "0.001"}
+                            step={conv.activeUnit === "g" || conv.activeUnit === "ml" ? "1" : "0.01"}
+                            value={wasteForm.quantity}
+                            onChange={(e) => setWasteForm({ ...wasteForm, quantity: Number(e.target.value) })}
+                            className={`w-full px-3 py-2 border rounded-xl focus:outline-none font-bold text-rose-600 transition-all ${
+                              isInvalidOverQty
+                                ? "border-rose-500 bg-rose-50/60 focus:border-rose-600 focus:ring-2 focus:ring-rose-200"
+                                : "border-slate-300 focus:border-rose-500"
+                            }`}
+                            placeholder="Nhập số lượng..."
+                          />
+                        </div>
+
+                        {conv.unitOptions.length > 1 ? (
+                          <select
+                            value={conv.activeUnit}
+                            onChange={(e) => {
+                              const newUnit = e.target.value;
+                              let newQty = wasteForm.quantity;
+                              if (newUnit === "g" && conv.activeUnit === "kg") {
+                                newQty = Math.round(wasteForm.quantity * 1000);
+                              } else if (newUnit === "kg" && conv.activeUnit === "g") {
+                                newQty = Number((wasteForm.quantity / 1000).toFixed(3));
+                              } else if (newUnit === "ml" && conv.activeUnit === "lit") {
+                                newQty = Math.round(wasteForm.quantity * 1000);
+                              } else if (newUnit === "lit" && conv.activeUnit === "ml") {
+                                newQty = Number((wasteForm.quantity / 1000).toFixed(3));
+                              }
+                              setWasteForm({ ...wasteForm, wasteUnit: newUnit, quantity: newQty });
+                            }}
+                            className="px-3 py-2 border border-slate-300 rounded-xl font-black text-slate-700 bg-slate-50 focus:outline-none focus:border-rose-500 cursor-pointer text-xs shrink-0 hover:bg-slate-100 transition-colors"
+                          >
+                            {conv.unitOptions.map((u) => (
+                              <option key={u.key} value={u.key}>{u.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="px-3 py-2 border border-slate-200 rounded-xl font-bold text-slate-500 bg-slate-100 flex items-center justify-center shrink-0 text-xs">
+                            {currentSelectedIng?.unit || "kg"}
+                          </div>
+                        )}
+                      </div>
+
+                      {isInvalidOverQty && (
+                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-extrabold text-rose-600 flex items-start gap-1.5 animate-in fade-in duration-150">
+                          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                          <span>
+                            Số lượng xuất hủy ({wasteForm.quantity} {conv.activeUnit} = {baseQuantity} {conv.baseUnitName}) lớn hơn số lượng tồn hiện tại ({displayBatchStock}). Vui lòng điều chỉnh lại!
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="font-extrabold text-slate-700">Lý do tiêu hủy <span className="text-rose-500">*</span></label>
+                <select
+                  value={wasteForm.reason}
+                  onChange={(e) => {
+                    const newReason = e.target.value;
+                    setWasteForm({
+                      ...wasteForm,
+                      reason: newReason,
+                      note: newReason === "Khác" ? wasteForm.note : ""
+                    });
+                  }}
+                  className="px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-rose-500 font-semibold bg-white cursor-pointer"
+                >
+                  <option value="Ôi thiu / Mốc">Ôi thiu / Mốc</option>
+                  <option value="Hết hạn sử dụng">Hết hạn sử dụng</option>
+                  <option value="Hao hụt kho / Rách vỡ">Hao hụt kho / Rách vỡ</option>
+                  <option value="Hỏng thiết bị bảo quản">Hỏng thiết bị bảo quản / Tủ lạnh</option>
+                  <option value="Sơ chế hỏng / Rơi vãi">Sơ chế hỏng / Rơi vãi</option>
+                  <option value="Khác">Lý do khác</option>
+                </select>
+              </div>
+
+              {wasteForm.reason === "Khác" && (
+                <div className="flex flex-col gap-1.5 animate-in fade-in duration-150">
+                  <label className="font-extrabold text-slate-700">Mô tả lý do cụ thể <span className="text-rose-500">*</span></label>
+                  <textarea
+                    required
+                    value={wasteForm.note}
+                    onChange={(e) => setWasteForm({ ...wasteForm, note: e.target.value })}
+                    placeholder="Mô tả lý do xuất hủy chi tiết..."
+                    rows={2}
+                    className="px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:border-rose-500 font-semibold text-xs bg-white"
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWasteModal(false);
+                    setWasteForm({ ingredientId: "", batchNo: "", quantity: 1, reason: "Ôi thiu / Mốc", note: "" });
+                  }}
+                  className="px-4 py-2 border border-slate-250 hover:bg-slate-50 rounded-xl font-bold cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-extrabold cursor-pointer flex items-center gap-1.5 shadow-sm shadow-rose-200"
+                >
+                  <Trash2 size={14} /> Xác nhận xuất hủy
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Xác nhận trả hàng theo lô */}
       {returnBatchData && (

@@ -15,6 +15,8 @@ import {
   requestPaymentHandler,
   cancelPaymentRequestHandler,
 } from "../controllers/waiter.controller";
+import { authStaff } from "../middlewares/authMiddleware";
+import { checkWalkInOpeningTimeMiddleware } from "../middlewares/shiftTime.middleware";
 
 const router = Router();
 
@@ -28,7 +30,7 @@ router.get("/notifications", getWaiterNotificationsHandler);
 // Orders by table
 router.get("/orders/by-table/:tableId", getOrdersByTableHandler);
 router.get("/orders/:orderId/items", getOrderItemsHandler);
-router.post("/orders", createResmanagerOrderHandler);
+router.post("/orders", authStaff, checkWalkInOpeningTimeMiddleware, createResmanagerOrderHandler);
 router.post("/orders/:orderId/items", addOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/void", voidOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/served", markItemServedHandler);

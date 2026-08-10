@@ -8,4 +8,6 @@ export { default as PromotionManagement } from "./PromotionManagement";
 export { BookingListPage } from "./bookings/BookingListPage";
 export { CRMManagement } from "./CRMManagement/index";
 export { InvoiceManagement } from "./InvoiceManagement/index";
+export { InventoryControl } from "../chef/inventory/index";
+
 

@@ -252,14 +252,7 @@ export const FinanceReport: React.FC = () => {
       returnGroups[groupKey].amount += total;
     });
 
-    const processedReturns = Object.values(returnGroups).map((group: any) => {
-      const totalItems = group.items.length;
-      const firstItem = group.items[0];
-      const description = totalItems > 1
-        ? `Trả hàng NCC: ${firstItem.ingredientName} (+${totalItems - 1} mặt hàng khác)`
-        : `Trả hàng NCC: ${firstItem.ingredientName}`;
-      return { ...group, description };
-    });
+
 
     const expenseList = rawList.filter((tx: any) => tx.type === "expense");
     const expenseGroups: { [key: string]: any } = {};
@@ -329,7 +322,6 @@ export const FinanceReport: React.FC = () => {
 
       const isReturned = returnedAmount >= originalAmount && originalAmount > 0;
       const isPartiallyReturned = returnedAmount > 0 && !isReturned;
-      const netAmount = isReturned ? 0 : Math.max(0, originalAmount - returnedAmount);
 
       const totalItems = group.items.length;
       const firstItem = group.items[0];
@@ -341,6 +333,8 @@ export const FinanceReport: React.FC = () => {
         description = `Nhập kho (Đã xuất trả NCC): ${firstItem.ingredientName}` + (totalItems > 1 ? ` (+${totalItems - 1} mặt hàng khác)` : "");
       }
 
+      const netAmount = isReturned ? 0 : Math.max(0, originalAmount - returnedAmount);
+
       return {
         ...group,
         amount: netAmount,
@@ -351,6 +345,23 @@ export const FinanceReport: React.FC = () => {
         description
       };
     });
+
+    const processedReturns = Object.values(returnGroups)
+      .map((group: any) => {
+        const totalItems = group.items.length;
+        const firstItem = group.items[0];
+        const description = totalItems > 1
+          ? `Trả hàng NCC: ${firstItem.ingredientName} (+${totalItems - 1} mặt hàng khác)`
+          : `Trả hàng NCC: ${firstItem.ingredientName}`;
+        return { ...group, description };
+      })
+      .filter((retGroup: any) => {
+        // Exclude separate return income rows for slips that are already netted inside processedExpenses
+        const hasMatchingExpense = Object.values(expenseGroups).some(
+          (exp: any) => (exp.ticketCode && retGroup.ticketCode && exp.ticketCode === retGroup.ticketCode) || exp.id === retGroup.id
+        );
+        return !hasMatchingExpense;
+      });
 
     const combined = [...invoiceIncomeList, ...processedReturns, ...processedExpenses];
     combined.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -588,7 +599,7 @@ export const FinanceReport: React.FC = () => {
                             </span>
                           ) : row.isPartiallyReturned ? (
                             <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                              Trả 1 phần NCC
+                              Xuất trả 1 phần NCC
                             </span>
                           ) : row.type === "expense" && row.isCredit === 1 ? (
                             <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
@@ -609,17 +620,17 @@ export const FinanceReport: React.FC = () => {
                         <td
                           className={`px-5 py-4 text-right tabular-nums`}
                         >
-                          <div className={`font-black text-xs ${row.isReturned ? "text-purple-700" : row.type === "income" ? "text-emerald-700" : "text-rose-700"}`}>
-                            {row.isReturned ? "0 đ" : `${row.type === "income" ? "+" : "-"}${formatCurrency(Number(row.amount))}`}
+                          <div className={`font-black text-xs ${row.isReturned ? "text-purple-700" : row.isPartiallyReturned ? "text-purple-700 font-black" : row.type === "income" ? "text-emerald-700" : "text-rose-700"}`}>
+                            {row.isReturned ? `-${formatCurrency(Number(row.returnedAmount || row.amount))}` : row.isPartiallyReturned ? `-${formatCurrency(Number(row.returnedAmount))}` : `${row.type === "income" ? "+" : "-"}${formatCurrency(Number(row.amount))}`}
                           </div>
                           {row.isReturned && (
                             <div className="text-[9px] text-purple-600 font-bold mt-0.5">
-                              (Đã trả {formatCurrency(row.returnedAmount || row.originalAmount)})
+                              (Đã xuất trả toàn bộ: -{formatCurrency(row.returnedAmount || row.originalAmount)})
                             </div>
                           )}
                           {!row.isReturned && row.isPartiallyReturned && (
                             <div className="text-[9px] text-purple-600 font-bold mt-0.5">
-                              Đã trả NCC: -{formatCurrency(row.returnedAmount)}
+                              Đã xuất trả 1 phần NCC: -{formatCurrency(row.returnedAmount)} (Tổng gốc: {formatCurrency(row.originalAmount)}, Hàng giữ lại: {formatCurrency(Math.max(0, row.originalAmount - row.returnedAmount))})
                             </div>
                           )}
                           {row.type === "income" && row.hasRefund && row.refundedTotal > 0 && (
@@ -764,22 +775,16 @@ export const FinanceReport: React.FC = () => {
                                           <span className="text-slate-500 font-semibold">Tổng tiền gốc:</span>
                                           <span className={`font-black ${row.isReturned ? "line-through text-slate-400" : "text-slate-900"}`}>{formatCurrency(row.originalAmount || row.amount)}</span>
                                         </div>
-                                        {(row.isReturned || row.returnedAmount > 0) && (
-                                          <div className="flex justify-between text-xs">
-                                            <span className="text-slate-500 font-semibold">Đã xuất trả NCC:</span>
-                                            <span className="font-bold text-purple-700">-{formatCurrency(row.returnedAmount)}</span>
-                                          </div>
-                                        )}
                                         <div className="flex justify-between text-xs pt-1 border-t border-slate-100">
-                                          <span className="text-slate-500 font-bold">Chi phí ghi nhận:</span>
-                                          <span className="font-black text-emerald-700">{formatCurrency(row.amount)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-xs">
-                                          <span className="text-slate-500 font-semibold">Đã trả tiền/nợ:</span>
-                                          <span className={`font-bold ${row.isReturned ? "text-purple-700" : row.isCredit ? "text-red-600" : "text-emerald-600"}`}>
-                                            {row.isReturned ? "0 đ (Đã xuất trả hàng)" : row.isCredit ? "0 đ (Ghi nợ NCC)" : formatCurrency(row.amount)}
-                                          </span>
-                                        </div>
+                                           <span className="text-slate-500 font-bold">Chi phí ghi nhận (Hàng giữ lại):</span>
+                                           <span className="font-black text-emerald-700">{formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))}</span>
+                                         </div>
+                                         <div className="flex justify-between text-xs">
+                                           <span className="text-slate-500 font-semibold">Đã trả tiền/nợ thực tế:</span>
+                                           <span className={`font-bold ${row.isReturned ? "text-purple-700" : row.isCredit ? "text-red-600" : "text-emerald-600"}`}>
+                                             {row.isReturned ? "0 đ (Đã xuất trả toàn bộ)" : row.isCredit ? `${formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))} (Ghi nợ NCC)` : formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))}
+                                           </span>
+                                         </div>
                                       </div>
                                     </div>
                                     <div className="space-y-1">
@@ -791,7 +796,7 @@ export const FinanceReport: React.FC = () => {
                                           </span>
                                         ) : row.isPartiallyReturned ? (
                                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
-                                            <RotateCcw size={11} /> Đã trả 1 phần NCC
+                                            <RotateCcw size={11} /> Đã xuất trả 1 phần NCC
                                           </span>
                                         ) : row.isCredit ? (
                                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200">

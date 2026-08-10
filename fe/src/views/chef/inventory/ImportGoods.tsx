@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud, Sparkles, AlertCircle } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud, Sparkles, AlertCircle, AlertTriangle, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi, getInventoryTransactionsApi } from "../../../services/api";
 // @ts-ignore
@@ -194,7 +194,11 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [importDate, setImportDate] = useState(new Date().toISOString().slice(0, 16));
   const [note, setNote] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("credit"); // "paid" or "credit"
+  const [paymentStatus, setPaymentStatus] = useState("paid"); // "paid", "credit", "partial"
+  const [paidAmount, setPaidAmount] = useState<number | string>(0);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank_transfer">("cash");
+  const [paymentProofImage, setPaymentProofImage] = useState<string>("");
+  const [isPaidAmountFocused, setIsPaidAmountFocused] = useState(false);
 
   const [showExcelModal, setShowExcelModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -391,6 +395,17 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
     (sum, item) => sum + getActualQty(item) * item.unitCost,
     0
   );
+
+  useEffect(() => {
+    if (paymentStatus === "paid") {
+      setPaidAmount(totalAmount);
+    } else if (paymentStatus === "credit") {
+      setPaidAmount(0);
+    }
+  }, [totalAmount, paymentStatus]);
+
+  const numericPaidAmount = Number(paidAmount) || 0;
+  const isOverPaidAmount = paymentStatus !== "credit" && numericPaidAmount > totalAmount;
 
   const handleSave = async (mode: "draft" | "completed" | "save_print" = "completed") => {
     if (importItems.length === 0) {
@@ -883,7 +898,7 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center text-sm font-bold">
                 <span className="text-slate-600">Tổng cộng</span>
-                <span className="text-admin-primary text-lg">
+                <span className="text-admin-primary text-lg font-black">
                   {totalAmount.toLocaleString("vi-VN")} ₫
                 </span>
               </div>
@@ -891,17 +906,144 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                 <label className="text-xs font-bold text-slate-600 block mb-1">Trạng thái thanh toán</label>
                 <select
                   value={paymentStatus}
-                  onChange={e => setPaymentStatus(e.target.value)}
-                  className={`w-full p-2 border rounded outline-none text-sm font-semibold cursor-pointer ${
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPaymentStatus(val);
+                    if (val === "paid") {
+                      setPaidAmount(totalAmount);
+                    } else if (val === "credit") {
+                      setPaidAmount(0);
+                    }
+                  }}
+                  className={`w-full p-2 border rounded-xl outline-none text-xs font-bold cursor-pointer ${
                     paymentStatus === "paid"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : paymentStatus === "partial"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
                       : "bg-rose-50 text-rose-700 border-rose-200"
                   }`}
                 >
-                  <option value="paid">Đã thanh toán (Tiền mặt / Chuyển khoản)</option>
-                  <option value="credit">Công nợ (Ghi nợ NCC)</option>
+                  <option value="paid">Đã thanh toán đủ (Tiền mặt / Chuyển khoản)</option>
+                  <option value="partial">Thanh toán 1 phần (Trả trước 1 số tiền)</option>
+                  <option value="credit">Công nợ (Ghi nợ NCC toàn bộ)</option>
                 </select>
               </div>
+
+              {paymentStatus !== "credit" && (
+                <>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Số tiền thanh toán ngay <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={isPaidAmountFocused ? paidAmount : (paidAmount === "" ? "" : Number(paidAmount).toLocaleString("vi-VN"))}
+                        onFocus={() => setIsPaidAmountFocused(true)}
+                        onBlur={() => setIsPaidAmountFocused(false)}
+                        onChange={(e) => {
+                          const rawVal = e.target.value;
+                          const digits = rawVal.replace(/\D/g, "");
+                          setPaidAmount(digits === "" ? "" : Number(digits));
+                        }}
+                        className={`w-full p-2 pl-7 border rounded-xl font-bold text-xs outline-none transition-all ${
+                          isOverPaidAmount
+                            ? "border-rose-500 bg-rose-50 text-rose-700 focus:border-rose-600"
+                            : "border-slate-300 focus:border-blue-500 text-slate-800"
+                        }`}
+                        placeholder="Nhập số tiền thanh toán..."
+                      />
+                      <span className="absolute left-2.5 top-2 text-slate-400 font-bold text-xs">₫</span>
+                    </div>
+
+                    {paidAmount !== "" && !isNaN(numericPaidAmount) && (
+                      <div className="mt-1 text-[11px] font-bold text-sky-600">
+                        Số tiền nhập: {Number(paidAmount).toLocaleString("vi-VN")} ₫
+                      </div>
+                    )}
+
+                    {isOverPaidAmount ? (
+                      <div className="mt-1 text-[11px] font-extrabold text-rose-600 flex items-center gap-1 p-1.5 bg-rose-50 rounded-lg border border-rose-200">
+                        <AlertTriangle size={13} className="shrink-0" />
+                        <span>Không được nhập vượt quá tổng cộng ({totalAmount.toLocaleString("vi-VN")} ₫)!</span>
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-[11px] font-bold text-slate-500 flex justify-between">
+                        <span>Ghi nợ NCC còn lại:</span>
+                        <span className={totalAmount - numericPaidAmount > 0 ? "text-rose-600 font-black" : "text-emerald-600 font-black"}>
+                          {Math.max(0, totalAmount - numericPaidAmount).toLocaleString("vi-VN")} ₫
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Hình thức thanh toán</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as any)}
+                      className="w-full p-2 border border-slate-300 rounded-xl font-bold text-xs bg-white text-slate-700 outline-none cursor-pointer"
+                    >
+                      <option value="cash">Tiền mặt</option>
+                      <option value="bank_transfer">Chuyển khoản</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Minh chứng thanh toán / Hóa đơn</label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="import-proof-upload"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 5 * 1024 * 1024) {
+                                toast.error("Dung lượng ảnh không được vượt quá 5MB");
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setPaymentProofImage(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor="import-proof-upload"
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 border border-slate-300 shadow-2xs"
+                        >
+                          <Upload size={13} className="text-slate-600" />
+                          {paymentProofImage ? "Thay ảnh minh chứng khác" : "Tải ảnh hóa đơn/chuyển khoản"}
+                        </label>
+                        {paymentProofImage && (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentProofImage("")}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold text-xs transition-colors border border-rose-200"
+                          >
+                            Xóa ảnh
+                          </button>
+                        )}
+                      </div>
+
+                      {paymentProofImage && (
+                        <div className="relative mt-1 rounded-xl border-2 border-slate-200 bg-slate-50 p-2 shadow-xs">
+                          <img
+                            src={paymentProofImage}
+                            alt="Minh chứng hóa đơn"
+                            className="max-h-40 w-full object-contain rounded-lg bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1058,14 +1200,14 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           return;
                         }
 
-                        const batchVal = (
-                          row["Số lô"] ||
-                          row.Batch ||
-                          `LOT-EXCEL-${Date.now().toString().slice(-6)}`
-                        ).toString().trim();
+                        const rawBatch = row["Số lô"] || row.Batch || row["Mã lô"] || row["Mã Lô"];
+                        const hasExplicitBatch = !!(rawBatch && String(rawBatch).trim() !== "");
+                        const batchVal = hasExplicitBatch
+                          ? String(rawBatch).trim()
+                          : `LOT-EXCEL-${Date.now().toString().slice(-4)}${String(rowIndex).padStart(2, "0")}`;
 
-                        if (newItems.some(item => item.batchNo === batchVal)) {
-                          toast.error(`Dòng ${rowIndex}: Cảnh báo trùng lặp mã lô "${batchVal}" của mặt hàng "${name}" trong file Excel!`, { id: "excel-batch-dup" });
+                        if (hasExplicitBatch && newItems.some(item => item.batchNo === batchVal)) {
+                          toast.error(`Dòng ${rowIndex}: Cảnh báo trùng lặp mã lô "${batchVal}" của mặt hàng "${name}" trong file Excel!`, { id: `excel-batch-dup-${rowIndex}` });
                         }
 
                         newItems.push({

@@ -121,12 +121,20 @@ export const getAttendance = async (): Promise<Attendance[]> => {
   return response.data.data || [];
 };
 
-export const clockIn = async (employeeId: number): Promise<Attendance> => {
-  const response = await api.post("/attendance/employee/clock-in", { employee_id: employeeId });
+/** Optional explanation attached when a scheduled employee clocks in late or out early. */
+export interface AttendanceReasonPayload {
+  late_reason?: string;
+  early_reason?: string;
+}
+
+/** Records a clock-in and forwards an optional late-arrival explanation. */
+export const clockIn = async (employeeId: number, payload: AttendanceReasonPayload = {}): Promise<Attendance> => {
+  const response = await api.post("/attendance/employee/clock-in", { employee_id: employeeId, ...payload });
   return response.data.data;
 };
 
-export const clockOut = async (employeeId: number): Promise<Attendance> => {
-  const response = await api.post("/attendance/employee/clock-out", { employee_id: employeeId });
+/** Records a clock-out and forwards an optional early-departure explanation. */
+export const clockOut = async (employeeId: number, payload: AttendanceReasonPayload = {}): Promise<Attendance> => {
+  const response = await api.post("/attendance/employee/clock-out", { employee_id: employeeId, ...payload });
   return response.data.data;
 };

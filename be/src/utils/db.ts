@@ -121,6 +121,24 @@ export const query = async <T = any>(sql: string, params: any[] = []): Promise<T
   return rows as T;
 };
 
+/** Executes related MySQL mutations atomically and releases the connection in every outcome. */
+export const withTransaction = async <T>(
+  callback: (connection: mysql.PoolConnection) => Promise<T>,
+): Promise<T> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const result = await callback(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 export const isDbAvailable = (): boolean => dbAvailable;
 
 const MOCK_USERS: User[] = [
@@ -1058,7 +1076,7 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: created invoice_item_splits table");
     }
 
-    // Migration: Ensure debt_payments table exists
+    // Migration: Ensure debt_payments table exists and has proof_image column
     await query(`
       CREATE TABLE IF NOT EXISTS debt_payments (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1066,12 +1084,16 @@ const runSchemaMigrations = async (): Promise<void> => {
         amount DECIMAL(14,2) NOT NULL,
         method VARCHAR(50) NOT NULL DEFAULT 'transfer',
         note TEXT NULL,
+        proof_image LONGTEXT NULL,
         paid_by INT NULL,
         paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_debt_payments_supplier (supplier_id),
         CONSTRAINT fk_debt_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
+
+    await query(`ALTER TABLE debt_payments ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
+    await query(`ALTER TABLE debt_payments MODIFY COLUMN paid_by INT NULL`).catch(() => {});
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -2676,22 +2698,32 @@ export const getBookingSchedule = async (
     `SELECT b.id, b.confirmation_code, b.guest_name, b.guest_phone, b.guest_email,
             b.party_size, b.start_time, b.end_time, b.status, b.guest_note, b.note,
             b.table_id AS primary_table_id, primary_table.name AS primary_table_name,
-            COALESCE(GROUP_CONCAT(DISTINCT all_tables.name ORDER BY all_bta.is_primary DESC, all_tables.name SEPARATOR ', '), primary_table.name) AS table_names,
-            COALESCE(GROUP_CONCAT(DISTINCT all_tables.id ORDER BY all_bta.is_primary DESC, all_tables.name), CAST(b.table_id AS CHAR)) AS table_ids,
-            COALESCE(SUM(DISTINCT all_bta.allocated_capacity), primary_table.capacity) AS total_capacity,
+            COALESCE(agg.table_names, primary_table.name) AS table_names,
+            COALESCE(agg.table_ids, CAST(b.table_id AS CHAR)) AS table_ids,
+            COALESCE(agg.total_capacity, primary_table.capacity) AS total_capacity,
             DATE_SUB(b.start_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_open_at,
             DATE_SUB(b.end_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_close_at
      FROM bookings b
      LEFT JOIN tables primary_table ON primary_table.id = b.table_id
+     /* Dùng subquery thay vì double-JOIN để tránh Cartesian product và lỗi SUM(DISTINCT) */
+     LEFT JOIN (
+       SELECT bta_agg.booking_id,
+              GROUP_CONCAT(t_agg.name ORDER BY bta_agg.is_primary DESC, t_agg.name SEPARATOR ', ') AS table_names,
+              GROUP_CONCAT(CAST(t_agg.id AS CHAR) ORDER BY bta_agg.is_primary DESC, t_agg.name) AS table_ids,
+              SUM(bta_agg.allocated_capacity) AS total_capacity
+       FROM booking_table_assignments bta_agg
+       JOIN tables t_agg ON t_agg.id = bta_agg.table_id
+       GROUP BY bta_agg.booking_id
+     ) AS agg ON agg.booking_id = b.id
+     /* Chỉ dùng bta để lọc theo tableId (không ảnh hưởng đến SELECT) */
      LEFT JOIN booking_table_assignments bta ON bta.booking_id = b.id
-     LEFT JOIN booking_table_assignments all_bta ON all_bta.booking_id = b.id
-     LEFT JOIN tables all_tables ON all_tables.id = all_bta.table_id
      ${whereClause}
      GROUP BY b.id
      ${orderByClause}`,
     params,
   );
 };
+
 
 /** Returns a table's booking intervals that overlap the requested restaurant-local day. */
 export const getBookingTableAvailabilityForDate = async (
@@ -5974,6 +6006,20 @@ interface AttendanceRecordRow {
   clock_out: string | null;
   employee_name?: string;
   employee_role?: string;
+  schedule_id?: number | null;
+  is_late?: number;
+  late_reason?: string | null;
+  is_early?: number;
+  early_reason?: string | null;
+}
+
+/** Metadata collected by the schedule-policy middleware at clock-in or clock-out. */
+export interface AttendanceTimingInput {
+  scheduleId?: number | null;
+  isLate?: boolean;
+  lateReason?: string | null;
+  isEarly?: boolean;
+  earlyReason?: string | null;
 }
 
 /** Gets attendance records with the staff member information required by managers. */
@@ -5991,6 +6037,11 @@ export const getAllAttendance = async (): Promise<AttendanceRecordRow[]> => {
       a.employee_id,
       a.clock_in,
       a.clock_out,
+      a.schedule_id,
+      a.is_late,
+      a.late_reason,
+      a.is_early,
+      a.early_reason,
       u.full_name AS employee_name,
       COALESCE(r.name, 'staff') AS employee_role
     FROM attendance a
@@ -6037,23 +6088,27 @@ export const getTodayAttendance = async (employeeId: number): Promise<any | null
   return rows[0] || null;
 };
 
-export const clockInEmployee = async (employeeId: number): Promise<any> => {
+export const clockInEmployee = async (employeeId: number, timing: AttendanceTimingInput = {}): Promise<any> => {
   const now = new Date();
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
     (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
-    const newRecord = { id: Date.now(), employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
+    const newRecord = {
+      id: Date.now(), employee_id: employeeId, clock_in: now.toISOString(), clock_out: null,
+      schedule_id: timing.scheduleId ?? null, is_late: timing.isLate ? 1 : 0,
+      late_reason: timing.lateReason ?? null,
+    };
     MOCK_ATTENDANCE_STORE.push(newRecord);
     return newRecord;
   }
   const result = await query(
-    "INSERT INTO attendance (employee_id, clock_in) VALUES (?, NOW())",
-    [employeeId]
+    "INSERT INTO attendance (employee_id, clock_in, schedule_id, is_late, late_reason) VALUES (?, NOW(), ?, ?, ?)",
+    [employeeId, timing.scheduleId ?? null, timing.isLate ? 1 : 0, timing.lateReason ?? null]
   );
   return { id: result.insertId, employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
 };
 
-export const clockOutEmployee = async (employeeId: number): Promise<any | null> => {
+export const clockOutEmployee = async (employeeId: number, timing: AttendanceTimingInput = {}): Promise<any | null> => {
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
     (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
@@ -6063,14 +6118,16 @@ export const clockOutEmployee = async (employeeId: number): Promise<any | null> 
     );
     if (record) {
       record.clock_out = new Date().toISOString();
+      record.is_early = timing.isEarly ? 1 : 0;
+      record.early_reason = timing.earlyReason ?? null;
       return record;
     }
     return null;
   }
   const today = new Date().toISOString().slice(0, 10);
   await query(
-    "UPDATE attendance SET clock_out = NOW() WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
-    [employeeId, today]
+    "UPDATE attendance SET clock_out = NOW(), is_early = ?, early_reason = ? WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
+    [timing.isEarly ? 1 : 0, timing.earlyReason ?? null, employeeId, today]
   );
   return getTodayAttendance(employeeId);
 };
