@@ -121,6 +121,24 @@ export const query = async <T = any>(sql: string, params: any[] = []): Promise<T
   return rows as T;
 };
 
+/** Executes related MySQL mutations atomically and releases the connection in every outcome. */
+export const withTransaction = async <T>(
+  callback: (connection: mysql.PoolConnection) => Promise<T>,
+): Promise<T> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const result = await callback(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 export const isDbAvailable = (): boolean => dbAvailable;
 
 const MOCK_USERS: User[] = [
@@ -5742,6 +5760,20 @@ interface AttendanceRecordRow {
   clock_out: string | null;
   employee_name?: string;
   employee_role?: string;
+  schedule_id?: number | null;
+  is_late?: number;
+  late_reason?: string | null;
+  is_early?: number;
+  early_reason?: string | null;
+}
+
+/** Metadata collected by the schedule-policy middleware at clock-in or clock-out. */
+export interface AttendanceTimingInput {
+  scheduleId?: number | null;
+  isLate?: boolean;
+  lateReason?: string | null;
+  isEarly?: boolean;
+  earlyReason?: string | null;
 }
 
 /** Gets attendance records with the staff member information required by managers. */
@@ -5759,6 +5791,11 @@ export const getAllAttendance = async (): Promise<AttendanceRecordRow[]> => {
       a.employee_id,
       a.clock_in,
       a.clock_out,
+      a.schedule_id,
+      a.is_late,
+      a.late_reason,
+      a.is_early,
+      a.early_reason,
       u.full_name AS employee_name,
       COALESCE(r.name, 'staff') AS employee_role
     FROM attendance a
@@ -5805,23 +5842,27 @@ export const getTodayAttendance = async (employeeId: number): Promise<any | null
   return rows[0] || null;
 };
 
-export const clockInEmployee = async (employeeId: number): Promise<any> => {
+export const clockInEmployee = async (employeeId: number, timing: AttendanceTimingInput = {}): Promise<any> => {
   const now = new Date();
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
     (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
-    const newRecord = { id: Date.now(), employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
+    const newRecord = {
+      id: Date.now(), employee_id: employeeId, clock_in: now.toISOString(), clock_out: null,
+      schedule_id: timing.scheduleId ?? null, is_late: timing.isLate ? 1 : 0,
+      late_reason: timing.lateReason ?? null,
+    };
     MOCK_ATTENDANCE_STORE.push(newRecord);
     return newRecord;
   }
   const result = await query(
-    "INSERT INTO attendance (employee_id, clock_in) VALUES (?, NOW())",
-    [employeeId]
+    "INSERT INTO attendance (employee_id, clock_in, schedule_id, is_late, late_reason) VALUES (?, NOW(), ?, ?, ?)",
+    [employeeId, timing.scheduleId ?? null, timing.isLate ? 1 : 0, timing.lateReason ?? null]
   );
   return { id: result.insertId, employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
 };
 
-export const clockOutEmployee = async (employeeId: number): Promise<any | null> => {
+export const clockOutEmployee = async (employeeId: number, timing: AttendanceTimingInput = {}): Promise<any | null> => {
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
     (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
@@ -5831,14 +5872,16 @@ export const clockOutEmployee = async (employeeId: number): Promise<any | null> 
     );
     if (record) {
       record.clock_out = new Date().toISOString();
+      record.is_early = timing.isEarly ? 1 : 0;
+      record.early_reason = timing.earlyReason ?? null;
       return record;
     }
     return null;
   }
   const today = new Date().toISOString().slice(0, 10);
   await query(
-    "UPDATE attendance SET clock_out = NOW() WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
-    [employeeId, today]
+    "UPDATE attendance SET clock_out = NOW(), is_early = ?, early_reason = ? WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
+    [timing.isEarly ? 1 : 0, timing.earlyReason ?? null, employeeId, today]
   );
   return getTodayAttendance(employeeId);
 };

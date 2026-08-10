@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
+import type { AttendanceTimingMetadata } from "../middlewares/attendanceSchedule.middleware";
 import { sendSuccess, sendError } from "../utils/response";
 
 const MANAGE_ATTENDANCE_ROLES = ["admin", "manager"];
@@ -59,7 +60,8 @@ export const clockIn = async (req: Request, res: Response): Promise<void> => {
       sendError(res, "Bạn đã chấm công vào rồi. Không thể chấm công lại.", 400);
       return;
     }
-    const attendance = await db.clockInEmployee(Number(userId));
+    const timing = res.locals.attendanceTiming as AttendanceTimingMetadata | undefined;
+    const attendance = await db.clockInEmployee(Number(userId), timing);
     sendSuccess(res, attendance, "Chấm công vào thành công!");
   } catch (error) {
     console.error("Error in clockIn:", error);
@@ -79,7 +81,8 @@ export const clockOut = async (req: Request, res: Response): Promise<void> => {
       sendError(res, "Bạn chưa chấm công vào hoặc đã chấm công ra rồi.", 400);
       return;
     }
-    const attendance = await db.clockOutEmployee(Number(userId));
+    const timing = res.locals.attendanceTiming as AttendanceTimingMetadata | undefined;
+    const attendance = await db.clockOutEmployee(Number(userId), timing);
     sendSuccess(res, attendance, "Chấm công ra thành công!");
   } catch (error) {
     console.error("Error in clockOut:", error);
@@ -100,7 +103,8 @@ export const clockInEmployeeByManager = async (req: Request, res: Response): Pro
       sendError(res, "Nhân viên này đã chấm công vào.", 400);
       return;
     }
-    const attendance = await db.clockInEmployee(employeeId);
+    const timing = res.locals.attendanceTiming as AttendanceTimingMetadata | undefined;
+    const attendance = await db.clockInEmployee(employeeId, timing);
     sendSuccess(res, attendance, "Chấm công vào thành công!");
   } catch (error) {
     console.error("Error in clockInEmployeeByManager:", error);
@@ -121,7 +125,8 @@ export const clockOutEmployeeByManager = async (req: Request, res: Response): Pr
       sendError(res, "Nhân viên chưa chấm công vào hoặc đã chấm công ra.", 400);
       return;
     }
-    const attendance = await db.clockOutEmployee(employeeId);
+    const timing = res.locals.attendanceTiming as AttendanceTimingMetadata | undefined;
+    const attendance = await db.clockOutEmployee(employeeId, timing);
     sendSuccess(res, attendance, "Chấm công ra thành công!");
   } catch (error) {
     console.error("Error in clockOutEmployeeByManager:", error);

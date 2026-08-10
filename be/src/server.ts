@@ -37,6 +37,8 @@ import attendanceRoutes from "./routes/attendance.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import crmRoutes from "./routes/crm.routes";
 import systemSettingsRoutes from "./routes/system-settings.routes";
+import scheduleRoutes from "./routes/schedule.routes";
+import { ensureScheduleSchema } from "./repositories/schedule.repository";
  
 const app = express();
 const httpServer = http.createServer(app);
@@ -92,7 +94,8 @@ const startServer = (port: number): void => {
 };
  
 initDb()
-  .then(() => {
+  .then(async () => {
+    await ensureScheduleSchema();
     console.log("✅ Database mode: MySQL");
     startBookingReminderScheduler();
     startCustomerTelegramBot();
@@ -138,6 +141,7 @@ app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
 // Must stay before the legacy /api table fallback below.
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/v1/attendance", attendanceRoutes);
 
 app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
@@ -147,6 +151,7 @@ app.use("/api/v1/waiter", waiterRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 app.use("/api/v1/crm", crmRoutes);
 app.use("/api/v1/system-settings", systemSettingsRoutes);
+app.use("/api/v1/schedules", scheduleRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
