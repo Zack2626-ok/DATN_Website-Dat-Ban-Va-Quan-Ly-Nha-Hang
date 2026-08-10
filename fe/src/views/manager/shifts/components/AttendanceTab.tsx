@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Search, LogIn, LogOut, CheckCircle, Clock } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Search, LogIn, LogOut, CheckCircle, Clock, X } from "lucide-react";
 import type { Attendance, ShiftEmployee } from "../../../../interfaces/shift.interface";
 
 interface AttendanceTabProps {
   attendance: Attendance[];
   employees: ShiftEmployee[];
   loading: boolean;
-  onClockIn: (employeeId: number) => void;
-  onClockOut: (employeeId: number) => void;
+  onClockIn: (employeeId: number, lateReason?: string) => Promise<void>;
+  onClockOut: (employeeId: number, earlyReason?: string) => Promise<void>;
   actionLoading?: boolean;
 }
 
@@ -22,6 +22,8 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
   const [query, setQuery] = useState("");
   const [selectedEmpId, setSelectedEmpId] = useState<number | "">("");
   const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
+  const [reasonAction, setReasonAction] = useState<"clock-in" | "clock-out" | null>(null);
+  const [reason, setReason] = useState("");
 
   useEffect(() => {
     const timerId = window.setInterval(() => setCurrentTimestamp(Date.now()), 1000);
@@ -60,10 +62,9 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
   });
 
   // Tìm bản ghi đang hoạt động (chưa clock-out) của nhân viên đang được chọn ở bộ giả lập
-  const activeRecord = useMemo(() => {
-    if (!selectedEmpId) return null;
-    return attendance.find((a) => a.employee_id === selectedEmpId && a.clock_out === null) || null;
-  }, [selectedEmpId, attendance]);
+  const activeRecord = selectedEmpId
+    ? getCurrentAttendance().find((record) => record.employee_id === selectedEmpId) ?? null
+    : null;
 
   /** Formats the duration of a completed or currently active attendance record. */
   const calculateHours = (inStr: string, outStr: string | null): string => {
@@ -86,15 +87,26 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
     return dtStr.replace("T", " ");
   };
 
-  const handleSimulateClockIn = () => {
-    if (selectedEmpId) {
-      onClockIn(Number(selectedEmpId));
-    }
+  /** Identifies a server response that requires a discipline explanation. */
+  const requiresReason = (error: unknown): boolean => {
+    if (typeof error !== "object" || error === null || !("response" in error)) return false;
+    const response = error.response;
+    if (typeof response !== "object" || response === null || !("data" in response)) return false;
+    const data = response.data;
+    if (typeof data !== "object" || data === null || !("code" in data)) return false;
+    return data.code === "LATE_REASON_REQUIRED" || data.code === "EARLY_REASON_REQUIRED";
   };
 
-  const handleSimulateClockOut = () => {
-    if (selectedEmpId) {
-      onClockOut(Number(selectedEmpId));
+  /** Attempts a terminal action and opens the explanation dialog only when policy requires it. */
+  const handleAttendanceAction = async (action: "clock-in" | "clock-out", explanation?: string): Promise<void> => {
+    if (!selectedEmpId) return;
+    try {
+      if (action === "clock-in") await onClockIn(Number(selectedEmpId), explanation);
+      else await onClockOut(Number(selectedEmpId), explanation);
+      setReasonAction(null);
+      setReason("");
+    } catch (error) {
+      if (requiresReason(error) && !explanation?.trim()) setReasonAction(action);
     }
   };
 
@@ -219,7 +231,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <button
-              onClick={handleSimulateClockIn}
+              onClick={() => void handleAttendanceAction("clock-in")}
               disabled={actionLoading || !selectedEmpId || !!activeRecord}
               className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
@@ -227,7 +239,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
               Clock In
             </button>
             <button
-              onClick={handleSimulateClockOut}
+              onClick={() => void handleAttendanceAction("clock-out")}
               disabled={actionLoading || !selectedEmpId || !activeRecord}
               className="flex items-center justify-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white py-2.5 text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
@@ -237,6 +249,21 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
           </div>
         </div>
       </div>
+      {reasonAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="attendance-reason-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="attendance-reason-title" className="text-base font-black text-slate-800">Giải trình {reasonAction === "clock-in" ? "đi muộn" : "về sớm"}</h3>
+                <p className="mt-1 text-xs text-slate-500">Theo quy định ca làm, vui lòng nhập lý do trước khi xác nhận.</p>
+              </div>
+              <button type="button" onClick={() => { setReasonAction(null); setReason(""); }} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100" aria-label="Đóng"><X size={18} /></button>
+            </div>
+            <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Nhập lý do..." className="mt-4 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-sky-500" />
+            <button type="button" disabled={!reason.trim() || actionLoading} onClick={() => void handleAttendanceAction(reasonAction, reason.trim())} className="mt-3 w-full rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">Xác nhận chấm công</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
