@@ -30,6 +30,9 @@ interface HistoryItem {
   voidedAt?: string;
   waiterName?: string;
   kitchenNote?: string;
+  wasReused?: number;
+  reusedByOrderItemId?: number;
+  targetTableName?: string;
 }
 
 export const ChefCookingHistory: React.FC = () => {
@@ -43,7 +46,7 @@ export const ChefCookingHistory: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "returned">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "returned" | "reused">("all");
 
   const fetchHistory = async (dateVal: string) => {
     setLoading(true);
@@ -78,11 +81,13 @@ export const ChefCookingHistory: React.FC = () => {
       if (item.orderType !== "dine_in") return;
 
       // Status filtering
-      const isCompleted = ["done", "served", "delivered"].includes(item.status);
-      const isReturned = ["cancelled", "voided"].includes(item.status);
+      const isCompleted = ["done", "served", "delivered"].includes(item.status) && item.wasReused !== 1;
+      const isReturned = ["cancelled", "voided"].includes(item.status) && item.wasReused !== 1;
+      const isReused = item.wasReused === 1;
 
       if (statusFilter === "completed" && !isCompleted) return;
       if (statusFilter === "returned" && !isReturned) return;
+      if (statusFilter === "reused" && !isReused) return;
 
       const orderDate = new Date(item.createdAt);
       const hour = orderDate.getHours();
@@ -120,23 +125,27 @@ export const ChefCookingHistory: React.FC = () => {
   const stats = useMemo(() => {
     let completedCount = 0;
     let returnedCount = 0;
+    let reusedCount = 0;
     const hourlyCompleted: { [hour: string]: number } = {};
 
     historyItems.forEach((item) => {
       // Filter out takeaway/delivery
       if (item.orderType !== "dine_in") return;
 
-      const isCompleted = ["done", "served", "delivered"].includes(item.status);
-      const isReturned = ["cancelled", "voided"].includes(item.status);
+      const isCompleted = ["done", "served", "delivered"].includes(item.status) && item.wasReused !== 1;
+      const isReturned = ["cancelled", "voided"].includes(item.status) && item.wasReused !== 1;
+      const isReused = item.wasReused === 1;
 
-      if (isCompleted) {
+      if (isReused) {
+        reusedCount += item.quantity;
+      } else if (isReturned) {
+        returnedCount += item.quantity;
+      } else if (isCompleted) {
         completedCount += item.quantity;
 
         const hour = new Date(item.createdAt).getHours();
         const hourLabel = `${String(hour).padStart(2, "0")}:00 - ${String(hour).padStart(2, "0")}:59`;
         hourlyCompleted[hourLabel] = (hourlyCompleted[hourLabel] || 0) + item.quantity;
-      } else if (isReturned) {
-        returnedCount += item.quantity;
       }
     });
 
@@ -151,6 +160,7 @@ export const ChefCookingHistory: React.FC = () => {
     return {
       completedCount,
       returnedCount,
+      reusedCount,
       hourlyStats: sortedHourlyStats,
     };
   }, [historyItems]);
@@ -265,7 +275,9 @@ export const ChefCookingHistory: React.FC = () => {
                 {/* Dishes List */}
                 <div className="p-5 flex flex-col gap-3 max-h-120 overflow-y-auto pr-2 scrollbar">
                   {hourGroup.items.map((item) => {
-                    const isDone = ["done", "served", "delivered"].includes(item.status);
+                    const isCompleted = ["done", "served", "delivered"].includes(item.status) && item.wasReused !== 1;
+                    const isReturned = ["cancelled", "voided"].includes(item.status) && item.wasReused !== 1;
+                    const isReused = item.wasReused === 1;
                     return (
                       <div
                         key={item.id}
@@ -310,20 +322,32 @@ export const ChefCookingHistory: React.FC = () => {
                               <span>📝 Ghi chú: {item.kitchenNote}</span>
                             </div>
                           )}
-                          {/* Void Reason if cancelled */}
-                          {!isDone && (item.voidReason || item.status === "voided") && (
+                          {/* Void Reason if cancelled and not reused */}
+                          {isReturned && (item.voidReason || item.status === "voided") && (
                             <div className="mt-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-150 px-2 py-1 rounded-md flex items-center gap-1.5">
                               <AlertTriangle size={11} className="stroke-[2.5]" />
                               <span>Lý do hủy: {item.voidReason || "Nhân viên hủy đơn"}</span>
                             </div>
                           )}
+                          {/* Redirection description for reused items */}
+                          {isReused && (
+                            <div className="mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-150 px-2 py-1 rounded-md flex items-center gap-1.5">
+                              <RefreshCcw size={11} className="stroke-[2.5]" />
+                              <span>Món trả của Bàn {item.tableName} ➔ Đi đơn cho Bàn: {item.targetTableName || "Mang về"}</span>
+                            </div>
+                          )}
                         </div>
 
                         <div>
-                          {isDone ? (
+                          {isCompleted ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <CheckCircle2 size={12} />
                               {item.status === "done" ? "Đã nấu xong" : "Đã phục vụ"}
+                            </span>
+                          ) : isReused ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200 animate-pulse">
+                              <RefreshCcw size={12} />
+                              Đi đơn khác
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200">
@@ -349,31 +373,46 @@ export const ChefCookingHistory: React.FC = () => {
               Tổng quan ngày này
             </h4>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <div
                 onClick={() => setStatusFilter(statusFilter === "completed" ? "all" : "completed")}
-                className={`border rounded-xl p-3.5 flex flex-col gap-1 shadow-inner cursor-pointer transition-all active:scale-95 select-none ${
+                className={`border rounded-xl p-2.5 flex flex-col gap-1 shadow-inner cursor-pointer transition-all active:scale-95 select-none ${
                   statusFilter === "completed"
                     ? "bg-emerald-100 border-emerald-300 ring-2 ring-emerald-500/20"
                     : "bg-emerald-50 border-emerald-150 hover:bg-emerald-100/50"
                 }`}
               >
-                <span className="text-[10px] font-bold text-emerald-700 uppercase">Hoàn thành</span>
-                <span className="text-xl font-black text-emerald-800">
-                  {stats.completedCount} <span className="text-[11px] font-medium text-emerald-650">món</span>
+                <span className="text-[8px] font-bold text-emerald-755 uppercase truncate">Hoàn thành</span>
+                <span className="text-md font-black text-emerald-800">
+                  {stats.completedCount} <span className="text-[9px] font-medium text-emerald-650">món</span>
                 </span>
               </div>
+              
               <div
                 onClick={() => setStatusFilter(statusFilter === "returned" ? "all" : "returned")}
-                className={`border rounded-xl p-3.5 flex flex-col gap-1 shadow-inner cursor-pointer transition-all active:scale-95 select-none ${
+                className={`border rounded-xl p-2.5 flex flex-col gap-1 shadow-inner cursor-pointer transition-all active:scale-95 select-none ${
                   statusFilter === "returned"
                     ? "bg-rose-100 border-rose-300 ring-2 ring-rose-500/20"
                     : "bg-rose-50 border-rose-150 hover:bg-rose-100/50"
                 }`}
               >
-                <span className="text-[10px] font-bold text-rose-700 uppercase">Hủy / Trả</span>
-                <span className="text-xl font-black text-rose-800">
-                  {stats.returnedCount} <span className="text-[11px] font-medium text-rose-650">món</span>
+                <span className="text-[8px] font-bold text-rose-700 uppercase truncate">Hủy / Trả</span>
+                <span className="text-md font-black text-rose-800">
+                  {stats.returnedCount} <span className="text-[9px] font-medium text-rose-650">món</span>
+                </span>
+              </div>
+
+              <div
+                onClick={() => setStatusFilter(statusFilter === "reused" ? "all" : "reused")}
+                className={`border rounded-xl p-2.5 flex flex-col gap-1 shadow-inner cursor-pointer transition-all active:scale-95 select-none ${
+                  statusFilter === "reused"
+                    ? "bg-blue-100 border-blue-300 ring-2 ring-blue-500/20"
+                    : "bg-blue-50 border-blue-150 hover:bg-blue-100/50"
+                }`}
+              >
+                <span className="text-[8px] font-bold text-blue-700 uppercase truncate">Đi đơn khác</span>
+                <span className="text-md font-black text-blue-800">
+                  {stats.reusedCount} <span className="text-[9px] font-medium text-blue-650">món</span>
                 </span>
               </div>
             </div>

@@ -61,6 +61,8 @@ export const io = new SocketIOServer(httpServer, {
   },
 });
 
+app.set("io", io);
+
 io.on("connection", (socket) => {
   console.log(`🔌 Socket.io client connected: ${socket.id}`);
   socket.on("disconnect", () => {
@@ -128,6 +130,7 @@ app.use("/api/kds", kdsRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/v1/inventory", inventoryRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
 

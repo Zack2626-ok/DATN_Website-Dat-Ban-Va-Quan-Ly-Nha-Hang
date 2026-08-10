@@ -351,6 +351,18 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       fetchData();
     });
 
+    socket.on("kds_updated", () => {
+      fetchData();
+    });
+
+    socket.on("order_updated", () => {
+      fetchData();
+    });
+
+    socket.on("order:item_voided", () => {
+      fetchData();
+    });
+
     return () => {
       socket.off("connect");
       socket.off("table:status_changed");
@@ -358,6 +370,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       socket.off("table:merged");
       socket.off("table:merge_resolved");
       socket.off("table:group_seating_changed");
+      socket.off("kds_updated");
+      socket.off("order_updated");
+      socket.off("order:item_voided");
       socket.disconnect();
       console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
     };
@@ -694,6 +709,14 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   const handleVoidUnfinishedAndRequestPaymentFromTable = async () => {
     if (!selectedTableId || !activeOrder || !unfinishedPaymentModal) return;
+
+    // Kiểm tra xem có món nào đang nấu hoặc đã hoàn thành hay không
+    const cookingOrDoneItems = unfinishedPaymentModal.filter((i) => i.status === "cooking" || i.status === "done");
+    if (cookingOrDoneItems.length > 0) {
+      toast.error(`Không thể tự động hủy vì có ${cookingOrDoneItems.length} món đang nấu hoặc đã hoàn thành trên bếp!`);
+      return;
+    }
+
     try {
       setProcessingPaymentRequest(true);
       for (const item of unfinishedPaymentModal) {
