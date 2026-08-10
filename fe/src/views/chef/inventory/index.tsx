@@ -989,6 +989,23 @@ export const InventoryControl: React.FC = () => {
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(excelRows);
+
+      // Auto-fit columns dynamically based on content length
+      if (excelRows.length > 0) {
+        const colKeys = Object.keys(excelRows[0]);
+        worksheet["!cols"] = colKeys.map(key => {
+          let maxLen = key.length;
+          excelRows.forEach(r => {
+            const val = r[key as keyof typeof r];
+            if (val !== undefined && val !== null) {
+              const strLen = String(val).length;
+              if (strLen > maxLen) maxLen = strLen;
+            }
+          });
+          return { wch: Math.min(Math.max(maxLen + 4, 12), 45) };
+        });
+      }
+
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "TongHopTruKho");
       XLSX.writeFile(workbook, `TongHop_TruKho_TuDong_${new Date().toISOString().slice(0, 10)}.xlsx`);

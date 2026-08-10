@@ -63,6 +63,13 @@ app.set("io", io);
 
 io.on("connection", (socket) => {
   console.log(`🔌 Socket.io client connected: ${socket.id}`);
+
+  socket.on("request_server_time", (callback) => {
+    if (typeof callback === "function") {
+      callback(new Date().toISOString());
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log(`🔌 Socket.io client disconnected: ${socket.id}`);
   });

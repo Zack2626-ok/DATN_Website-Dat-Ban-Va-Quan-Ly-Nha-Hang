@@ -1,7 +1,34 @@
-import React, { useState, useEffect } from "react";
-import { Search, ArrowLeft, Save, UploadCloud, CheckCircle, ClipboardCheck } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Search, ArrowLeft, Save, UploadCloud, CheckCircle, ClipboardCheck, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, submitStockCheckApi } from "../../../services/api";
+import * as XLSX from "xlsx";
+
+const normalizeUnit = (unitStr: string): string => {
+  const u = unitStr.toLowerCase().trim();
+  if (u === "kg" || u === "kilogam" || u === "kilo" || u === "kilogram" || u === "ký" || u === "ky") return "kg";
+  if (u === "g" || u === "gram" || u === "gam") return "g";
+  if (u === "lít" || u === "lit" || u === "liter" || u === "l") return "lít";
+  if (u === "ml" || u === "mililit" || u === "mililiter") return "ml";
+  if (u === "hộp" || u === "hop") return "hộp";
+  if (u === "chai") return "chai";
+  if (u === "lon") return "lon";
+  if (u === "gói" || u === "goi") return "gói";
+  if (u === "túi" || u === "tui") return "túi";
+  if (u === "bó" || u === "bo") return "bó";
+  if (u === "con") return "con";
+  if (u === "quả" || u === "qua" || u === "trái" || u === "trai") return "quả";
+  if (u === "củ" || u === "cu") return "củ";
+  return u;
+};
+
+const parseExcelNumber = (val: any): number => {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === "number") return val;
+  const str = String(val).replace(/[^0-9.,-]/g, "").replace(",", ".");
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+};
 
 interface InventoryCheckProps {
   onBack: () => void;
@@ -19,6 +46,7 @@ interface CheckItem {
 
 export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftData }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [checkItems, setCheckItems] = useState<CheckItem[]>([]);
   const [ticketName, setTicketName] = useState(draftData?.ticketName || `KK-${Date.now().toString().slice(-6)}`);
@@ -111,6 +139,101 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
     }
   };
 
+  const handleExportExcel = () => {
+    const rows = checkItems.map(item => ({
+      "Mã nguyên liệu": item.code,
+      "Tên nguyên liệu": item.ingredientName,
+      "Tồn hệ thống": `${item.systemStock} ${item.unit}`,
+      "Thực tế kiểm đếm": `${item.actualStock} ${item.unit}`,
+      "Đơn vị": item.unit
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Auto-fit columns dynamically based on content length
+    if (rows.length > 0) {
+      const colKeys = Object.keys(rows[0]);
+      ws["!cols"] = colKeys.map(key => {
+        let maxLen = key.length;
+        rows.forEach(r => {
+          const val = r[key as keyof typeof r];
+          if (val !== undefined && val !== null) {
+            const strLen = String(val).length;
+            if (strLen > maxLen) maxLen = strLen;
+          }
+        });
+        return { wch: Math.min(Math.max(maxLen + 4, 12), 45) };
+      });
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "KiemKeKho");
+    XLSX.writeFile(wb, `Phieu_Kiem_Ke_${ticketName}.xlsx`);
+    toast.success("Tải biểu mẫu kiểm kê Excel thành công!");
+  };
+
+  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: "binary" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data: any[] = XLSX.utils.sheet_to_json(ws);
+
+        let updatedCount = 0;
+        const updatedItems = [...checkItems];
+
+        for (const row of data) {
+          const codeVal = String(row["Mã nguyên liệu"] || row["Mã NL"] || row["Mã"] || row["code"] || "").trim().toLowerCase();
+          const nameVal = String(row["Tên nguyên liệu"] || row["Tên hàng"] || row["Tên"] || row["name"] || "").trim().toLowerCase();
+          
+          if (!codeVal && !nameVal) continue;
+
+          const targetIndex = updatedItems.findIndex(item => {
+            if (codeVal && item.code.toLowerCase() === codeVal) return true;
+            if (nameVal && item.ingredientName.toLowerCase() === nameVal) return true;
+            return false;
+          });
+
+          if (targetIndex !== -1) {
+            const item = updatedItems[targetIndex];
+            const rawExcelUnit = String(row["Đơn vị"] || row["Đơn vị tính"] || row["unit"] || "").trim();
+            const excelUnit = normalizeUnit(rawExcelUnit);
+            const actualQty = parseExcelNumber(row["Thực tế kiểm đếm"] || row["Thực tế"] || row["actual"] || row["Số lượng thực tế"] || 0);
+
+            let multiplier = 1;
+            const sysUnit = item.unit.toLowerCase().trim();
+            if (excelUnit && excelUnit !== sysUnit) {
+              if (excelUnit === "g" && sysUnit === "kg") multiplier = 0.001;
+              else if (excelUnit === "kg" && sysUnit === "g") multiplier = 1000;
+              else if (excelUnit === "ml" && sysUnit === "lít") multiplier = 0.001;
+              else if (excelUnit === "lít" && sysUnit === "ml") multiplier = 1000;
+            }
+
+            updatedItems[targetIndex] = {
+              ...item,
+              actualStock: Math.round(actualQty * multiplier * 1e6) / 1e6
+            };
+            updatedCount++;
+          }
+        }
+
+        setCheckItems(updatedItems);
+        toast.success(`Đã cập nhật ${updatedCount} mặt hàng kiểm kê từ Excel thành công!`);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } catch (err) {
+        console.error(err);
+        toast.error("Lỗi khi đọc file Excel. Vui lòng kiểm tra lại định dạng.");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const filteredItems = checkItems.filter(item => 
     item.ingredientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
     item.code.includes(searchTerm)
@@ -137,7 +260,23 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
             </button>
           ) : (
             <>
-              <button className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept=".xlsx, .xls, .csv"
+                onChange={handleImportExcel}
+              />
+              <button
+                onClick={handleExportExcel}
+                className="px-4 py-2 bg-white border border-emerald-600 text-emerald-600 font-bold rounded-lg hover:bg-emerald-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <FileSpreadsheet size={16} /> Tải file mẫu Excel
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm"
+              >
                 <UploadCloud size={16} /> Nhập từ Excel
               </button>
               <button onClick={handleSaveDraft} className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
