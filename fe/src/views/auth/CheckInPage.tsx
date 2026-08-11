@@ -350,7 +350,7 @@ export default function CheckInPage() {
                       <p className="font-bold text-amber-100">Bạn đi muộn quá thời gian ân hạn</p>
                       <p className="mt-1 text-xs text-amber-50">Vui lòng ghi lý do để quản lý xem xét trước khi chấm công.</p>
                       <textarea value={lateReason} onChange={(event) => setLateReason(event.target.value)} placeholder="Ví dụ: kẹt xe do mưa lớn..." className="mt-3 min-h-20 w-full rounded-lg border border-white/25 bg-black/20 p-2 text-sm text-white outline-none placeholder:text-slate-300 focus:border-amber-300" />
-                      <div className="mt-3 flex gap-2"><button type="button" onClick={() => void handleClockIn(lateReason.trim())} disabled={loading} className="flex-1 rounded-lg bg-amber-500 px-3 py-2 font-bold text-white disabled:opacity-60">{loading ? "Đang gửi..." : "Xác nhận chấm công"}</button><button type="button" onClick={() => { setShowLateReasonPrompt(false); setLateReason(""); setAttendanceError(""); }} className="rounded-lg border border-white/25 px-3 py-2 font-bold text-white">Hủy</button></div>
+                      <div className="mt-3 flex gap-2"><button type="button" onClick={submitLateReason} disabled={loading} className="flex-1 rounded-lg bg-amber-500 px-3 py-2 font-bold text-white disabled:opacity-60">{loading ? "Đang gửi..." : "Xác nhận chấm công"}</button><button type="button" onClick={() => { setShowLateReasonPrompt(false); setLateReason(""); setAttendanceError(""); }} className="rounded-lg border border-white/25 px-3 py-2 font-bold text-white">Hủy</button></div>
                     </div>
                   ) : (
                     <button

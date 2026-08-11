@@ -55,6 +55,32 @@ const getMultiplier = (baseUnit: string, displayUnit: string): number => {
   return found ? found.toBase : 1;
 };
 
+export const normalizeUnit = (unitStr: string): string => {
+  const u = unitStr.toLowerCase().trim();
+  if (u === "kg" || u === "kilogam" || u === "kilo" || u === "kilogram" || u === "ký" || u === "ky") return "kg";
+  if (u === "g" || u === "gram" || u === "gam") return "g";
+  if (u === "lít" || u === "lit" || u === "liter" || u === "l") return "lít";
+  if (u === "ml" || u === "mililit" || u === "mililiter") return "ml";
+  if (u === "hộp" || u === "hop") return "hộp";
+  if (u === "chai") return "chai";
+  if (u === "lon") return "lon";
+  if (u === "gói" || u === "goi") return "gói";
+  if (u === "túi" || u === "tui") return "túi";
+  if (u === "bó" || u === "bo") return "bó";
+  if (u === "con") return "con";
+  if (u === "quả" || u === "qua" || u === "trái" || u === "trai") return "quả";
+  if (u === "củ" || u === "cu") return "củ";
+  return u;
+};
+
+export const parseExcelNumber = (val: any): number => {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === "number") return val;
+  const str = String(val).replace(/[^0-9.,-]/g, "").replace(",", ".");
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+};
+
 export const ALLOWED_UNITS = [
   "kg", "g", "lít", "lit", "ml", "bao", "hộp", "hop", "chai", "lon",
   "gói", "goi", "túi", "tui", "bó", "bo", "quả", "qua", "trái", "trai",
@@ -1100,19 +1126,19 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                         if (!name.trim()) continue;
 
                         // Unit from Excel column
-                        const excelUnit: string = (
+                        const rawExcelUnit: string = (
                           row["Đơn vị"] ||
                           row["Unit"] ||
                           row.unit ||
                           ""
                         )
                           .toString()
-                          .trim()
-                          .toLowerCase();
+                          .trim();
+                        const excelUnit = normalizeUnit(rawExcelUnit);
 
                         // Strict Unit Validation: Reject garbage units like "ádasdasdsa"
                         if (excelUnit && !ALLOWED_UNITS.includes(excelUnit)) {
-                          toast.error(`Dòng ${rowIndex}: Đơn vị tính "${excelUnit}" của "${name}" không hợp lệ! Vui lòng nhập (kg, g, lít, ml, bao, hộp, chai...)`, { id: "excel-unit-err" });
+                          toast.error(`Dòng ${rowIndex}: Đơn vị tính "${rawExcelUnit}" của "${name}" không hợp lệ! Vui lòng nhập (kg, g, lít, ml, bao, hộp, chai...)`, { id: "excel-unit-err" });
                           if (fileInputRef.current) fileInputRef.current.value = "";
                           return;
                         }
@@ -1188,13 +1214,13 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           ingredientId,
                           ingredientName: name,
                           code: found ? `SP${found.id.toString().padStart(6, "0")}` : "Mới",
-                          quantity: Number(
+                          quantity: parseExcelNumber(
                             row["Số lượng"] || row.Quantity || row.quantity || 1
                           ),
                           displayUnit,
                           baseUnit,
                           unitMultiplier,
-                          unitCost: Number(row["Đơn giá"] || row.Price || row.price || 0),
+                          unitCost: parseExcelNumber(row["Đơn giá"] || row.Price || row.price || 0),
                           batchNo: batchVal,
                           expiryDate,
                           isNew,
