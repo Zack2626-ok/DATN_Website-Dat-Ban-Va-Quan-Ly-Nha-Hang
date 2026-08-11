@@ -70,6 +70,7 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
         FROM stock_in si
         JOIN ingredients i ON si.ingredient_id = i.id
         LEFT JOIN suppliers s ON si.supplier_id = s.id
+        WHERE si.batch_code NOT LIKE 'LOT-ADJ-%'
       )
       ORDER BY timestamp DESC
       LIMIT 100
@@ -530,13 +531,26 @@ export const submitStockCheck = async (req: Request, res: Response): Promise<voi
         [actual, ingredient_id]
       );
 
-      // Nếu actual < system → ghi stock_out waste để cân bằng
+      // Nếu actual < system → ghi stock_out waste để cân bằng hụt
+      // Nếu actual > system → ghi stock_in để cân bằng thừa và cộng vào báo cáo tài chính kho theo đơn giá nhập gần nhất
       const diff = actual - system_stock;
       if (diff < 0) {
         await db.query(
           `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by)
-           VALUES (?, ?, 'waste', 'Chênh lệch kiểm kê kho', ?)`,
+           VALUES (?, ?, 'waste', 'Chênh lệch kiểm kê kho (Hụt)', ?)`,
           [ingredient_id, Math.abs(diff), userId]
+        );
+      } else if (diff > 0) {
+        const lastPriceRow = await db.query(
+          `SELECT unit_cost FROM stock_in WHERE ingredient_id = ? AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1`,
+          [ingredient_id]
+        );
+        const latestUnitCost = lastPriceRow.length > 0 ? Number(lastPriceRow[0].unit_cost) : 0;
+
+        await db.query(
+          `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by)
+           VALUES (?, ?, ?, ?, ?, NULL, NULL, 'Cân bằng kho: Nhập điều chỉnh hàng thừa', ?)`,
+          [ingredient_id, `LOT-ADJ-${Date.now()}`, diff, diff, latestUnitCost, userId]
         );
       }
     }

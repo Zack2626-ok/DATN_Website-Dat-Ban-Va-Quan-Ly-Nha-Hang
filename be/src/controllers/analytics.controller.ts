@@ -361,18 +361,30 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       [startStr, endStr]
     );
     const totalReturnIncome = Number(returnIncomeRow[0].val);
-    const totalIncome = totalInvoiceIncome + totalReturnIncome;
 
-    // 1. Paid import expenses (only where is_credit = 0 or NULL and not draft)
+    // 1. Paid import expenses (only where is_credit = 0 or NULL and not draft and not stock check adjustment)
     const paidImportRow = await db.query(
       `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val 
        FROM stock_in 
        WHERE (is_credit IS NULL OR is_credit = 0)
          AND (note IS NULL OR note NOT LIKE '%[LƯU TẠM]%')
+         AND (note IS NULL OR (note NOT LIKE '%Cân bằng kho%' AND note NOT LIKE '%hàng thừa%'))
+         AND (batch_code IS NULL OR batch_code NOT LIKE 'LOT-ADJ-%')
          AND created_at BETWEEN ? AND ?`,
       [startStr, endStr]
     );
     const paidImportExpenses = Number(paidImportRow[0].val);
+
+    // 1b. Income from surplus inventory check adjustments
+    const stockAdjIncomeRow = await db.query(
+      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val
+       FROM stock_in
+       WHERE (note LIKE '%Cân bằng kho%' OR note LIKE '%hàng thừa%' OR batch_code LIKE 'LOT-ADJ-%')
+         AND created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const stockAdjIncome = Number(stockAdjIncomeRow[0].val);
+    const totalIncome = totalInvoiceIncome + totalReturnIncome + stockAdjIncome;
 
     // 2. Debt payments made to suppliers in period
     const debtPayRow = await db.query(
@@ -444,8 +456,14 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       (
         SELECT 
           CONCAT('EXP-', si.id) as id,
-          'expense' as type,
-          CONCAT('Nhập kho: ', ing.name) as description,
+          CASE 
+            WHEN (si.note LIKE '%Cân bằng kho%' OR si.note LIKE '%hàng thừa%' OR si.batch_code LIKE 'LOT-ADJ-%') THEN 'income'
+            ELSE 'expense'
+          END as type,
+          CASE 
+            WHEN (si.note LIKE '%Cân bằng kho%' OR si.note LIKE '%hàng thừa%' OR si.batch_code LIKE 'LOT-ADJ-%') THEN CONCAT('Cân bằng kho (Hàng thừa): ', ing.name)
+            ELSE CONCAT('Nhập kho: ', ing.name)
+          END as description,
           (si.quantity * si.unit_cost) as amount,
           si.created_at as date,
           'completed' as status,

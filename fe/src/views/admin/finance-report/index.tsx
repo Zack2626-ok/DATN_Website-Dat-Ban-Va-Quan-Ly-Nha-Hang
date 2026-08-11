@@ -254,7 +254,7 @@ export const FinanceReport: React.FC = () => {
 
 
 
-    const expenseList = rawList.filter((tx: any) => tx.type === "expense");
+    const expenseList = rawList.filter((tx: any) => tx.type === "expense" && !String(tx.batchNo || "").startsWith("LOT-ADJ-"));
     const expenseGroups: { [key: string]: any } = {};
 
     expenseList.forEach((tx: any) => {
