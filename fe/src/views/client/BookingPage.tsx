@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer, Star } from "lucide-react";
+import { Phone, Mail, CheckCircle, ArrowRight, Calendar, Loader2, Printer, Star } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getAvailableTables, createBooking, Customer, getPublicPromotions, payBookingDeposit } from "../../services/customerService";
+import { getAvailableTables, createBooking, Customer, payBookingDeposit } from "../../services/customerService";
 import { getComboConstituents } from "../../utils/comboHelper";
 import {
   BOOKING_DURATION_MINUTES,
@@ -37,65 +36,19 @@ const getBookingEndTime = (date: string, time: string): string => {
 
 export const BookingPage: React.FC = () => {
   const [step, setStep] = useState(1);
-  const [loadingTables, setLoadingTables] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [availableTables, setAvailableTables] = useState<any[]>([]);
-
-  const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
   const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
   }, []);
 
-
-  const [confirmationCode, setConfirmationCode] = useState("");
-  const [selectedArea, setSelectedArea] = useState("Tất cả");
   const [createdBooking, setCreatedBooking] = useState<any>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
 
-  const [searchParams] = useSearchParams();
-  const promoParam = searchParams.get("promo");
 
-  const [promotionsList, setPromotionsList] = useState<any[]>([]);
-  const [selectedPromoId, setSelectedPromoId] = useState<string>("");
 
-  // Fetch promotions and menu items
-  useEffect(() => {
-    getPublicPromotions()
-      .then((data) => {
-        setPromotionsList(data || []);
-        if (promoParam) {
-          setSelectedPromoId(promoParam);
-        }
-      })
-      .catch((e) => console.error("Error loading promotions in booking page:", e));
-  }, [promoParam]);
-
-  // Reset filter when tables change
-  useEffect(() => {
-    setSelectedArea("Tất cả");
-  }, [availableTables]);
-
-  const uniqueAreas = ["Tất cả", ...new Set(availableTables.map((t) => t.area_name).filter(Boolean))];
-
-  const filteredTables = selectedArea === "Tất cả"
-    ? availableTables
-    : availableTables.filter((t) => t.area_name === selectedArea);
-
-  // Nhóm các bàn theo hàng (row_pos)
-  const groupedRows = filteredTables.reduce((acc, table) => {
-    const rowKey = table.row_pos || "Khác";
-    if (!acc[rowKey]) {
-      acc[rowKey] = [];
-    }
-    acc[rowKey].push(table);
-    return acc;
-  }, {} as Record<string, any[]>);
-
-  const sortedRowKeys = Object.keys(groupedRows).sort();
-  
   const [form, setForm] = useState({
     date: "",
     time: "",
@@ -130,7 +83,7 @@ export const BookingPage: React.FC = () => {
   const setField = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  const handleNextToStep2 = async (e: React.FormEvent) => {
+  const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.date || !form.time) {
       toast.error("Vui lòng chọn ngày và giờ đặt bàn!");
@@ -146,7 +99,6 @@ export const BookingPage: React.FC = () => {
       return;
     }
 
-    // Kiểm tra không cho đặt giờ trong quá khứ nếu chọn ngày hôm nay
     const selectedDateTime = new Date(`${form.date}T${form.time}:00`);
     const now = new Date();
     if (bookingValidationEnabled && selectedDateTime < now) {
@@ -159,42 +111,7 @@ export const BookingPage: React.FC = () => {
       toast.error("Số lượng khách phải từ 1 đến 30 người!");
       return;
     }
-    
-    setLoadingTables(true);
-    try {
-      const tables = await getAvailableTables(form.date, form.time, guestCount);
-      setAvailableTables(tables);
-      // Reset selected table from previous searches
-      setForm((prev) => ({
-        ...prev,
-        tableId: "",
-        tableName: "",
-        areaName: "",
-      }));
-      setPreOrderedDishes({}); // Reset giỏ món khi tìm lại lịch trình đặt bàn mới
-      setStep(2);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Không thể kiểm tra bàn trống lúc này.");
-    } finally {
-      setLoadingTables(false);
-    }
-  };
 
-  const handleSelectTable = (table: any) => {
-    setForm((prev) => ({
-      ...prev,
-      tableId: String(table.id),
-      tableName: table.name,
-      areaName: table.area_name || "",
-    }));
-  };
-
-  const handleSubmitBooking = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.tableId) {
-      toast.error("Vui lòng chọn một bàn ăn trống ở sơ đồ bên trái trước khi xác nhận đặt bàn!");
-      return;
-    }
     if (!form.name.trim()) {
       toast.error("Vui lòng điền Họ và tên người đặt bàn!");
       return;
@@ -243,9 +160,23 @@ export const BookingPage: React.FC = () => {
       return;
     }
 
+    if (guestCount > 30) {
+      toast.error("Số lượng khách đặt bàn tối đa là 30 người!");
+      return;
+    }
 
     setSubmitting(true);
     try {
+      // Auto find available table for guest count and schedule, with fallback for group bookings
+      let tables = await getAvailableTables(form.date, form.time, guestCount).catch(() => []);
+      if (!tables || tables.length === 0) {
+        tables = await getAvailableTables(form.date, form.time, 1).catch(() => []);
+      }
+
+      const primaryTable = tables && tables.length > 0 ? tables[0] : null;
+      const targetTableId = primaryTable ? Number(primaryTable.id) : 1;
+      const targetTableName = primaryTable ? primaryTable.name : "Khu vực sảnh";
+      const targetAreaName = primaryTable ? (primaryTable.area_name || "Tầng 2") : "Tầng 2";
       const startTimeStr = `${form.date} ${form.time}:00`;
       const endTimeStr = getBookingEndTime(form.date, form.time);
 
@@ -261,11 +192,11 @@ export const BookingPage: React.FC = () => {
       }
 
       const bookingResult = await createBooking({
-        table_id: Number(form.tableId),
+        table_id: targetTableId,
         customer_id: customerId,
-        promotion_id: selectedPromoId ? Number(selectedPromoId) : null,
-        guest_name: form.name,
-        guest_phone: form.phone,
+        promotion_id: null,
+        guest_name: form.name.trim(),
+        guest_phone: form.phone.trim(),
         guest_email: form.email.trim(),
         party_size: Number(form.guests),
         start_time: startTimeStr,
@@ -274,9 +205,11 @@ export const BookingPage: React.FC = () => {
         booking_channel: "online",
       });
 
-      setCreatedBooking(bookingResult);
-      setConfirmationCode(bookingResult.confirmation_code);
-      setPreOrderedDishes({}); // Xóa sạch giỏ món ăn sau khi đặt bàn thành công
+      setCreatedBooking({
+        ...bookingResult,
+        table_name: targetTableName,
+        area_name: targetAreaName
+      });
       setStep(4);
       toast.success("Đặt bàn thành công!");
     } catch (err: any) {
@@ -325,7 +258,7 @@ export const BookingPage: React.FC = () => {
 
           <div className="mt-6 p-4 bg-client-bg border border-dashed border-client-accent rounded-2xl relative">
             <span className="text-[10px] text-client-muted font-extrabold uppercase tracking-widest block">Mã xác nhận đặt bàn</span>
-            <span className="text-3xl font-black text-client-primary tracking-widest mt-1 block font-mono">{confirmationCode}</span>
+            <span className="text-3xl font-black text-client-primary tracking-widest mt-1 block font-mono">{createdBooking?.confirmation_code}</span>
             
             {/* Barcode Mockup */}
             <div className="flex justify-center items-center gap-[2px] h-6 opacity-60 mt-3">
@@ -359,7 +292,6 @@ export const BookingPage: React.FC = () => {
           <div className="text-left bg-client-bg/50 rounded-2xl p-5 border border-client-accent space-y-3">
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Người đặt:</span> <span className="font-semibold text-client-text">{createdBooking?.guest_name || form.name}</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
-             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Bàn đã chọn:</span> <span className="font-semibold text-client-text">{createdBooking?.table_name || form.tableName} ({createdBooking?.area_name || form.areaName || "Nhà hàng"})</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Số lượng khách:</span> <span className="font-semibold text-client-text">{createdBooking?.party_size || form.guests} người</span></div>
              <div className="flex justify-between text-xs">
                <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái đặt:</span> 
@@ -410,7 +342,6 @@ export const BookingPage: React.FC = () => {
             onClick={() => {
               setStep(1);
               setCreatedBooking(null);
-              setPreOrderedDishes({});
               setForm({
                 date: "",
                 time: "",
@@ -445,7 +376,6 @@ export const BookingPage: React.FC = () => {
             <div className="flex justify-between"><span>Số điện thoại:</span> <span>{createdBooking?.guest_phone || form.phone}</span></div>
             <div className="flex justify-between"><span>Thời gian đến:</span> <span className="font-bold">{form.time} - {new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
             <div className="flex justify-between"><span>Số lượng khách:</span> <span>{createdBooking?.party_size || form.guests} người</span></div>
-            <div className="flex justify-between"><span>Bàn ăn:</span> <span className="font-bold">{createdBooking?.table_name || form.tableName} ({createdBooking?.area_name || form.areaName || "Khu vực"})</span></div>
             <div className="flex justify-between"><span>Trạng thái:</span> <span className="font-bold uppercase text-xs">Chờ xác nhận</span></div>
           </div>
 
@@ -596,17 +526,18 @@ export const BookingPage: React.FC = () => {
 
           {/* Progress stepper overlay */}
           <div className="mt-6 flex items-center gap-3 text-[11px] font-bold text-white/60 bg-white/10 px-5 py-2.5 rounded-full border border-white/20">
-            <span className={step >= 1 ? "text-client-secondary font-extrabold" : ""}>1. Chọn thời gian</span>
+            <span className={step >= 1 ? "text-client-secondary font-extrabold" : ""}>1. Điền thông tin đặt bàn</span>
             <span>&rarr;</span>
-            <span className={step >= 2 ? "text-client-secondary font-extrabold" : ""}>2. Chọn bàn & Thông tin liên hệ</span>
+            <span className={step >= 4 ? "text-client-secondary font-extrabold" : ""}>2. Xác nhận & Đặt cọc</span>
           </div>
         </div>
       </section>
 
       {/* Main Content */}
-      <main className={`mx-auto px-6 mt-8 transition-all ${step === 2 ? "max-w-7xl" : "max-w-3xl"}`}>
+      <main className="mx-auto px-6 mt-8 max-w-4xl transition-all">
         {step === 1 && (
-          <form onSubmit={handleNextToStep2} className="space-y-6">
+          <form onSubmit={handleSubmitBooking} className="space-y-6 animate-fade-in">
+            {/* Card 1: Chọn lịch trình đặt bàn */}
             <div className="bg-white rounded-3xl shadow-sm border border-client-accent p-8">
               <h2 className="text-lg font-bold text-client-text font-display mb-6 border-b border-[#f0eae1] pb-4 flex items-center gap-2">
                 <Calendar size={18} className="text-client-primary" /> Chọn lịch trình đặt bàn
@@ -635,7 +566,7 @@ export const BookingPage: React.FC = () => {
                     onChange={(e) => setField("time", e.target.value)}
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
                   />
-                  <p className="mt-2 text-xs text-client-muted">Nhận đặt online từ 10:00 đến 19:00, tối đa 30 ngày. Bạn có thể nhập chính xác từng phút.</p>
+                  <p className="mt-2 text-xs text-client-muted">Nhận đặt online từ 10:00 đến 19:00, tối đa 30 ngày.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số khách *</label>
@@ -649,183 +580,62 @@ export const BookingPage: React.FC = () => {
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
                     placeholder="2"
                   />
+                  <p className="mt-2 text-xs text-client-muted">Tối đa 30 người / đơn đặt online.</p>
                 </div>
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loadingTables}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-client-primary py-4 text-sm font-bold text-white transition-all hover:bg-client-primary-hover disabled:opacity-50 cursor-pointer"
-            >
-              {loadingTables ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" /> Kiểm tra bàn trống...
-                </>
-              ) : (
-                <>
-                  Tìm bàn trống <ArrowRight size={16} />
-                </>
-              )}
-            </button>
-          </form>
-        )}
-
-        {step === 2 && (
-          <div className="grid grid-cols-1 lg:grid-cols-10 gap-8 animate-fade-in">
-            {/* Cột bên trái: Sơ đồ bàn (60%) */}
-            <div className="lg:col-span-6 bg-white rounded-3xl shadow-sm border border-client-accent p-8 flex flex-col gap-6">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 border-b border-[#f0eae1] pb-4">
+            {/* Card 2: Thông tin người đặt bàn */}
+            <div className="bg-white rounded-3xl shadow-sm border border-client-accent p-8 space-y-6">
+              <h2 className="text-lg font-bold text-client-text font-display border-b border-[#f0eae1] pb-4">
+                Thông tin người đặt & Ghi chú
+              </h2>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-client-text font-display flex items-center gap-2">
-                    <Landmark size={18} className="text-client-primary" /> Sơ đồ bàn ăn trống
-                  </h2>
-                  <p className="text-xs text-client-muted mt-1">Vui lòng chọn một bàn ăn trống màu xanh dưới đây</p>
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Họ và tên *</label>
+                  <input
+                    required
+                    value={form.name}
+                    onChange={(e) => setField("name", e.target.value)}
+                    placeholder="Nguyễn Văn A"
+                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
+                  />
                 </div>
-                <span className="text-xs font-bold px-3 py-1.5 bg-client-primary/10 text-client-primary rounded-xl whitespace-nowrap self-start">
-                  Tìm thấy {availableTables.length} bàn trống
-                </span>
-              </div>
-
-              {availableTables.length === 0 ? (
-                <div className="text-center py-10">
-                  <p className="text-client-muted text-sm font-medium">Hiện tại không còn bàn trống nào phù hợp cho thời gian đã chọn.</p>
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="mt-4 px-4 py-2 bg-client-primary text-white rounded-xl text-xs font-bold hover:bg-client-primary-hover cursor-pointer"
-                  >
-                    Quay lại chọn thời gian khác
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* Bộ lọc khu vực (AreaSelector) */}
-                  {uniqueAreas.length > 1 && (
-                    <div className="flex flex-wrap gap-2 mb-2 border-b border-client-accent pb-4">
-                      {uniqueAreas.map((area) => (
-                        <button
-                          key={area}
-                          type="button"
-                          onClick={() => setSelectedArea(area)}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            selectedArea === area
-                              ? "bg-client-primary text-white shadow-xs"
-                              : "bg-client-accent/50 text-client-muted hover:bg-client-accent"
-                          }`}
-                        >
-                          {area}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Sơ đồ bàn theo hàng/cột */}
-                  <div className="flex flex-col gap-6 flex-1">
-                    {sortedRowKeys.map((rowKey) => (
-                      <div key={rowKey} className="flex flex-row items-center gap-4">
-                        <div className="w-8 flex items-center justify-center font-bold text-[#7b6f65] border-r border-[#f0eae1] pr-2 self-stretch">
-                          {rowKey}
-                        </div>
-                        <div className="flex flex-wrap gap-4 flex-1">
-                           {groupedRows[rowKey]
-                            .sort((a: any, b: any) => (a.col_pos || 0) - (b.col_pos || 0))
-                            .map((table: any) => {
-                              const isSelected = String(table.id) === form.tableId;
-                              return (
-                                <div
-                                  key={table.id}
-                                  onClick={() => handleSelectTable(table)}
-                                  className={`cursor-pointer p-4 rounded-xl border-2 transition-all text-center flex flex-col justify-center items-center gap-1 w-[120px] ${
-                                    isSelected
-                                      ? "bg-client-primary/10 border-client-primary text-client-primary shadow-sm font-bold"
-                                      : "bg-emerald-50 border-emerald-250 hover:border-emerald-350 text-emerald-800"
-                                  }`}
-                                >
-                                  <span className="text-base font-bold font-display">{table.name}</span>
-                                  <span className="text-xs opacity-75">{table.capacity} chỗ</span>
-                                  <span className="text-[10px] font-extrabold uppercase mt-1">Đạt yêu cầu</span>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Cột bên phải: Thông tin liên hệ & Đặt bàn (40%) */}
-            <div className="lg:col-span-4 space-y-6">
-              {/* Form nhập thông tin */}
-              <div className="bg-white rounded-3xl shadow-sm border border-client-accent p-8">
-                <h2 className="text-lg font-bold text-client-text font-display mb-6 border-b border-[#f0eae1] pb-4">
-                  Thông tin khách & Đặt bàn
-                </h2>
                 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Họ và tên *</label>
+                <div>
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số điện thoại *</label>
+                  <div className="relative">
+                    <Phone size={16} className="absolute left-4 top-4 text-[#7b6f65]" />
                     <input
                       required
-                      value={form.name}
-                      onChange={(e) => setField("name", e.target.value)}
-                      placeholder="Nguyễn Văn A"
-                      className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
+                      type="tel"
+                      value={form.phone}
+                      onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
+                      placeholder="0912345678"
+                      className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
                     />
                   </div>
-                  
-                  <div>
-                    <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số điện thoại *</label>
-                    <div className="relative">
-                      <Phone size={16} className="absolute left-4 top-4 text-[#7b6f65]" />
-                      <input
-                        required
-                        type="tel"
-                        value={form.phone}
-                        onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
-                        placeholder="0912345678"
-                        className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
-                      />
-                    </div>
+                </div>
+                
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Email (Tùy chọn)</label>
+                  <div className="relative">
+                    <Mail size={16} className="absolute left-4 top-4 text-[#7b6f65]" />
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => setField("email", e.target.value)}
+                      placeholder="email@example.com"
+                      className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
+                    />
                   </div>
-                  
-                  <div>
-                    <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Email</label>
-                    <div className="relative">
-                      <Mail size={16} className="absolute left-4 top-4 text-[#7b6f65]" />
-                      <input
-                        type="email"
-                        value={form.email}
-                        onChange={(e) => setField("email", e.target.value)}
-                        placeholder="email@example.com"
-                        className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
-                      />
-                    </div>
-                  </div>
+                </div>
 
-                  {/* Chọn ưu đãi */}
-                  <div className="border-t border-client-accent pt-4">
-                    <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <Percent size={14} className="text-client-primary" /> Chọn chương trình ưu đãi (Tùy chọn)
-                    </label>
-                    <select
-                      value={selectedPromoId}
-                      onChange={(e) => setSelectedPromoId(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
-                    >
-                      <option value="">Không áp dụng ưu đãi</option>
-                      {promotionsList.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.title} ({p.discount_type === "percent" ? `Giảm ${p.discount_value}%` : `Giảm ${Number(p.discount_value).toLocaleString("vi-VN")}đ`})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+
 
                 {/* Ghi chú */}
-                <div className="sm:col-span-2 border-t border-[#f0eae1] pt-6">
+                <div className="sm:col-span-2 border-t border-[#f0eae1] pt-4">
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Ghi chú (Tùy chọn)</label>
                   <textarea
                     value={form.note}
@@ -856,69 +666,25 @@ export const BookingPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Tóm tắt đặt bàn */}
-              <div className="bg-client-accent/30 border border-client-accent rounded-3xl p-6 flex flex-col gap-3 text-sm text-client-text font-semibold shadow-2xs mt-6">
-                <h4 className="font-extrabold uppercase text-xs text-client-primary tracking-wider font-display">Thông tin tóm tắt đặt bàn</h4>
-                <div className="grid grid-cols-1 gap-y-2">
-                  <div>Ngày đến: <span className="font-bold text-gray-900">{new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
-                  <div>Giờ đến: <span className="font-bold text-gray-900">{form.time}</span></div>
-                  <div>Bàn ăn đã chọn: <span className="font-bold text-gray-900">{form.tableName ? `${form.tableName} ${form.areaName ? `(${form.areaName})` : ""}` : "Chưa chọn"}</span></div>
-                  <div>Số khách: <span className="font-bold text-gray-900">{form.guests} người</span></div>
-                </div>
-                
-                {/* Hiển thị tiền cọc dự kiến */}
-                {Object.keys(preOrderedDishes).length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-client-accent flex justify-between items-center text-xs">
-                    <div>
-                      <span className="text-[#7b6f65] block">Tổng tiền món đặt trước</span>
-                      <span className="font-bold text-[#2a221c]">
-                        {Object.values(preOrderedDishes)
-                          .reduce((sum, d) => sum + d.price * d.quantity, 0)
-                          .toLocaleString("vi-VN")}đ
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-client-primary font-extrabold block uppercase tracking-wider text-[10px]">Tiền đặt cọc (20% để xác nhận)</span>
-                      <span className="font-black text-rose-600 text-sm">
-                        {Math.round(
-                          Object.values(preOrderedDishes).reduce((sum, d) => sum + d.price * d.quantity, 0) * 0.20
-                        ).toLocaleString("vi-VN")}đ
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Nút bấm hành động */}
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="flex-1 py-4 border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <ArrowLeft size={16} /> Quay lại
-                </button>
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={handleSubmitBooking}
-                  className="flex-[2] py-4 bg-client-primary hover:bg-client-primary-hover text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-md disabled:opacity-50 cursor-pointer"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" /> Đang tạo đơn...
-                    </>
-                  ) : (
-                    <>
-                      Xác nhận đặt bàn <ArrowRight size={16} />
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
-          </div>
-        </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full flex items-center justify-center gap-2 rounded-2xl bg-client-primary py-4 text-base font-bold text-white transition-all hover:bg-client-primary-hover shadow-lg disabled:opacity-50 cursor-pointer"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" /> Đang kiểm tra & tạo đơn đặt bàn...
+                </>
+              ) : (
+                <>
+                  Xác nhận đặt bàn <ArrowRight size={18} />
+                </>
+              )}
+            </button>
+          </form>
         )}
       </main>
     </div>

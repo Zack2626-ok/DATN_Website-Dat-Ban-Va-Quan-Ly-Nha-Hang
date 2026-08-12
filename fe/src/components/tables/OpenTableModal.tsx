@@ -25,17 +25,26 @@ interface OpenTableModalProps {
   onClose: () => void;
   onConfirm: (data: OpenTableFormData) => void | Promise<void>;
   table: OpenTableSnapshot | null;
+  initialData?: OpenTableFormData | null;
 }
 
 /**
  * Collects the minimum information required to open a physical walk-in table.
  * Booking conflicts are validated by the server immediately before the order is created.
  */
-export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose, onConfirm, table }) => {
+export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose, onConfirm, table, initialData }) => {
   const [guestCount, setGuestCount] = useState(DEFAULT_WALK_IN_GUESTS);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen && initialData) {
+      if (initialData.guestCount) setGuestCount(initialData.guestCount);
+      if (initialData.customerName) setCustomerName(initialData.customerName);
+      if (initialData.customerPhone) setCustomerPhone(initialData.customerPhone);
+    }
+  }, [isOpen, initialData]);
 
   /** Restores the form to its initial state for the next walk-in party. */
   const resetForm = useCallback((): void => {

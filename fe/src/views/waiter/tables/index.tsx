@@ -178,13 +178,6 @@ const STATUS_CONFIG: Record<
     border: "border-emerald-300",
     dot: "bg-emerald-500",
   },
-  reserved: {
-    label: "Đặt trước",
-    bg: "bg-amber-50",
-    text: "text-amber-700",
-    border: "border-amber-300",
-    dot: "bg-amber-500",
-  },
   pending_payment: {
     label: "Chờ thanh toán",
     bg: "bg-rose-50",
@@ -247,6 +240,37 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     return () => window.clearInterval(intervalId);
   }, [isTableScheduleOpen]);
 
+  const [assignedBookingBanner, setAssignedBookingBanner] = useState<any | null>(null);
+  const [prefilledBookingData, setPrefilledBookingData] = useState<{ guestCount: number; customerName: string; customerPhone: string } | null>(null);
+
+  // Synchronize location.state for assigned bookings and area auto-switch
+  useEffect(() => {
+    const navState = location.state as any;
+    if (navState?.autoOpenAssignedBooking) {
+      setAssignedBookingBanner(navState.autoOpenAssignedBooking);
+      setPrefilledBookingData({
+        guestCount: Number(navState.autoOpenAssignedBooking.partySize || 30),
+        customerName: navState.autoOpenAssignedBooking.guestName || "",
+        customerPhone: navState.autoOpenAssignedBooking.guestPhone || "",
+      });
+    }
+  }, [location.state]);
+
+  // Auto-switch area tab when targetArea or assignedBookingBanner changes
+  useEffect(() => {
+    const navState = location.state as any;
+    const targetAreaName = navState?.targetArea || assignedBookingBanner?.assignedArea;
+    if (targetAreaName && areas.length > 0) {
+      const match = areas.find(
+        (a) => a.name.toLowerCase().trim().includes(targetAreaName.toLowerCase().trim()) ||
+               targetAreaName.toLowerCase().trim().includes(a.name.toLowerCase().trim())
+      );
+      if (match) {
+        setSelectedAreaId(match.id);
+      }
+    }
+  }, [location.state, assignedBookingBanner, areas]);
+
   // Auto-select bàn khi quay lại từ trang Gọi món
   useEffect(() => {
     const stateTableId = (location.state as any)?.selectedTableId;
@@ -294,8 +318,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       const activeTables = (tablesData || []).filter((t: any) => !t.is_deleted);
       setTables(activeTables);
       setAreas(areasData || []);
-      if (!selectedAreaId && areasData && areasData.length > 0) {
-        setSelectedAreaId(areasData[0].id);
+      if (areasData && areasData.length > 0) {
+        setSelectedAreaId((prev) => prev || areasData[0].id);
       }
     } catch (err) {
       console.error("Lỗi tải dữ liệu sơ đồ bàn:", err);
@@ -303,18 +327,23 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     } finally {
       setLoading(false);
     }
-  }, [selectedAreaId]);
+  }, []);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  const selectedTableIdRef = React.useRef(selectedTableId);
+  useEffect(() => {
+    selectedTableIdRef.current = selectedTableId;
+  }, [selectedTableId]);
+
   // Real-time socket synchronization
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socketUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace("/api", "");
     const socket = io(socketUrl, {
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 5,
+      transports: ["polling", "websocket"],
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
     });
 
@@ -330,7 +359,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             : t
         )
       );
-      if (selectedTableId?.toString() === data.tableId.toString()) {
+      if (selectedTableIdRef.current?.toString() === data.tableId.toString()) {
         fetchData();
       }
     });
@@ -364,19 +393,9 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     });
 
     return () => {
-      socket.off("connect");
-      socket.off("table:status_changed");
-      socket.off("table:transferred");
-      socket.off("table:merged");
-      socket.off("table:merge_resolved");
-      socket.off("table:group_seating_changed");
-      socket.off("kds_updated");
-      socket.off("order_updated");
-      socket.off("order:item_voided");
       socket.disconnect();
-      console.log("🔌 Disconnected Socket.io Client for Waiter Table Map");
     };
-  }, [fetchData, selectedTableId]);
+  }, [fetchData]);
 
   // Load integrated Order khi chọn bàn phục vụ / đặt trước / chờ thanh toán
   const loadActiveOrder = useCallback(async (tableId: number | string) => {
@@ -508,6 +527,11 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
       toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
+      setAssignedBookingBanner(null);
+      setPrefilledBookingData(null);
+      if (location.state) {
+        window.history.replaceState({}, "");
+      }
 
       if (exceedsCap) {
         toast.error(
@@ -787,6 +811,41 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Banner Thông báo Phân công Đặt bàn lớn */}
+      {(assignedBookingBanner || (location.state as any)?.autoOpenAssignedBooking) && (
+        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-5 rounded-3xl shadow-xl border-2 border-indigo-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 bg-white text-indigo-800 rounded-lg text-xs font-black uppercase tracking-wider">
+                📍 KHU VỰC PHÂN CÔNG: {assignedBookingBanner?.assignedArea || (location.state as any)?.targetArea || "Tầng 2"}
+              </span>
+              <span className="text-xs font-bold text-indigo-200">Đơn đặt bàn lớn</span>
+            </div>
+            <p className="text-sm font-black text-white">
+              Khách hàng: {assignedBookingBanner?.guestName || (location.state as any)?.autoOpenAssignedBooking?.guestName} (SĐT: {assignedBookingBanner?.guestPhone || (location.state as any)?.autoOpenAssignedBooking?.guestPhone})
+            </p>
+            <p className="text-xs text-indigo-100">
+              Số lượng: <strong className="text-amber-300 font-extrabold">{assignedBookingBanner?.partySize || (location.state as any)?.autoOpenAssignedBooking?.partySize} người</strong> | Giờ đến: <strong className="text-emerald-300 font-extrabold">{assignedBookingBanner?.startTime || (location.state as any)?.autoOpenAssignedBooking?.startTime}</strong>
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => {
+                setAssignedBookingBanner(null);
+                setPrefilledBookingData(null);
+                window.history.replaceState({}, "");
+              }}
+              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              Bỏ qua
+            </button>
+            <span className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 text-indigo-950 rounded-xl text-xs font-black shadow-md border border-amber-300 animate-pulse">
+              ⚡ Chọn 1 Bàn chính bên dưới để Mở bàn!
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Tiêu đề trang & Thanh thao tác */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
@@ -1519,6 +1578,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         onClose={() => setIsOpenTableModalOpen(false)}
         onConfirm={handleOpenTable}
         table={selectedTable}
+        initialData={prefilledBookingData}
       />
 
       <AddTableModal
