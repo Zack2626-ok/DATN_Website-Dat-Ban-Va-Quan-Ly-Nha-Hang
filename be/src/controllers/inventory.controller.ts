@@ -399,6 +399,24 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
           );
         }
       }
+
+      // Auto-update supplier's main_ingredients with newly imported ingredient name
+      if (supplierId && (!isDraft && !isCompleted)) {
+        try {
+          const ingRows = await db.query<any[]>(`SELECT name FROM ingredients WHERE id = ?`, [ingredientIdNum]);
+          if (ingRows.length > 0) {
+            const ingName = ingRows[0].name;
+            const supRows = await db.query<any[]>(`SELECT main_ingredients FROM suppliers WHERE id = ?`, [supplierId]);
+            if (supRows.length > 0) {
+              const existing = (supRows[0].main_ingredients || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+              if (!existing.some((e: string) => e.toLowerCase() === ingName.toLowerCase())) {
+                const updated = [...existing, ingName].join(", ");
+                await db.query(`UPDATE suppliers SET main_ingredients = ? WHERE id = ?`, [updated, supplierId]);
+              }
+            }
+          }
+        } catch (e) { /* non-critical */ }
+      }
     } else if (type === "export" || type === "adjust" || type === "waste") {
       const isReturnToSupplier = reasonType === "return_to_supplier" || reasonType === "return_supplier" || (reasonOrSupplier || "").toLowerCase().includes("trả ncc");
 
@@ -532,25 +550,34 @@ export const submitStockCheck = async (req: Request, res: Response): Promise<voi
       );
 
       // Nếu actual < system → ghi stock_out waste để cân bằng hụt
-      // Nếu actual > system → ghi stock_in để cân bằng thừa và cộng vào báo cáo tài chính kho theo đơn giá nhập gần nhất
+      // Nếu actual > system → ghi stock_in để cân bằng thừa
+      // Giá trị tính theo giá bình quân gia quyền (Weighted Average Cost) của các lô còn hàng
       const diff = actual - system_stock;
+
+      // Tính giá bình quân gia quyền: Tổng giá trị các lô còn lại / Tổng số lượng còn lại
+      const avgCostRow = await db.query(
+        `SELECT 
+           COALESCE(
+             SUM(unit_cost * remaining_quantity) / NULLIF(SUM(remaining_quantity), 0),
+             (SELECT unit_cost FROM stock_in WHERE ingredient_id = ? AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1)
+           ) AS avgCost
+         FROM stock_in 
+         WHERE ingredient_id = ? AND remaining_quantity > 0 AND unit_cost > 0`,
+        [ingredient_id, ingredient_id]
+      );
+      const weightedAvgCost = avgCostRow.length > 0 && avgCostRow[0].avgCost ? Number(avgCostRow[0].avgCost) : 0;
+
       if (diff < 0) {
         await db.query(
           `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by)
-           VALUES (?, ?, 'waste', 'Chênh lệch kiểm kê kho (Hụt)', ?)`,
-          [ingredient_id, Math.abs(diff), userId]
+           VALUES (?, ?, 'waste', ?, ?)`,
+          [ingredient_id, Math.abs(diff), `Chênh lệch kiểm kê kho (Hụt) - Đơn giá BQ: ${Math.round(weightedAvgCost).toLocaleString()}đ`, userId]
         );
       } else if (diff > 0) {
-        const lastPriceRow = await db.query(
-          `SELECT unit_cost FROM stock_in WHERE ingredient_id = ? AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1`,
-          [ingredient_id]
-        );
-        const latestUnitCost = lastPriceRow.length > 0 ? Number(lastPriceRow[0].unit_cost) : 0;
-
         await db.query(
           `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by)
-           VALUES (?, ?, ?, ?, ?, NULL, NULL, 'Cân bằng kho: Nhập điều chỉnh hàng thừa', ?)`,
-          [ingredient_id, `LOT-ADJ-${Date.now()}`, diff, diff, latestUnitCost, userId]
+           VALUES (?, ?, ?, ?, ?, NULL, NULL, 'Cân bằng kho: Nhập điều chỉnh hàng thừa (Giá BQ gia quyền)', ?)`,
+          [ingredient_id, `LOT-ADJ-${Date.now()}`, diff, diff, weightedAvgCost, userId]
         );
       }
     }

@@ -395,10 +395,11 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     );
     const debtPaymentsExpense = Number(debtPayRow[0].val);
 
-    // 3. Stock waste/expired loss expenses (valuated at stock_in unit_cost or most recent import unit_cost)
+    // 3. Stock waste/expired loss expenses (valuated at stock_in unit_cost or weighted average cost)
     const wasteRow = await db.query(
       `SELECT COALESCE(SUM(so.quantity * COALESCE(si.unit_cost, (
-        SELECT unit_cost FROM stock_in WHERE ingredient_id = so.ingredient_id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1
+        SELECT SUM(s2.unit_cost * s2.remaining_quantity) / NULLIF(SUM(s2.remaining_quantity), 0)
+        FROM stock_in s2 WHERE s2.ingredient_id = so.ingredient_id AND s2.remaining_quantity > 0 AND s2.unit_cost > 0
       ), 0)), 0) AS val
        FROM stock_out so
        LEFT JOIN stock_in si ON so.stock_in_id = si.id
@@ -528,7 +529,8 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           'expense' as type,
           CONCAT('Hao hụt/Xuất hủy: ', ing.name) as description,
           (so.quantity * COALESCE(si.unit_cost, (
-            SELECT unit_cost FROM stock_in WHERE ingredient_id = so.ingredient_id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1
+            SELECT SUM(s2.unit_cost * s2.remaining_quantity) / NULLIF(SUM(s2.remaining_quantity), 0)
+            FROM stock_in s2 WHERE s2.ingredient_id = so.ingredient_id AND s2.remaining_quantity > 0 AND s2.unit_cost > 0
           ), 0)) as amount,
           so.created_at as date,
           'completed' as status,
@@ -536,7 +538,8 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
           ing.name as ingredientName,
           so.quantity as quantity,
           COALESCE(si.unit_cost, (
-            SELECT unit_cost FROM stock_in WHERE ingredient_id = so.ingredient_id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1
+            SELECT SUM(s2.unit_cost * s2.remaining_quantity) / NULLIF(SUM(s2.remaining_quantity), 0)
+            FROM stock_in s2 WHERE s2.ingredient_id = so.ingredient_id AND s2.remaining_quantity > 0 AND s2.unit_cost > 0
           ), 0) as unitCost,
           ing.unit as ingredientUnit,
           NULL as supplierName,
