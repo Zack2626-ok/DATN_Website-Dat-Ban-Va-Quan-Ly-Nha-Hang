@@ -2821,18 +2821,21 @@ export const createBooking = async (data: any): Promise<any> => {
   if (!Number.isInteger(requestedPrimaryTableId) || !requestedTableIds.includes(requestedPrimaryTableId)) {
     throw new Error("Cụm bàn đặt trước không hợp lệ.");
   }
-  const availableOptions = await getAvailableBookingTableOptions(
-    requestedPartySize,
-    data.start_time,
-    data.end_time,
-  );
-  const requestedOptionKey = requestedTableIds.sort((left, right) => left - right).join(",");
-  const selectedTableIsAvailable = availableOptions.some(
-    (option) => option.primaryTable.id === requestedPrimaryTableId
-      && getBookingAllocationKey(option.tables) === requestedOptionKey,
-  );
-  if (!selectedTableIsAvailable) {
-    throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
+  const isOnlineBooking = !data.booking_channel || data.booking_channel === "online" || data.booking_channel === "ONLINE";
+  if (!isOnlineBooking) {
+    const availableOptions = await getAvailableBookingTableOptions(
+      requestedPartySize,
+      data.start_time,
+      data.end_time,
+    );
+    const requestedOptionKey = requestedTableIds.sort((left, right) => left - right).join(",");
+    const selectedTableIsAvailable = availableOptions.some(
+      (option) => option.primaryTable.id === requestedPrimaryTableId
+        && getBookingAllocationKey(option.tables) === requestedOptionKey,
+    );
+    if (!selectedTableIsAvailable) {
+      throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
+    }
   }
 
   const connection = await ensurePool().getConnection();
@@ -2843,32 +2846,34 @@ export const createBooking = async (data: any): Promise<any> => {
     const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
     await connection.query(`SELECT id FROM tables WHERE id IN (${tablePlaceholders}) FOR UPDATE`, requestedTableIds);
 
-    // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
-    const [overlaps] = await connection.query<any[]>(`
-      SELECT b.id FROM bookings b
-      WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
-        AND b.start_time < ? AND b.end_time > ?
-      UNION
-      SELECT b.id FROM booking_table_assignments bta
-      JOIN bookings b ON b.id = bta.booking_id
-      WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
-        AND b.start_time < ? AND b.end_time > ?
-      LIMIT 1
-    `, [
-      ...requestedTableIds,
-      BOOKING_STATUS.PENDING,
-      BOOKING_STATUS.CONFIRMED,
-      data.end_time,
-      data.start_time,
-      ...requestedTableIds,
-      BOOKING_STATUS.PENDING,
-      BOOKING_STATUS.CONFIRMED,
-      data.end_time,
-      data.start_time,
-    ]);
+    // Kiểm tra trùng lịch đặt bàn (Overbooking prevention - bỏ qua nếu là đặt online)
+    if (!isOnlineBooking) {
+      const [overlaps] = await connection.query<any[]>(`
+        SELECT b.id FROM bookings b
+        WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+          AND b.start_time < ? AND b.end_time > ?
+        UNION
+        SELECT b.id FROM booking_table_assignments bta
+        JOIN bookings b ON b.id = bta.booking_id
+        WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+          AND b.start_time < ? AND b.end_time > ?
+        LIMIT 1
+      `, [
+        ...requestedTableIds,
+        BOOKING_STATUS.PENDING,
+        BOOKING_STATUS.CONFIRMED,
+        data.end_time,
+        data.start_time,
+        ...requestedTableIds,
+        BOOKING_STATUS.PENDING,
+        BOOKING_STATUS.CONFIRMED,
+        data.end_time,
+        data.start_time,
+      ]);
 
-    if (overlaps.length > 0) {
-      throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
+      if (overlaps.length > 0) {
+        throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
+      }
     }
 
     // Validate customer_id to prevent foreign key constraint failure

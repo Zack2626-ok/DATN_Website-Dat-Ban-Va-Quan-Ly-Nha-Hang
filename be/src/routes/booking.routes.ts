@@ -9,6 +9,7 @@ import {
   updateBookingStatusHandler,
   deleteBookingHandler,
   payBookingDepositHandler,
+  assignBookingHandler,
 } from "../controllers/booking.controller";
 import { authStaff, checkRole } from "../middlewares/authMiddleware";
 import { BOOKING_SCHEDULE_ROLES, DIRECT_BOOKING_ROLES } from "../constants/booking";
@@ -25,5 +26,6 @@ router.get("/:id", getBookingByIdHandler);
 router.patch("/:id/status", updateBookingStatusHandler);
 router.delete("/:id", deleteBookingHandler);
 router.patch("/:id/pay-deposit", payBookingDepositHandler);
+router.post("/:id/assign", assignBookingHandler);
 
 export default router;
