@@ -19,12 +19,12 @@ async function run() {
 
   console.log("=== BƯỚC 1: KIỂM THỬ TÍCH ĐIỂM & THĂNG HẠNG ===");
   // Check if customer exists
-  let [customers] = await connection.query("SELECT * FROM customers WHERE name LIKE '%Van A%' AND is_deleted = 0 LIMIT 1");
+  let [customers] = await connection.query("SELECT * FROM customers WHERE name LIKE '%Van An%' AND is_deleted = 0 LIMIT 1");
   let customer = customers[0];
   if (!customer) {
-    console.log("Creating test customer Nguyen Van A...");
+    console.log("Creating test customer Nguyen Van An...");
     const [insRes] = await connection.query(
-      "INSERT INTO customers (name, phone, email, member_level, loyalty_points) VALUES ('Nguyen Van A', '0911111111', 'a@gmail.com', 'bronze', 0)"
+      "INSERT INTO customers (name, phone, email, member_level, loyalty_points) VALUES ('Nguyen Van An', '0911111111', 'nguyenvanan@gmail.com', 'bronze', 0)"
     );
     const [cRows] = await connection.query("SELECT * FROM customers WHERE id = ?", [insRes.insertId]);
     customer = cRows[0];

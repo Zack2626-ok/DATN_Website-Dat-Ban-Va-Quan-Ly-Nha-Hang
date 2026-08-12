@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer, Star } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, getPublicPromotions, payBookingDeposit } from "../../services/customerService";
@@ -36,7 +36,6 @@ const getBookingEndTime = (date: string, time: string): string => {
 };
 
 export const BookingPage: React.FC = () => {
-  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loadingTables, setLoadingTables] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -49,14 +48,7 @@ export const BookingPage: React.FC = () => {
     getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
   }, []);
 
-  // Bắt buộc đăng nhập tài khoản khách hàng trước khi đặt bàn
-  useEffect(() => {
-    const token = localStorage.getItem("customer_token");
-    if (!token) {
-      toast.error("Bạn cần đăng ký hoặc đăng nhập tài khoản Khách hàng để sử dụng tính năng đặt bàn!");
-      navigate("/customer/login?redirect=/booking");
-    }
-  }, [navigate]);
+
   const [confirmationCode, setConfirmationCode] = useState("");
   const [selectedArea, setSelectedArea] = useState("Tất cả");
   const [createdBooking, setCreatedBooking] = useState<any>(null);
@@ -199,9 +191,17 @@ export const BookingPage: React.FC = () => {
 
   const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.tableId) {
+      toast.error("Vui lòng chọn một bàn ăn trống ở sơ đồ bên trái trước khi xác nhận đặt bàn!");
+      return;
+    }
+    if (!form.name.trim()) {
+      toast.error("Vui lòng điền Họ và tên người đặt bàn!");
+      return;
+    }
     const phone = form.phone.trim();
-    if (!form.name.trim() || !phone) {
-      toast.error("Vui lòng điền họ tên và số điện thoại liên hệ!");
+    if (!phone) {
+      toast.error("Vui lòng điền Số điện thoại liên hệ!");
       return;
     }
 
@@ -901,7 +901,7 @@ export const BookingPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  disabled={submitting || !form.tableId}
+                  disabled={submitting}
                   onClick={handleSubmitBooking}
                   className="flex-[2] py-4 bg-client-primary hover:bg-client-primary-hover text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-md disabled:opacity-50 cursor-pointer"
                 >

@@ -1,34 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, ArrowLeft, Save, UploadCloud, ClipboardCheck, FileSpreadsheet } from "lucide-react";
+import { Search, ArrowLeft, Save, UploadCloud, ClipboardCheck, Zap, Trash2, CheckSquare, X, PackageSearch } from "lucide-react";
 import toast from "react-hot-toast";
-import { getIngredientsApi } from "../../../services/api";
 import * as XLSX from "xlsx";
-
-const normalizeUnit = (unitStr: string): string => {
-  const u = unitStr.toLowerCase().trim();
-  if (u === "kg" || u === "kilogam" || u === "kilo" || u === "kilogram" || u === "ký" || u === "ky") return "kg";
-  if (u === "g" || u === "gram" || u === "gam") return "g";
-  if (u === "lít" || u === "lit" || u === "liter" || u === "l") return "lít";
-  if (u === "ml" || u === "mililit" || u === "mililiter") return "ml";
-  if (u === "hộp" || u === "hop") return "hộp";
-  if (u === "chai") return "chai";
-  if (u === "lon") return "lon";
-  if (u === "gói" || u === "goi") return "gói";
-  if (u === "túi" || u === "tui") return "túi";
-  if (u === "bó" || u === "bo") return "bó";
-  if (u === "con") return "con";
-  if (u === "quả" || u === "qua" || u === "trái" || u === "trai") return "quả";
-  if (u === "củ" || u === "cu") return "củ";
-  return u;
-};
-
-const parseExcelNumber = (val: any): number => {
-  if (val === undefined || val === null) return 0;
-  if (typeof val === "number") return val;
-  const str = String(val).replace(/[^0-9.,-]/g, "").replace(",", ".");
-  const num = parseFloat(str);
-  return isNaN(num) ? 0 : num;
-};
+import { getIngredientsApi } from "../../../services/api";
 
 interface InventoryCheckProps {
   onBack: () => void;
@@ -42,138 +16,161 @@ interface CheckItem {
   unit: string;
   systemStock: number;
   actualStock: number;
+  category?: string;
 }
 
 export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftData }) => {
+  const [allIngredients, setAllIngredients] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   
   const [checkItems, setCheckItems] = useState<CheckItem[]>([]);
   const [ticketName, setTicketName] = useState(draftData?.ticketName || `KK-${Date.now().toString().slice(-6)}`);
   const [note, setNote] = useState(draftData?.note || "");
 
+  // Quick Select Modal State
+  const [showQuickSelectModal, setShowQuickSelectModal] = useState(false);
+  const [modalCategory, setModalCategory] = useState("all");
+  const [modalSearch, setModalSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     getIngredientsApi().then(data => {
+      setAllIngredients(data);
       if (draftData && draftData.items) {
         setCheckItems(draftData.items);
       } else {
-        // By default, load all ingredients into the check sheet
-        const allItems = data.map((ing: any) => ({
+        // Start EMPTY when creating a new audit sheet
+        setCheckItems([]);
+      }
+    }).catch(console.error);
+  }, [draftData]);
+
+  // Click outside search dropdown listener
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // When opening Quick Select Modal, sync selectedIds with current checkItems
+  const handleOpenQuickSelect = () => {
+    const existing = new Set(checkItems.map(i => String(i.ingredientId)));
+    setSelectedIds(existing);
+    setModalSearch("");
+    setModalCategory("all");
+    setShowQuickSelectModal(true);
+  };
+
+  const handleToggleSelectId = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleSelectAllInModal = (filteredList: any[]) => {
+    const next = new Set(selectedIds);
+    filteredList.forEach(ing => next.add(String(ing.id)));
+    setSelectedIds(next);
+  };
+
+  const handleDeselectAllInModal = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleConfirmQuickSelect = () => {
+    const newItems: CheckItem[] = [];
+    allIngredients.forEach(ing => {
+      const ingIdStr = String(ing.id);
+      if (selectedIds.has(ingIdStr)) {
+        const existingItem = checkItems.find(i => String(i.ingredientId) === ingIdStr);
+        newItems.push({
           ingredientId: ing.id,
           ingredientName: ing.name,
           code: `SP${ing.id.toString().padStart(6, '0')}`,
           unit: ing.unit,
           systemStock: ing.stock,
-          actualStock: ing.stock // default to system stock
-        }));
-        setCheckItems(allItems);
+          actualStock: existingItem ? existingItem.actualStock : ing.stock,
+          category: ing.category
+        });
       }
-    }).catch(console.error);
-  }, [draftData]);
+    });
+    setCheckItems(newItems);
+    setShowQuickSelectModal(false);
+    toast.success(`Đã cập nhật ${newItems.length} mặt hàng vào phiếu kiểm kê!`);
+  };
+
+  const handleAddSingleItem = (ing: any) => {
+    const ingIdStr = String(ing.id);
+    if (checkItems.some(i => String(i.ingredientId) === ingIdStr)) {
+      toast.error(`Mặt hàng "${ing.name}" đã có trong danh sách!`);
+      return;
+    }
+    setCheckItems(prev => [
+      ...prev,
+      {
+        ingredientId: ing.id,
+        ingredientName: ing.name,
+        code: `SP${ing.id.toString().padStart(6, '0')}`,
+        unit: ing.unit,
+        systemStock: ing.stock,
+        actualStock: ing.stock,
+        category: ing.category
+      }
+    ]);
+    setSearchTerm("");
+    setShowSearchDropdown(false);
+  };
+
+  const handleRemoveItem = (ingredientId: string | number) => {
+    setCheckItems(prev => prev.filter(i => String(i.ingredientId) !== String(ingredientId)));
+  };
 
   const handleUpdateItem = (index: number, actualStock: number) => {
     const updated = [...checkItems];
-    updated[index].actualStock = actualStock;
+    updated[index].actualStock = isNaN(actualStock) ? 0 : actualStock;
     setCheckItems(updated);
   };
 
+  // Unit conversion helper for Excel upload
+  const convertUnit = (val: number, inputUnit: string, systemUnit: string): { converted: number; warning?: string } => {
+    const inU = (inputUnit || "").trim().toLowerCase();
+    const sysU = (systemUnit || "").trim().toLowerCase();
 
-  const handleSaveDraft = () => {
-    const draft = {
-      id: draftData?.id || Date.now().toString(),
-      ticketName,
-      note,
-      status: "draft",
-      date: new Date().toISOString(),
-      items: checkItems
-    };
-    
-    // Save to localStorage for demo
-    const existingDrafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
-    const updatedDrafts = draftData 
-      ? existingDrafts.map((d: any) => d.id === draft.id ? draft : d)
-      : [...existingDrafts, draft];
-      
-    localStorage.setItem("inventory_drafts", JSON.stringify(updatedDrafts));
-    toast.success("Lưu phiếu kiểm kê tạm (Đang kiểm) thành công!");
-    onBack();
+    if (!inU || inU === sysU) return { converted: val };
+
+    const isSysKg = sysU === "kg" || sysU === "kilogram" || sysU === "kilo";
+    const isSysG = sysU === "g" || sysU === "gram" || sysU === "gr";
+    const isInG = inU === "g" || inU === "gram" || inU === "gr";
+    const isInKg = inU === "kg" || inU === "kilogram" || inU === "kilo";
+
+    if (isSysKg && isInG) return { converted: val / 1000 };
+    if (isSysG && isInKg) return { converted: val * 1000 };
+    if (isSysKg && inU === "yến") return { converted: val * 10 };
+    if (isSysKg && inU === "tạ") return { converted: val * 100 };
+    if (isSysKg && inU === "tấn") return { converted: val * 1000 };
+
+    const isSysLit = sysU === "lit" || sysU === "l" || sysU === "lít";
+    const isSysMl = sysU === "ml" || sysU === "millilit" || sysU === "milit";
+    const isInMl = inU === "ml" || inU === "millilit" || inU === "milit";
+    const isInLit = inU === "lit" || inU === "l" || inU === "lít";
+
+    if (isSysLit && isInMl) return { converted: val / 1000 };
+    if (isSysMl && isInLit) return { converted: val * 1000 };
+
+    return { converted: val, warning: `Đơn vị '${inputUnit}' khác đơn vị hệ thống '${systemUnit}'` };
   };
 
-  // const handleBalance = async () => {
-  //   if (!window.confirm("Cân bằng kho sẽ ghi đè tồn kho hệ thống bằng số lượng kiểm đếm thực tế. Bạn có chắc chắn?")) {
-  //     return;
-  //   }
-  // 
-  //   try {
-  //     // Gửi toàn bộ danh sách kiểm kê lên API stock-check
-  //     // API này chỉ ghi vào stock_inventory + cập nhật current_stock
-  //     // KHÔNG tạo stock_in → không xuất hiện ở tab Nhập hàng
-  //     const records = checkItems.map(item => ({
-  //       ingredient_id: Number(item.ingredientId),
-  //       actual_stock: Number(item.actualStock),
-  //     }));
-  // 
-  //     await submitStockCheckApi(records);
-  // 
-  //     // Remove draft if it was one
-  //     if (draftData?.id) {
-  //       const existingDrafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
-  //       localStorage.setItem("inventory_drafts", JSON.stringify(existingDrafts.filter((d: any) => d.id !== draftData.id)));
-  //     }
-  // 
-  //     // Add to completed history in localStorage for UI
-  //     const completed = {
-  //       id: draftData?.id || Date.now().toString(),
-  //       ticketName,
-  //       note,
-  //       status: "completed",
-  //       date: new Date().toISOString(),
-  //       items: checkItems
-  //     };
-  //     const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
-  //     localStorage.setItem("inventory_history", JSON.stringify([completed, ...history]));
-  // 
-  //     toast.success("Cân bằng kho thành công!");
-  //     onBack();
-  //   } catch (error: any) {
-  //     toast.error(error?.response?.data?.message || "Có lỗi xảy ra khi cân bằng kho");
-  //   }
-  // };
-
-  const handleExportExcel = () => {
-    const rows = checkItems.map(item => ({
-      "Mã nguyên liệu": item.code,
-      "Tên nguyên liệu": item.ingredientName,
-      "Tồn hệ thống": `${item.systemStock} ${item.unit}`,
-      "Thực tế kiểm đếm": `${item.actualStock} ${item.unit}`,
-      "Đơn vị": item.unit
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-
-    // Auto-fit columns dynamically based on content length
-    if (rows.length > 0) {
-      const colKeys = Object.keys(rows[0]);
-      ws["!cols"] = colKeys.map(key => {
-        let maxLen = key.length;
-        rows.forEach(r => {
-          const val = r[key as keyof typeof r];
-          if (val !== undefined && val !== null) {
-            const strLen = String(val).length;
-            if (strLen > maxLen) maxLen = strLen;
-          }
-        });
-        return { wch: Math.min(Math.max(maxLen + 4, 12), 45) };
-      });
-    }
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "KiemKeKho");
-    XLSX.writeFile(wb, `Phieu_Kiem_Ke_${ticketName}.xlsx`);
-    toast.success("Tải biểu mẫu kiểm kê Excel thành công!");
-  };
-
-  const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -184,65 +181,163 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
         const wb = XLSX.read(bstr, { type: "binary" });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data: any[] = XLSX.utils.sheet_to_json(ws);
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        if (!rows || rows.length === 0) {
+          toast.error("File Excel trống hoặc không đúng định dạng!");
+          return;
+        }
+
+        let headerRowIndex = -1;
+        for (let i = 0; i < Math.min(10, rows.length); i++) {
+          const rowStr = (rows[i] || []).join(" ").toLowerCase();
+          if (rowStr.includes("tên nguyên liệu") || rowStr.includes("mã nl") || rowStr.includes("nguyên liệu")) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        if (headerRowIndex === -1) {
+          toast.error("Không tìm thấy cột tiêu đề 'Tên nguyên liệu' hoặc 'Mã NL' trong file Excel!");
+          return;
+        }
+
+        const headers = rows[headerRowIndex].map((h: any) => String(h || "").trim().toLowerCase());
+        const nameIdx = headers.findIndex((h: string) => h.includes("tên nguyên liệu") || h.includes("hàng hóa") || h.includes("nguyên liệu"));
+        const codeIdx = headers.findIndex((h: string) => h.includes("mã nl") || h.includes("mã nguyên liệu") || h.includes("mã"));
+        const actualIdx = headers.findIndex((h: string) => h.includes("thực tế") || h.includes("thực tế kiểm đếm") || h.includes("thực tế kiểm"));
+        const unitIdx = headers.findIndex((h: string) => h.includes("đơn vị") || h.includes("dvt") || h.includes("unit"));
+
+        if (actualIdx === -1) {
+          toast.error("File Excel thiếu cột 'Thực tế kiểm đếm'! Vui lòng dùng file mẫu từ hệ thống.");
+          return;
+        }
 
         let updatedCount = 0;
-        const updatedItems = [...checkItems];
+        let errors: string[] = [];
 
-        for (const row of data) {
-          const codeVal = String(row["Mã nguyên liệu"] || row["Mã NL"] || row["Mã"] || row["code"] || "").trim().toLowerCase();
-          const nameVal = String(row["Tên nguyên liệu"] || row["Tên hàng"] || row["Tên"] || row["name"] || "").trim().toLowerCase();
-          
-          if (!codeVal && !nameVal) continue;
+        const newItemsMap = new Map<string, CheckItem>();
+        checkItems.forEach(item => newItemsMap.set(String(item.ingredientId), { ...item }));
 
-          const targetIndex = updatedItems.findIndex(item => {
-            if (codeVal && item.code.toLowerCase() === codeVal) return true;
-            if (nameVal && item.ingredientName.toLowerCase() === nameVal) return true;
+        for (let i = headerRowIndex + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) continue;
+
+          const nameVal = nameIdx !== -1 ? String(row[nameIdx] || "").trim() : "";
+          const codeVal = codeIdx !== -1 ? String(row[codeIdx] || "").trim() : "";
+          const unitVal = unitIdx !== -1 ? String(row[unitIdx] || "").trim() : "";
+          const rawActual = row[actualIdx];
+
+          if (!nameVal && !codeVal) continue;
+
+          if (rawActual === undefined || rawActual === null || String(rawActual).trim() === "") {
+            continue;
+          }
+
+          const parsedActual = parseFloat(String(rawActual).replace(",", "."));
+          if (isNaN(parsedActual) || parsedActual < 0) {
+            errors.push(`Dòng ${i + 1} (${nameVal || codeVal}): Số lượng thực tế '${rawActual}' không hợp lệ.`);
+            continue;
+          }
+
+          const matchIng = allIngredients.find(ing => {
+            const ingCode = `SP${ing.id.toString().padStart(6, '0')}`;
+            if (codeVal && (ingCode.toLowerCase() === codeVal.toLowerCase() || String(ing.id) === codeVal.replace(/\D/g, ""))) return true;
+            if (nameVal && ing.name.toLowerCase() === nameVal.toLowerCase()) return true;
             return false;
           });
 
-          if (targetIndex !== -1) {
-            const item = updatedItems[targetIndex];
-            const rawExcelUnit = String(row["Đơn vị"] || row["Đơn vị tính"] || row["unit"] || "").trim();
-            const excelUnit = normalizeUnit(rawExcelUnit);
-            const actualQty = parseExcelNumber(row["Thực tế kiểm đếm"] || row["Thực tế"] || row["actual"] || row["Số lượng thực tế"] || 0);
-
-            let multiplier = 1;
-            const sysUnit = item.unit.toLowerCase().trim();
-            if (excelUnit && excelUnit !== sysUnit) {
-              if (excelUnit === "g" && sysUnit === "kg") multiplier = 0.001;
-              else if (excelUnit === "kg" && sysUnit === "g") multiplier = 1000;
-              else if (excelUnit === "ml" && sysUnit === "lít") multiplier = 0.001;
-              else if (excelUnit === "lít" && sysUnit === "ml") multiplier = 1000;
+          if (matchIng) {
+            const ingIdStr = String(matchIng.id);
+            const { converted, warning } = convertUnit(parsedActual, unitVal, matchIng.unit);
+            if (warning) {
+              errors.push(`Dòng ${i + 1} (${matchIng.name}): ${warning}`);
             }
 
-            updatedItems[targetIndex] = {
-              ...item,
-              actualStock: Math.round(actualQty * multiplier * 1e6) / 1e6
-            };
+            newItemsMap.set(ingIdStr, {
+              ingredientId: matchIng.id,
+              ingredientName: matchIng.name,
+              code: `SP${matchIng.id.toString().padStart(6, '0')}`,
+              unit: matchIng.unit,
+              systemStock: matchIng.stock,
+              actualStock: Number(converted.toFixed(3)),
+              category: matchIng.category
+            });
             updatedCount++;
           }
         }
 
-        setCheckItems(updatedItems);
-        toast.success(`Đã cập nhật ${updatedCount} mặt hàng kiểm kê từ Excel thành công!`);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      } catch (err) {
-        console.error(err);
-        toast.error("Lỗi khi đọc file Excel. Vui lòng kiểm tra lại định dạng.");
+        if (errors.length > 0) {
+          toast.error(errors.slice(0, 3).join("\n"), { duration: 5000 });
+        }
+
+        if (updatedCount > 0) {
+          setCheckItems(Array.from(newItemsMap.values()));
+          toast.success(`Đã tự động nạp ${updatedCount} mặt hàng từ file Excel!`);
+        } else if (errors.length === 0) {
+          toast.error("Không tìm thấy nguyên liệu trùng khớp hoặc cột Thực tế đang trống!");
+        }
+      } catch (err: any) {
+        console.error("Lỗi đọc file Excel:", err);
+        toast.error("Lỗi đọc file Excel: " + (err?.message || "File không đúng định dạng"));
+      } finally {
+        e.target.value = "";
       }
     };
     reader.readAsBinaryString(file);
   };
-  const filteredItems = checkItems.filter(item => 
-    item.ingredientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    item.code.includes(searchTerm)
-  );
+
+  const handleSaveDraft = () => {
+    if (checkItems.length === 0) {
+      toast.error("Vui lòng chọn ít nhất 1 mặt hàng trước khi lưu phiếu kiểm kê!");
+      return;
+    }
+
+    const draft = {
+      id: draftData?.id || Date.now().toString(),
+      ticketName,
+      note,
+      status: "draft",
+      date: new Date().toISOString(),
+      items: checkItems
+    };
+    
+    const existingDrafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+    const updatedDrafts = draftData 
+      ? existingDrafts.map((d: any) => d.id === draft.id ? draft : d)
+      : [...existingDrafts, draft];
+      
+    localStorage.setItem("inventory_drafts", JSON.stringify(updatedDrafts));
+    toast.success("Lưu phiếu kiểm kê tạm (Đang kiểm) thành công!");
+    onBack();
+  };
+
+  // Search dropdown results
+  const searchResults = searchTerm.trim() 
+    ? allIngredients.filter(ing => 
+        ing.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        `SP${ing.id.toString().padStart(6, '0')}`.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
+
   const isCompleted = draftData?.status === "completed";
+
+  // Categories list for Quick Select Modal
+  const categories = Array.from(new Set(allIngredients.map(i => i.category || "Khác").filter(Boolean)));
+
+  // Filtered ingredients inside Quick Select Modal
+  const modalIngredients = allIngredients.filter(ing => {
+    const matchCat = modalCategory === "all" || ing.category === modalCategory;
+    const matchKw = !modalSearch.trim() || 
+      ing.name.toLowerCase().includes(modalSearch.toLowerCase()) || 
+      `SP${ing.id.toString().padStart(6, '0')}`.toLowerCase().includes(modalSearch.toLowerCase());
+    return matchCat && matchKw;
+  });
 
   return (
     <>
     <div className="flex flex-col gap-6 animate-in fade-in duration-300 text-slate-800 print:hidden">
+      {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-200">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer">
@@ -262,19 +357,13 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
             <>
               <input
                 type="file"
-                ref={fileInputRef}
+                id="excel-check-input"
+                accept=".xlsx, .xls"
                 className="hidden"
-                accept=".xlsx, .xls, .csv"
-                onChange={handleImportExcel}
+                onChange={handleExcelUpload}
               />
-              <button
-                onClick={handleExportExcel}
-                className="px-4 py-2 bg-white border border-emerald-600 text-emerald-600 font-bold rounded-lg hover:bg-emerald-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm"
-              >
-                <FileSpreadsheet size={16} /> Tải file mẫu Excel
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
+              <button 
+                onClick={() => document.getElementById("excel-check-input")?.click()}
                 className="px-4 py-2 bg-white border border-blue-600 text-blue-600 font-bold rounded-lg hover:bg-blue-50 text-sm flex items-center gap-2 cursor-pointer shadow-sm"
               >
                 <UploadCloud size={16} /> Nhập từ Excel
@@ -290,79 +379,180 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-3 flex flex-col gap-4">
           <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 min-h-[400px]">
-            <div className="relative w-full mb-4">
-              <Search className="absolute left-3 top-3 text-slate-400" size={16} />
-              <input 
-                type="text" 
-                placeholder="Tìm kiếm mặt hàng cần kiểm kê..." 
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-sm"
-              />
-            </div>
             
+            {/* Top Toolbar: Search Bar + Quick Select Button */}
+            {!isCompleted && (
+              <div className="flex flex-col sm:flex-row gap-3 mb-4 items-stretch sm:items-center">
+                <div ref={searchRef} className="relative flex-1">
+                  <Search className="absolute left-3 top-3 text-slate-400" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Tìm kiếm mặt hàng theo tên hoặc mã để thêm vào kiểm kê..." 
+                    value={searchTerm}
+                    onFocus={() => setShowSearchDropdown(true)}
+                    onChange={e => {
+                      setSearchTerm(e.target.value);
+                      setShowSearchDropdown(true);
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-sm shadow-xs"
+                  />
+
+                  {/* Dropdown search results */}
+                  {showSearchDropdown && searchResults.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100">
+                      {searchResults.map(ing => {
+                        const isAdded = checkItems.some(i => String(i.ingredientId) === String(ing.id));
+                        return (
+                          <div
+                            key={ing.id}
+                            onClick={() => handleAddSingleItem(ing)}
+                            className={`p-3 flex items-center justify-between hover:bg-blue-50 transition-colors cursor-pointer ${isAdded ? 'opacity-50 bg-slate-50' : ''}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-slate-400">SP{ing.id.toString().padStart(6, '0')}</span>
+                              <span className="font-bold text-slate-800 text-sm">{ing.name}</span>
+                              <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{ing.category || "Hàng hóa"}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-semibold text-slate-600">Tồn: <strong>{ing.stock} {ing.unit}</strong></span>
+                              {isAdded ? (
+                                <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-0.5 rounded">Đã chọn</span>
+                              ) : (
+                                <span className="text-xs font-bold text-blue-600 flex items-center gap-1">+ Thêm</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {showSearchDropdown && searchTerm.trim() !== "" && searchResults.length === 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-4 text-center text-slate-500 text-xs font-semibold">
+                      Không tìm thấy mặt hàng nào phù hợp với từ khóa "{searchTerm}"
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleOpenQuickSelect}
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95 shrink-0"
+                >
+                  <Zap size={16} /> ⚡ Chọn nhanh mặt hàng
+                </button>
+              </div>
+            )}
+            
+            {/* Main Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left whitespace-nowrap">
                 <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase border-y border-slate-200">
                   <tr>
-                    <th className="px-4 py-3">#</th>
+                    <th className="px-4 py-3 w-10 text-center">#</th>
                     <th className="px-4 py-3">Hàng hoá</th>
                     <th className="px-4 py-3 text-center">Tồn hệ thống</th>
                     <th className="px-4 py-3 text-center">Thực tế kiểm đếm</th>
                     <th className="px-4 py-3 text-center">Chênh lệch</th>
+                    {!isCompleted && <th className="px-4 py-3 text-center w-12">Thao tác</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item, idx) => {
-                    const diff = item.actualStock - item.systemStock;
-                    return (
-                      <tr key={item.ingredientId} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="px-4 py-4 font-medium">{idx + 1}</td>
-                        <td className="px-4 py-4">
-                          <div className="font-bold text-slate-800">{item.ingredientName}</div>
-                        </td>
-                        <td className="px-4 py-3 text-center font-bold text-slate-600">
-                          {item.systemStock} {item.unit}
-                        </td>
-                        <td className="px-4 py-3 flex justify-center">
-                          <div className="flex items-center gap-2">
-                            {isCompleted ? (
-                              <div className="w-24 p-2 text-center font-black text-admin-primary">
-                                {item.actualStock}
-                              </div>
-                            ) : (
-                              <input 
-                                type="number" 
-                                value={item.actualStock} 
-                                onChange={(e) => handleUpdateItem(checkItems.findIndex(i => i.ingredientId === item.ingredientId), Number(e.target.value))}
-                                className="w-24 p-2 border rounded-lg text-center font-black text-admin-primary focus:border-blue-500 outline-none shadow-inner" 
-                              />
-                            )}
-                            <span className="text-xs font-bold text-slate-500">{item.unit}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {diff === 0 ? (
-                            <span className="text-slate-500 font-bold">Khớp</span>
-                          ) : diff > 0 ? (
-                            <span className="text-emerald-600 font-extrabold bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
-                              Thừa +{diff}
-                            </span>
-                          ) : (
-                            <span className="text-rose-600 font-extrabold bg-rose-50 px-2 py-1 rounded border border-rose-200">
-                              Hụt {diff}
-                            </span>
+                  {checkItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={isCompleted ? 5 : 6} className="text-center py-16 text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <PackageSearch size={44} className="text-slate-300 stroke-[1.5]" />
+                          <p className="font-bold text-slate-600 text-base">Chưa có mặt hàng nào trong phiếu kiểm kê</p>
+                          <p className="text-xs text-slate-400 max-w-md">Vui lòng tìm kiếm mặt hàng ở ô phía trên hoặc bấm <strong>"Chọn nhanh mặt hàng"</strong> để thêm nguyên liệu cần kiểm đếm.</p>
+                          {!isCompleted && (
+                            <button
+                              type="button"
+                              onClick={handleOpenQuickSelect}
+                              className="mt-3 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                            >
+                              <Zap size={16} /> ⚡ Chọn nhanh tất cả mặt hàng
+                            </button>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    checkItems.map((item, idx) => {
+                      const rawDiff = item.actualStock - item.systemStock;
+                      const diff = Number(rawDiff.toFixed(3));
+                      const absDiff = Math.abs(diff);
+
+                      return (
+                        <tr key={item.ingredientId} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="px-4 py-4 font-medium text-center text-slate-400">{idx + 1}</td>
+                          <td className="px-4 py-4">
+                            <div className="font-bold text-slate-800">{item.ingredientName}</div>
+                            <div className="text-[10px] font-mono text-slate-400">{item.code}</div>
+                          </td>
+                          <td className="px-4 py-3 text-center font-bold text-slate-600">
+                            {item.systemStock} {item.unit}
+                          </td>
+                          <td className="px-4 py-3 flex justify-center">
+                            <div className="flex items-center gap-2">
+                              {isCompleted ? (
+                                <div className="w-24 p-2 text-center font-black text-admin-primary">
+                                  {item.actualStock}
+                                </div>
+                              ) : (
+                                <input 
+                                  type="number" 
+                                  step="any"
+                                  value={item.actualStock === 0 ? "" : item.actualStock} 
+                                  placeholder="0"
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => {
+                                    const valStr = e.target.value;
+                                    const valNum = valStr === "" ? 0 : parseFloat(valStr);
+                                    handleUpdateItem(idx, valNum);
+                                  }}
+                                  className="w-24 p-2 border border-slate-300 rounded-xl text-center font-black text-blue-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none shadow-2xs" 
+                                />
+                              )}
+                              <span className="text-xs font-bold text-slate-500">{item.unit}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {diff === 0 ? (
+                              <span className="text-slate-500 font-bold">Khớp</span>
+                            ) : diff > 0 ? (
+                              <span className="text-emerald-600 font-extrabold bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
+                                Thừa +{absDiff} {item.unit}
+                              </span>
+                            ) : (
+                              <span className="text-rose-600 font-extrabold bg-rose-50 px-2 py-1 rounded border border-rose-200">
+                                Hụt {absDiff} {item.unit}
+                              </span>
+                            )}
+                          </td>
+                          {!isCompleted && (
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(item.ingredientId)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Xóa khỏi phiếu"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
 
+        {/* Right Info Sidebar */}
         <div className="lg:col-span-1 flex flex-col gap-4">
           <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 sticky top-4">
             <h3 className="font-black text-slate-800 mb-4 border-b pb-2">Thông tin phiếu kiểm</h3>
@@ -386,6 +576,13 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                   readOnly
                   className="w-full p-2 border border-slate-200 rounded outline-none text-sm font-semibold bg-slate-100 text-slate-500" 
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Số mặt hàng đã chọn</label>
+                <div className="p-2 bg-slate-50 border border-slate-200 rounded text-sm font-extrabold text-blue-600">
+                  {checkItems.length} mặt hàng
+                </div>
               </div>
 
               <div>
@@ -414,6 +611,153 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
         </div>
       </div>
     </div>
+
+    {/* MODAL CHỌN NHANH HÀNG LOẠT NGUYÊN LIỆU */}
+    {showQuickSelectModal && (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+          
+          {/* Modal Header */}
+          <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50/80">
+            <div>
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <Zap size={20} className="text-blue-600" /> Chọn nhanh mặt hàng kiểm kê
+              </h3>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">Tích chọn các nguyên liệu hoặc nhấp chọn tất cả để đưa vào danh sách kiểm kê</p>
+            </div>
+            <button
+              onClick={() => setShowQuickSelectModal(false)}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Modal Toolbar: Search & Category Tabs */}
+          <div className="p-4 border-b border-slate-100 flex flex-col gap-3 bg-white">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm nguyên liệu trong popup..."
+                  value={modalSearch}
+                  onChange={(e) => setModalSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSelectAllInModal(modalIngredients)}
+                className="px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Chọn tất cả ({modalIngredients.length})
+              </button>
+              <button
+                type="button"
+                onClick={handleDeselectAllInModal}
+                className="px-3 py-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Bỏ chọn tất cả
+              </button>
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              <button
+                type="button"
+                onClick={() => setModalCategory("all")}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${modalCategory === "all" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                Tất cả ({allIngredients.length})
+              </button>
+              {categories.map(cat => {
+                const count = allIngredients.filter(i => i.category === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setModalCategory(cat)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${modalCategory === cat ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    {cat} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Modal Content Grid */}
+          <div className="p-4 overflow-y-auto max-h-[50vh] divide-y divide-slate-100">
+            {modalIngredients.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 font-semibold text-xs">
+                Không tìm thấy nguyên liệu nào phù hợp với bộ lọc
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {modalIngredients.map(ing => {
+                  const ingIdStr = String(ing.id);
+                  const isChecked = selectedIds.has(ingIdStr);
+                  const code = `SP${ing.id.toString().padStart(6, '0')}`;
+
+                  return (
+                    <div
+                      key={ing.id}
+                      onClick={() => handleToggleSelectId(ingIdStr)}
+                      className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                        isChecked 
+                          ? "bg-blue-50/80 border-blue-400 shadow-2xs" 
+                          : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${isChecked ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white'}`}>
+                          {isChecked && <CheckSquare size={14} />}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-800 text-xs">{ing.name}</div>
+                          <div className="text-[10px] font-mono text-slate-400">{code} • {ing.category || "Hàng hóa"}</div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className="text-xs font-black text-slate-700">{ing.stock} {ing.unit}</div>
+                        <div className="text-[9px] text-slate-400 font-semibold">Tồn hệ thống</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer */}
+          <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+            <div className="text-xs font-bold text-slate-600">
+              Đã chọn: <span className="text-blue-600 font-black">{selectedIds.size}</span> / {allIngredients.length} mặt hàng
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowQuickSelectModal(false)}
+                className="px-4 py-2 border border-slate-300 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-100 transition-all cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmQuickSelect}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                Xác nhận ({selectedIds.size} mặt hàng)
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    )}
 
     {/* GIAO DIỆN IN */}
     <div className="hidden print:block bg-white text-black p-0 font-sans w-full max-w-[210mm] mx-auto text-[13px]">
@@ -456,7 +800,7 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
           </tr>
         </thead>
         <tbody>
-          {filteredItems.map((item, idx) => {
+          {checkItems.map((item, idx) => {
             const diff = Number(item.actualStock) - Number(item.systemStock);
             return (
               <tr key={item.ingredientId}>
@@ -473,7 +817,7 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
       </table>
 
       <div className="text-right font-bold mb-8">
-        <p>Tổng số lượng: <span className="text-base">{filteredItems.reduce((acc, item) => acc + Number(item.actualStock), 0)}</span></p>
+        <p>Tổng số lượng: <span className="text-base">{checkItems.reduce((acc, item) => acc + Number(item.actualStock), 0)}</span></p>
       </div>
 
       <div className="">

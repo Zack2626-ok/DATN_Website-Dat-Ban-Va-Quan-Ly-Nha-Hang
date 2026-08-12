@@ -204,6 +204,11 @@ export const InventoryControl: React.FC = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importFileError, setImportFileError] = useState<string | null>(null);
 
+  // Audit Tab Filter & Refresh State
+  const [auditDateFilter, setAuditDateFilter] = useState<"30days" | "7days" | "today" | "all">("30days");
+  const [auditRefreshTrigger, setAuditRefreshTrigger] = useState<number>(0);
+  const [selectedDeletedIds, setSelectedDeletedIds] = useState<string[]>([]);
+
   // Unit conversion helper for mass (kg/g) and volume (lit/ml)
   const getUnitConversion = (baseUnit: string, selectedUnit?: string) => {
     const norm = (baseUnit || "kg").trim().toLowerCase();
@@ -269,7 +274,7 @@ export const InventoryControl: React.FC = () => {
       ["PHIẾU KIỂM KÊ CÂN ĐỐI TỒN KHO"],
       [`Ngày xuất: ${nowStr}`],
       [],
-      ["Mã NL", "Tên nguyên liệu", "Tồn hệ thống", "Thực tế kiểm đếm", "Đơn vị", "Chênh lệch"]
+      ["Mã NL", "Tên nguyên liệu", "Thực tế kiểm đếm", "Đơn vị"]
     ];
 
     reduxIngredients.forEach((ing: any) => {
@@ -277,10 +282,8 @@ export const InventoryControl: React.FC = () => {
       data.push([
         code,
         ing.name,
-        ing.stock,
         "", // Column left empty for physical counting
-        ing.unit,
-        ""  // Column left empty for variance
+        ing.unit
       ]);
     });
 
@@ -288,15 +291,13 @@ export const InventoryControl: React.FC = () => {
     ws["!cols"] = [
       { wch: 12 },
       { wch: 30 },
-      { wch: 15 },
       { wch: 22 },
-      { wch: 10 },
-      { wch: 15 }
+      { wch: 10 }
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "PhieuKiemKho");
     XLSX.writeFile(wb, `PHIEU_KIEM_KE_CAN_DOI_TON_KHO_${Date.now()}.xlsx`);
-    toast.success("Đã xuất file Excel phiếu kiểm kho trống thành công!");
+    toast.success("Đã xuất file Excel phiếu kiểm kho thành công!");
   };
 
   const handleWasteSubmit = async () => {
@@ -1367,9 +1368,9 @@ export const InventoryControl: React.FC = () => {
                   <th className="border border-slate-900 px-3 py-2 text-left">Tên nguyên liệu</th>
                   <th className="border border-slate-900 px-3 py-2 text-center w-24">Tồn trên máy</th>
                   <th className="border border-slate-900 px-3 py-2 text-center w-24">Thực tế đếm</th>
-                  <th className="border border-slate-900 px-3 py-2 text-center w-32">Số lượng lệch (Hao hụt)</th>
+                  <th className="border border-slate-900 px-3 py-2 text-center w-32">Số lượng chênh lệch</th>
                   <th className="border border-slate-900 px-3 py-2 text-right w-28">Giá nhập gần nhất</th>
-                  <th className="border border-slate-900 px-3 py-2 text-right w-36">Giá trị hao hụt (VND)</th>
+                  <th className="border border-slate-900 px-3 py-2 text-right w-36">Giá trị chênh lệch (VND)</th>
                 </tr>
               </thead>
               <tbody>
@@ -1382,9 +1383,8 @@ export const InventoryControl: React.FC = () => {
                       const act = Number(it.actualStock ?? it.actual ?? 0);
                       const diff = act - sys;
                       const unitCost = Number(it.unitCost || ingObj?.unitCost || ingObj?.cost || 200000);
-                      const absDiff = Math.abs(diff);
-                      const lossVal = diff < 0 ? absDiff * unitCost : 0;
-                      totalLossSum += lossVal;
+                      const diffVal = diff * unitCost;
+                      totalLossSum += diffVal;
 
                       return (
                         <tr key={idx} className="border-b border-slate-400">
@@ -1404,10 +1404,10 @@ export const InventoryControl: React.FC = () => {
                             {unitCost.toLocaleString("vi-VN")} đ
                           </td>
                           <td className="border border-slate-900 px-3 py-2 text-right font-extrabold text-slate-900">
-                            {lossVal > 0 ? (
-                              <span>{lossVal.toLocaleString("vi-VN")} đ <em className="text-[10px] text-slate-500 font-normal">({absDiff} {it.unit || "kg"} x {Math.round(unitCost/1000)}k)</em></span>
+                            {diff === 0 ? "0 đ" : diff > 0 ? (
+                              <span className="text-emerald-700">+{Math.abs(diffVal).toLocaleString("vi-VN")} đ <em className="text-[10px] text-emerald-600 font-normal">(Cộng tăng)</em></span>
                             ) : (
-                              "0 đ"
+                              <span className="text-rose-600">-{Math.abs(diffVal).toLocaleString("vi-VN")} đ <em className="text-[10px] text-rose-500 font-normal">(Hao hụt)</em></span>
                             )}
                           </td>
                         </tr>
@@ -1419,10 +1419,10 @@ export const InventoryControl: React.FC = () => {
                         {rows}
                         <tr className="bg-slate-100 font-black text-sm border-t-2 border-slate-900">
                           <td colSpan={5} className="border border-slate-900 px-3 py-3 uppercase tracking-wider">
-                            TỔNG CỘNG TỔN THẤT HAO HỤT
+                            TỔNG CỘNG GIÁ TRỊ CHÊNH LỆCH KHO
                           </td>
-                          <td className="border border-slate-900 px-3 py-3 text-right text-rose-600 font-black">
-                            {totalLossSum.toLocaleString("vi-VN")} đ
+                          <td className={`border border-slate-900 px-3 py-3 text-right font-black ${totalLossSum > 0 ? 'text-emerald-700' : totalLossSum < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                            {totalLossSum === 0 ? "0 đ" : `${totalLossSum > 0 ? "+" : ""}${totalLossSum.toLocaleString("vi-VN")} đ`}
                           </td>
                         </tr>
                       </>
@@ -2058,12 +2058,6 @@ export const InventoryControl: React.FC = () => {
                   <Trash2 size={15} className="text-rose-600" /> Xuất hủy hàng hỏng
                 </button>
 
-                <button
-                  onClick={() => setShowAddIngModal(true)}
-                  className="px-3.5 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                >
-                  <Plus size={15} /> Thêm nguyên liệu
-                </button>
               </div>
             </div>
 
@@ -3362,10 +3356,18 @@ export const InventoryControl: React.FC = () => {
               {/* Header Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 border border-slate-250 px-3 py-1.5 rounded-xl text-xs font-extrabold text-slate-700 bg-slate-50">
-                    <CalendarRange size={14} className="text-slate-400" />
-                    <span>30 ngày gần đây</span>
-                    <span className="text-slate-400 font-normal">| {new Date().toLocaleDateString('vi-VN')}</span>
+                  <div className="flex items-center gap-2 border border-slate-250 px-3 py-1.5 rounded-xl text-xs font-extrabold text-slate-700 bg-slate-50 shadow-2xs">
+                    <CalendarRange size={14} className="text-slate-500" />
+                    <select
+                      value={auditDateFilter}
+                      onChange={(e) => setAuditDateFilter(e.target.value as any)}
+                      className="bg-transparent font-bold text-xs outline-none cursor-pointer text-slate-700 pr-1"
+                    >
+                      <option value="30days">30 ngày gần đây</option>
+                      <option value="7days">7 ngày gần đây</option>
+                      <option value="today">Hôm nay</option>
+                      <option value="all">Tất cả thời gian</option>
+                    </select>
                   </div>
                 </div>
                 <button
@@ -3376,51 +3378,6 @@ export const InventoryControl: React.FC = () => {
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-md shadow-blue-600/20 cursor-pointer active:scale-95"
                 >
                   <Plus size={16} /> + TẠO PHIẾU KIỂM KÊ MỚI
-                </button>
-                <button
-                  onClick={() => {
-                    const headers = ["Ten nguyen lieu", "Ton he thong", "Thuc te kiem dem", "Don vi", "Chenh lech"];
-                    const colX = [15, 60, 100, 135, 150];
-                    const rows = reduxIngredients.map(ing => {
-                      const actualStr = stocktakeValues[ing.id];
-                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
-                      const diff = actualQty - ing.stock;
-                      const diffText = diff === 0 ? "Khop kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
-                      return [
-                        ing.name,
-                        ing.stock.toString(),
-                        actualQty.toString(),
-                        ing.unit,
-                        diffText
-                      ];
-                    });
-                    handleExportPdfShared("PHIEU KIEM KE CAN DOI TON KHO", headers, colX, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileText size={12} className="text-red-500" /> Xuất PDF
-                </button>
-                <button
-                  onClick={() => {
-                    const headers = ["Tên nguyên liệu", "Tồn hệ thống", "Thực tế kiểm đếm", "Đơn vị", "Chênh lệch"];
-                    const rows = reduxIngredients.map(ing => {
-                      const actualStr = stocktakeValues[ing.id];
-                      const actualQty = actualStr !== undefined && actualStr.trim() !== "" ? Number(actualStr) : ing.stock;
-                      const diff = actualQty - ing.stock;
-                      const diffText = diff === 0 ? "Khớp kho" : `${diff > 0 ? "+" : ""}${diff} ${ing.unit}`;
-                      return [
-                        ing.name,
-                        ing.stock.toString(),
-                        actualQty.toString(),
-                        ing.unit,
-                        diffText
-                      ];
-                    });
-                    handleExportExcelShared("PHIẾU KIỂM KÊ CÂN ĐỐI TỒN KHO", headers, rows, `Bieu_Mau_Kiem_Ke_${Date.now()}`);
-                  }}
-                  className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all cursor-pointer hover:bg-slate-50 shadow-2xs"
-                >
-                  <FileSpreadsheet size={12} className="text-emerald-600" /> Xuất Excel
                 </button>
               </div>
             </div>
@@ -3441,15 +3398,48 @@ export const InventoryControl: React.FC = () => {
                       <th scope="col" className="px-5 py-3 text-center">SL hàng</th>
                       <th scope="col" className="px-5 py-3 text-center">Trạng thái</th>
                       <th scope="col" className="px-5 py-3 text-center">Ngày</th>
-                      <th scope="col" className="px-5 py-3 text-center">Bởi</th>
                       <th scope="col" className="px-5 py-3 text-center">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-200 text-xs font-semibold text-slate-700">
                     {(() => {
+                      // Trigger re-render when auditRefreshTrigger changes
+                      void auditRefreshTrigger;
                       const drafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
                       const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
-                      const list = [...drafts, ...history];
+                      let list = [...drafts, ...history];
+
+                      // Filter by date range if applicable
+                      if (auditDateFilter !== "all") {
+                        const now = new Date();
+                        list = list.filter((item: any) => {
+                          if (!item.date) return true;
+                          const itemDate = new Date(item.date);
+                          if (isNaN(itemDate.getTime())) return true;
+                          const diffMs = now.getTime() - itemDate.getTime();
+                          const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+                          if (auditDateFilter === "today") {
+                            return itemDate.toDateString() === now.toDateString();
+                          } else if (auditDateFilter === "7days") {
+                            return diffDays <= 7;
+                          } else if (auditDateFilter === "30days") {
+                            return diffDays <= 30;
+                          }
+                          return true;
+                        });
+                      }
+
+                      if (list.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={5} className="text-center py-8 text-slate-400 font-semibold">
+                              Chưa có phiếu kiểm kê nào trong khoảng thời gian đã chọn.
+                            </td>
+                          </tr>
+                        );
+                      }
+
                       return list.map((item: any) => {
                         const isDraft = item.status === "draft" || item.status === "pending";
                         const ticketCode = item.ticketCode || item.ticketName || `PKK${item.id.toString().padStart(6, '0')}`;
@@ -3483,26 +3473,33 @@ export const InventoryControl: React.FC = () => {
                               )}
                             </td>
                             <td className="px-5 py-3.5 text-center text-slate-600 font-semibold">{dateStr}</td>
-                            <td className="px-5 py-3.5 text-center text-slate-700 font-bold">{creatorStr}</td>
                             <td className="px-5 py-3.5 text-center">
                               <div className="flex items-center justify-center gap-3">
                                 {isDraft && (
                                   <>
                                     <button
                                       onClick={async () => {
-                                        if (!window.confirm("Số lượng của phiếu excel sẽ đồng bộ vào trong dữ liệu kho với số lượng hao hụt trong excel bạn chắc chứ?")) {
-                                          return;
-                                        }
+                                         if (!window.confirm("Số lượng của phiếu kiểm kê sẽ đồng bộ vào trong dữ liệu kho với số lượng kiểm đếm thực tế, tiền thừa hoặc hụt sẽ được cộng hoặc trừ với giá nhập gần nhất. Bạn chắc chứ?")) {
+                                           return;
+                                         }
 
-                                        try {
-                                          const records = (item.items || []).map((it: any) => ({
-                                            ingredient_id: Number(it.ingredientId),
-                                            actual_stock: Number(it.actualStock ?? it.stock ?? 0)
-                                          }));
+                                         try {
+                                           const records = (item.items || []).map((it: any) => ({
+                                             ingredient_id: Number(it.ingredientId),
+                                             actual_stock: Number(it.actualStock ?? it.stock ?? 0)
+                                           }));
 
-                                          if (records.length > 0) {
-                                            await submitStockCheckApi(records);
-                                          }
+                                           // Chỉ lọc các mặt hàng thực sự có chênh lệch để điều chỉnh kho
+                                           const changedRecords = records.filter((r: any) => {
+                                             const matchIng = reduxIngredients.find((ing: any) => Number(ing.id) === r.ingredient_id);
+                                             if (!matchIng) return true;
+                                             const currentStock = Number(matchIng.stock ?? 0);
+                                             return Math.abs(r.actual_stock - currentStock) > 0.0001;
+                                           });
+
+                                           if (changedRecords.length > 0) {
+                                             await submitStockCheckApi(changedRecords);
+                                           }
 
                                           // Move draft to history
                                           const drafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
@@ -3516,7 +3513,12 @@ export const InventoryControl: React.FC = () => {
                                           const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
                                           localStorage.setItem("inventory_history", JSON.stringify([completed, ...history]));
 
-                                          toast.success("Đã đồng bộ dữ liệu kho và cân bằng kho thành công!");
+                                           if (changedRecords.length > 0) {
+                                             toast.success(`Đã đồng bộ dữ liệu kho và cân bằng ${changedRecords.length} mặt hàng có chênh lệch!`);
+                                           } else {
+                                             toast.success("Đã hoàn thành kiểm kê kho! Số liệu 100% trùng khớp, không thay đổi tồn kho.");
+                                           }
+                                          setAuditRefreshTrigger(prev => prev + 1);
                                           getIngredientsApi().then(setReduxIngredients).catch(console.error);
 
                                           // Show print modal with exact columns as Image 3
@@ -3544,10 +3546,12 @@ export const InventoryControl: React.FC = () => {
                                     <button
                                       onClick={() => {
                                         if (window.confirm("Xóa phiếu kiểm kê này?")) {
-                                          const existing = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
-                                          localStorage.setItem("inventory_drafts", JSON.stringify(existing.filter((d: any) => d.id !== item.id)));
-                                          toast.success("Đã xóa phiếu nháp");
-                                          window.dispatchEvent(new Event('storage'));
+                                          const existingDrafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+                                          const existingHistory = JSON.parse(localStorage.getItem("inventory_history") || "[]");
+                                          localStorage.setItem("inventory_drafts", JSON.stringify(existingDrafts.filter((d: any) => String(d.id) !== String(item.id))));
+                                          localStorage.setItem("inventory_history", JSON.stringify(existingHistory.filter((h: any) => String(h.id) !== String(item.id))));
+                                          toast.success("Đã xóa phiếu kiểm kê thành công!");
+                                          setAuditRefreshTrigger(prev => prev + 1);
                                         }
                                       }}
                                       className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
@@ -3557,6 +3561,27 @@ export const InventoryControl: React.FC = () => {
                                     </button>
                                   </>
                                 )}
+                                 {!isDraft && (
+                                   <button
+                                     onClick={() => {
+                                       if (window.confirm(`Xóa phiếu kiểm kê "${ticketCode}"? Phiếu sẽ được lưu vào lịch sử xóa.`)) {
+                                         const existingHistory = JSON.parse(localStorage.getItem("inventory_history") || "[]");
+                                         const deletedHistory = JSON.parse(localStorage.getItem("inventory_deleted") || "[]");
+                                         const toDelete = existingHistory.find((h: any) => String(h.id) === String(item.id));
+                                         if (toDelete) {
+                                           localStorage.setItem("inventory_history", JSON.stringify(existingHistory.filter((h: any) => String(h.id) !== String(item.id))));
+                                           localStorage.setItem("inventory_deleted", JSON.stringify([{ ...toDelete, deletedAt: new Date().toISOString(), status: "deleted" }, ...deletedHistory]));
+                                         }
+                                         toast.success("Đã xóa phiếu kiểm kê (lịch sử xóa vẫn được lưu)!");
+                                         setAuditRefreshTrigger(prev => prev + 1);
+                                       }
+                                     }}
+                                     className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                     title="Xóa phiếu (xóa mềm)"
+                                   >
+                                     <Trash2 size={16} />
+                                   </button>
+                                 )}
                                 <button
                                   onClick={() => {
                                     setPrintStocktakeData({
@@ -3590,8 +3615,150 @@ export const InventoryControl: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+            {/* Lịch sử xóa phiếu kiểm kê */}
+            {(() => {
+              const deletedList: any[] = JSON.parse(localStorage.getItem("inventory_deleted") || "[]");
+              if (deletedList.length === 0) return null;
+              const allIds = deletedList.map((d: any) => String(d.id));
+              const allSelected = allIds.length > 0 && allIds.every(id => selectedDeletedIds.includes(id));
+              return (
+                <details className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/40">
+                  <summary className="px-5 py-3 text-xs font-black text-rose-700 uppercase tracking-wider cursor-pointer flex items-center gap-2 select-none">
+                    <Trash2 size={14} /> Lịch sử xóa phiếu kiểm kê ({deletedList.length} phiếu)
+                  </summary>
+                  {/* Toolbar */}
+                  <div className="flex items-center gap-2 px-5 py-2.5 border-b border-rose-200 bg-rose-100/40 flex-wrap">
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-rose-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={() => {
+                          if (allSelected) {
+                            setSelectedDeletedIds([]);
+                          } else {
+                            setSelectedDeletedIds(allIds);
+                          }
+                        }}
+                        className="accent-rose-600 w-3.5 h-3.5"
+                      />
+                      Chọn tất cả
+                    </label>
+                    {selectedDeletedIds.length > 0 && (
+                      <button
+                        onClick={() => {
+                          if (!window.confirm(`Xóa vĩnh viễn ${selectedDeletedIds.length} phiếu đã chọn? Không thể khôi phục!`)) return;
+                          const existing = JSON.parse(localStorage.getItem("inventory_deleted") || "[]");
+                          localStorage.setItem("inventory_deleted", JSON.stringify(existing.filter((h: any) => !selectedDeletedIds.includes(String(h.id)))));
+                          setSelectedDeletedIds([]);
+                          toast.success(`Đã xóa vĩnh viễn ${selectedDeletedIds.length} phiếu!`);
+                          setAuditRefreshTrigger(prev => prev + 1);
+                        }}
+                        className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-rose-600 text-white hover:bg-rose-700 transition-colors cursor-pointer"
+                      >
+                        Xóa vĩnh viễn ({selectedDeletedIds.length})
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (!window.confirm(`Xóa vĩnh viễn TẤT CẢ ${deletedList.length} phiếu trong lịch sử? Không thể khôi phục!`)) return;
+                        localStorage.setItem("inventory_deleted", "[]");
+                        setSelectedDeletedIds([]);
+                        toast.success("Đã xóa sạch lịch sử xóa phiếu kiểm kê!");
+                        setAuditRefreshTrigger(prev => prev + 1);
+                      }}
+                      className="ml-auto text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-200 text-slate-700 hover:bg-rose-100 hover:text-rose-700 transition-colors cursor-pointer"
+                    >
+                      Xóa tất cả
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-rose-200 text-xs">
+                      <thead className="bg-rose-100/60 text-[11px] font-black text-rose-700 uppercase tracking-wider">
+                        <tr>
+                          <th className="px-4 py-3 text-center w-8"></th>
+                          <th className="px-5 py-3 text-left">Mã phiếu</th>
+                          <th className="px-5 py-3 text-center">SL hàng</th>
+                          <th className="px-5 py-3 text-center">Ngày tạo</th>
+                          <th className="px-5 py-3 text-center">Ngày xóa</th>
+                          <th className="px-5 py-3 text-center">Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-rose-100">
+                        {deletedList.map((d: any) => {
+                          const code = d.ticketCode || d.ticketName || `PKK${String(d.id).padStart(6, '0')}`;
+                          const createdDate = d.date ? (new Date(d.date).toString() !== "Invalid Date" ? new Date(d.date).toLocaleDateString('vi-VN') : d.date) : "—";
+                          const deletedDate = d.deletedAt ? new Date(d.deletedAt).toLocaleString('vi-VN') : "—";
+                          const isChecked = selectedDeletedIds.includes(String(d.id));
+                          return (
+                            <tr key={d.id} className={`hover:bg-rose-50 transition-colors ${isChecked ? 'bg-rose-100/60' : ''}`}>
+                              <td className="px-4 py-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    setSelectedDeletedIds(prev =>
+                                      isChecked ? prev.filter(x => x !== String(d.id)) : [...prev, String(d.id)]
+                                    );
+                                  }}
+                                  className="accent-rose-600 w-3.5 h-3.5"
+                                />
+                              </td>
+                              <td className="px-5 py-3 font-extrabold text-rose-700">{code}</td>
+                              <td className="px-5 py-3 text-center text-slate-700 font-bold">{d.items ? d.items.length : 0}</td>
+                              <td className="px-5 py-3 text-center text-slate-600">{createdDate}</td>
+                              <td className="px-5 py-3 text-center text-rose-600 font-semibold">{deletedDate}</td>
+                              <td className="px-5 py-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      const deletedHistory = JSON.parse(localStorage.getItem("inventory_deleted") || "[]");
+                                      const existingHistory = JSON.parse(localStorage.getItem("inventory_history") || "[]");
+                                      const toRestore = deletedHistory.find((h: any) => String(h.id) === String(d.id));
+                                      if (toRestore) {
+                                        const restored = { ...toRestore, status: "completed" };
+                                        delete restored.deletedAt;
+                                        localStorage.setItem("inventory_deleted", JSON.stringify(deletedHistory.filter((h: any) => String(h.id) !== String(d.id))));
+                                        localStorage.setItem("inventory_history", JSON.stringify([restored, ...existingHistory]));
+                                        setSelectedDeletedIds(prev => prev.filter(x => x !== String(d.id)));
+                                        toast.success(`Đã khôi phục phiếu ${code}!`);
+                                        setAuditRefreshTrigger(prev => prev + 1);
+                                      }
+                                    }}
+                                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors cursor-pointer"
+                                    title="Khôi phục phiếu"
+                                  >
+                                    Khôi phục
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (!window.confirm(`Xóa vĩnh viễn phiếu "${code}"? Không thể khôi phục!`)) return;
+                                      const existing = JSON.parse(localStorage.getItem("inventory_deleted") || "[]");
+                                      localStorage.setItem("inventory_deleted", JSON.stringify(existing.filter((h: any) => String(h.id) !== String(d.id))));
+                                      setSelectedDeletedIds(prev => prev.filter(x => x !== String(d.id)));
+                                      toast.success(`Đã xóa vĩnh viễn phiếu ${code}!`);
+                                      setAuditRefreshTrigger(prev => prev + 1);
+                                    }}
+                                    className="p-1 text-rose-400 hover:text-rose-700 transition-colors cursor-pointer"
+                                    title="Xóa vĩnh viễn"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              );
+            })()}
+
           </div>
         )}
+
 
         {/* Tab 5: Hạn sử dụng */}
         {activeTab === "expiry" && (
