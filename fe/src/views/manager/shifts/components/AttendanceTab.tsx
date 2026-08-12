@@ -31,25 +31,11 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
   }, []);
 
   // Lọc lịch sử chấm công
-  /** Creates a YYYY-MM-DD key in the restaurant's local timezone. */
-  const getVietnamDateKey = (value: Date): string => {
-    const dateParts = new Intl.DateTimeFormat("en", {
-      timeZone: "Asia/Ho_Chi_Minh",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(value);
-    const getPart = (type: Intl.DateTimeFormatPartTypes): string => dateParts.find((part) => part.type === type)?.value ?? "";
-    return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
-  };
-
   /** Returns one current clock-in record for each employee. */
   const getCurrentAttendance = (): Attendance[] => {
-    const today = getVietnamDateKey(new Date());
     const currentEmployeeIds = new Set<number>();
     return attendance.filter((record) => {
-      const recordDate = getVietnamDateKey(new Date(record.clock_in));
-      if (record.clock_out || recordDate !== today || currentEmployeeIds.has(record.employee_id)) return false;
+      if (record.clock_out || currentEmployeeIds.has(record.employee_id)) return false;
       currentEmployeeIds.add(record.employee_id);
       return true;
     });

@@ -39,6 +39,8 @@ import crmRoutes from "./routes/crm.routes";
 import systemSettingsRoutes from "./routes/system-settings.routes";
 import scheduleRoutes from "./routes/schedule.routes";
 import { ensureScheduleSchema } from "./repositories/schedule.repository";
+import managerDashboardRoutes from './routes/managerDashboardRoutes';
+
  
 const app = express();
 const httpServer = http.createServer(app);
@@ -132,6 +134,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/v1/manager", managerDashboardRoutes);
 // API KDS: nhà bếp
 app.use("/api/kds", kdsRoutes);
 app.use("/api/tables", tableRoutes);

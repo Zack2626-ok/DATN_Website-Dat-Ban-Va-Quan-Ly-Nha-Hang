@@ -143,3 +143,8 @@ export const updateBookingStatus = async (
 export const deleteBooking = async (id: number): Promise<void> => {
   await api.delete(`/v1/bookings/${id}`);
 };
+
+export const assignBookingApi = async (id: number, payload: any): Promise<any> => {
+  const response = await api.post(`/v1/bookings/${id}/assign`, payload);
+  return response.data.data;
+};

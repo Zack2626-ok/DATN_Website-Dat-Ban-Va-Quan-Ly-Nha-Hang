@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { Calendar, CalendarDays, UserCheck } from "lucide-react";
+import { io } from "socket.io-client";
 import type { Attendance, ShiftEmployee } from "../../../interfaces/shift.interface";
 import * as shiftService from "../../../services/shiftService";
 import { AttendanceTab } from "./components/AttendanceTab";
@@ -58,8 +59,17 @@ export const ShiftManagement: React.FC = () => {
     void fetchData();
     const pollId = window.setInterval(() => {
       void refreshAttendance();
-    }, 5000);
-    return () => window.clearInterval(pollId);
+    }, 3000);
+
+    const socket = io(import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000");
+    socket.on("system:attendance_changed", () => {
+      void refreshAttendance();
+    });
+
+    return () => {
+      window.clearInterval(pollId);
+      socket.disconnect();
+    };
   }, []);
 
   // Handler: Check-in chấm công
