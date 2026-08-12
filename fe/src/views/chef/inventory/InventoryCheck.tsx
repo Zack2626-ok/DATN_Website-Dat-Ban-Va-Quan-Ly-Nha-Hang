@@ -801,7 +801,7 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
         </thead>
         <tbody>
           {checkItems.map((item, idx) => {
-            const diff = Number(item.actualStock) - Number(item.systemStock);
+            const diff = Number((Number(item.actualStock) - Number(item.systemStock)).toFixed(3));
             return (
               <tr key={item.ingredientId}>
                 <td className="border border-black p-1.5 text-center">{idx + 1}</td>
@@ -809,7 +809,7 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                 <td className="border border-black p-1.5">{item.ingredientName}</td>
                 <td className="border border-black p-1.5 text-right">{item.systemStock}</td>
                 <td className="border border-black p-1.5 text-right font-bold">{item.actualStock}</td>
-                <td className="border border-black p-1.5 text-right">{diff}</td>
+                <td className="border border-black p-1.5 text-right">{diff > 0 ? `+${diff}` : diff}</td>
               </tr>
             )
           })}

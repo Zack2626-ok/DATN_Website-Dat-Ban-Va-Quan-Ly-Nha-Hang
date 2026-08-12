@@ -12,7 +12,13 @@ export const getAllInventory = async (_req: Request, res: Response): Promise<voi
         name as itemName,
         current_stock as stock, 
         unit, 
-        min_stock as threshold 
+        min_stock as threshold,
+        COALESCE(
+          (SELECT SUM(unit_cost * remaining_quantity) / NULLIF(SUM(remaining_quantity), 0)
+           FROM stock_in WHERE ingredient_id = ingredients.id AND remaining_quantity > 0 AND unit_cost > 0),
+          (SELECT unit_cost FROM stock_in WHERE ingredient_id = ingredients.id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1),
+          0
+        ) AS avgCost
       FROM ingredients 
       WHERE is_deleted = 0
     `);
@@ -316,9 +322,10 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       }
 
       // Check duplicate batch code in recent stock_in entries (within 30 days)
+      // Bỏ qua các record [LƯU TẠM] và [HOÀN THÀNH] vì chúng sẽ bị xóa/thay thế khi nhập kho chính thức
       if (batchNo && !isDraft) {
         const existingBatch = await db.query<any[]>(
-          `SELECT id, created_at FROM stock_in WHERE batch_code = ? AND ingredient_id = ? AND note NOT LIKE '%[LƯU TẠM]%' AND created_at >= NOW() - INTERVAL 30 DAY`,
+          `SELECT id, created_at FROM stock_in WHERE batch_code = ? AND ingredient_id = ? AND note NOT LIKE '%[LƯU TẠM]%' AND note NOT LIKE '%[HOÀN THÀNH]%' AND created_at >= NOW() - INTERVAL 30 DAY`,
           [batchNo, ingredientIdNum]
         );
         if (existingBatch && existingBatch.length > 0) {
@@ -328,11 +335,13 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       }
 
       // Check duplicate import today (same ingredient & supplier within today)
+      // Bỏ qua [HOÀN THÀNH] vì đó là phiếu chờ nhập kho
       if (ingredientIdNum && supplierId && !isDraft) {
         const currentTicketCode = (reasonOrSupplier || "").match(/\[SLIP:([^\]]+)\]/)?.[1];
         const todayDup = await db.query<any[]>(
           `SELECT id, note, created_at FROM stock_in 
-           WHERE ingredient_id = ? AND supplier_id = ? AND created_at >= CURDATE()`,
+           WHERE ingredient_id = ? AND supplier_id = ? AND created_at >= CURDATE()
+             AND note NOT LIKE '%[HOÀN THÀNH]%'`,
           [ingredientIdNum, supplierId]
         );
 

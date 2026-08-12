@@ -1369,7 +1369,7 @@ export const InventoryControl: React.FC = () => {
                   <th className="border border-slate-900 px-3 py-2 text-center w-24">Tồn trên máy</th>
                   <th className="border border-slate-900 px-3 py-2 text-center w-24">Thực tế đếm</th>
                   <th className="border border-slate-900 px-3 py-2 text-center w-32">Số lượng chênh lệch</th>
-                  <th className="border border-slate-900 px-3 py-2 text-right w-28">Giá nhập gần nhất</th>
+                  <th className="border border-slate-900 px-3 py-2 text-right w-28">Đơn giá BQ</th>
                   <th className="border border-slate-900 px-3 py-2 text-right w-36">Giá trị chênh lệch (VND)</th>
                 </tr>
               </thead>
@@ -1381,9 +1381,9 @@ export const InventoryControl: React.FC = () => {
                       const ingObj = reduxIngredients.find((i: any) => Number(i.id) === Number(it.ingredientId) || i.name === (it.ingredientName || it.name));
                       const sys = Number(it.systemStock ?? it.system ?? 0);
                       const act = Number(it.actualStock ?? it.actual ?? 0);
-                      const diff = act - sys;
-                      const unitCost = Number(it.unitCost || ingObj?.unitCost || ingObj?.cost || 200000);
-                      const diffVal = diff * unitCost;
+                      const diff = Number((act - sys).toFixed(3));
+                      const unitCost = Number(it.avgCost || it.unitCost || ingObj?.avgCost || ingObj?.unitCost || ingObj?.cost || 0);
+                      const diffVal = Math.round(diff * unitCost);
                       totalLossSum += diffVal;
 
                       return (
@@ -1401,7 +1401,7 @@ export const InventoryControl: React.FC = () => {
                             {diff === 0 ? "0" : `${diff > 0 ? "+" : ""}${diff} ${it.unit || ingObj?.unit || "kg"}`}
                           </td>
                           <td className="border border-slate-900 px-3 py-2 text-right font-medium text-slate-700">
-                            {unitCost.toLocaleString("vi-VN")} đ
+                            {Math.round(unitCost).toLocaleString("vi-VN")} đ
                           </td>
                           <td className="border border-slate-900 px-3 py-2 text-right font-extrabold text-slate-900">
                             {diff === 0 ? "0 đ" : diff > 0 ? (
@@ -3857,7 +3857,7 @@ export const InventoryControl: React.FC = () => {
                       <th scope="col" className="px-5 py-3 text-left">Mã phiếu / Lô</th>
                       <th scope="col" className="px-5 py-3 text-left">Nguyên liệu</th>
                       <th scope="col" className="px-5 py-3 text-center">Số lượng tiêu hủy</th>
-                      <th scope="col" className="px-5 py-3 text-right">Giá nhập gần nhất</th>
+                      <th scope="col" className="px-5 py-3 text-right">Đơn giá BQ</th>
                       <th scope="col" className="px-5 py-3 text-right">Tổng thiệt hại (VND)</th>
                       <th scope="col" className="px-5 py-3 text-left">Lý do & Ghi chú</th>
                       <th scope="col" className="px-5 py-3 text-left">Thời gian tiêu hủy</th>
