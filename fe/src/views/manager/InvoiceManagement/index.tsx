@@ -131,6 +131,12 @@ const CATEGORY_DEFAULT_PAYEES: Record<string, string> = {
   "Khác": "Cửa hàng tạp hóa Cô Ba"
 };
 
+const formatNumberWithDots = (val: string | number): string => {
+  const num = String(val).replace(/\D/g, "");
+  if (!num) return "";
+  return Number(num).toLocaleString("vi-VN");
+};
+
 /**
  * InvoiceManagement Component
  * Displays Customer Payment History and Operational Expenses (gas, electricity, water, internet, taxes, maintenance, etc.)
@@ -762,7 +768,7 @@ export const InvoiceManagement: React.FC = () => {
       return;
     }
 
-    const amountVal = Number(expenseForm.amount);
+    const amountVal = Number(expenseForm.amount.replace(/\D/g, ""));
     if (isNaN(amountVal) || amountVal <= 0) {
       toast.error("Số tiền chi phí phải lớn hơn 0");
       return;
@@ -977,6 +983,52 @@ export const InvoiceManagement: React.FC = () => {
         const ws = wb.Sheets[wsname];
         const data: any[] = XLSX.utils.sheet_to_json(ws);
 
+        // First pass: Validate duplicate expense IDs
+        const existingIds = new Set(expenses.map(exp => exp.id.toLowerCase()));
+        const excelSeenIds = new Set<string>();
+        const duplicateIdsInExcel = new Set<string>();
+        const duplicateIdsWithSystem = new Set<string>();
+
+        for (const row of data) {
+          const amount = parseExcelNumber(row["Số Tiền"] || row["Số tiền"] || row["amount"] || 0);
+          if (amount <= 0) continue; // Skip invalid rows first
+
+          let expenseId = String(row["Mã Chi Phí"] || row["Mã chi phí"] || row["mã chi phí"] || row["id"] || "").trim();
+          if (expenseId.startsWith("#")) {
+            expenseId = expenseId.slice(1);
+          }
+
+          if (expenseId) {
+            const lowerId = expenseId.toLowerCase();
+            if (excelSeenIds.has(lowerId)) {
+              duplicateIdsInExcel.add(expenseId);
+            } else {
+              excelSeenIds.add(lowerId);
+            }
+
+            if (existingIds.has(lowerId)) {
+              duplicateIdsWithSystem.add(expenseId);
+            }
+          }
+        }
+
+        if (duplicateIdsInExcel.size > 0 || duplicateIdsWithSystem.size > 0) {
+          const dupExcelArr = Array.from(duplicateIdsInExcel);
+          const dupSysArr = Array.from(duplicateIdsWithSystem);
+          
+          let errorMsg = "";
+          if (dupExcelArr.length > 0) {
+            errorMsg += `Mã chi phí bị trùng lặp trong file Excel: ${dupExcelArr.map(id => `#${id}`).join(", ")}. `;
+          }
+          if (dupSysArr.length > 0) {
+            errorMsg += `Mã chi phí đã tồn tại trên hệ thống: ${dupSysArr.map(id => `#${id}`).join(", ")}.`;
+          }
+
+          toast.error(errorMsg);
+          if (expenseExcelInputRef.current) expenseExcelInputRef.current.value = "";
+          return;
+        }
+
         const newExpensesList: OperationalExpense[] = [];
         let skippedCount = 0;
 
@@ -1011,8 +1063,16 @@ export const InvoiceManagement: React.FC = () => {
             continue;
           }
 
+          let expenseId = String(row["Mã Chi Phí"] || row["Mã chi phí"] || row["mã chi phí"] || row["id"] || "").trim();
+          if (expenseId.startsWith("#")) {
+            expenseId = expenseId.slice(1);
+          }
+          if (!expenseId) {
+            expenseId = `EXP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
+          }
+
           newExpensesList.push({
-            id: `EXP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
+            id: expenseId,
             category,
             amount,
             date: finalDate,
@@ -1045,7 +1105,7 @@ export const InvoiceManagement: React.FC = () => {
     setExpenseForm({
       id: expense.id,
       category: expense.category,
-      amount: String(expense.amount),
+      amount: formatNumberWithDots(expense.amount),
       date: expense.date,
       note: expense.note || "",
       payee: expense.payee || ""
@@ -2465,15 +2525,20 @@ export const InvoiceManagement: React.FC = () => {
                     type="text"
                     placeholder="Nhập mã chi phí (ví dụ: EXP-194132-0)..."
                     value={expenseForm.id}
+                    disabled={!!editingExpenseId}
                     onChange={(e) => setExpenseForm({ ...expenseForm, id: e.target.value.toUpperCase().replace(/\s+/g, "") })}
-                    className={`w-full px-3 py-2 border rounded-lg outline-none bg-slate-50 focus:bg-white transition-all text-xs font-bold uppercase ${
-                      isDuplicateId
-                        ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 text-red-600"
-                        : "border-slate-200 focus:border-amber-400"
+                    className={`w-full px-3 py-2 border rounded-lg outline-none transition-all text-xs font-bold uppercase ${
+                      editingExpenseId
+                        ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed select-none"
+                        : `bg-slate-50 focus:bg-white ${
+                            isDuplicateId
+                              ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500 text-red-600"
+                              : "border-slate-200 focus:border-amber-400"
+                          }`
                     }`}
                     required
                   />
-                  {isDuplicateId && (
+                  {isDuplicateId && !editingExpenseId && (
                     <p className="text-red-500 text-[10px] font-bold mt-1.5 animate-pulse">
                       ⚠️ Mã chi phí này đã tồn tại trên hệ thống! Vui lòng nhập mã khác.
                     </p>
@@ -2485,7 +2550,12 @@ export const InvoiceManagement: React.FC = () => {
                   <select
                     value={expenseForm.category}
                     onChange={(e) => handleCategoryChangeInForm(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-slate-50 focus:border-amber-400 focus:bg-white transition-all text-xs"
+                    disabled={!!editingExpenseId}
+                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg outline-none transition-all text-xs ${
+                      editingExpenseId
+                        ? "bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                        : "bg-slate-50 focus:border-amber-400 focus:bg-white"
+                    }`}
                   >
                     {EXPENSE_CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -2498,7 +2568,12 @@ export const InvoiceManagement: React.FC = () => {
                   <select
                     value={payeeSelectOption}
                     onChange={(e) => handlePayeeOptionChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-slate-50 focus:border-amber-400 focus:bg-white transition-all text-xs mb-2"
+                    disabled={!!editingExpenseId}
+                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg outline-none transition-all text-xs mb-2 ${
+                      editingExpenseId
+                        ? "bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                        : "bg-slate-50 focus:border-amber-400 focus:bg-white"
+                    }`}
                   >
                     {formSuppliers.map((sup) => (
                       <option key={sup} value={sup}>{sup}</option>
@@ -2513,7 +2588,12 @@ export const InvoiceManagement: React.FC = () => {
                         placeholder="Nhập tên người nhận hoặc đơn vị cung cấp khác..."
                         value={customPayeeText}
                         onChange={(e) => handleCustomPayeeChange(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-slate-50 focus:border-amber-400 focus:bg-white transition-all text-xs"
+                        disabled={!!editingExpenseId}
+                        className={`w-full px-3 py-2 border border-slate-200 rounded-lg outline-none transition-all text-xs ${
+                          editingExpenseId
+                            ? "bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                            : "bg-slate-50 focus:border-amber-400 focus:bg-white"
+                        }`}
                         required
                       />
                     </div>
@@ -2523,13 +2603,12 @@ export const InvoiceManagement: React.FC = () => {
                 <div>
                   <label className="block text-slate-700 font-bold mb-1.5">Số tiền chi phí (VNĐ):</label>
                   <input
-                    type="number"
+                    type="text"
                     placeholder="Nhập số tiền..."
                     value={expenseForm.amount}
-                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: formatNumberWithDots(e.target.value) })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-slate-50 focus:border-amber-400 focus:bg-white transition-all text-xs"
                     required
-                    min={1}
                   />
                 </div>
 
@@ -2539,7 +2618,12 @@ export const InvoiceManagement: React.FC = () => {
                     type="datetime-local"
                     value={expenseForm.date}
                     onChange={(e) => handleDateChangeInForm(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-slate-50 focus:border-amber-400 focus:bg-white transition-all text-xs"
+                    disabled={!!editingExpenseId}
+                    className={`w-full px-3 py-2 border border-slate-200 rounded-lg outline-none transition-all text-xs ${
+                      editingExpenseId
+                        ? "bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                        : "bg-slate-50 focus:border-amber-400 focus:bg-white"
+                    }`}
                     required
                   />
                   {["Điện", "Nước", "Internet"].includes(expenseForm.category) && (

@@ -182,7 +182,24 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       });
     }
 
-    invoices.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    invoices.sort((a: any, b: any) => {
+      const getPriority = (inv: any) => {
+        if (inv.status === "pending_payment") return 1;
+        if (inv.invoiceStatus === "unpaid") return 2;
+        if (inv.invoiceStatus === "paid") return 3;
+        return 4;
+      };
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+
+      // Chưa thanh toán/Chờ thanh toán thì đến trước được thanh toán trước (createdAt tăng dần)
+      // Đã thanh toán/Đã hủy thì hiển thị hóa đơn mới nhất lên đầu (createdAt giảm dần)
+      if (pA === 1 || pA === 2) {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
     sendSuccess(res, invoices, "Lấy danh sách hóa đơn thành công");
   } catch (error) {

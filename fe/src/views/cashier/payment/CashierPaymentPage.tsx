@@ -20,7 +20,8 @@ import { PaymentModal } from "./components/PaymentModal";
 import { SplitBillModal } from "./components/SplitBillModal";
 import { MergeBillModal } from "./components/MergeBillModal";
 import { RefundModal } from "./components/RefundModal";
-import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
+import { CheckCircle2, X, AlertTriangle, Phone, RefreshCw } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 import { printCashierInvoice } from "../../../utils/printBill";
 
@@ -106,22 +107,24 @@ export const CashierPaymentPage: React.FC = () => {
         const pA = a.status === "pending_payment" ? 1 : 2;
         const pB = b.status === "pending_payment" ? 1 : 2;
         if (pA !== pB) return pA - pB;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        // Đến trước thanh toán trước (createdAt nhỏ hơn lên trước)
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       });
   }, [invoices]);
 
   const filteredInvoices = useMemo(() => {
     let result = [...invoices];
-    if (statusFilter === "pending") {
-      result = result.filter((inv) => inv.status === "pending_payment");
+    if (statusFilter === "unpaid") {
+      result = result.filter(
+        (inv) =>
+          (inv.invoiceStatus === "unpaid" || inv.invoiceStatus === "pending") &&
+          inv.totalAmount > 0
+      );
+    } else if (statusFilter === "paid") {
+      result = result.filter((inv) => inv.invoiceStatus === "paid");
     } else if (statusFilter !== "all") {
       result = result.filter((inv) => inv.invoiceStatus === statusFilter);
     }
-    if (statusFilter === "unpaid") {
-      result = result.filter((inv) => inv.totalAmount > 0);
-    }
-    // Lọc bỏ hóa đơn đã thanh toán khỏi màn hình Active
-    result = result.filter((inv) => inv.invoiceStatus !== "paid");
     // Loại bỏ "Mang về" theo yêu cầu người dùng
     result = result.filter((inv) => inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName));
     if (searchQuery) {
@@ -150,6 +153,12 @@ export const CashierPaymentPage: React.FC = () => {
       const pA = getPriority(a);
       const pB = getPriority(b);
       if (pA !== pB) return pA - pB;
+      
+      // Chưa thanh toán/Chờ thanh toán thì đến trước được thanh toán trước (createdAt tăng dần)
+      // Đã thanh toán/Đã hủy thì hiển thị hóa đơn mới nhất lên đầu (createdAt giảm dần)
+      if (pA === 1 || pA === 2) {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
@@ -314,13 +323,22 @@ export const CashierPaymentPage: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              dispatch(fetchInvoices());
-              dispatch(fetchTables());
-              dispatch(fetchOrders());
+            onClick={async () => {
+              try {
+                await Promise.all([
+                  dispatch(fetchInvoices()).unwrap(),
+                  dispatch(fetchTables()).unwrap(),
+                  dispatch(fetchOrders()).unwrap(),
+                ]);
+                toast.success("Đã làm mới dữ liệu mới nhất!");
+              } catch {
+                toast.error("Không thể làm mới dữ liệu!");
+              }
             }}
-            className="px-3 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white hover:bg-slate-50 cursor-pointer transition-all"
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold border border-slate-200 rounded-xl bg-white hover:bg-slate-50 cursor-pointer transition-all text-slate-700 shadow-2xs hover:shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Làm mới
           </button>
         </div>
