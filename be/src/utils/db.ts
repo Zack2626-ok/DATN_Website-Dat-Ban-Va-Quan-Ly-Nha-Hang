@@ -563,8 +563,26 @@ const runSchemaMigrations = async (): Promise<void> => {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'guest_count'`,
     );
     if (guestCountCols.length === 0) {
-      await query(`ALTER TABLE orders ADD COLUMN guest_count INT DEFAULT NULL AFTER guest_phone`);
+      await query(`ALTER TABLE orders ADD COLUMN guest_count INT DEFAULT NULL`).catch(() => {});
       console.log("✅ Migration: added orders.guest_count");
+    }
+
+    const guestNameCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'guest_name'`,
+    );
+    if (guestNameCols.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN guest_name VARCHAR(100) DEFAULT NULL`).catch(() => {});
+      console.log("✅ Migration: added orders.guest_name");
+    }
+
+    const guestPhoneCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'guest_phone'`,
+    );
+    if (guestPhoneCols.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN guest_phone VARCHAR(20) DEFAULT NULL`).catch(() => {});
+      console.log("✅ Migration: added orders.guest_phone");
     }
 
     const orderBookingIdColumn = await query<SchemaMetadataRow[]>(
@@ -605,10 +623,10 @@ const runSchemaMigrations = async (): Promise<void> => {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tables' AND COLUMN_NAME = 'merged_into_table_id'`,
     );
     if (mergedIntoTableColumn.length === 0) {
-      await query(`ALTER TABLE tables ADD COLUMN merged_into_table_id INT NULL AFTER maintenance_note`);
-      await query(`ALTER TABLE tables ADD INDEX idx_tables_merged_into (merged_into_table_id)`);
+      await query(`ALTER TABLE tables ADD COLUMN merged_into_table_id INT NULL`).catch(() => {});
+      await query(`ALTER TABLE tables ADD INDEX idx_tables_merged_into (merged_into_table_id)`).catch(() => {});
       await query(`ALTER TABLE tables ADD CONSTRAINT fk_tables_merged_into
-        FOREIGN KEY (merged_into_table_id) REFERENCES tables(id) ON DELETE SET NULL`);
+        FOREIGN KEY (merged_into_table_id) REFERENCES tables(id) ON DELETE SET NULL`).catch(() => {});
       console.log("Migration: added tables.merged_into_table_id");
     }
 
@@ -617,10 +635,10 @@ const runSchemaMigrations = async (): Promise<void> => {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'merged_into_order_id'`,
     );
     if (mergedIntoOrderColumn.length === 0) {
-      await query(`ALTER TABLE orders ADD COLUMN merged_into_order_id INT NULL AFTER closed_at`);
-      await query(`ALTER TABLE orders ADD INDEX idx_orders_merged_into (merged_into_order_id)`);
+      await query(`ALTER TABLE orders ADD COLUMN merged_into_order_id INT NULL`).catch(() => {});
+      await query(`ALTER TABLE orders ADD INDEX idx_orders_merged_into (merged_into_order_id)`).catch(() => {});
       await query(`ALTER TABLE orders ADD CONSTRAINT fk_orders_merged_into
-        FOREIGN KEY (merged_into_order_id) REFERENCES orders(id) ON DELETE SET NULL`);
+        FOREIGN KEY (merged_into_order_id) REFERENCES orders(id) ON DELETE SET NULL`).catch(() => {});
       console.log("Migration: added orders.merged_into_order_id");
     }
 
@@ -877,6 +895,20 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: created booking_menu_items table");
     }
 
+    // Migration: Tạo bảng booking_reviews để lưu đánh giá phản hồi nếu chưa có
+    await query(`
+      CREATE TABLE IF NOT EXISTS booking_reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        booking_id INT NOT NULL UNIQUE,
+        customer_id INT DEFAULT NULL,
+        rating TINYINT NOT NULL DEFAULT 5,
+        comment TEXT DEFAULT NULL,
+        points_awarded INT NOT NULL DEFAULT 30,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
     // Migration: đảm bảo order_type trong bảng orders và status trong bảng order_items là VARCHAR(50) để hỗ trợ 'pre_order'
     await query("ALTER TABLE orders MODIFY COLUMN order_type VARCHAR(50) NOT NULL DEFAULT 'dine_in'").catch(() => {});
     await query("ALTER TABLE order_items MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'pending'").catch(() => {});
@@ -2891,6 +2923,24 @@ export const createBooking = async (data: any): Promise<any> => {
       }
     }
 
+    // Kiểm tra trùng lịch đặt bàn theo Khách hàng (Cùng SĐT hoặc Customer ID không được đặt trùng giờ)
+    if (data.guest_phone || validCustomerId) {
+      const [customerOverlaps] = await connection.query<any[]>(`
+        SELECT id FROM bookings
+        WHERE (
+          (guest_phone IS NOT NULL AND guest_phone = ?) 
+          ${validCustomerId ? 'OR (customer_id IS NOT NULL AND customer_id = ?)' : ''}
+        )
+        AND status IN ('pending', 'confirmed')
+        AND start_time < ? AND end_time > ?
+        LIMIT 1
+      `, validCustomerId ? [data.guest_phone, validCustomerId, data.end_time, data.start_time] : [data.guest_phone, data.end_time, data.start_time]);
+
+      if (customerOverlaps.length > 0) {
+        throw new Error(`Số điện thoại ${data.guest_phone} đã có một lịch đặt bàn khác trong khoảng thời gian này. Vui lòng chọn khung giờ khác!`);
+      }
+    }
+
     // Validate promotion_id to prevent foreign key constraint failure
     let validPromotionId: number | null = null;
     if (data.promotion_id) {
@@ -3619,25 +3669,60 @@ export const getEmptyTablesForBooking = async (startTime?: string, endTime?: str
   if (startTime && endTime) {
     return getBookingTablesFreeForInterval(startTime, endTime);
   }
+  // Trả về TẤT CẢ bàn đang hoạt động (không chỉ empty) kèm thông tin is_bookable
+  // để frontend hiển thị đúng trạng thái và ngăn chọn bàn đã bị đặt trùng khung giờ
   let sql = `
-    SELECT t.*, a.name AS area_name
+    SELECT t.*, a.name AS area_name,
+      CASE WHEN t.status IN ('serving', 'pending_payment', 'cleaning') THEN 0
+           ELSE 1
+      END AS is_bookable
     FROM tables t
     LEFT JOIN table_areas a ON t.area_id = a.id
-    WHERE t.status = 'empty' AND t.is_deleted = 0
+    WHERE t.is_deleted = 0 AND t.status != 'inactive'
   `;
   const params: any[] = [];
+
   if (startTime) {
-    sql += `
-      AND t.id NOT IN (
-        SELECT table_id FROM bookings 
-        WHERE status IN ('pending', 'confirmed') 
-          AND ? BETWEEN start_time AND end_time
-      )
+    // Tính end_time = start_time + 2 giờ để check overlap
+    sql = `
+      SELECT t.*, a.name AS area_name,
+        CASE
+          WHEN t.status IN ('serving', 'pending_payment', 'cleaning') THEN 0
+          WHEN EXISTS (
+            SELECT 1 FROM bookings b
+            WHERE b.table_id = t.id
+              AND b.status IN ('pending', 'confirmed')
+              AND b.start_time < DATE_ADD(?, INTERVAL 2 HOUR)
+              AND b.end_time > ?
+          ) THEN 0
+          ELSE 1
+        END AS is_bookable,
+        CASE
+          WHEN t.status = 'reserved' THEN 'reserved'
+          WHEN t.status = 'serving' THEN 'serving'
+          WHEN t.status = 'pending_payment' THEN 'pending_payment'
+          WHEN t.status = 'cleaning' THEN 'cleaning'
+          WHEN EXISTS (
+            SELECT 1 FROM bookings b
+            WHERE b.table_id = t.id
+              AND b.status IN ('pending', 'confirmed')
+              AND b.start_time < DATE_ADD(?, INTERVAL 2 HOUR)
+              AND b.end_time > ?
+          ) THEN 'booked'
+          ELSE 'empty'
+        END AS booking_status
+      FROM tables t
+      LEFT JOIN table_areas a ON t.area_id = a.id
+      WHERE t.is_deleted = 0 AND t.status != 'inactive'
+      ORDER BY t.name ASC
     `;
-    params.push(startTime);
+    params.push(startTime, startTime, startTime, startTime);
+    return query(sql, params);
   }
+
   sql += " ORDER BY t.name ASC";
-  return query(sql, params);
+  const rows = await query<any[]>(sql, params);
+  return rows.map((t: any) => ({ ...t, booking_status: t.status }));
 };
 
 
@@ -5859,6 +5944,55 @@ export const getCustomerLoyaltyTransactions = async (customerId: number | string
   return query("SELECT * FROM loyalty_transactions WHERE customer_id = ? ORDER BY created_at DESC", [customerId]);
 };
 
+export const redeemCustomerVoucher = async (customerId: number, voucherId: number): Promise<any> => {
+  const voucherRows = await query<any[]>("SELECT * FROM vouchers WHERE id = ? AND is_active = 1", [voucherId]);
+  if (!voucherRows || voucherRows.length === 0) {
+    throw new Error("Voucher không tồn tại hoặc đã bị khóa!");
+  }
+  const voucher = voucherRows[0];
+  const pointsReq = Number(voucher.points_required || 0);
+
+  if (voucher.expired_at && new Date(voucher.expired_at).getTime() < Date.now()) {
+    throw new Error("Voucher này đã hết hạn sử dụng!");
+  }
+
+  const custRows = await query<any[]>("SELECT * FROM customers WHERE id = ? AND is_deleted = 0", [customerId]);
+  if (!custRows || custRows.length === 0) {
+    throw new Error("Không tìm thấy tài khoản khách hàng!");
+  }
+  const customer = custRows[0];
+  const currentPoints = Number(customer.loyalty_points || 0);
+
+  if (currentPoints < pointsReq) {
+    throw new Error(`Bạn cần có tối thiểu ${pointsReq} điểm để đổi voucher này! (Số điểm hiện tại: ${currentPoints} PTS)`);
+  }
+
+  const newPoints = currentPoints - pointsReq;
+  const getTierLevel = (pts: number) => {
+    if (pts >= 500) return "vip";
+    if (pts >= 300) return "gold";
+    if (pts >= 100) return "silver";
+    return "bronze";
+  };
+  const newLevel = getTierLevel(newPoints);
+
+  await query("UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?", [newPoints, newLevel, customerId]);
+
+  await query(`
+    INSERT INTO loyalty_transactions (customer_id, points, type, note, created_at)
+    VALUES (?, ?, 'redeem', ?, NOW())
+  `, [customerId, pointsReq, `Đổi mã ưu đãi ${voucher.code} (-${pointsReq} PTS)`]);
+
+  await query("UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?", [voucherId]);
+
+  return {
+    voucher_code: voucher.code,
+    points_deducted: pointsReq,
+    remaining_points: newPoints,
+    member_level: newLevel,
+  };
+};
+
 export const getCustomerVouchers = async (): Promise<any[]> => {
   return query("SELECT * FROM vouchers WHERE is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())");
 };
@@ -5964,14 +6098,125 @@ export const getPromotions = async (): Promise<any[]> => {
 };
 
 export const getCustomerBookings = async (customerId: number | string): Promise<any[]> => {
+  // Ensure booking_reviews table exists to prevent SQL error if migration hasn't executed
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS booking_reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        booking_id INT NOT NULL UNIQUE,
+        customer_id INT DEFAULT NULL,
+        rating TINYINT NOT NULL DEFAULT 5,
+        comment TEXT DEFAULT NULL,
+        points_awarded INT NOT NULL DEFAULT 30,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+  } catch (tableErr) {
+    console.warn("Auto-creation of booking_reviews skipped:", (tableErr as Error).message);
+  }
+
+  // Get customer phone to also include bookings placed as guest with the same phone
+  let phone: string | null = null;
+  const custRows = await query<any[]>("SELECT phone FROM customers WHERE id = ? AND is_deleted = 0", [customerId]);
+  if (custRows && custRows.length > 0 && custRows[0].phone) {
+    phone = custRows[0].phone;
+  }
+
   return query(`
-    SELECT b.*, t.name AS table_name, a.name AS area_name
+    SELECT b.*, t.name AS table_name, a.name AS area_name,
+           r.rating AS review_rating, r.comment AS review_comment,
+           IF(r.id IS NOT NULL, 1, 0) AS is_reviewed
     FROM bookings b
     LEFT JOIN tables t ON b.table_id = t.id
     LEFT JOIN table_areas a ON t.area_id = a.id
-    WHERE b.customer_id = ?
+    LEFT JOIN booking_reviews r ON b.id = r.booking_id
+    WHERE b.customer_id = ? ${phone ? "OR (b.customer_id IS NULL AND b.guest_phone = ?)" : ""}
     ORDER BY b.start_time DESC
-  `, [customerId]);
+  `, phone ? [customerId, phone] : [customerId]);
+};
+
+export const createBookingReview = async (data: {
+  booking_id: number;
+  customer_id?: number | null;
+  rating: number;
+  comment?: string;
+}): Promise<any> => {
+  // Ensure booking_reviews table exists
+  await query(`
+    CREATE TABLE IF NOT EXISTS booking_reviews (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      booking_id INT NOT NULL UNIQUE,
+      customer_id INT DEFAULT NULL,
+      rating TINYINT NOT NULL DEFAULT 5,
+      comment TEXT DEFAULT NULL,
+      points_awarded INT NOT NULL DEFAULT 30,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+      FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  // Check booking
+  const bookingRows = await query<any[]>("SELECT * FROM bookings WHERE id = ?", [data.booking_id]);
+  if (!bookingRows || bookingRows.length === 0) {
+    throw new Error("Không tìm thấy thông tin đơn đặt bàn!");
+  }
+  const booking = bookingRows[0];
+  if (booking.status !== "completed") {
+    throw new Error("Chỉ có thể đánh giá bữa ăn cho các đơn đặt bàn đã hoàn thành!");
+  }
+
+  // Check existing review
+  const existingReview = await query<any[]>("SELECT id FROM booking_reviews WHERE booking_id = ?", [data.booking_id]);
+  if (existingReview && existingReview.length > 0) {
+    throw new Error("Đơn đặt bàn này đã được gửi đánh giá trước đó!");
+  }
+
+  const ratingNum = Math.min(5, Math.max(1, Number(data.rating || 5)));
+  const pointsAwarded = 30; // 30 PTS bonus for reviewing
+
+  // Insert review
+  const result = await query(`
+    INSERT INTO booking_reviews (booking_id, customer_id, rating, comment, points_awarded, created_at)
+    VALUES (?, ?, ?, ?, ?, NOW())
+  `, [data.booking_id, data.customer_id || booking.customer_id || null, ratingNum, data.comment || null, pointsAwarded]);
+
+  let newPoints = 0;
+  let memberLevel = "bronze";
+
+  // Award points if customer_id is present
+  const targetCustId = data.customer_id || booking.customer_id;
+  if (targetCustId) {
+    const custRows = await query<any[]>("SELECT loyalty_points FROM customers WHERE id = ? AND is_deleted = 0", [targetCustId]);
+    if (custRows && custRows.length > 0) {
+      const currentPts = Number(custRows[0].loyalty_points || 0);
+      newPoints = currentPts + pointsAwarded;
+      const getTierLevel = (pts: number) => {
+        if (pts >= 500) return "vip";
+        if (pts >= 300) return "gold";
+        if (pts >= 100) return "silver";
+        return "bronze";
+      };
+      memberLevel = getTierLevel(newPoints);
+
+      await query("UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?", [newPoints, memberLevel, targetCustId]);
+
+      await query(`
+        INSERT INTO loyalty_transactions (customer_id, points, type, note, created_at)
+        VALUES (?, ?, 'earn', ?, NOW())
+      `, [targetCustId, pointsAwarded, `Thưởng +30 PTS đánh giá chất lượng bữa ăn (Mã đơn: ${booking.confirmation_code || `#${booking.id}`})`]);
+    }
+  }
+
+  return {
+    review_id: result.insertId,
+    rating: ratingNum,
+    points_awarded: pointsAwarded,
+    new_points: newPoints,
+    member_level: memberLevel,
+  };
 };
 
 export const createCustomerEventContract = async (data: any): Promise<any> => {

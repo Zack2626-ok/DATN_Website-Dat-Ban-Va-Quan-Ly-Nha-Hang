@@ -158,7 +158,7 @@ export const getCustomerVouchers = async (): Promise<CustomerTierRewardVoucher[]
 };
 
 export const redeemVoucher = async (voucherId: number): Promise<{ loyalty_points: number; member_level: Customer["member_level"] }> => {
-  const response = await customerApi.post("/v1/customer/vouchers/redeem", { voucherId });
+  const response = await customerApi.post("/v1/customer/vouchers/redeem", { voucherId, voucher_id: voucherId });
   return response.data.data;
 };
 
@@ -173,6 +173,14 @@ export const getMyBookings = async (): Promise<any[]> => {
   return response.data.data || [];
 };
 
+export const submitBookingReview = async (
+  bookingId: number,
+  data: { rating: number; comment?: string }
+): Promise<any> => {
+  const response = await customerApi.post(`/v1/customer/bookings/${bookingId}/review`, data);
+  return response.data;
+};
+
 export interface AvailableBookingTable {
   id: number;
   name: string;
@@ -184,13 +192,19 @@ export interface AvailableBookingTable {
 /** Gets tables that can serve the requested party during the full booking interval. */
 export const getAvailableTables = async (
   date: string,
-  time: string,
-  guests: number,
+  time?: string,
+  guests?: number,
 ): Promise<AvailableBookingTable[]> => {
-  const response = await customerApi.get("/v1/bookings/available-tables", {
-    params: { date, time, guests },
-  });
-  return response.data.data?.tables || [];
+  if (time !== undefined && guests !== undefined) {
+    const response = await customerApi.get("/v1/bookings/available-tables", {
+      params: { date, time, guests },
+    });
+    return response.data.data?.tables || [];
+  } else {
+    // Fallback for single startTime string
+    const response = await customerApi.get(`/v1/tables/empty?start_time=${encodeURIComponent(date)}`);
+    return response.data.data || [];
+  }
 };
 
 export const createBooking = async (data: {

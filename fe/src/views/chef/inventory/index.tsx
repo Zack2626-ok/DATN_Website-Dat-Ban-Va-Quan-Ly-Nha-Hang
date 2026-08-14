@@ -2227,21 +2227,21 @@ export const InventoryControl: React.FC = () => {
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 bg-white">
                                           {batches.map((b: any) => {
-                                            const label = getExpiryLabel(b.expiry_date);
+                                            const label = getExpiryLabel(b.expiry_date || b.expiryDate);
                                             return (
                                               <tr key={b.id} className="hover:bg-slate-50">
-                                                <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">{b.batch_code}</td>
+                                                <td className="px-4 py-2 font-bold text-slate-800 text-[11px]">{b.batch_code || b.batchNo}</td>
                                                 <td className="px-4 py-2 text-center font-bold text-admin-primary text-[11px]">
-                                                  {Number(b.remaining_quantity).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
+                                                  {Number(b.remaining_quantity ?? b.quantity ?? 0).toFixed(ing.unit === "kg" ? 1 : 0)} {ing.unit}
                                                 </td>
                                                 <td className="px-4 py-2 text-[11px] text-slate-700">
-                                                  {new Date(b.created_at).toLocaleDateString("vi-VN")}
+                                                  {b.created_at ? new Date(b.created_at).toLocaleDateString("vi-VN") : "-"}
                                                 </td>
                                                 <td className="px-4 py-2 text-[11px] text-slate-700 font-medium">
-                                                  {b.supplierName || "-"}
+                                                  {b.supplierName || b.supplier_name || "-"}
                                                 </td>
                                                 <td className="px-4 py-2 text-[11px] text-slate-700">
-                                                  {b.expiry_date ? new Date(b.expiry_date).toLocaleDateString("vi-VN") : "N/A"}
+                                                  {(b.expiry_date || b.expiryDate) ? new Date(b.expiry_date || b.expiryDate).toLocaleDateString("vi-VN") : "N/A"}
                                                 </td>
                                                 <td className="px-4 py-2 text-[11px]">
                                                   {label.status === "expired" ? (
@@ -2253,7 +2253,7 @@ export const InventoryControl: React.FC = () => {
                                                   )}
                                                 </td>
                                                 <td className="px-4 py-2 text-right">
-                                                  {Number(b.remaining_quantity) > 0 && (
+                                                  {Number(b.remaining_quantity ?? b.quantity ?? 0) > 0 && (
                                                     <button
                                                       type="button"
                                                       onClick={(e) => {

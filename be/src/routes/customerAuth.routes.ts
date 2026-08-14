@@ -8,8 +8,10 @@ import {
   getCustomerLoyalty,
   getVouchers,
   redeemCustomerVoucher,
+  redeemVoucher,
   getMyUnusedVouchers,
   getMyBookings,
+  createBookingReviewHandler,
   createEventContract,
   getMyEventContracts,
   cancelMyBooking,
@@ -31,6 +33,7 @@ router.get("/vouchers", authCustomer, getVouchers);
 router.post("/vouchers/redeem", authCustomer, redeemCustomerVoucher);
 router.get("/my-unused-vouchers", authCustomer, getMyUnusedVouchers);
 router.get("/bookings/my", authCustomer, getMyBookings);
+router.post("/bookings/:id/review", authCustomer, createBookingReviewHandler);
 router.patch("/bookings/:id/cancel", authCustomer, cancelMyBooking);
 router.post("/contracts", authCustomer, createEventContract);
 router.get("/contracts/my", authCustomer, getMyEventContracts);

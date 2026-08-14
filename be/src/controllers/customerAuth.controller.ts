@@ -243,7 +243,7 @@ export const redeemCustomerVoucher = async (req: Request, res: Response): Promis
       sendError(res, "Bạn cần đăng nhập.", 401);
       return;
     }
-    const voucherId = Number(req.body.voucherId);
+    const voucherId = Number(req.body.voucherId || req.body.voucher_id);
     if (!Number.isInteger(voucherId) || voucherId <= 0) {
       sendError(res, "Thiếu ID voucher hợp lệ.", 400);
       return;
@@ -281,6 +281,8 @@ export const getMyUnusedVouchers = async (req: Request, res: Response): Promise<
   }
 };
 
+export const redeemVoucher = redeemCustomerVoucher;
+
 export const getMyBookings = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.customer) {
@@ -292,6 +294,29 @@ export const getMyBookings = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     console.error("Error in getMyBookings:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const createBookingReviewHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { rating, comment } = req.body;
+    if (!id) {
+      sendError(res, "Thiếu ID đơn đặt bàn", 400);
+      return;
+    }
+
+    const result = await db.createBookingReview({
+      booking_id: Number(id),
+      customer_id: req.customer ? Number(req.customer.id) : null,
+      rating: Number(rating || 5),
+      comment: comment ? String(comment).trim() : undefined,
+    });
+
+    sendSuccess(res, result, `Gửi đánh giá thành công! Bạn được cộng +${result.points_awarded} PTS thưởng.`, 201);
+  } catch (error) {
+    console.error("Error in createBookingReviewHandler:", error);
+    sendError(res, (error as Error).message, 400);
   }
 };
 

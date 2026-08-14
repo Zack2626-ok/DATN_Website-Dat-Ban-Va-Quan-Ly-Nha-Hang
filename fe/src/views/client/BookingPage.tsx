@@ -47,15 +47,25 @@ export const BookingPage: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
 
-
+  const handlePayDeposit = async () => {
+    if (!createdBooking?.id) return;
+    setPayingDeposit(true);
+    try {
+      const updated = await payBookingDeposit(createdBooking.id);
+      setCreatedBooking(updated);
+      toast.success("🎉 Mô phỏng thanh toán tiền cọc thành công!");
+      setShowPaymentModal(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Không thể thực hiện thanh toán tiền cọc lúc này.");
+    } finally {
+      setPayingDeposit(false);
+    }
+  };
 
   const [form, setForm] = useState({
     date: "",
     time: "",
     guests: "2",
-    tableId: "",
-    tableName: "",
-    areaName: "",
     name: "",
     phone: "",
     email: "",
@@ -70,9 +80,9 @@ export const BookingPage: React.FC = () => {
         const customer = JSON.parse(infoStr) as Customer;
         setForm((prev) => ({
           ...prev,
-          name: customer.name || "",
-          email: customer.email || "",
-          phone: customer.phone || "",
+          name: prev.name || customer.name || "",
+          email: prev.email || customer.email || "",
+          phone: prev.phone || customer.phone || "",
         }));
       } catch (e) {
         console.error("Error parsing customer_info", e);
@@ -116,6 +126,7 @@ export const BookingPage: React.FC = () => {
       toast.error("Vui lòng điền Họ và tên người đặt bàn!");
       return;
     }
+
     const phone = form.phone.trim();
     if (!phone) {
       toast.error("Vui lòng điền Số điện thoại liên hệ!");
@@ -213,27 +224,10 @@ export const BookingPage: React.FC = () => {
       setStep(4);
       toast.success("Đặt bàn thành công!");
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Đặt bàn thất bại. Vui lòng thử lại.");
+      const errMsg: string = err.response?.data?.message || "";
+      toast.error(errMsg || "Đặt bàn thất bại. Vui lòng thử lại.");
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handlePayDeposit = async () => {
-    if (!createdBooking?.id) return;
-    setPayingDeposit(true);
-    try {
-      await payBookingDeposit(createdBooking.id);
-      setCreatedBooking((prev: any) => {
-        if (!prev) return null;
-        return { ...prev, deposit_status: "paid" };
-      });
-      toast.success("Thanh toán tiền cọc thành công!");
-      setShowPaymentModal(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Không thể thực hiện thanh toán lúc này.");
-    } finally {
-      setPayingDeposit(false);
     }
   };
 
@@ -291,13 +285,12 @@ export const BookingPage: React.FC = () => {
           {/* Card Lower Section */}
           <div className="text-left bg-client-bg/50 rounded-2xl p-5 border border-client-accent space-y-3">
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Người đặt:</span> <span className="font-semibold text-client-text">{createdBooking?.guest_name || form.name}</span></div>
-             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
+             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Số lượng khách:</span> <span className="font-semibold text-client-text">{createdBooking?.party_size || form.guests} người</span></div>
              <div className="flex justify-between text-xs">
                <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái đặt:</span> 
                <span className="font-bold text-amber-600">Chờ xác nhận</span>
              </div>
-             
              {/* Deposit Information Box */}
              {createdBooking?.deposit_amount > 0 && (
                <div className="mt-4 pt-3 border-t border-client-accent space-y-3">
@@ -333,7 +326,7 @@ export const BookingPage: React.FC = () => {
           {(createdBooking?.deposit_amount === 0 || createdBooking?.deposit_status === "paid") && (
             <button
               onClick={handlePrintInvoice}
-              className="flex-1 inline-flex items-center justify-center gap-2 py-4 bg-white hover:bg-gray-50 text-gray-700 border border-gray-205 rounded-2xl font-bold text-sm shadow-xs transition-all cursor-pointer"
+              className="flex-1 inline-flex items-center justify-center gap-2 py-4 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-2xl font-bold text-sm shadow-xs transition-all cursor-pointer"
             >
               <Printer size={16} className="text-gray-500" /> In hóa đơn đặt bàn
             </button>
@@ -346,9 +339,6 @@ export const BookingPage: React.FC = () => {
                 date: "",
                 time: "",
                 guests: "2",
-                tableId: "",
-                tableName: "",
-                areaName: "",
                 name: "",
                 phone: "",
                 email: "",
@@ -374,7 +364,7 @@ export const BookingPage: React.FC = () => {
           <div className="py-4 space-y-2 border-b border-dashed border-gray-400">
             <div className="flex justify-between"><span>Khách hàng:</span> <span className="font-bold">{createdBooking?.guest_name || form.name}</span></div>
             <div className="flex justify-between"><span>Số điện thoại:</span> <span>{createdBooking?.guest_phone || form.phone}</span></div>
-            <div className="flex justify-between"><span>Thời gian đến:</span> <span className="font-bold">{form.time} - {new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
+            <div className="flex justify-between"><span>Thời gian đến:</span> <span className="font-bold">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
             <div className="flex justify-between"><span>Số lượng khách:</span> <span>{createdBooking?.party_size || form.guests} người</span></div>
             <div className="flex justify-between"><span>Trạng thái:</span> <span className="font-bold uppercase text-xs">Chờ xác nhận</span></div>
           </div>
@@ -401,15 +391,15 @@ export const BookingPage: React.FC = () => {
                           <div className="font-bold">{item.menu_item_name}</div>
                           {constituents && (
                             <div className="pl-3 text-[10px] text-gray-500 font-medium mt-0.5 leading-relaxed">
-                              {constituents.map((sub, sIdx) => (
+                              {constituents.map((sub: string, sIdx: number) => (
                                 <div key={sIdx}>• {sub}</div>
                               ))}
                             </div>
                           )}
                         </td>
-                        <td className="py-1 text-center">{item.quantity}</td>
+                        <td className="py-1 text-center font-bold">{item.quantity}</td>
                         <td className="py-1 text-right">{Number(item.unit_price).toLocaleString("vi-VN")}đ</td>
-                        <td className="py-1 text-right">{(item.quantity * item.unit_price).toLocaleString("vi-VN")}đ</td>
+                        <td className="py-1 text-right font-bold">{(item.quantity * item.unit_price).toLocaleString("vi-VN")}đ</td>
                       </tr>
                     );
                   })}
@@ -492,7 +482,7 @@ export const BookingPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="w-full py-3 bg-white hover:bg-gray-50 text-gray-500 border border-gray-250 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  className="w-full py-3 bg-white hover:bg-gray-50 text-gray-500 border border-gray-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
                   Đóng / Thanh toán sau
                 </button>
@@ -520,15 +510,15 @@ export const BookingPage: React.FC = () => {
             <Star size={12} className="fill-client-secondary text-client-secondary" /> Table Reservation <Star size={12} className="fill-client-secondary text-client-secondary" />
           </span>
           <h1 className="text-3xl sm:text-4xl font-bold font-display tracking-wide text-white">Đặt Bàn Trực Tuyến</h1>
-          <p className="mt-2 text-xs text-gray-350 max-w-md">
+          <p className="mt-2 text-xs text-gray-300 max-w-md">
             Chống trùng lịch · Đặt chỗ thời gian thực · Trải nghiệm trọn vẹn ẩm thực Restro
           </p>
 
           {/* Progress stepper overlay */}
           <div className="mt-6 flex items-center gap-3 text-[11px] font-bold text-white/60 bg-white/10 px-5 py-2.5 rounded-full border border-white/20">
-            <span className={step >= 1 ? "text-client-secondary font-extrabold" : ""}>1. Điền thông tin đặt bàn</span>
+            <span className="text-client-secondary font-extrabold">1. Điền thông tin đặt bàn</span>
             <span>&rarr;</span>
-            <span className={step >= 4 ? "text-client-secondary font-extrabold" : ""}>2. Xác nhận & Đặt cọc</span>
+            <span className={step >= 4 ? "text-client-secondary font-extrabold" : ""}>2. Xác nhận & Hoàn tất</span>
           </div>
         </div>
       </section>
@@ -632,8 +622,6 @@ export const BookingPage: React.FC = () => {
                   </div>
                 </div>
 
-
-
                 {/* Ghi chú */}
                 <div className="sm:col-span-2 border-t border-[#f0eae1] pt-4">
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Ghi chú (Tùy chọn)</label>
@@ -641,12 +629,12 @@ export const BookingPage: React.FC = () => {
                     value={form.note}
                     onChange={(e) => setField("note", e.target.value)}
                     rows={3}
-                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, đặt trước món ăn, vị trí ngồi..."
+                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, vị trí ngồi..."
                     className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none resize-none transition-all"
                   />
                   {/* Tag ghi chú nhanh */}
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {["Đặt trước món ăn", "Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh"].map((tag) => (
+                    {["Bàn gần cửa sổ", "Không lấy hành", "Có em bé", "VIP", "Không gian yên tĩnh", "Bàn ngoài trời"].map((tag) => (
                       <button
                         key={tag}
                         type="button"
@@ -666,6 +654,7 @@ export const BookingPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+
             </div>
 
             {/* Submit Button */}
@@ -676,7 +665,7 @@ export const BookingPage: React.FC = () => {
             >
               {submitting ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" /> Đang kiểm tra & tạo đơn đặt bàn...
+                  <Loader2 size={18} className="animate-spin" /> Đang tạo đơn đặt bàn...
                 </>
               ) : (
                 <>

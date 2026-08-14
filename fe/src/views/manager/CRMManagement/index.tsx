@@ -87,6 +87,7 @@ export const CRMManagement: React.FC = () => {
     value: 0,
     min_order: 0,
     max_uses: "" as string | number,
+    points_required: 0,
     expired_at: "",
     is_active: 1,
   });
@@ -197,6 +198,7 @@ export const CRMManagement: React.FC = () => {
         value: data.value,
         min_order: data.min_order,
         max_uses: data.max_uses ?? "",
+        points_required: data.points_required ?? 0,
         expired_at: data.expired_at ? new Date(data.expired_at).toISOString().slice(0, 16) : "",
         is_active: data.is_active,
       });
@@ -207,6 +209,7 @@ export const CRMManagement: React.FC = () => {
         value: 0,
         min_order: 0,
         max_uses: "",
+        points_required: 0,
         expired_at: "",
         is_active: 1,
       });
@@ -225,10 +228,14 @@ export const CRMManagement: React.FC = () => {
     }
     try {
       const payload = {
-        ...voucherForm,
-        code: voucherForm.code.toUpperCase(),
+        code: voucherForm.code,
+        type: voucherForm.type,
+        value: voucherForm.value,
+        min_order: voucherForm.min_order,
         max_uses: voucherForm.max_uses !== "" ? Number(voucherForm.max_uses) : null,
+        points_required: Number(voucherForm.points_required || 0),
         expired_at: voucherForm.expired_at ? new Date(voucherForm.expired_at).toISOString() : null,
+        is_active: voucherForm.is_active,
       };
 
       if (voucherModal.mode === "create") {
@@ -788,6 +795,7 @@ export const CRMManagement: React.FC = () => {
                 {customerModal.mode === "create" ? "Thêm khách hàng thành viên" : "Cập nhật khách hàng"}
               </h3>
               <button
+                type="button"
                 onClick={() => setCustomerModal({ isOpen: false, mode: "create" })}
                 className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
               >
@@ -873,6 +881,7 @@ export const CRMManagement: React.FC = () => {
                 {voucherModal.mode === "create" ? "Tạo Voucher Giảm Giá mới" : "Chỉnh sửa Voucher"}
               </h3>
               <button
+                type="button"
                 onClick={() => setVoucherModal({ isOpen: false, mode: "create" })}
                 className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
               >
@@ -921,7 +930,7 @@ export const CRMManagement: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Đơn tối thiểu (đ)</label>
                   <input
@@ -942,6 +951,18 @@ export const CRMManagement: React.FC = () => {
                     value={voucherForm.max_uses}
                     onChange={(e) => setVoucherForm({ ...voucherForm, max_uses: e.target.value })}
                     className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Điểm đổi (PTS)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0 (Miễn phí)"
+                    value={voucherForm.points_required}
+                    onChange={(e) => setVoucherForm({ ...voucherForm, points_required: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20 font-bold font-mono text-blue-700"
                   />
                 </div>
               </div>
@@ -976,9 +997,7 @@ export const CRMManagement: React.FC = () => {
         </div>
       )}
 
-      {/* ============================================================================
-          PROMOTION MODAL
-          ============================================================================ */}
+
 
 
       {/* ============================================================================
