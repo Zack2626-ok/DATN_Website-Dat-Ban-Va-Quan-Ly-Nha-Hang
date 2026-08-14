@@ -242,6 +242,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   const [assignedBookingBanner, setAssignedBookingBanner] = useState<any | null>(null);
   const [prefilledBookingData, setPrefilledBookingData] = useState<{ guestCount: number; customerName: string; customerPhone: string } | null>(null);
+  const [isAssignedBannerDismissed, setIsAssignedBannerDismissed] = useState(false);
 
   // Synchronize location.state for assigned bookings and area auto-switch
   useEffect(() => {
@@ -253,13 +254,35 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         customerName: navState.autoOpenAssignedBooking.guestName || "",
         customerPhone: navState.autoOpenAssignedBooking.guestPhone || "",
       });
+      setIsAssignedBannerDismissed(false);
     }
   }, [location.state]);
 
-  // Auto-switch area tab when targetArea or assignedBookingBanner changes
+  const savedAssignedBooking = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("active_waiter_assigned_booking");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [location.state, assignedBookingBanner]);
+
+  const activeAssignedBooking = !isAssignedBannerDismissed
+    ? (assignedBookingBanner || (location.state as any)?.autoOpenAssignedBooking || savedAssignedBooking)
+    : null;
+
+  const activePrefilledData = activeAssignedBooking
+    ? {
+        guestCount: Number(activeAssignedBooking.partySize || 30),
+        customerName: activeAssignedBooking.guestName || "",
+        customerPhone: activeAssignedBooking.guestPhone || "",
+      }
+    : prefilledBookingData;
+
+  // Auto-switch area tab when targetArea or activeAssignedBooking changes
   useEffect(() => {
     const navState = location.state as any;
-    const targetAreaName = navState?.targetArea || assignedBookingBanner?.assignedArea;
+    const targetAreaName = navState?.targetArea || activeAssignedBooking?.assignedArea;
     if (targetAreaName && areas.length > 0) {
       const match = areas.find(
         (a) => a.name.toLowerCase().trim().includes(targetAreaName.toLowerCase().trim()) ||
@@ -269,7 +292,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         setSelectedAreaId(match.id);
       }
     }
-  }, [location.state, assignedBookingBanner, areas]);
+  }, [location.state, activeAssignedBooking, areas]);
 
   // Auto-select bàn khi quay lại từ trang Gọi món
   useEffect(() => {
@@ -397,6 +420,31 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     };
   }, [fetchData]);
 
+  // Real-time listener for cross-waiter table claiming
+  useEffect(() => {
+    const handleClaimed = (data: any) => {
+      const payload = data?.detail || data;
+      const bId = payload?.bookingId || payload?.id;
+      const currentActive = activeAssignedBooking || savedAssignedBooking;
+      if (bId && currentActive && (String(currentActive.bookingId) === String(bId) || String(currentActive.id) === String(bId))) {
+        localStorage.removeItem("active_waiter_assigned_booking");
+        setIsAssignedBannerDismissed(true);
+        setAssignedBookingBanner(null);
+        setPrefilledBookingData(null);
+        const wName = payload?.waiterName;
+        const tName = payload?.tableName || "bàn chính";
+        if (wName && wName !== userInfo.name) {
+          toast(`ℹ️ ${wName} đã mở ${tName} cho đơn đặt bàn này. Banner phân công đã tự động đóng!`, { icon: "ℹ️", duration: 5000 });
+        }
+      }
+    };
+
+    window.addEventListener("booking_claimed_event", handleClaimed);
+    return () => {
+      window.removeEventListener("booking_claimed_event", handleClaimed);
+    };
+  }, [activeAssignedBooking, savedAssignedBooking, userInfo.name]);
+
   // Load integrated Order khi chọn bàn phục vụ / đặt trước / chờ thanh toán
   const loadActiveOrder = useCallback(async (tableId: number | string) => {
     const t = tables.find((item) => item.id.toString() === tableId.toString());
@@ -523,22 +571,23 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         ),
       );
       const clusterCap = selectedTable ? getTableClusterCapacity(selectedTable) : 0;
-      const exceedsCap = clusterCap > 0 && data.guestCount > clusterCap;
+      const targetPartySize = Number(data.guestCount || activeAssignedBooking?.partySize || 30);
+      const exceedsCap = clusterCap > 0 && targetPartySize > clusterCap;
 
       toast.success(`✅ Đã mở bàn ${selectedTable?.name} cho ${data.guestCount} khách`);
       setIsOpenTableModalOpen(false);
-      setAssignedBookingBanner(null);
-      setPrefilledBookingData(null);
-      if (location.state) {
-        window.history.replaceState({}, "");
-      }
 
       if (exceedsCap) {
         toast.error(
-          `⚠️ Bàn ${selectedTable?.name} vượt quá sức chứa (${data.guestCount}/${clusterCap} khách). Hệ thống đã khóa gọi món, vui lòng Chuyển bàn hoặc Gộp bàn!`,
-          { duration: 6000 }
+          `⚠️ Bàn ${selectedTable?.name} mới chỉ có sức chứa ${clusterCap}/${targetPartySize} khách. Đang khóa khu vực cho đến khi Gộp bàn/Xếp đoàn đủ ${targetPartySize} chỗ!`,
+          { duration: 7000 }
         );
       } else {
+        localStorage.removeItem("active_waiter_assigned_booking");
+        setIsAssignedBannerDismissed(true);
+        setAssignedBookingBanner(null);
+        setPrefilledBookingData(null);
+        navigate(location.pathname, { replace: true, state: {} });
         navigate(`/waiter/orders/${selectedTableId}`);
       }
     } catch (error: unknown) {
@@ -546,6 +595,26 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       console.error(error);
     }
   };
+
+  const checkAndUnlockAreaLock = useCallback(async () => {
+    const updatedTables = await getTablesV1();
+    setTables(updatedTables || []);
+    const currentAssigned = activeAssignedBooking || savedAssignedBooking;
+    if (currentAssigned && selectedTableId) {
+      const primary = (updatedTables || []).find((t: any) => t.id.toString() === selectedTableId.toString());
+      if (primary) {
+        const clusterCap = getTableClusterCapacity(primary);
+        const reqSize = Number(currentAssigned.partySize || 30);
+        if (clusterCap >= reqSize) {
+          localStorage.removeItem("active_waiter_assigned_booking");
+          setIsAssignedBannerDismissed(true);
+          setAssignedBookingBanner(null);
+          setPrefilledBookingData(null);
+          toast.success(`🎉 Đã gộp đủ ${clusterCap}/${reqSize} chỗ cho đoàn. Đã mở khóa tất cả các tầng!`, { duration: 6000 });
+        }
+      }
+    }
+  }, [activeAssignedBooking, savedAssignedBooking, selectedTableId]);
 
   // Thêm bàn nhanh
   const handleAddTableConfirm = async (data: { name: string; capacity: number; area_id: number }) => {
@@ -812,36 +881,50 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Banner Thông báo Phân công Đặt bàn lớn */}
-      {(assignedBookingBanner || (location.state as any)?.autoOpenAssignedBooking) && (
+      {activeAssignedBooking && (
         <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-5 rounded-3xl shadow-xl border-2 border-indigo-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-1 bg-white text-indigo-800 rounded-lg text-xs font-black uppercase tracking-wider">
-                📍 KHU VỰC PHÂN CÔNG: {assignedBookingBanner?.assignedArea || (location.state as any)?.targetArea || "Tầng 2"}
+                📍 KHU VỰC PHÂN CÔNG: {activeAssignedBooking?.assignedArea || (location.state as any)?.targetArea || "Tầng 2"}
               </span>
               <span className="text-xs font-bold text-indigo-200">Đơn đặt bàn lớn</span>
             </div>
             <p className="text-sm font-black text-white">
-              Khách hàng: {assignedBookingBanner?.guestName || (location.state as any)?.autoOpenAssignedBooking?.guestName} (SĐT: {assignedBookingBanner?.guestPhone || (location.state as any)?.autoOpenAssignedBooking?.guestPhone})
+              Khách hàng: {activeAssignedBooking?.guestName} (SĐT: {activeAssignedBooking?.guestPhone})
             </p>
             <p className="text-xs text-indigo-100">
-              Số lượng: <strong className="text-amber-300 font-extrabold">{assignedBookingBanner?.partySize || (location.state as any)?.autoOpenAssignedBooking?.partySize} người</strong> | Giờ đến: <strong className="text-emerald-300 font-extrabold">{assignedBookingBanner?.startTime || (location.state as any)?.autoOpenAssignedBooking?.startTime}</strong>
+              Số lượng: <strong className="text-amber-300 font-extrabold">{activeAssignedBooking?.partySize} người</strong> | Giờ đến: <strong className="text-emerald-300 font-extrabold">{activeAssignedBooking?.startTime}</strong>
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <button
+              type="button"
               onClick={() => {
+                setIsAssignedBannerDismissed(true);
                 setAssignedBookingBanner(null);
                 setPrefilledBookingData(null);
-                window.history.replaceState({}, "");
+                navigate(location.pathname, { replace: true, state: {} });
               }}
               className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
             >
               Bỏ qua
             </button>
-            <span className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 text-indigo-950 rounded-xl text-xs font-black shadow-md border border-amber-300 animate-pulse">
+            <button
+              type="button"
+              onClick={() => {
+                const emptyTable = filteredTables.find((t) => t.status === "empty") || tables.find((t) => t.status === "empty");
+                if (emptyTable) {
+                  setSelectedTableId(emptyTable.id);
+                  setIsOpenTableModalOpen(true);
+                } else {
+                  toast("Vui lòng chọn 1 bàn trống bên dưới.", { icon: "ℹ️" });
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 rounded-xl text-xs font-black shadow-md border border-amber-300 animate-pulse transition-all cursor-pointer"
+            >
               ⚡ Chọn 1 Bàn chính bên dưới để Mở bàn!
-            </span>
+            </button>
           </div>
         </div>
       )}
@@ -898,16 +981,31 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         <div className="flex gap-2 overflow-x-auto">
           {areas.map((area) => {
             const isActive = selectedAreaId === area.id;
+            const isAssignedArea = activeAssignedBooking && (
+              area.name.toLowerCase().trim().includes(String(activeAssignedBooking.assignedArea || "").toLowerCase().trim()) ||
+              String(activeAssignedBooking.assignedArea || "").toLowerCase().trim().includes(area.name.toLowerCase().trim())
+            );
+            const isLockedOut = activeAssignedBooking && !isAssignedArea;
+
             return (
               <button
                 key={area.id}
-                onClick={() => setSelectedAreaId(area.id)}
+                onClick={() => {
+                  if (isLockedOut) {
+                    toast(`🔒 Quản lý đã quy định phân công đơn này tại ${activeAssignedBooking.assignedArea}. Vui lòng mở bàn tại khu vực được phân công hoặc bấm 'Bỏ qua'!`, { icon: "🔒" });
+                    return;
+                  }
+                  setSelectedAreaId(area.id);
+                }}
                 className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-t border-x cursor-pointer whitespace-nowrap ${isActive
                   ? "bg-white border-sky-100 text-sky-600 border-b-white z-10"
-                  : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
+                  : isLockedOut
+                    ? "bg-slate-100 border-transparent text-slate-400 opacity-60 cursor-not-allowed"
+                    : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
                   }`}
+                title={isLockedOut ? `Đơn đặt bàn lớn đã được phân công tại ${activeAssignedBooking.assignedArea}` : area.name}
               >
-                {area.name}
+                {area.name} {isLockedOut && "🔒"}
               </button>
             );
           })}
@@ -941,6 +1039,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         setSelectedTableId(t.id);
                         if (t.is_split) {
                           setIsSubOrderModalOpen(true);
+                        } else if (activeAssignedBooking && t.status === "empty") {
+                          setIsOpenTableModalOpen(true);
                         }
                       }}
                       className={`relative flex items-center justify-center p-8 transition-all cursor-pointer select-none rounded-2xl border-2 ${isSelected
@@ -1578,7 +1678,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         onClose={() => setIsOpenTableModalOpen(false)}
         onConfirm={handleOpenTable}
         table={selectedTable}
-        initialData={prefilledBookingData}
+        initialData={activePrefilledData}
       />
 
       <AddTableModal
@@ -1638,11 +1738,11 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         sourceTable={selectedTable}
         availableTables={tables}
         onConfirm={async () => {
-          await fetchData();
+          await checkAndUnlockAreaLock();
           setActiveAction(null);
         }}
         onSuccess={() => {
-          fetchData();
+          checkAndUnlockAreaLock();
           setActiveAction(null);
         }}
       />
@@ -1653,7 +1753,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         sourceTable={selectedTable}
         availableTables={tables}
         onSuccess={() => {
-          fetchData();
+          checkAndUnlockAreaLock();
           setActiveAction(null);
         }}
       />

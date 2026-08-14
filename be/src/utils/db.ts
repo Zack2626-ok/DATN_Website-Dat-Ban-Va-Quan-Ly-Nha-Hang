@@ -1357,7 +1357,7 @@ export const getTableAreas = async (): Promise<TableArea[]> => {
     }));
   } catch (err) {
     return [
-      { id: 1, name: "Tầng 1", is_active: 1 },
+      { id: 1, name: "Tầng 2", is_active: 1 },
       { id: 2, name: "Tầng 2", is_active: 1 },
       { id: 3, name: "Sân vườn", is_active: 1 },
     ];
@@ -3477,11 +3477,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
   await ensureResmanagerTablesSchema();
   let sql = `
     SELECT t.*, a.name AS area_name,
-           COALESCE(o.guest_name, b.guest_name) AS guest_name,
-           COALESCE(o.guest_phone, b.guest_phone) AS guest_phone,
-           COALESCE(o.guest_count, b.party_size, (SELECT party_size FROM bookings WHERE table_id = t.id AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1)) AS guest_count,
+           COALESCE(NULLIF(o.guest_name, ''), b.guest_name) AS guest_name,
+           COALESCE(NULLIF(o.guest_phone, ''), b.guest_phone) AS guest_phone,
+           COALESCE(NULLIF(o.guest_count, 0), b.party_size, (SELECT party_size FROM bookings WHERE table_id = t.id AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1)) AS guest_count,
            DATE_FORMAT(COALESCE(o.created_at, b.start_time), '%H:%i %d/%m/%Y') AS start_time,
-           COALESCE(o.note, b.guest_note) AS guest_note,
+           COALESCE(NULLIF(o.note, ''), b.guest_note) AS guest_note,
            b.confirmation_code AS booking_code,
            b.id AS booking_id,
            COALESCE(b.deposit_amount, 0) AS deposit_amount,
@@ -5290,6 +5290,8 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     }
   }
 
+  const bookingIdNum = data.booking_id ? Number(data.booking_id) : null;
+
   if (data.table_id) {
     const existingPreOrders = await query<any[]>(`
       SELECT id FROM orders 
@@ -5302,7 +5304,7 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
       const preOrderId = existingPreOrders[0].id;
       await query(`
         UPDATE orders 
-        SET order_type = ?, status = 'open', created_by = COALESCE(?, created_by), guest_name = COALESCE(?, guest_name), guest_phone = COALESCE(?, guest_phone), guest_count = COALESCE(?, guest_count)
+        SET order_type = ?, status = 'open', created_by = COALESCE(?, created_by), guest_name = COALESCE(?, guest_name), guest_phone = COALESCE(?, guest_phone), guest_count = COALESCE(?, guest_count), booking_id = COALESCE(?, booking_id)
         WHERE id = ?
       `, [
         data.order_type || 'dine_in',
@@ -5310,6 +5312,7 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
         data.guest_name || null,
         data.guest_phone || null,
         data.guest_count || null,
+        bookingIdNum,
         preOrderId
       ]);
       // Khi mở bàn, chuyển trạng thái các món đặt trước từ 'pre_order' sang 'pending' (chờ nấu) để gửi xuống bếp (KDS nhận được ngay mà không cần chỉnh sửa KDS)
@@ -5318,15 +5321,19 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
         SET status = 'pending', is_held = 0 
         WHERE order_id = ? AND status = 'pre_order'
       `, [preOrderId]);
+      if (bookingIdNum) {
+        await query("UPDATE bookings SET status = 'arrived' WHERE id = ?", [bookingIdNum]).catch(() => {});
+      }
       return { id: preOrderId, ...data, status: 'open', customer_id: validCustomerId };
     }
   }
 
   const result = await query(`
-    INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
+    INSERT INTO orders (table_id, booking_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')
   `, [
     data.table_id,
+    bookingIdNum,
     validCustomerId,
     data.created_by,
     data.order_type || 'dine_in',
@@ -5335,6 +5342,11 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     data.guest_phone || null,
     data.guest_count || null
   ]);
+
+  if (bookingIdNum) {
+    await query("UPDATE bookings SET status = 'arrived' WHERE id = ?", [bookingIdNum]).catch(() => {});
+  }
+
   return { id: result.insertId, ...data, status: 'open', customer_id: validCustomerId };
 };
 

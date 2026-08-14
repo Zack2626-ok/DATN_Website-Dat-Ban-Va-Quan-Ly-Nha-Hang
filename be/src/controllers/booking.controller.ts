@@ -227,7 +227,7 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     const { id } = req.params;
     const { status, cancel_reason } = req.body;
 
-    const validStatuses = ["pending", "confirmed", "cancelled", "completed"];
+    const validStatuses = ["pending", "confirmed", "arrived", "cancelled", "completed"];
     if (!status || !validStatuses.includes(status)) {
       sendError(res, `Trạng thái phải là: ${validStatuses.join(", ")}`, 400);
       return;
@@ -238,6 +238,21 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     if (!success) {
       sendError(res, "Không tìm thấy đặt bàn", 404);
       return;
+    }
+
+    const bId = Number(id);
+    const ioApp = req.app.get("io");
+    if (ioApp && bId) {
+      ioApp.emit("booking:claimed", {
+        bookingId: bId,
+        id: bId,
+        status,
+      });
+      ioApp.emit("table:booking_checked_in", {
+        bookingId: bId,
+        id: bId,
+        status,
+      });
     }
 
     sendSuccess(res, { id, status }, "Cập nhật trạng thái đặt bàn thành công");

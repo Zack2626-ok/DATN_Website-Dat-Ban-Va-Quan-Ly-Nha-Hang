@@ -1,7 +1,7 @@
 import { Table, TableArea } from "../interfaces/table.interface";
 
 export const MOCK_AREAS: TableArea[] = [
-  { id: 1, name: "Tầng 1", is_active: 1 },
+  { id: 1, name: "Tầng 2", is_active: 1 },
   { id: 2, name: "Tầng 2", is_active: 1 },
   { id: 3, name: "Sân vườn", is_active: 1 },
 ];
