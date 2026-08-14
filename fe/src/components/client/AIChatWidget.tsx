@@ -149,11 +149,10 @@ export const AIChatWidget: React.FC = () => {
                 className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-xs ${
-                    msg.sender === "user"
+                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-xs ${msg.sender === "user"
                       ? "bg-purple-600 text-white rounded-br-xs"
                       : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                  }`}
+                    }`}
                 >
                   <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
 

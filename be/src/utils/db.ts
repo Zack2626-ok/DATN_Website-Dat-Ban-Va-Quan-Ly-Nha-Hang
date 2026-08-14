@@ -567,6 +567,24 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("✅ Migration: added orders.guest_count");
     }
 
+    const guestNameCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'guest_name'`,
+    );
+    if (guestNameCols.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN guest_name VARCHAR(100) DEFAULT NULL`).catch(() => {});
+      console.log("✅ Migration: added orders.guest_name");
+    }
+
+    const guestPhoneCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'guest_phone'`,
+    );
+    if (guestPhoneCols.length === 0) {
+      await query(`ALTER TABLE orders ADD COLUMN guest_phone VARCHAR(20) DEFAULT NULL`).catch(() => {});
+      console.log("✅ Migration: added orders.guest_phone");
+    }
+
     const orderBookingIdColumn = await query<SchemaMetadataRow[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'booking_id'`,

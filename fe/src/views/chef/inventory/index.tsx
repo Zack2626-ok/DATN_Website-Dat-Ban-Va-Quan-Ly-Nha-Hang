@@ -2265,7 +2265,6 @@ export const InventoryControl: React.FC = () => {
                                                           reason: "Ôi thiu / Mốc",
                                                           note: `Xuất hủy lô ${b.batch_code}`
                                                         });
-                                                        });
                                                         setShowWasteModal(true);
                                                       }}
                                                       className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-extrabold uppercase rounded border border-rose-200 transition-colors inline-flex items-center gap-1 cursor-pointer"

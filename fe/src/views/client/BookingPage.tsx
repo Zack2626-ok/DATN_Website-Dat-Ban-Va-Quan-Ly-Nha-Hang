@@ -1,11 +1,5 @@
-<<<<<<< HEAD
-import React, { useState, useEffect, useCallback } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
-import { Phone, Mail, CheckCircle, ArrowRight, ArrowLeft, Calendar, Loader2, Landmark, Percent, Printer, Star, Users } from "lucide-react";
-=======
 import React, { useState, useEffect } from "react";
 import { Phone, Mail, CheckCircle, ArrowRight, Calendar, Loader2, Printer, Star } from "lucide-react";
->>>>>>> origin/main
 import { toast } from "react-hot-toast";
 import { getAvailableTables, createBooking, Customer, payBookingDeposit } from "../../services/customerService";
 import { getComboConstituents } from "../../utils/comboHelper";
@@ -41,25 +35,8 @@ const getBookingEndTime = (date: string, time: string): string => {
 };
 
 export const BookingPage: React.FC = () => {
-<<<<<<< HEAD
-  const navigate = useNavigate();
-
-  // ── Restore state từ sessionStorage khi F5 ─────────────────────────────
-  const BOOKING_SESSION_KEY = "booking_session";
-  const savedSession = (() => {
-    try { return JSON.parse(sessionStorage.getItem(BOOKING_SESSION_KEY) || "null"); } catch { return null; }
-  })();
-
-  const [step, setStep] = useState<number>(savedSession?.step || 1);
-  const [loadingTables, setLoadingTables] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [availableTables, setAvailableTables] = useState<any[]>(savedSession?.availableTables || []);
-
-  const [preOrderedDishes, setPreOrderedDishes] = useState<Record<string, { id: number; name: string; price: number; quantity: number }>>({});
-=======
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
->>>>>>> origin/main
   const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
 
   useEffect(() => {
@@ -69,7 +46,6 @@ export const BookingPage: React.FC = () => {
   const [createdBooking, setCreatedBooking] = useState<any>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
-  const [preOrderedDishes, setPreOrderedDishes] = useState<Record<number, any>>({});
 
   const handlePayDeposit = async () => {
     if (!createdBooking?.id) return;
@@ -86,27 +62,17 @@ export const BookingPage: React.FC = () => {
     }
   };
 
-
-<<<<<<< HEAD
-  const [promotionsList, setPromotionsList] = useState<any[]>([]);
-  const [selectedPromoId, setSelectedPromoId] = useState<string>(savedSession?.selectedPromoId || "");
-=======
->>>>>>> origin/main
-
   const [form, setForm] = useState({
-    date:      savedSession?.form?.date      || "",
-    time:      savedSession?.form?.time      || "",
-    guests:    savedSession?.form?.guests    || "2",
-    tableId:   savedSession?.form?.tableId   || "",
-    tableName: savedSession?.form?.tableName || "",
-    areaName:  savedSession?.form?.areaName  || "",
-    name:      savedSession?.form?.name      || "",
-    phone:     savedSession?.form?.phone     || "",
-    email:     savedSession?.form?.email     || "",
-    note:      savedSession?.form?.note      || "",
+    date: "",
+    time: "",
+    guests: "2",
+    name: "",
+    phone: "",
+    email: "",
+    note: "",
   });
 
-  // Auto fill profile if logged in (chỉ fill nếu chưa có session được restore)
+  // Auto fill profile if logged in
   useEffect(() => {
     const infoStr = localStorage.getItem("customer_info");
     if (infoStr) {
@@ -123,24 +89,6 @@ export const BookingPage: React.FC = () => {
       }
     }
   }, []);
-
-  // ── Lưu state vào sessionStorage mỗi khi thay đổi (phải sau khi form được khai báo) ──
-  useEffect(() => {
-    if (step === 4) {
-      // Xóa session khi đặt bàn hoàn tất — được làm ở setStep(4) nên không cần lưu
-      return;
-    }
-    try {
-      sessionStorage.setItem(BOOKING_SESSION_KEY, JSON.stringify({
-        step,
-        form,
-        availableTables,
-        selectedPromoId,
-      }));
-    } catch {
-      // sessionStorage đầy hoặc bị disabled — bỏ qua
-    }
-  }, [step, form, availableTables, selectedPromoId]);
 
   const setField = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -173,74 +121,12 @@ export const BookingPage: React.FC = () => {
       toast.error("Số lượng khách phải từ 1 đến 30 người!");
       return;
     }
-<<<<<<< HEAD
-    
-    setLoadingTables(true);
-    try {
-      const tables = await getAvailableTables(form.date, form.time, guestCount);
-      setAvailableTables(tables);
-      // Reset selected table from previous searches
-      setForm((prev) => ({
-        ...prev,
-        tableId: "",
-        tableName: "",
-        areaName: "",
-      }));
-      setStep(2);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Không thể kiểm tra bàn trống lúc này.");
-    } finally {
-      setLoadingTables(false);
-    }
-  };
-
-  const handleSelectTable = (table: any) => {
-    setForm((prev) => ({
-      ...prev,
-      tableId: String(table.id),
-      tableName: table.name,
-      areaName: table.area_name || "",
-    }));
-  };
-
-  // Hàm refresh sơ đồ bàn — tái sử dụng được
-  const [refreshing, setRefreshing] = useState(false);
-  const refreshTableStatus = useCallback(async (silent = false) => {
-    if (!form.date || !form.time) return;
-    if (!silent) setRefreshing(true);
-    try {
-      const startTimeStr = `${form.date} ${form.time}:00`;
-      const tables = await getAvailableTables(startTimeStr);
-      const filtered = tables.filter((t: any) => t.capacity >= Number(form.guests));
-      setAvailableTables(filtered);
-      // Nếu bàn đang chọn đã bị người khác đặt — deselect
-      if (form.tableId) {
-        const selectedInNew = filtered.find((t: any) => String(t.id) === form.tableId);
-        if (!selectedInNew || !selectedInNew.is_bookable) {
-          setForm((prev) => ({ ...prev, tableId: "", tableName: "", areaName: "" }));
-          if (!silent) toast.error("⚠️ Bàn bạn đang chọn vừa bị người khác đặt! Vui lòng chọn bàn khác.", { duration: 5000 });
-        }
-      }
-    } catch { /* bỏ qua lỗi silent refresh */ }
-    finally { setRefreshing(false); }
-  }, [form.date, form.time, form.guests, form.tableId]);
-
-  // Auto-refresh sơ đồ bàn mỗi 60 giây khi đang ở step 2
-  useEffect(() => {
-    if (step !== 2) return;
-    const timer = setInterval(() => refreshTableStatus(true), 60_000);
-    return () => clearInterval(timer);
-  }, [step, refreshTableStatus]);
-
-  const handleSubmitBooking = async (e: React.FormEvent) => {
-    e.preventDefault();
-=======
 
     if (!form.name.trim()) {
       toast.error("Vui lòng điền Họ và tên người đặt bàn!");
       return;
     }
->>>>>>> origin/main
+
     const phone = form.phone.trim();
     if (!phone) {
       toast.error("Vui lòng điền Số điện thoại liên hệ!");
@@ -330,31 +216,16 @@ export const BookingPage: React.FC = () => {
         booking_channel: "online",
       });
 
-<<<<<<< HEAD
-      setCreatedBooking(bookingResult);
-      setConfirmationCode(bookingResult.confirmation_code);
-      // Xóa session sau khi đặt bàn thành công — không restore lần sau
-      try { sessionStorage.removeItem(BOOKING_SESSION_KEY); } catch { /* ignore */ }
-=======
       setCreatedBooking({
         ...bookingResult,
         table_name: targetTableName,
         area_name: targetAreaName
       });
->>>>>>> origin/main
       setStep(4);
       toast.success("Đặt bàn thành công!");
     } catch (err: any) {
       const errMsg: string = err.response?.data?.message || "";
-      const isTableConflict = err.response?.status === 400 && errMsg.includes("trùng với lịch đặt khác trên cùng bàn");
-      if (isTableConflict) {
-        // Tự động refresh sơ đồ bàn và deselect bàn bị tranh giành
-        toast.error("⚠️ Bàn này vừa được người khác đặt trước! Đang tải lại sơ đồ bàn...", { duration: 4000 });
-        setForm((prev) => ({ ...prev, tableId: "", tableName: "", areaName: "" }));
-        await refreshTableStatus(false);
-      } else {
-        toast.error(errMsg || "Đặt bàn thất bại. Vui lòng thử lại.");
-      }
+      toast.error(errMsg || "Đặt bàn thất bại. Vui lòng thử lại.");
     } finally {
       setSubmitting(false);
     }
@@ -414,12 +285,7 @@ export const BookingPage: React.FC = () => {
           {/* Card Lower Section */}
           <div className="text-left bg-client-bg/50 rounded-2xl p-5 border border-client-accent space-y-3">
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Người đặt:</span> <span className="font-semibold text-client-text">{createdBooking?.guest_name || form.name}</span></div>
-<<<<<<< HEAD
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
-             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Bàn đã chọn:</span> <span className="font-semibold text-client-text">{createdBooking?.table_name || form.tableName} ({createdBooking?.area_name || form.areaName || "Nhà hàng"})</span></div>
-=======
-             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {new Date(form.date).toLocaleDateString("vi-VN")}</span></div>
->>>>>>> origin/main
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Số lượng khách:</span> <span className="font-semibold text-client-text">{createdBooking?.party_size || form.guests} người</span></div>
              <div className="flex justify-between text-xs">
                <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái đặt:</span> 
@@ -460,7 +326,7 @@ export const BookingPage: React.FC = () => {
           {(createdBooking?.deposit_amount === 0 || createdBooking?.deposit_status === "paid") && (
             <button
               onClick={handlePrintInvoice}
-              className="flex-1 inline-flex items-center justify-center gap-2 py-4 bg-white hover:bg-gray-50 text-gray-700 border border-gray-205 rounded-2xl font-bold text-sm shadow-xs transition-all cursor-pointer"
+              className="flex-1 inline-flex items-center justify-center gap-2 py-4 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-2xl font-bold text-sm shadow-xs transition-all cursor-pointer"
             >
               <Printer size={16} className="text-gray-500" /> In hóa đơn đặt bàn
             </button>
@@ -473,9 +339,6 @@ export const BookingPage: React.FC = () => {
                 date: "",
                 time: "",
                 guests: "2",
-                tableId: "",
-                tableName: "",
-                areaName: "",
                 name: "",
                 phone: "",
                 email: "",
@@ -619,7 +482,7 @@ export const BookingPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="w-full py-3 bg-white hover:bg-gray-50 text-gray-500 border border-gray-250 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  className="w-full py-3 bg-white hover:bg-gray-50 text-gray-500 border border-gray-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
                   Đóng / Thanh toán sau
                 </button>
@@ -647,15 +510,15 @@ export const BookingPage: React.FC = () => {
             <Star size={12} className="fill-client-secondary text-client-secondary" /> Table Reservation <Star size={12} className="fill-client-secondary text-client-secondary" />
           </span>
           <h1 className="text-3xl sm:text-4xl font-bold font-display tracking-wide text-white">Đặt Bàn Trực Tuyến</h1>
-          <p className="mt-2 text-xs text-gray-350 max-w-md">
+          <p className="mt-2 text-xs text-gray-300 max-w-md">
             Chống trùng lịch · Đặt chỗ thời gian thực · Trải nghiệm trọn vẹn ẩm thực Restro
           </p>
 
           {/* Progress stepper overlay */}
           <div className="mt-6 flex items-center gap-3 text-[11px] font-bold text-white/60 bg-white/10 px-5 py-2.5 rounded-full border border-white/20">
-            <span className={step >= 1 ? "text-client-secondary font-extrabold" : ""}>1. Điền thông tin đặt bàn</span>
+            <span className="text-client-secondary font-extrabold">1. Điền thông tin đặt bàn</span>
             <span>&rarr;</span>
-            <span className={step >= 4 ? "text-client-secondary font-extrabold" : ""}>2. Xác nhận & Đặt cọc</span>
+            <span className={step >= 4 ? "text-client-secondary font-extrabold" : ""}>2. Xác nhận & Hoàn tất</span>
           </div>
         </div>
       </section>
@@ -729,174 +592,6 @@ export const BookingPage: React.FC = () => {
                     className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
                   />
                 </div>
-<<<<<<< HEAD
-                <div className="flex items-center gap-3 self-start flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => refreshTableStatus(false)}
-                    disabled={refreshing}
-                    className="text-xs font-bold px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {refreshing ? <Loader2 size={12} className="animate-spin text-client-primary" /> : "🔄 Làm mới sơ đồ"}
-                  </button>
-                  <span className="text-xs font-bold px-3 py-1.5 bg-client-primary/10 text-client-primary rounded-xl whitespace-nowrap">
-                    Tìm thấy {availableTables.length} bàn trống
-                  </span>
-                </div>
-              </div>
-
-              {availableTables.length === 0 ? (
-                <div className="text-center py-10">
-                  <p className="text-client-muted text-sm font-medium">Hiện tại không còn bàn trống nào phù hợp cho thời gian đã chọn.</p>
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="mt-4 px-4 py-2 bg-client-primary text-white rounded-xl text-xs font-bold hover:bg-client-primary-hover cursor-pointer"
-                  >
-                    Quay lại chọn thời gian khác
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* Bộ lọc khu vực */}
-                  {uniqueAreas.length > 1 && (
-                    <div className="flex flex-wrap gap-2 mb-2 border-b border-client-accent pb-4">
-                      {uniqueAreas.map((area) => (
-                        <button
-                          key={area}
-                          type="button"
-                          onClick={() => setSelectedArea(area)}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            selectedArea === area
-                              ? "bg-client-primary text-white shadow-xs"
-                              : "bg-client-accent/50 text-client-muted hover:bg-client-accent"
-                          }`}
-                        >
-                          {area}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Sơ đồ bàn theo hàng/cột */}
-                  <div className="flex flex-col gap-6 flex-1">
-                    {sortedRowKeys.map((rowKey) => (
-                      <div key={rowKey} className="flex flex-row items-center gap-4">
-                        <div className="w-8 flex items-center justify-center font-bold text-[#7b6f65] border-r border-[#f0eae1] pr-2 self-stretch">
-                          {rowKey}
-                        </div>
-                        <div className="flex flex-wrap gap-4 flex-1">
-                           {groupedRows[rowKey]
-                            .sort((a: any, b: any) => (a.col_pos || 0) - (b.col_pos || 0))
-                            .map((table: any) => {
-                              const isSelected = String(table.id) === form.tableId;
-                              const bookingStatus: string = table.booking_status || table.status || "empty";
-                              const isBookable = table.is_bookable === 1 || table.is_bookable === true;
-
-                              type StatusCfg = { bg: string; border: string; text: string; badgeBg: string; badgeText: string; label: string; icon: string };
-                              const statusConfig: Record<string, StatusCfg> = {
-                                empty:           { bg: "bg-emerald-50",   border: "border-emerald-300", text: "text-emerald-800", badgeBg: "bg-emerald-100", badgeText: "text-emerald-700", label: "Trống",         icon: "✓" },
-                                reserved:        { bg: "bg-amber-50",     border: "border-amber-300",   text: "text-amber-700",   badgeBg: "bg-amber-100",   badgeText: "text-amber-700",   label: "Đặt trước",     icon: "🔒" },
-                                booked:          { bg: "bg-amber-50",     border: "border-amber-300",   text: "text-amber-700",   badgeBg: "bg-amber-100",   badgeText: "text-amber-700",   label: "Đã đặt",        icon: "🔒" },
-                                serving:         { bg: "bg-rose-50",      border: "border-rose-300",    text: "text-rose-600",    badgeBg: "bg-rose-100",    badgeText: "text-rose-600",    label: "Đang phục vụ",  icon: "🍽" },
-                                pending_payment: { bg: "bg-rose-50",      border: "border-rose-300",    text: "text-rose-600",    badgeBg: "bg-rose-100",    badgeText: "text-rose-600",    label: "Chờ thanh toán", icon: "💳" },
-                                cleaning:        { bg: "bg-sky-50",       border: "border-sky-300",     text: "text-sky-700",     badgeBg: "bg-sky-100",     badgeText: "text-sky-700",     label: "Đang dọn",      icon: "🧹" },
-                              };
-                              const cfg: StatusCfg = statusConfig[bookingStatus] || statusConfig.empty;
-
-                              if (isSelected) {
-                                return (
-                                  <div
-                                    key={table.id}
-                                    onClick={() => handleSelectTable(table)}
-                                    className="relative cursor-pointer p-3.5 rounded-2xl border-2 border-blue-600 bg-blue-50 text-blue-800 shadow-lg ring-4 ring-blue-200/50 transition-all w-[110px] text-center flex flex-col items-center gap-1.5"
-                                  >
-                                    <span className="absolute -top-2 -right-2 w-5 h-5 bg-blue-600 text-white rounded-full text-[10px] font-black flex items-center justify-center shadow-sm">✓</span>
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-sm font-black">{table.name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 text-[11px] text-blue-600 font-semibold">
-                                      <Users size={10} /> {table.capacity} người
-                                    </div>
-                                    <span className="text-[9px] font-extrabold uppercase bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Đang chọn</span>
-                                  </div>
-                                );
-                              }
-
-                              if (!isBookable) {
-                                return (
-                                  <div
-                                    key={table.id}
-                                    title={`Bàn ${table.name} — ${cfg.label}`}
-                                    className={`relative p-3.5 rounded-2xl border-2 ${cfg.border} ${cfg.bg} opacity-65 cursor-not-allowed w-[110px] text-center flex flex-col items-center gap-1.5`}
-                                  >
-                                    <span className="text-sm font-black text-gray-500">{table.name}</span>
-                                    <div className="flex items-center gap-1 text-[11px] text-gray-400 font-semibold">
-                                      <Users size={10} /> {table.capacity} người
-                                    </div>
-                                    <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full ${cfg.badgeBg} ${cfg.badgeText}`}>
-                                      {cfg.icon} {cfg.label}
-                                    </span>
-                                  </div>
-                                );
-                              }
-
-                              // Bàn trống — có thể đặt
-                              return (
-                                <div
-                                  key={table.id}
-                                  onClick={() => handleSelectTable(table)}
-                                  title={`Chọn bàn ${table.name} — ${table.capacity} người`}
-                                  className="relative cursor-pointer p-3.5 rounded-2xl border-2 border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-500 hover:bg-emerald-100 hover:shadow-md hover:scale-105 transition-all w-[110px] text-center flex flex-col items-center gap-1.5 group"
-                                >
-                                  {/* Pulse dot for available */}
-                                  <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5">
-                                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
-                                    <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500" />
-                                  </span>
-                                  <span className="text-sm font-black text-emerald-800 group-hover:text-emerald-900">{table.name}</span>
-                                  <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
-                                    <Users size={10} /> {table.capacity} người
-                                  </div>
-                                  <span className="text-[9px] font-extrabold uppercase bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full">Trống</span>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Legend */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 pt-4 border-t border-gray-100">
-                    {[
-                      { dot: "bg-emerald-400 animate-pulse", label: "Trống — có thể đặt" },
-                      { dot: "bg-amber-400",   label: "Đã đặt / Đặt trước" },
-                      { dot: "bg-rose-400",    label: "Đang phục vụ" },
-                      { dot: "bg-sky-400",     label: "Đang dọn dẹp" },
-                      { dot: "bg-blue-600",    label: "Bàn bạn đang chọn" },
-                    ].map(({ dot, label }) => (
-                      <div key={label} className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
-                        <span className="text-[10px] text-gray-500 font-medium leading-tight">{label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-            </div>
-
-
-            {/* Cột bên phải: Thông tin liên hệ & Đặt bàn (40%) */}
-            <div className="lg:col-span-4 space-y-6">
-              {/* Form nhập thông tin */}
-              <div className="bg-white rounded-3xl shadow-sm border border-client-accent p-8">
-                <h2 className="text-lg font-bold text-client-text font-display mb-6 border-b border-[#f0eae1] pb-4">
-                  Thông tin khách & Đặt bàn
-                </h2>
-=======
->>>>>>> origin/main
                 
                 <div>
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số điện thoại *</label>
@@ -927,8 +622,6 @@ export const BookingPage: React.FC = () => {
                   </div>
                 </div>
 
-
-
                 {/* Ghi chú */}
                 <div className="sm:col-span-2 border-t border-[#f0eae1] pt-4">
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Ghi chú (Tùy chọn)</label>
@@ -936,7 +629,7 @@ export const BookingPage: React.FC = () => {
                     value={form.note}
                     onChange={(e) => setField("note", e.target.value)}
                     rows={3}
-                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, đặt trước món ăn, vị trí ngồi..."
+                    placeholder="Các yêu cầu đặc biệt như ăn kiêng, vị trí ngồi..."
                     className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none resize-none transition-all"
                   />
                   {/* Tag ghi chú nhanh */}
@@ -972,7 +665,7 @@ export const BookingPage: React.FC = () => {
             >
               {submitting ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" /> Đang kiểm tra & tạo đơn đặt bàn...
+                  <Loader2 size={18} className="animate-spin" /> Đang tạo đơn đặt bàn...
                 </>
               ) : (
                 <>
