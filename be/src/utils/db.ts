@@ -121,6 +121,24 @@ export const query = async <T = any>(sql: string, params: any[] = []): Promise<T
   return rows as T;
 };
 
+/** Executes related MySQL mutations atomically and releases the connection in every outcome. */
+export const withTransaction = async <T>(
+  callback: (connection: mysql.PoolConnection) => Promise<T>,
+): Promise<T> => {
+  const connection = await ensurePool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const result = await callback(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 export const isDbAvailable = (): boolean => dbAvailable;
 
 const MOCK_USERS: User[] = [
@@ -641,6 +659,42 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log("Migration: added order_items.source_order_id");
     }
 
+    const colsIsCookedCancelled = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_cooked_cancelled'`,
+    );
+    if (colsIsCookedCancelled.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN is_cooked_cancelled TINYINT(1) NOT NULL DEFAULT 0`);
+      console.log("✅ Migration: added order_items.is_cooked_cancelled");
+    }
+
+    const colsWasReused = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'was_reused'`,
+    );
+    if (colsWasReused.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN was_reused TINYINT(1) NOT NULL DEFAULT 0`);
+      console.log("✅ Migration: added order_items.was_reused");
+    }
+
+    const colsReusedBy = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'reused_by_order_item_id'`,
+    );
+    if (colsReusedBy.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN reused_by_order_item_id INT DEFAULT NULL`);
+      console.log("✅ Migration: added order_items.reused_by_order_item_id");
+    }
+
+    const colsIsReused = await query<SchemaMetadataRow[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_reused'`,
+    );
+    if (colsIsReused.length === 0) {
+      await query(`ALTER TABLE order_items ADD COLUMN is_reused TINYINT(1) NOT NULL DEFAULT 0`);
+      console.log("✅ Migration: added order_items.is_reused");
+    }
+
     const mergeTableExists = await query<SchemaMetadataRow[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_merges'`,
@@ -945,72 +999,98 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: added stock_in_id to stock_out table");
     }
-
     await ensureRefundColumns();
     await ensureEarlyPaymentColumns();
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS table_split_sessions (
-        id INT NOT NULL AUTO_INCREMENT,
-        parent_table_id INT NOT NULL,
-        parent_order_id INT NOT NULL,
-        status ENUM('active', 'completed', 'cancelled') NOT NULL DEFAULT 'active',
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        closed_at DATETIME NULL,
-        PRIMARY KEY (id),
-        INDEX idx_split_sessions_table (parent_table_id),
-        INDEX idx_split_sessions_order (parent_order_id),
-        INDEX idx_split_sessions_status (status),
-        CONSTRAINT fk_split_session_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
-        CONSTRAINT fk_split_session_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `).catch(() => {});
+    // Ensure table_split_sessions table exists
+    const splitSessionsExists = await query<any[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_split_sessions'`
+    );
+    if (splitSessionsExists.length === 0) {
+      await query(`
+        CREATE TABLE table_split_sessions (
+          id INT NOT NULL AUTO_INCREMENT,
+          parent_table_id INT NOT NULL,
+          parent_order_id INT NOT NULL,
+          status ENUM('active', 'completed', 'cancelled') NOT NULL DEFAULT 'active',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          closed_at DATETIME NULL,
+          PRIMARY KEY (id),
+          CONSTRAINT fk_split_session_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_split_session_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log("✅ Migration: created table_split_sessions table");
+    }
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS table_splits (
-        id INT NOT NULL AUTO_INCREMENT,
-        split_session_id INT NOT NULL,
-        parent_table_id INT NOT NULL,
-        parent_order_id INT NOT NULL,
-        child_order_id INT NOT NULL,
-        child_label VARCHAR(100) NOT NULL,
-        guest_count INT NOT NULL DEFAULT 1,
-        status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active',
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        closed_at DATETIME NULL,
-        PRIMARY KEY (id),
-        INDEX idx_splits_session (split_session_id),
-        INDEX idx_splits_parent_table (parent_table_id),
-        INDEX idx_splits_parent_order (parent_order_id),
-        INDEX idx_splits_child_order (child_order_id),
-        INDEX idx_splits_status (status),
-        CONSTRAINT fk_splits_session FOREIGN KEY (split_session_id) REFERENCES table_split_sessions(id) ON DELETE CASCADE,
-        CONSTRAINT fk_splits_parent_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
-        CONSTRAINT fk_splits_parent_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE,
-        CONSTRAINT fk_splits_child_order FOREIGN KEY (child_order_id) REFERENCES orders(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `).catch(() => {});
+    // Ensure table_splits exists and has the correct columns
+    const splitsExists = await query<any[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_splits'`
+    );
+    let recreateSplits = false;
+    if (splitsExists.length > 0) {
+      const splitCols = await query<any[]>(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'table_splits' AND COLUMN_NAME = 'status'`
+      );
+      if (splitCols.length === 0) {
+        recreateSplits = true;
+      }
+    } else {
+      recreateSplits = true;
+    }
 
-    await query(`
-      CREATE TABLE IF NOT EXISTS invoice_item_splits (
-        id INT NOT NULL AUTO_INCREMENT,
-        parent_invoice_id INT NOT NULL,
-        child_invoice_id INT NOT NULL,
-        order_item_id INT NOT NULL,
-        quantity INT NOT NULL,
-        amount DECIMAL(12,2) NOT NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        INDEX idx_item_splits_parent (parent_invoice_id),
-        INDEX idx_item_splits_child (child_invoice_id),
-        INDEX idx_item_splits_order_item (order_item_id),
-        CONSTRAINT fk_item_splits_parent FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
-        CONSTRAINT fk_item_splits_child FOREIGN KEY (child_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
-        CONSTRAINT fk_item_splits_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `).catch(() => {});
+    if (recreateSplits) {
+      await query(`DROP TABLE IF EXISTS table_splits`).catch(() => {});
+      await query(`
+        CREATE TABLE table_splits (
+          id INT NOT NULL AUTO_INCREMENT,
+          split_session_id INT NOT NULL,
+          parent_table_id INT NOT NULL,
+          parent_order_id INT NOT NULL,
+          child_order_id INT NOT NULL,
+          child_label VARCHAR(100) NOT NULL,
+          guest_count INT NOT NULL DEFAULT 1,
+          status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          closed_at DATETIME NULL,
+          PRIMARY KEY (id),
+          CONSTRAINT fk_splits_session FOREIGN KEY (split_session_id) REFERENCES table_split_sessions(id) ON DELETE CASCADE,
+          CONSTRAINT fk_splits_parent_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+          CONSTRAINT fk_splits_parent_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE,
+          CONSTRAINT fk_splits_child_order FOREIGN KEY (child_order_id) REFERENCES orders(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log("✅ Migration: created/recreated table_splits table with correct schema");
+    }
 
-    // Migration: Ensure debt_payments table exists
+    // Ensure invoice_item_splits exists
+    const itemSplitsExists = await query<any[]>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoice_item_splits'`
+    );
+    if (itemSplitsExists.length === 0) {
+      await query(`
+        CREATE TABLE invoice_item_splits (
+          id INT NOT NULL AUTO_INCREMENT,
+          parent_invoice_id INT NOT NULL,
+          child_invoice_id INT NOT NULL,
+          order_item_id INT NOT NULL,
+          quantity INT NOT NULL,
+          amount DECIMAL(12,2) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          CONSTRAINT fk_item_splits_parent FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+          CONSTRAINT fk_item_splits_child FOREIGN KEY (child_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+          CONSTRAINT fk_item_splits_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log("✅ Migration: created invoice_item_splits table");
+    }
+
+    // Migration: Ensure debt_payments table exists and has proof_image column
     await query(`
       CREATE TABLE IF NOT EXISTS debt_payments (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1018,12 +1098,16 @@ const runSchemaMigrations = async (): Promise<void> => {
         amount DECIMAL(14,2) NOT NULL,
         method VARCHAR(50) NOT NULL DEFAULT 'transfer',
         note TEXT NULL,
+        proof_image LONGTEXT NULL,
         paid_by INT NULL,
         paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_debt_payments_supplier (supplier_id),
         CONSTRAINT fk_debt_payments_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
+
+    await query(`ALTER TABLE debt_payments ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
+    await query(`ALTER TABLE debt_payments MODIFY COLUMN paid_by INT NULL`).catch(() => {});
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -1287,7 +1371,7 @@ export const getTableAreas = async (): Promise<TableArea[]> => {
     }));
   } catch (err) {
     return [
-      { id: 1, name: "Tầng 1", is_active: 1 },
+      { id: 1, name: "Tầng 2", is_active: 1 },
       { id: 2, name: "Tầng 2", is_active: 1 },
       { id: 3, name: "Sân vườn", is_active: 1 },
     ];
@@ -2628,22 +2712,32 @@ export const getBookingSchedule = async (
     `SELECT b.id, b.confirmation_code, b.guest_name, b.guest_phone, b.guest_email,
             b.party_size, b.start_time, b.end_time, b.status, b.guest_note, b.note,
             b.table_id AS primary_table_id, primary_table.name AS primary_table_name,
-            COALESCE(GROUP_CONCAT(DISTINCT all_tables.name ORDER BY all_bta.is_primary DESC, all_tables.name SEPARATOR ', '), primary_table.name) AS table_names,
-            COALESCE(GROUP_CONCAT(DISTINCT all_tables.id ORDER BY all_bta.is_primary DESC, all_tables.name), CAST(b.table_id AS CHAR)) AS table_ids,
-            COALESCE(SUM(DISTINCT all_bta.allocated_capacity), primary_table.capacity) AS total_capacity,
+            COALESCE(agg.table_names, primary_table.name) AS table_names,
+            COALESCE(agg.table_ids, CAST(b.table_id AS CHAR)) AS table_ids,
+            COALESCE(agg.total_capacity, primary_table.capacity) AS total_capacity,
             DATE_SUB(b.start_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_open_at,
             DATE_SUB(b.end_time, INTERVAL ${BOOKING_CHECK_IN_EARLY_MINUTES} MINUTE) AS check_in_close_at
      FROM bookings b
      LEFT JOIN tables primary_table ON primary_table.id = b.table_id
+     /* Dùng subquery thay vì double-JOIN để tránh Cartesian product và lỗi SUM(DISTINCT) */
+     LEFT JOIN (
+       SELECT bta_agg.booking_id,
+              GROUP_CONCAT(t_agg.name ORDER BY bta_agg.is_primary DESC, t_agg.name SEPARATOR ', ') AS table_names,
+              GROUP_CONCAT(CAST(t_agg.id AS CHAR) ORDER BY bta_agg.is_primary DESC, t_agg.name) AS table_ids,
+              SUM(bta_agg.allocated_capacity) AS total_capacity
+       FROM booking_table_assignments bta_agg
+       JOIN tables t_agg ON t_agg.id = bta_agg.table_id
+       GROUP BY bta_agg.booking_id
+     ) AS agg ON agg.booking_id = b.id
+     /* Chỉ dùng bta để lọc theo tableId (không ảnh hưởng đến SELECT) */
      LEFT JOIN booking_table_assignments bta ON bta.booking_id = b.id
-     LEFT JOIN booking_table_assignments all_bta ON all_bta.booking_id = b.id
-     LEFT JOIN tables all_tables ON all_tables.id = all_bta.table_id
      ${whereClause}
      GROUP BY b.id
      ${orderByClause}`,
     params,
   );
 };
+
 
 /** Returns a table's booking intervals that overlap the requested restaurant-local day. */
 export const getBookingTableAvailabilityForDate = async (
@@ -2741,18 +2835,21 @@ export const createBooking = async (data: any): Promise<any> => {
   if (!Number.isInteger(requestedPrimaryTableId) || !requestedTableIds.includes(requestedPrimaryTableId)) {
     throw new Error("Cụm bàn đặt trước không hợp lệ.");
   }
-  const availableOptions = await getAvailableBookingTableOptions(
-    requestedPartySize,
-    data.start_time,
-    data.end_time,
-  );
-  const requestedOptionKey = requestedTableIds.sort((left, right) => left - right).join(",");
-  const selectedTableIsAvailable = availableOptions.some(
-    (option) => option.primaryTable.id === requestedPrimaryTableId
-      && getBookingAllocationKey(option.tables) === requestedOptionKey,
-  );
-  if (!selectedTableIsAvailable) {
-    throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
+  const isOnlineBooking = !data.booking_channel || data.booking_channel === "online" || data.booking_channel === "ONLINE";
+  if (!isOnlineBooking) {
+    const availableOptions = await getAvailableBookingTableOptions(
+      requestedPartySize,
+      data.start_time,
+      data.end_time,
+    );
+    const requestedOptionKey = requestedTableIds.sort((left, right) => left - right).join(",");
+    const selectedTableIsAvailable = availableOptions.some(
+      (option) => option.primaryTable.id === requestedPrimaryTableId
+        && getBookingAllocationKey(option.tables) === requestedOptionKey,
+    );
+    if (!selectedTableIsAvailable) {
+      throw new Error("Bàn không còn trống hoặc không đủ sức chứa trong khung giờ đã chọn.");
+    }
   }
 
   const connection = await ensurePool().getConnection();
@@ -2763,32 +2860,34 @@ export const createBooking = async (data: any): Promise<any> => {
     const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
     await connection.query(`SELECT id FROM tables WHERE id IN (${tablePlaceholders}) FOR UPDATE`, requestedTableIds);
 
-    // Kiểm tra trùng lịch đặt bàn (Overbooking prevention)
-    const [overlaps] = await connection.query<any[]>(`
-      SELECT b.id FROM bookings b
-      WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
-        AND b.start_time < ? AND b.end_time > ?
-      UNION
-      SELECT b.id FROM booking_table_assignments bta
-      JOIN bookings b ON b.id = bta.booking_id
-      WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
-        AND b.start_time < ? AND b.end_time > ?
-      LIMIT 1
-    `, [
-      ...requestedTableIds,
-      BOOKING_STATUS.PENDING,
-      BOOKING_STATUS.CONFIRMED,
-      data.end_time,
-      data.start_time,
-      ...requestedTableIds,
-      BOOKING_STATUS.PENDING,
-      BOOKING_STATUS.CONFIRMED,
-      data.end_time,
-      data.start_time,
-    ]);
+    // Kiểm tra trùng lịch đặt bàn (Overbooking prevention - bỏ qua nếu là đặt online)
+    if (!isOnlineBooking) {
+      const [overlaps] = await connection.query<any[]>(`
+        SELECT b.id FROM bookings b
+        WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+          AND b.start_time < ? AND b.end_time > ?
+        UNION
+        SELECT b.id FROM booking_table_assignments bta
+        JOIN bookings b ON b.id = bta.booking_id
+        WHERE bta.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
+          AND b.start_time < ? AND b.end_time > ?
+        LIMIT 1
+      `, [
+        ...requestedTableIds,
+        BOOKING_STATUS.PENDING,
+        BOOKING_STATUS.CONFIRMED,
+        data.end_time,
+        data.start_time,
+        ...requestedTableIds,
+        BOOKING_STATUS.PENDING,
+        BOOKING_STATUS.CONFIRMED,
+        data.end_time,
+        data.start_time,
+      ]);
 
-    if (overlaps.length > 0) {
-      throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
+      if (overlaps.length > 0) {
+        throw new Error("Khung giờ đặt bàn này đã bị trùng với lịch đặt khác trên cùng bàn!");
+      }
     }
 
     // Validate customer_id to prevent foreign key constraint failure
@@ -2987,13 +3086,18 @@ export const transferBookingItemsToOrder = async (tableId: number, orderId: stri
   );
 
   if (items.length > 0) {
+    const insertedIds: number[] = [];
     for (const item of items) {
-      await query(
+      const insertResult = await query<any>(
         `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status) VALUES (?, ?, ?, ?, 'waiting_kitchen')`,
         [orderId, item.menu_item_id, item.quantity, item.unit_price]
       );
+      insertedIds.push(insertResult.insertId);
     }
     console.log(`✅ Transferred ${items.length} items from booking ${bookingId} to order ${orderId}`);
+    if (insertedIds.length > 0) {
+      await processReuseForOrderItems(insertedIds);
+    }
   }
 };
 
@@ -3128,6 +3232,7 @@ export const checkInScheduledBooking = async (
     );
     const preOrder = preOrderRows[0];
     let orderId: number;
+    const insertedItemIds: number[] = [];
     if (preOrder) {
       orderId = Number(preOrder.id);
       await connection.query(
@@ -3177,11 +3282,12 @@ export const checkInScheduledBooking = async (
         [bookingId],
       );
       for (const item of preOrderedItemRows) {
-        await connection.query(
+        const [insertResult] = await connection.query<mysql.ResultSetHeader>(
           `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status)
            VALUES (?, ?, ?, ?, 'waiting_kitchen')`,
           [orderId, item.menu_item_id, item.quantity, item.unit_price],
         );
+        insertedItemIds.push(insertResult.insertId);
       }
     }
 
@@ -3190,6 +3296,10 @@ export const checkInScheduledBooking = async (
       [TABLE_STATUS.SERVING, ...bookingTableIds],
     );
     await connection.commit();
+
+    if (insertedItemIds.length > 0) {
+      await processReuseForOrderItems(insertedItemIds);
+    }
     return {
       orderId,
       bookingId,
@@ -3399,11 +3509,11 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
   await ensureResmanagerTablesSchema();
   let sql = `
     SELECT t.*, a.name AS area_name,
-           COALESCE(o.guest_name, b.guest_name) AS guest_name,
-           COALESCE(o.guest_phone, b.guest_phone) AS guest_phone,
-           COALESCE(o.guest_count, b.party_size, (SELECT party_size FROM bookings WHERE table_id = t.id AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1)) AS guest_count,
+           COALESCE(NULLIF(o.guest_name, ''), b.guest_name) AS guest_name,
+           COALESCE(NULLIF(o.guest_phone, ''), b.guest_phone) AS guest_phone,
+           COALESCE(NULLIF(o.guest_count, 0), b.party_size, (SELECT party_size FROM bookings WHERE table_id = t.id AND status IN ('pending', 'confirmed') ORDER BY start_time ASC LIMIT 1)) AS guest_count,
            DATE_FORMAT(COALESCE(o.created_at, b.start_time), '%H:%i %d/%m/%Y') AS start_time,
-           COALESCE(o.note, b.guest_note) AS guest_note,
+           COALESCE(NULLIF(o.note, ''), b.guest_note) AS guest_note,
            b.confirmation_code AS booking_code,
            b.id AS booking_id,
            COALESCE(b.deposit_amount, 0) AS deposit_amount,
@@ -4894,18 +5004,28 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
   return orders;
 };
 
-export const deductInventoryForItem = async (orderItemId: string | number): Promise<void> => {
+export const deductInventoryForItem = async (
+  orderItemId: string | number,
+  reason: "sale_deduction" | "waste" = "sale_deduction",
+  customNote?: string
+): Promise<void> => {
   try {
     if (!dbAvailable) return;
     
     // 1. Get the item
     const items = await query<any[]>(
-      `SELECT menu_item_id, quantity FROM order_items WHERE id = ?`,
+      `SELECT menu_item_id, quantity, is_reused FROM order_items WHERE id = ?`,
       [orderItemId]
     );
 
     if (!items || items.length === 0) return;
     const item = items[0];
+
+    // Bỏ qua nếu món này là món tái sử dụng (đã trừ kho từ bàn trước)
+    if (item.is_reused) {
+      console.log(`[Inventory] Bỏ qua trừ kho cho món tái sử dụng (ID: ${orderItemId})`);
+      return;
+    }
 
     // 2. Get recipes for this menu_item
     const recipeItems = await query<any[]>(
@@ -4946,10 +5066,11 @@ export const deductInventoryForItem = async (orderItemId: string | number): Prom
           [deductQty, batch.id]
         );
 
+        const defaultNote = reason === "waste" ? "Hao hụt do hủy món (nấu món)" : "Trừ kho tự động theo FEFO (nấu món)";
         await query(
           `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_at)
-           VALUES (?, ?, ?, 'sale_deduction', 'Trừ kho tự động theo FEFO (nấu món)', NOW())`,
-          [recipe.ingredient_id, batch.id, deductQty]
+           VALUES (?, ?, ?, ?, ?, NOW())`,
+          [recipe.ingredient_id, batch.id, deductQty, reason, customNote || defaultNote]
         );
 
         remainingToDeduct -= deductQty;
@@ -4957,10 +5078,11 @@ export const deductInventoryForItem = async (orderItemId: string | number): Prom
 
       // If still remaining (negative stock theoretically), just record generic stock out
       if (remainingToDeduct > 0) {
+        const defaultGenericNote = reason === "waste" ? "Hao hụt tự động (âm kho/không rõ lô)" : "Trừ kho tự động (âm kho/không rõ lô)";
         await query(
           `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_at)
-           VALUES (?, ?, 'sale_deduction', 'Trừ kho tự động (âm kho/không rõ lô)', NOW())`,
-          [recipe.ingredient_id, remainingToDeduct]
+           VALUES (?, ?, ?, ?, NOW())`,
+          [recipe.ingredient_id, remainingToDeduct, reason, customNote || defaultGenericNote]
         );
       }
     }
@@ -5013,6 +5135,152 @@ export const refundInventoryForItem = async (orderItemId: string | number): Prom
   } catch (error: any) {
     console.error(`❌ Error refunding inventory for item ${orderItemId}:`, error.message);
   }
+};
+
+/**
+ * processReuseForOrderItems - Tự động tái sử dụng các món đã nấu bị hủy trùng khớp
+ * cho các món mới gửi xuống bếp. Splitting món tự động nếu số lượng khác biệt.
+ */
+export const processReuseForOrderItems = async (orderItemIds: number[]): Promise<void> => {
+  try {
+    if (orderItemIds.length === 0) return;
+    const placeholders = orderItemIds.map(() => "?").join(",");
+
+    const items = await query<any[]>(
+      `SELECT oi.id, oi.order_id, oi.menu_item_id, oi.quantity, oi.unit_price, m.name AS item_name, COALESCE(o.split_label, t.name) AS table_name, oi.created_by
+       FROM order_items oi
+       JOIN menu_items m ON oi.menu_item_id = m.id
+       JOIN orders o ON oi.order_id = o.id
+       LEFT JOIN tables t ON o.table_id = t.id
+       WHERE oi.id IN (${placeholders}) AND oi.status = 'waiting_kitchen'`,
+      orderItemIds
+    );
+
+    for (const item of items) {
+      // Luôn luôn tạo thông báo nấu món mới bình thường, không tự động đi đơn ngầm
+      await createNewDishNotification(item.order_id, item.menu_item_id, item.quantity);
+    }
+  } catch (err: any) {
+    console.error("❌ Error in processReuseForOrderItems:", err.message);
+  }
+};
+
+
+/**
+ * reuseCancelledKdsItem - Tái sử dụng thủ công một món hủy đã nấu xong/đang nấu
+ * cho một món chờ nấu khác cùng món. Có tính toán tách số lượng (split) nếu lệch.
+ */
+export const reuseCancelledKdsItem = async (
+  cancelledItemId: number,
+  targetItemId: number
+): Promise<boolean> => {
+  // 1. Lấy thông tin hai món
+  const cancelledItems = await query<any[]>(
+    `SELECT id, order_id, menu_item_id, quantity, is_cooked_cancelled, was_reused, status FROM order_items WHERE id = ?`,
+    [cancelledItemId]
+  );
+  const targetItems = await query<any[]>(
+    `SELECT id, order_id, menu_item_id, quantity, unit_price, status, created_by FROM order_items WHERE id = ?`,
+    [targetItemId]
+  );
+
+  if (cancelledItems.length === 0 || targetItems.length === 0) {
+    throw new Error("Không tìm thấy món ăn nguồn (hủy) hoặc món ăn đích (chờ).");
+  }
+
+  const cItem = cancelledItems[0];
+  const tItem = targetItems[0];
+
+  if (cItem.menu_item_id !== tItem.menu_item_id) {
+    throw new Error("Món ăn nguồn và món ăn đích không cùng loại món.");
+  }
+
+  if (cItem.was_reused) {
+    throw new Error("Món hủy này đã được tái sử dụng trước đó.");
+  }
+
+  if (!cItem.is_cooked_cancelled) {
+    throw new Error("Món ăn nguồn chưa được đánh dấu là đã nấu/đang nấu bị hủy.");
+  }
+
+  // 2. Thực hiện nghiệp vụ tái sử dụng món ăn
+  const CQ = Number(cItem.quantity);
+  const TQ = Number(tItem.quantity);
+
+  if (CQ <= TQ) {
+    // Tái sử dụng toàn bộ số lượng món hủy
+    await query(
+      `UPDATE order_items SET was_reused = 1, chef_dismissed = 1, reused_by_order_item_id = ? WHERE id = ?`,
+      [tItem.id, cItem.id]
+    );
+
+    if (CQ === TQ) {
+      // Số lượng khớp hoàn toàn
+      await query(
+        `UPDATE order_items SET status = 'done', is_reused = 1 WHERE id = ?`,
+        [tItem.id]
+      );
+    } else {
+      // Món đích có số lượng lớn hơn, cần nấu thêm (TQ - CQ) phần
+      const remainQty = TQ - CQ;
+      await query(
+        `UPDATE order_items SET quantity = ? WHERE id = ?`,
+        [remainQty, tItem.id]
+      );
+      
+      // Tạo món mới đã hoàn thành (done) đại diện cho phần được tái sử dụng
+      await query(
+        `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status, is_reused, is_held, created_by)
+         VALUES (?, ?, ?, ?, 'done', 1, 0, ?)`,
+        [tItem.order_id, tItem.menu_item_id, CQ, tItem.unit_price, tItem.created_by]
+      );
+    }
+  } else {
+    // Món hủy có số lượng nhiều hơn nhu cầu mới (CQ > TQ)
+    const remainCancelQty = CQ - TQ;
+    
+    // Giảm bớt số lượng món hủy hiện tại
+    await query(
+      `UPDATE order_items SET quantity = ? WHERE id = ?`,
+      [remainCancelQty, cItem.id]
+    );
+    
+    // Ghi nhận bản ghi món hủy đã được dùng cho món đích
+    await query(
+      `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status, is_cooked_cancelled, was_reused, chef_dismissed, void_reason, voided_at, reused_by_order_item_id)
+       VALUES (?, ?, ?, ?, 'voided', 1, 1, 1, 'Tách món để tái sử dụng', NOW(), ?)`,
+      [cItem.order_id, cItem.menu_item_id, TQ, cItem.unit_price, tItem.id]
+    );
+
+    // Món đích được hoàn thành hoàn toàn
+    await query(
+      `UPDATE order_items SET status = 'done', is_reused = 1 WHERE id = ?`,
+      [tItem.id]
+    );
+  }
+
+  // 3. Gửi thông báo đến waiter của bàn nhận món
+  const targetInfo = await query<any[]>(
+    `SELECT oi.quantity, m.name, COALESCE(o.split_label, t.name) AS tableName 
+     FROM order_items oi
+     JOIN menu_items m ON oi.menu_item_id = m.id
+     JOIN orders o ON oi.order_id = o.id
+     LEFT JOIN tables t ON o.table_id = t.id
+     WHERE oi.id = ?`,
+    [tItem.id]
+  );
+  if (targetInfo.length > 0) {
+    const info = targetInfo[0];
+    const displayTableName = info.tableName || "Mang về";
+    await createNotification(
+      "Món ăn có sẵn (Sử dụng lại)",
+      `Món "${info.name}" (x${CQ <= TQ ? CQ : TQ}) của Bàn ${displayTableName} đã có sẵn từ món hủy trước đó! Vui lòng bưng ra luôn.`,
+      "success",
+      "waiter"
+    );
+  }
+
+  return true;
 };
 
 
@@ -5089,6 +5357,8 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     }
   }
 
+  const bookingIdNum = data.booking_id ? Number(data.booking_id) : null;
+
   if (data.table_id) {
     const existingPreOrders = await query<any[]>(`
       SELECT id FROM orders 
@@ -5101,7 +5371,7 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
       const preOrderId = existingPreOrders[0].id;
       await query(`
         UPDATE orders 
-        SET order_type = ?, status = 'open', created_by = COALESCE(?, created_by), guest_name = COALESCE(?, guest_name), guest_phone = COALESCE(?, guest_phone), guest_count = COALESCE(?, guest_count)
+        SET order_type = ?, status = 'open', created_by = COALESCE(?, created_by), guest_name = COALESCE(?, guest_name), guest_phone = COALESCE(?, guest_phone), guest_count = COALESCE(?, guest_count), booking_id = COALESCE(?, booking_id)
         WHERE id = ?
       `, [
         data.order_type || 'dine_in',
@@ -5109,6 +5379,7 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
         data.guest_name || null,
         data.guest_phone || null,
         data.guest_count || null,
+        bookingIdNum,
         preOrderId
       ]);
       // Khi mở bàn, chuyển trạng thái các món đặt trước từ 'pre_order' sang 'pending' (chờ nấu) để gửi xuống bếp (KDS nhận được ngay mà không cần chỉnh sửa KDS)
@@ -5117,15 +5388,19 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
         SET status = 'pending', is_held = 0 
         WHERE order_id = ? AND status = 'pre_order'
       `, [preOrderId]);
+      if (bookingIdNum) {
+        await query("UPDATE bookings SET status = 'arrived' WHERE id = ?", [bookingIdNum]).catch(() => {});
+      }
       return { id: preOrderId, ...data, status: 'open', customer_id: validCustomerId };
     }
   }
 
   const result = await query(`
-    INSERT INTO orders (table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
+    INSERT INTO orders (table_id, booking_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')
   `, [
     data.table_id,
+    bookingIdNum,
     validCustomerId,
     data.created_by,
     data.order_type || 'dine_in',
@@ -5134,6 +5409,11 @@ export const createResmanagerOrder = async (data: any): Promise<any> => {
     data.guest_phone || null,
     data.guest_count || null
   ]);
+
+  if (bookingIdNum) {
+    await query("UPDATE bookings SET status = 'arrived' WHERE id = ?", [bookingIdNum]).catch(() => {});
+  }
+
   return { id: result.insertId, ...data, status: 'open', customer_id: validCustomerId };
 };
 
@@ -5254,11 +5534,24 @@ export const addResmanagerOrderItem = async (data: any): Promise<any> => {
 };
 
 export const voidResmanagerOrderItem = async (itemId: number, reason: string): Promise<boolean> => {
+  // Lấy trạng thái hiện tại trước khi hủy
+  const items = await query<any[]>(`SELECT status FROM order_items WHERE id = ?`, [itemId]);
+  if (items.length === 0) return false;
+  const currentStatus = items[0].status;
+  
+  // Nếu món đã nấu xong, đang nấu, hoặc đã phục vụ bị hủy
+  const isCookedCancelled = (currentStatus === "done" || currentStatus === "cooking" || currentStatus === "served") ? 1 : 0;
+
+  // Nếu món đang nấu (chưa chạy done nên chưa trừ kho), ta tiến hành trừ kho hao hụt (waste)
+  if (currentStatus === "cooking") {
+    await deductInventoryForItem(itemId, "waste", "Hao hụt do hủy món đang nấu");
+  }
+
   const result = await query(`
     UPDATE order_items 
-    SET status = 'voided', void_reason = ?, voided_at = NOW() 
+    SET status = 'voided', void_reason = ?, voided_at = NOW(), is_cooked_cancelled = ?
     WHERE id = ?
-  `, [reason, itemId]);
+  `, [reason, isCookedCancelled, itemId]);
   return result.affectedRows > 0;
 };
 
@@ -5266,7 +5559,7 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   if (orderItemIds.length === 0) return false;
   const placeholders = orderItemIds.map(() => "?").join(",");
   
-  // Lấy chi tiết các món trước khi cập nhật để kiểm tra tình trạng tồn kho & tạo thông báo
+  // Lấy chi tiết các món trước khi cập nhật để kiểm tra tình trạng tồn kho
   const items = await query<any[]>(
     `SELECT oi.id, oi.order_id, oi.menu_item_id, oi.quantity, m.name AS item_name
      FROM order_items oi
@@ -5289,10 +5582,8 @@ export const sendResmanagerOrderItemsToKitchen = async (orderItemIds: number[]):
   );
 
   if (result.affectedRows > 0) {
-    // Tạo thông báo cho Đầu bếp (chef)
-    for (const item of items) {
-      await createNewDishNotification(item.order_id, item.menu_item_id, item.quantity);
-    }
+    // Tự động kiểm tra tái sử dụng món đã nấu bị hủy và tạo thông báo tương ứng
+    await processReuseForOrderItems(orderItemIds);
   }
 
   return result.affectedRows > 0;
@@ -5959,6 +6250,20 @@ interface AttendanceRecordRow {
   clock_out: string | null;
   employee_name?: string;
   employee_role?: string;
+  schedule_id?: number | null;
+  is_late?: number;
+  late_reason?: string | null;
+  is_early?: number;
+  early_reason?: string | null;
+}
+
+/** Metadata collected by the schedule-policy middleware at clock-in or clock-out. */
+export interface AttendanceTimingInput {
+  scheduleId?: number | null;
+  isLate?: boolean;
+  lateReason?: string | null;
+  isEarly?: boolean;
+  earlyReason?: string | null;
 }
 
 /** Gets attendance records with the staff member information required by managers. */
@@ -5976,6 +6281,11 @@ export const getAllAttendance = async (): Promise<AttendanceRecordRow[]> => {
       a.employee_id,
       a.clock_in,
       a.clock_out,
+      a.schedule_id,
+      a.is_late,
+      a.late_reason,
+      a.is_early,
+      a.early_reason,
       u.full_name AS employee_name,
       COALESCE(r.name, 'staff') AS employee_role
     FROM attendance a
@@ -6022,23 +6332,27 @@ export const getTodayAttendance = async (employeeId: number): Promise<any | null
   return rows[0] || null;
 };
 
-export const clockInEmployee = async (employeeId: number): Promise<any> => {
+export const clockInEmployee = async (employeeId: number, timing: AttendanceTimingInput = {}): Promise<any> => {
   const now = new Date();
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
     (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
-    const newRecord = { id: Date.now(), employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
+    const newRecord = {
+      id: Date.now(), employee_id: employeeId, clock_in: now.toISOString(), clock_out: null,
+      schedule_id: timing.scheduleId ?? null, is_late: timing.isLate ? 1 : 0,
+      late_reason: timing.lateReason ?? null,
+    };
     MOCK_ATTENDANCE_STORE.push(newRecord);
     return newRecord;
   }
   const result = await query(
-    "INSERT INTO attendance (employee_id, clock_in) VALUES (?, NOW())",
-    [employeeId]
+    "INSERT INTO attendance (employee_id, clock_in, schedule_id, is_late, late_reason) VALUES (?, NOW(), ?, ?, ?)",
+    [employeeId, timing.scheduleId ?? null, timing.isLate ? 1 : 0, timing.lateReason ?? null]
   );
   return { id: result.insertId, employee_id: employeeId, clock_in: now.toISOString(), clock_out: null };
 };
 
-export const clockOutEmployee = async (employeeId: number): Promise<any | null> => {
+export const clockOutEmployee = async (employeeId: number, timing: AttendanceTimingInput = {}): Promise<any | null> => {
   if (!dbAvailable) {
     const MOCK_ATTENDANCE_STORE: any[] = (globalThis as any).__MOCK_ATTENDANCE || [];
     (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
@@ -6048,14 +6362,16 @@ export const clockOutEmployee = async (employeeId: number): Promise<any | null> 
     );
     if (record) {
       record.clock_out = new Date().toISOString();
+      record.is_early = timing.isEarly ? 1 : 0;
+      record.early_reason = timing.earlyReason ?? null;
       return record;
     }
     return null;
   }
   const today = new Date().toISOString().slice(0, 10);
   await query(
-    "UPDATE attendance SET clock_out = NOW() WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
-    [employeeId, today]
+    "UPDATE attendance SET clock_out = NOW(), is_early = ?, early_reason = ? WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
+    [timing.isEarly ? 1 : 0, timing.earlyReason ?? null, employeeId, today]
   );
   return getTodayAttendance(employeeId);
 };

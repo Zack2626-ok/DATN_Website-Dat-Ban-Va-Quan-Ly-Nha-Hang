@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { Calendar, CalendarDays, UserCheck } from "lucide-react";
-import type { Shift, Attendance, ShiftEmployee } from "../../../interfaces/shift.interface";
+import { io } from "socket.io-client";
+import type { Attendance, ShiftEmployee } from "../../../interfaces/shift.interface";
 import * as shiftService from "../../../services/shiftService";
-import { ShiftTab } from "./components/ShiftTab";
 import { AttendanceTab } from "./components/AttendanceTab";
 import { AttendanceHistoryTab } from "./components/AttendanceHistoryTab";
-import { OpenShiftModal, CloseShiftModal } from "./components/ShiftModals";
+import { TimePolicyCard } from "./components/TimePolicyCard";
+import { ScheduleAssignmentPanel } from "./components/ScheduleAssignmentPanel";
+import { ShiftPolicySettings } from "./components/ShiftPolicySettings";
+import { LeaveAndSwapReviewPanel } from "./components/LeaveAndSwapReviewPanel";
 
 export const ShiftManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"shifts" | "attendance" | "attendance-history">("shifts");
 
   // States dữ liệu
-  const [shifts, setShifts] = useState<Shift[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<ShiftEmployee[]>([]);
 
@@ -21,20 +23,14 @@ export const ShiftManagement: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   // States đóng/mở hộp thoại
-  const [isOpenShiftOpen, setIsOpenShiftOpen] = useState(false);
-  const [isCloseShiftOpen, setIsCloseShiftOpen] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
-
   // Fetch dữ liệu từ API service
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [shiftsData, attendanceData, employeesData] = await Promise.all([
-        shiftService.getShifts(),
+      const [attendanceData, employeesData] = await Promise.all([
         shiftService.getAttendance(),
         shiftService.getEmployees(),
       ]);
-      setShifts(shiftsData);
       setAttendance(attendanceData);
       setEmployees(employeesData);
     } catch (error) {
@@ -63,65 +59,46 @@ export const ShiftManagement: React.FC = () => {
     void fetchData();
     const pollId = window.setInterval(() => {
       void refreshAttendance();
-    }, 5000);
-    return () => window.clearInterval(pollId);
+    }, 3000);
+
+    const socket = io(import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000");
+    socket.on("system:attendance_changed", () => {
+      void refreshAttendance();
+    });
+
+    return () => {
+      window.clearInterval(pollId);
+      socket.disconnect();
+    };
   }, []);
 
-  // Handler: Mở ca làm mới
-  const handleOpenShift = async (data: { employee_id: number; start_time: string; cash_open: number; note: string }) => {
-    try {
-      setActionLoading(true);
-      await shiftService.openShift(data);
-      toast.success("Mở ca làm việc mới thành công!");
-      setIsOpenShiftOpen(false);
-      fetchData();
-    } catch (error) {
-      toast.error((error as Error).message || "Lỗi mở ca làm việc");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Handler: Đóng ca làm việc
-  const handleCloseShift = async (data: { end_time: string; cash_close: number; note: string }) => {
-    if (!selectedShift) return;
-    try {
-      setActionLoading(true);
-      await shiftService.closeShift(selectedShift.id, data);
-      toast.success("Đóng ca làm việc và kết toán thành công!");
-      setIsCloseShiftOpen(false);
-      setSelectedShift(null);
-      fetchData();
-    } catch (error) {
-      toast.error((error as Error).message || "Lỗi đóng ca làm việc");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   // Handler: Check-in chấm công
-  const handleClockIn = async (employeeId: number) => {
+  /** Records a terminal clock-in, optionally with a late-arrival explanation. */
+  const handleClockIn = async (employeeId: number, lateReason?: string): Promise<void> => {
     try {
       setActionLoading(true);
-      await shiftService.clockIn(employeeId);
+      await shiftService.clockIn(employeeId, { late_reason: lateReason });
       toast.success("Ghi nhận Clock In chấm công thành công!");
       fetchData();
-    } catch (error) {
-      toast.error((error as Error).message || "Lỗi ghi nhận giờ vào");
+      } catch (error) {
+        toast.error((error as Error).message || "Lỗi ghi nhận giờ vào");
+        throw error;
     } finally {
       setActionLoading(false);
     }
   };
 
   // Handler: Check-out chấm công
-  const handleClockOut = async (employeeId: number) => {
+  /** Records a terminal clock-out, optionally with an early-departure explanation. */
+  const handleClockOut = async (employeeId: number, earlyReason?: string): Promise<void> => {
     try {
       setActionLoading(true);
-      await shiftService.clockOut(employeeId);
+      await shiftService.clockOut(employeeId, { early_reason: earlyReason });
       toast.success("Ghi nhận Clock Out chấm công thành công!");
       fetchData();
-    } catch (error) {
-      toast.error((error as Error).message || "Lỗi ghi nhận giờ ra");
+      } catch (error) {
+        toast.error((error as Error).message || "Lỗi ghi nhận giờ ra");
+        throw error;
     } finally {
       setActionLoading(false);
     }
@@ -181,19 +158,18 @@ export const ShiftManagement: React.FC = () => {
         </button>
       </div>
 
+      {activeTab === "shifts" && (
+        <>
+          <TimePolicyCard />
+          <ShiftPolicySettings />
+          <ScheduleAssignmentPanel employees={employees} />
+          <LeaveAndSwapReviewPanel />
+        </>
+      )}
+
       {/* Nội dung Tab */}
       <div className="animate-fade-in">
-        {activeTab === "shifts" ? (
-          <ShiftTab
-            shifts={shifts}
-            loading={loading}
-            onOpenShiftClick={() => setIsOpenShiftOpen(true)}
-            onCloseShiftClick={(shift) => {
-              setSelectedShift(shift);
-              setIsCloseShiftOpen(true);
-            }}
-          />
-        ) : activeTab === "attendance" ? (
+        {activeTab === "attendance" ? (
           <AttendanceTab
             attendance={attendance}
             employees={employees}
@@ -202,30 +178,10 @@ export const ShiftManagement: React.FC = () => {
             onClockOut={handleClockOut}
             actionLoading={actionLoading}
           />
-        ) : (
+        ) : activeTab === "attendance-history" ? (
           <AttendanceHistoryTab attendance={attendance} loading={loading} />
-        )}
+        ) : null}
       </div>
-
-      {/* Modals nghiệp vụ ca làm */}
-      <OpenShiftModal
-        isOpen={isOpenShiftOpen}
-        onClose={() => setIsOpenShiftOpen(false)}
-        employees={employees}
-        onConfirm={handleOpenShift}
-        loading={actionLoading}
-      />
-
-      <CloseShiftModal
-        isOpen={isCloseShiftOpen}
-        onClose={() => {
-          setIsCloseShiftOpen(false);
-          setSelectedShift(null);
-        }}
-        shift={selectedShift}
-        onConfirm={handleCloseShift}
-        loading={actionLoading}
-      />
     </div>
   );
 };

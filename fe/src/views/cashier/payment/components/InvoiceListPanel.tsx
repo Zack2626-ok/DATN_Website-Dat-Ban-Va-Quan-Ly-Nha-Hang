@@ -16,8 +16,7 @@ interface Props {
 const STATUS_OPTIONS: { value: InvoiceStatus | "all"; label: string }[] = [
   { value: "all", label: "Tất cả" },
   { value: "unpaid", label: "Chưa thanh toán" },
-  { value: "pending", label: "Chờ thanh toán" },
-  { value: "cancelled", label: "Đã hủy" },
+  { value: "paid", label: "Đã thanh toán" },
 ];
 
 const statusBadge = (status: InvoiceStatus) => {

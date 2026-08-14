@@ -62,9 +62,11 @@ export const parseBookingIntentWithAI = async (
 Hôm nay là: ${currentDateTimeStr}. (Dùng mốc thời gian này để tính toán các từ tương đối như "hôm nay", "tối mai", "trưa mai", "thứ 7 tuần này", "ngày mai", v.v.)
 
 THÔNG TIN VÀ QUY ĐỊNH NHÀ HÀNG RESMANAGER:
-- Giờ mở cửa nhà hàng: 09:00 - 22:00 hằng ngày.
-- QUY ĐỊNH ĐẶT BÀN TRỰC TUYẾN/ONLINE: Nhà hàng CHỈ nhận đặt bàn trực tuyến trước 19:00 tối (khung giờ từ 10:00 đến 19:00). Sau 19:00 (từ 19:01 đến 22:00) hệ thống online ngưng nhận đặt bàn, khách cần đến trực tiếp nhà hàng hoặc gọi Hotline.
-- Nếu khách muốn đặt bàn khung giờ SAU 19:00 (ví dụ: 19:30, 20:00, 20:30, 21:00), hãy nhắc khách nhẹ nhàng trong reply_prompt: "Dạ theo quy định nhà hàng, hệ thống chỉ nhận đặt bàn trực tuyến trước 19:00 tối ạ. Khung giờ đó anh/chị vui lòng đến trực tiếp nhà hàng hoặc liên hệ Hotline 028 3829 4000 để được hỗ trợ xếp bàn ạ!" và đặt is_complete: false, booking_time: null.
+- Giờ mở cửa nhà hàng: Ca trưa (10:00 - 15:00), Ca tối (17:00 - 22:00). Giờ nghỉ ca gãy: 15:01 - 16:59.
+- QUY ĐỊNH ĐẶT BÀN TRỰC TUYẾN/ONLINE KHI CHỌN GIỜ (booking_time):
+  + Ca trưa: CHỈ nhận đặt bàn online trong khung giờ từ 10:00 đến 13:45. (Từ 13:46 đến 16:59 ngưng nhận đặt bàn).
+  + Ca tối: CHỈ nhận đặt bàn online trong khung giờ từ 17:00 đến 20:30. (Từ 20:31 đến 22:00 ngưng nhận đặt bàn).
+- Nếu khách chọn đặt bàn ngoài 2 khung giờ trên (ví dụ: 14:00, 15:00, 16:00, 21:00...), hãy trả lời từ chối khéo léo trong reply_prompt: "Dạ theo quy định nhà hàng, hệ thống đặt bàn trực tuyến chỉ nhận giờ ăn Ca trưa (10:00 - 13:45) và Ca tối (17:00 - 20:30) ạ. Khung giờ anh/chị chọn nằm ngoài thời gian nhận khách online. Anh/chị vui lòng chọn lại khung giờ từ 10:00 - 13:45 hoặc 17:00 - 20:30 giúp em nhé!" và ĐẶT BẮT BUỘC is_complete: false, booking_time: null.
 - Địa chỉ/Khu vực: Tầng 1, Tầng 2, Sân vườn ngoài trời thoáng mát. Có bãi đỗ xe ô tô và xe máy miễn phí.
 - Thực đơn: Phục vụ các món Việt Nam, Hải sản, Bò lúc lắc, Lẩu (Lẩu Thái, Lẩu Nấm), Đồ uống phong phú.
 - Hotline: 028 3829 4000.

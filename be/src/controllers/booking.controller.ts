@@ -131,6 +131,7 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     const booking = await db.createBooking({
       table_id: Number(table_id),
       table_ids,
+      booking_channel: booking_channel || channel,
       customer_id: customer_id ? Number(customer_id) : null,
       promotion_id: promotion_id ? Number(promotion_id) : null,
       guest_name,
@@ -227,7 +228,7 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     const { id } = req.params;
     const { status, cancel_reason } = req.body;
 
-    const validStatuses = ["pending", "confirmed", "cancelled", "completed"];
+    const validStatuses = ["pending", "confirmed", "arrived", "cancelled", "completed"];
     if (!status || !validStatuses.includes(status)) {
       sendError(res, `Trạng thái phải là: ${validStatuses.join(", ")}`, 400);
       return;
@@ -238,6 +239,21 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     if (!success) {
       sendError(res, "Không tìm thấy đặt bàn", 404);
       return;
+    }
+
+    const bId = Number(id);
+    const ioApp = req.app.get("io");
+    if (ioApp && bId) {
+      ioApp.emit("booking:claimed", {
+        bookingId: bId,
+        id: bId,
+        status,
+      });
+      ioApp.emit("table:booking_checked_in", {
+        bookingId: bId,
+        id: bId,
+        status,
+      });
     }
 
     sendSuccess(res, { id, status }, "Cập nhật trạng thái đặt bàn thành công");
@@ -269,6 +285,36 @@ export const payBookingDepositHandler = async (req: Request, res: Response): Pro
       return;
     }
     sendSuccess(res, { id }, "Thanh toán tiền cọc thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const assignBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { assignedArea, assignedWaiterName, assignedWaiterId, guestName, guestPhone, partySize, startTime } = req.body;
+
+    const payload = {
+      id: `ASSIGN-${Date.now()}`,
+      bookingId: Number(id),
+      assignedArea: assignedArea || "Tầng 2",
+      assignedWaiterName: assignedWaiterName || "Tất cả nhân viên ca trực Tầng 2",
+      assignedWaiterId: assignedWaiterId ? Number(assignedWaiterId) : null,
+      guestName,
+      guestPhone,
+      partySize,
+      startTime,
+      assignedAt: new Date().toLocaleString("vi-VN"),
+      assignedTimestamp: Date.now(),
+    };
+
+    const ioApp = req.app.get("io") || io;
+    if (ioApp) {
+      ioApp.emit("booking:assigned", payload);
+    }
+
+    sendSuccess(res, payload, "Phân công đặt bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

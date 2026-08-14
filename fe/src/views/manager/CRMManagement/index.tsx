@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, startTransition } from "react";
 import {
   Users,
   Ticket,
-  Percent,
   Search,
   Plus,
   Edit2,
@@ -20,7 +19,6 @@ import {
   Customer,
   LoyaltyTransaction,
   Voucher,
-  Promotion,
 } from "../../../services/crmService";
 
 /** Derives the visible membership tier from the customer's accumulated points. */
@@ -38,7 +36,6 @@ export const CRMManagement: React.FC = () => {
   // States
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
-  const [promotions, setPromotions] = useState<Promotion[]>([]);
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -69,12 +66,6 @@ export const CRMManagement: React.FC = () => {
     data?: Voucher;
   }>({ isOpen: false, mode: "create" });
 
-  const [promoModal, setPromoModal] = useState<{
-    isOpen: boolean;
-    mode: "create" | "edit";
-    data?: Promotion;
-  }>({ isOpen: false, mode: "create" });
-
   const [historyModal, setHistoryModal] = useState<{
     isOpen: boolean;
     customer?: Customer;
@@ -101,29 +92,16 @@ export const CRMManagement: React.FC = () => {
     is_active: 1,
   });
 
-  const [promoForm, setPromoForm] = useState({
-    title: "",
-    description: "",
-    discount_type: "percent" as "percent" | "fixed",
-    discount_value: 0,
-    image_url: "",
-    start_date: "",
-    end_date: "",
-    is_active: 1,
-  });
-
   // Fetch all datasets
   const loadData = async () => {
     try {
       setLoading(true);
-      const [cRes, vRes, pRes] = await Promise.all([
+      const [cRes, vRes] = await Promise.all([
         crmService.getCustomers(),
         crmService.getVouchers(),
-        crmService.getPromotions(),
       ]);
       setCustomers(cRes);
       setVouchers(vRes);
-      setPromotions(pRes);
     } catch (err: any) {
       console.error(err);
       toast.error("Không thể tải thông tin CRM");
@@ -330,79 +308,6 @@ export const CRMManagement: React.FC = () => {
   // PROMOTION HANDLERS
   // ============================================================================
 
-  const handleOpenPromoModal = (mode: "create" | "edit", data?: Promotion) => {
-    setPromoModal({ isOpen: true, mode, data });
-    if (mode === "edit" && data) {
-      setPromoForm({
-        title: data.title,
-        description: data.description || "",
-        discount_type: data.discount_type,
-        discount_value: data.discount_value,
-        image_url: data.image_url || "",
-        start_date: data.start_date ? new Date(data.start_date).toISOString().slice(0, 16) : "",
-        end_date: data.end_date ? new Date(data.end_date).toISOString().slice(0, 16) : "",
-        is_active: data.is_active,
-      });
-    } else {
-      setPromoForm({
-        title: "",
-        description: "",
-        discount_type: "percent",
-        discount_value: 0,
-        image_url: "",
-        start_date: "",
-        end_date: "",
-        is_active: 1,
-      });
-    }
-  };
-
-  const submitPromoForm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!promoForm.title.trim()) {
-      toast.error("Tiêu đề khuyến mãi bắt buộc");
-      return;
-    }
-    if (!promoForm.start_date || !promoForm.end_date) {
-      toast.error("Thời hạn bắt đầu và kết thúc bắt buộc");
-      return;
-    }
-    if (new Date(promoForm.start_date) >= new Date(promoForm.end_date)) {
-      toast.error("Thời gian kết thúc phải sau thời gian bắt đầu");
-      return;
-    }
-    try {
-      const payload = {
-        ...promoForm,
-        start_date: new Date(promoForm.start_date).toISOString(),
-        end_date: new Date(promoForm.end_date).toISOString(),
-      };
-
-      if (promoModal.mode === "create") {
-        await crmService.createPromotion(payload);
-        toast.success("Tạo chương trình khuyến mãi thành công");
-      } else if (promoModal.mode === "edit" && promoModal.data) {
-        await crmService.updatePromotion(promoModal.data.id, payload);
-        toast.success("Cập nhật khuyến mãi thành công");
-      }
-      setPromoModal({ isOpen: false, mode: "create" });
-      loadData();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Lỗi lưu khuyến mãi");
-    }
-  };
-
-  const deletePromotion = async (id: number) => {
-    if (!window.confirm("Hủy kích hoạt chương trình khuyến mãi này?")) return;
-    try {
-      await crmService.deletePromotion(id);
-      toast.success("Đã hủy khuyến mãi");
-      loadData();
-    } catch (err: any) {
-      toast.error("Không thể hủy");
-    }
-  };
-
   // Filter lists based on search term
   const filteredCustomers = useMemo(() => {
     if (!searchTerm) return customers;
@@ -421,16 +326,6 @@ export const CRMManagement: React.FC = () => {
     return vouchers.filter((v) => v.code.toLowerCase().includes(term));
   }, [vouchers, searchTerm]);
 
-  const filteredPromotions = useMemo(() => {
-    if (!searchTerm) return promotions;
-    const term = searchTerm.toLowerCase();
-    return promotions.filter(
-      (p) =>
-        p.title.toLowerCase().includes(term) ||
-        (p.description && p.description.toLowerCase().includes(term))
-    );
-  }, [promotions, searchTerm]);
-
   const paginatedCustomers = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredCustomers.slice(start, start + ITEMS_PER_PAGE);
@@ -440,11 +335,6 @@ export const CRMManagement: React.FC = () => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredVouchers.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredVouchers, currentPage]);
-
-  const paginatedPromotions = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredPromotions.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredPromotions, currentPage]);
 
   // Stylized tier badges helper
   const renderTierBadge = (tier: string) => {
@@ -494,15 +384,6 @@ export const CRMManagement: React.FC = () => {
             <Plus size={18} /> Thêm Voucher
           </button>
         )}
-        {activeTab === "promotions" && (
-          <button
-            type="button"
-            onClick={() => handleOpenPromoModal("create")}
-            className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
-          >
-            <Plus size={18} /> Thêm Khuyến mãi
-          </button>
-        )}
       </div>
 
       {/* Tabs list */}
@@ -542,25 +423,9 @@ export const CRMManagement: React.FC = () => {
           <Ticket size={15} />
           Mã ưu đãi (Vouchers)
         </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            startTransition(() => {
-              setActiveTab("promotions");
-              setSearchTerm("");
-            });
-          }}
-          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-            activeTab === "promotions"
-              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
-              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
-          }`}
-        >
-          <Percent size={15} />
-          Chương trình khuyến mãi
-        </button>
       </div>
+
+
 
       {/* Search Toolbar */}
       <div className="bg-[#FFFFFF] p-3.5 rounded-3xl border border-slate-200/70 shadow-xs flex flex-col md:flex-row gap-3">
@@ -570,9 +435,7 @@ export const CRMManagement: React.FC = () => {
             placeholder={
               activeTab === "customers"
                 ? "Tìm kiếm tên, số điện thoại, email..."
-                : activeTab === "vouchers"
-                ? "Tìm kiếm theo mã voucher..."
-                : "Tìm kiếm tiêu đề khuyến mãi..."
+                : "Tìm kiếm theo mã voucher..."
             }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -862,163 +725,6 @@ export const CRMManagement: React.FC = () => {
               )}
             </div>
           )}
-
-          {activeTab === "promotions" && (
-            <div className="bg-admin-card rounded-2xl border border-admin-border shadow-xs overflow-hidden">
-              <table className="w-full text-left text-sm border-collapse">
-                <thead className="bg-gray-50 font-bold text-admin-text-sub border-b border-admin-border text-xs uppercase">
-                  <tr>
-                    <th className="px-6 py-4">Chương trình khuyến mãi</th>
-                    <th className="px-6 py-4">Mô tả</th>
-                    <th className="px-6 py-4">Kiểu giảm</th>
-                    <th className="px-6 py-4">Giá trị giảm</th>
-                    <th className="px-6 py-4">Ngày bắt đầu</th>
-                    <th className="px-6 py-4">Ngày kết thúc</th>
-                    <th className="px-6 py-4">Trạng thái</th>
-                    <th className="px-6 py-4 text-right">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-admin-border">
-                  {paginatedPromotions.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-16 text-center text-admin-text-sub">
-                        Không có chương trình khuyến mãi nào.
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedPromotions.map((p) => {
-                      const now = new Date();
-                      const start = new Date(p.start_date);
-                      const end = new Date(p.end_date);
-                      const isRunning = p.is_active === 1 && now >= start && now <= end;
-                      const hasEnded = end < now;
-
-                      return (
-                        <tr key={p.id} className="hover:bg-admin-primary-light/10 transition-colors">
-                          <td className="px-6 py-4 font-bold text-admin-text-main">{p.title}</td>
-                          <td className="px-6 py-4 text-gray-500 text-xs max-w-xs truncate" title={p.description || ""}>
-                            {p.description || "—"}
-                          </td>
-                          <td className="px-6 py-4">
-                            {p.discount_type === "percent" ? "% Giảm" : "Tiền mặt"}
-                          </td>
-                          <td className="px-6 py-4 font-black">
-                            {p.discount_type === "percent"
-                              ? `${p.discount_value}%`
-                              : formatCurrency(p.discount_value)}
-                          </td>
-                          <td className="px-6 py-4 text-gray-500 font-mono text-xs">
-                            {formatDate(p.start_date)}
-                          </td>
-                          <td className="px-6 py-4 text-gray-500 font-mono text-xs">
-                            {formatDate(p.end_date)}
-                          </td>
-                          <td className="px-6 py-4">
-                            {p.is_active === 0 ? (
-                              <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-500 text-[10px] font-bold">
-                                Tắt
-                              </span>
-                            ) : hasEnded ? (
-                              <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold">
-                                Hết hạn
-                              </span>
-                            ) : isRunning ? (
-                              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold animate-pulse">
-                                Đang chạy
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold">
-                                Lên lịch
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => handleOpenPromoModal("edit", p)}
-                                className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
-                                title="Sửa"
-                              >
-                                <Edit2 size={15} />
-                              </button>
-                              <button
-                                onClick={() => deletePromotion(p.id)}
-                                className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"
-                                title="Hủy bỏ"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-
-              {filteredPromotions.length > 0 && Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE) > 1 && (
-                <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-4">
-                  <div className="flex flex-1 justify-between sm:hidden">
-                    <button
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="relative inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Trước
-                    </button>
-                    <button
-                      onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE), p + 1))}
-                      disabled={currentPage === Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE)}
-                      className="relative ml-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Sau
-                    </button>
-                  </div>
-                  <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs text-slate-500">
-                        Hiển thị từ <span className="font-semibold text-slate-700">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> đến{" "}
-                        <span className="font-semibold text-slate-700">{Math.min(currentPage * ITEMS_PER_PAGE, filteredPromotions.length)}</span> trong tổng số{" "}
-                        <span className="font-semibold text-slate-700">{filteredPromotions.length}</span> khuyến mãi
-                      </p>
-                    </div>
-                    <div>
-                      <nav className="isolate inline-flex -space-x-px rounded-md gap-1" aria-label="Pagination">
-                        <button
-                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                          disabled={currentPage === 1}
-                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-                        >
-                          Trước
-                        </button>
-                        {Array.from({ length: Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE) }, (_, i) => i + 1).map((page) => (
-                          <button
-                            key={page}
-                            onClick={() => setCurrentPage(page)}
-                            className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                              currentPage === page
-                                ? "z-10 bg-blue-600 text-white"
-                                : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => setCurrentPage((p) => Math.min(Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE), p + 1))}
-                          disabled={currentPage === Math.ceil(filteredPromotions.length / ITEMS_PER_PAGE)}
-                          className="relative inline-flex items-center rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-                        >
-                          Sau
-                        </button>
-                      </nav>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </>
       )}
 
@@ -1291,129 +997,8 @@ export const CRMManagement: React.FC = () => {
         </div>
       )}
 
-      {/* ============================================================================
-          PROMOTION MODAL
-          ============================================================================ */}
-      {promoModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-gray-100 animate-scale-up">
-            <div className="p-6 border-b border-admin-border flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                <Percent className="text-admin-primary" size={20} />
-                {promoModal.mode === "create" ? "Tạo chương trình Khuyến mãi mới" : "Chỉnh sửa Khuyến mãi"}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setPromoModal({ isOpen: false, mode: "create" })}
-                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={submitPromoForm} className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tiêu đề chương trình *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Giảm giá khai vị Hè 2026..."
-                  value={promoForm.title}
-                  onChange={(e) => setPromoForm({ ...promoForm, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20 font-bold"
-                />
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mô tả nội dung</label>
-                <textarea
-                  rows={2}
-                  placeholder="Chi tiết chương trình..."
-                  value={promoForm.description}
-                  onChange={(e) => setPromoForm({ ...promoForm, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
-                />
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Hình thức giảm *</label>
-                  <select
-                    value={promoForm.discount_type}
-                    onChange={(e) => setPromoForm({ ...promoForm, discount_type: e.target.value as any })}
-                    className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-admin-primary/20 font-bold"
-                  >
-                    <option value="percent">Phần trăm (%)</option>
-                    <option value="fixed">Tiền mặt (đ)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mức giảm *</label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    value={promoForm.discount_value}
-                    onChange={(e) => setPromoForm({ ...promoForm, discount_value: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20 font-bold font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ảnh minh họa (URL)</label>
-                <input
-                  type="text"
-                  placeholder="http://example.com/image.png"
-                  value={promoForm.image_url}
-                  onChange={(e) => setPromoForm({ ...promoForm, image_url: e.target.value })}
-                  className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ngày bắt đầu *</label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={promoForm.start_date}
-                    onChange={(e) => setPromoForm({ ...promoForm, start_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ngày kết thúc *</label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={promoForm.end_date}
-                    onChange={(e) => setPromoForm({ ...promoForm, end_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-admin-border rounded-lg text-sm outline-none focus:ring-2 focus:ring-admin-primary/20 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-admin-border flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPromoModal({ isOpen: false, mode: "create" })}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-admin-primary hover:bg-admin-primary-hover text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                >
-                  Xác nhận
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ============================================================================
           LOYALTY TRANSACTION HISTORY MODAL

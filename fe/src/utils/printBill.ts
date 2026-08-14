@@ -24,7 +24,7 @@ export const printCashierInvoice = (
     const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
     const tableName = invoice.tableName || invoice.table_name || "Khách lẻ";
-    const invId = invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A";
+    const invId = invoice.order_code || (invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A");
     const guestName = invoice.customerName || invoice.customer_name || invoice.guestName || invoice.guest_name || "";
     const guestPhone = invoice.customerPhone || invoice.customer_phone || invoice.guestPhone || invoice.guest_phone || "";
     const allItems = (invoice.items || []).filter((item: any) => item.status !== "cancelled");
@@ -155,32 +155,35 @@ export const printCashierInvoice = (
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
             font-family: 'Courier New', Courier, monospace;
-            font-size: 11px;
-            width: 80mm;
-            padding: 8px 8px;
+            font-size: 12px;
+            width: 76mm;
+            margin: 0 auto;
+            padding: 4mm 2mm;
             color: #000;
             background-color: #fff;
           }
           .center { text-align: center; }
           .bold { font-weight: bold; }
-          .lg { font-size: 13px; }
-          .xl { font-size: 15px; }
-          .divider { border-top: 1px dashed #000; margin: 8px 0; }
-          .row { display: flex; justify-content: space-between; margin: 4px 0; }
-          .total-row { font-size: 13px; font-weight: bold; margin-top: 6px; }
-          .note { font-size: 9px; color: #333; font-style: italic; margin-top: 4px; }
-          .item-note { font-size: 9px; color: #555; padding-left: 10px; margin-top: 1px; }
-          .qr-section { text-align: center; margin-top: 10px; padding: 8px; border: 1px dashed #000; border-radius: 4px; }
-          .qr-section img { width: 130px; height: 130px; margin-top: 4px; }
-          .qr-section p { font-size: 9px; margin-top: 2px; }
-          .item-block { margin: 6px 0; }
+          .lg { font-size: 14px; }
+          .xl { font-size: 16px; }
+          .divider { border-top: 1px dashed #000; margin: 6px 0; }
+          .row { display: flex; justify-content: space-between; margin: 3px 0; }
+          .total-row { font-size: 14px; font-weight: bold; margin-top: 4px; }
+          .note { font-size: 10px; color: #333; font-style: italic; margin-top: 4px; }
+          .item-note { font-size: 10px; color: #555; padding-left: 10px; margin-top: 1px; }
+          .qr-section { text-align: center; margin-top: 8px; padding: 6px; border: 1px dashed #000; border-radius: 4px; }
+          .qr-section img { width: 120px; height: 120px; margin-top: 4px; }
+          .qr-section p { font-size: 10px; margin-top: 2px; }
+          .item-block { margin: 4px 0; }
           @media print {
             @page {
-              size: auto;
-              margin: 0mm;
+              size: 80mm auto;
+              margin: 0;
             }
             body {
-              margin: 8mm 6mm;
+              width: 76mm;
+              margin: 0 auto;
+              padding: 2mm 0mm;
             }
           }
         </style>
@@ -259,6 +262,151 @@ export const printCashierInvoice = (
         ` : ""}
 
         <div class="center note" style="margin-top:8px;">Cảm ơn quý khách và hẹn gặp lại!</div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => {
+      printWindow?.close();
+    };
+    setTimeout(() => {
+      if (printWindow) {
+        printWindow.print();
+      }
+    }, 300);
+  } catch (err) {
+    console.error("Lỗi khi ghi tài liệu in:", err);
+    alert("Có lỗi xảy ra khi chuẩn bị bản in. Vui lòng thử lại.");
+    if (printWindow) {
+      printWindow.close();
+    }
+  }
+};
+
+export const printExpenseInvoice = (
+  expense: any,
+  restaurantName: string = "NHÀ HÀNG RESMANAGER",
+  restaurantInfo?: any
+) => {
+  let printWindow: Window | null = null;
+  try {
+    printWindow = window.open("", "_blank", "width=400,height=600");
+    if (!printWindow) {
+      alert("Không thể mở cửa sổ in. Vui lòng cho phép trình duyệt hiển thị cửa sổ bật lên (pop-up) để in hóa đơn.");
+      return;
+    }
+  } catch (err) {
+    console.error("Lỗi khi mở cửa sổ in:", err);
+    alert("Không thể mở cửa sổ in do bảo mật trình duyệt. Vui lòng cho phép pop-up và thử lại.");
+    return;
+  }
+
+  try {
+    const now = new Date();
+    const printDate = now.toLocaleDateString("vi-VN");
+    const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+
+    const formatDateTime = (dateStr: string) => {
+      if (!dateStr) return "-";
+      const d = new Date(dateStr);
+      return d.toLocaleString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      });
+    };
+
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>Hóa đơn thanh toán - #${expense.id}</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            width: 72mm;
+            margin: 0 auto;
+            padding: 4mm 2mm;
+            font-size: 10px;
+            line-height: 1.4;
+            color: #000;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .divider { border-top: 1px dashed #000; margin: 6px 0; }
+          .title { font-size: 12px; font-weight: bold; letter-spacing: 1px; margin: 6px 0; text-transform: uppercase; }
+          .row { display: flex; justify-content: space-between; margin: 3px 0; }
+          .total-row { font-size: 11px; font-weight: bold; margin-top: 6px; }
+          .signatures { display: grid; grid-template-cols: 1fr 1fr; text-align: center; margin-top: 15px; font-size: 9px; font-family: sans-serif; }
+          .signature-space { height: 35px; border-bottom: 1px dashed #aaa; width: 80%; margin: 5px auto; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <p class="bold" style="font-size: 12px; margin: 0;">${restaurantName.toUpperCase()}</p>
+          <p style="font-size: 8px; margin: 2px 0 0 0; color: #555;">ĐƠN VỊ KINH DOANH F&B</p>
+          <p style="font-size: 8px; margin: 2px 0 0 0; color: #555;">Địa chỉ: ${restaurantInfo?.address || "123 Nguyễn Huệ, Quận 1, TP.HCM"}</p>
+          <p style="font-size: 8px; margin: 2px 0 0 0; color: #555;">Hotline: ${restaurantInfo?.hotline || "028 3829 4000"}</p>
+        </div>
+
+        <div class="divider"></div>
+        <div class="center title">HÓA ĐƠN THANH TOÁN</div>
+        <div class="divider"></div>
+
+        <div class="row">
+          <span>Mã hóa đơn:</span>
+          <span class="bold">#${expense.id}</span>
+        </div>
+        <div class="row">
+          <span>Hạng mục:</span>
+          <span class="bold">${expense.category}</span>
+        </div>
+        <div class="row">
+          <span>Người gửi:</span>
+          <span>Ban Quản lý Nhà hàng</span>
+        </div>
+        <div class="row">
+          <span>Người nhận:</span>
+          <span class="bold">${expense.payee || "Đơn vị cung cấp lẻ"}</span>
+        </div>
+        <div class="row">
+          <span>Thời gian:</span>
+          <span>${formatDateTime(expense.date)}</span>
+        </div>
+        <div class="row">
+          <span style="min-width: 80px;">Ghi chú chi:</span>
+          <span style="text-align: right; max-width: 160px; word-wrap: break-word;">${expense.note || "—"}</span>
+        </div>
+
+        <div class="divider"></div>
+        <div class="row total-row">
+          <span>TỔNG THANH TOÁN:</span>
+          <span class="bold">-${expense.amount.toLocaleString("vi-VN")} đ</span>
+        </div>
+        <div class="divider"></div>
+
+        <div class="signatures">
+          <div>
+            <p>Người gửi (Lập phiếu)</p>
+            <div class="signature-space"></div>
+            <p class="bold" style="margin-top: 4px;">Quản lý</p>
+          </div>
+          <div>
+            <p>Người nhận (Ký nhận)</p>
+            <div class="signature-space"></div>
+            <p class="bold" style="margin-top: 4px;">${expense.payee ? expense.payee.slice(0, 12) + (expense.payee.length > 12 ? "..." : "") : "Đại diện nhận"}</p>
+          </div>
+        </div>
+
+        <div class="divider" style="margin-top: 15px;"></div>
+        <p style="font-size: 8px; text-align: center; color: #555; margin: 4px 0 0 0;">Bản in hóa đơn chi phí nội bộ</p>
+        <p style="font-size: 8px; text-align: center; color: #555; margin: 2px 0 0 0;">In lúc: ${printTime} ${printDate}</p>
       </body>
       </html>
     `);

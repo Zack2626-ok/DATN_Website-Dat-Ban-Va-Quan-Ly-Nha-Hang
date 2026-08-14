@@ -361,23 +361,68 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       [startStr, endStr]
     );
     const totalReturnIncome = Number(returnIncomeRow[0].val);
-    const totalIncome = totalInvoiceIncome + totalReturnIncome;
 
-    const expenseRow = await db.query(
-      `SELECT COALESCE(
-        (SELECT SUM(quantity * unit_cost) FROM stock_in WHERE created_at BETWEEN ? AND ?)
-        -
-        (SELECT SUM(so.quantity * COALESCE(si.unit_cost, 0)) 
-         FROM stock_out so 
-         LEFT JOIN stock_in si ON so.stock_in_id = si.id 
-         WHERE so.reason = 'return_to_supplier' 
-           AND so.note NOT LIKE '%[LƯU TẠM]%' 
-           AND so.created_at BETWEEN ? AND ?),
-        0
-      ) AS val`,
-      [startStr, endStr, startStr, endStr]
+    // 1. Paid import expenses (only where is_credit = 0 or NULL and not draft and not stock check adjustment)
+    const paidImportRow = await db.query(
+      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val 
+       FROM stock_in 
+       WHERE (is_credit IS NULL OR is_credit = 0)
+         AND (note IS NULL OR note NOT LIKE '%[LƯU TẠM]%')
+         AND (note IS NULL OR (note NOT LIKE '%Cân bằng kho%' AND note NOT LIKE '%hàng thừa%'))
+         AND (batch_code IS NULL OR batch_code NOT LIKE 'LOT-ADJ-%')
+         AND created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
     );
-    const totalExpenses = Math.max(0, Number(expenseRow[0].val));
+    const paidImportExpenses = Number(paidImportRow[0].val);
+
+    // 1b. Income from surplus inventory check adjustments
+    const stockAdjIncomeRow = await db.query(
+      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val
+       FROM stock_in
+       WHERE (note LIKE '%Cân bằng kho%' OR note LIKE '%hàng thừa%' OR batch_code LIKE 'LOT-ADJ-%')
+         AND created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const stockAdjIncome = Number(stockAdjIncomeRow[0].val);
+    const totalIncome = totalInvoiceIncome + totalReturnIncome + stockAdjIncome;
+
+    // 2. Debt payments made to suppliers in period
+    const debtPayRow = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS val
+       FROM debt_payments
+       WHERE paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const debtPaymentsExpense = Number(debtPayRow[0].val);
+
+    // 3. Stock waste/expired loss expenses (valuated at stock_in unit_cost or weighted average cost)
+    const wasteRow = await db.query(
+      `SELECT COALESCE(SUM(so.quantity * COALESCE(si.unit_cost, (
+        SELECT SUM(s2.unit_cost * s2.remaining_quantity) / NULLIF(SUM(s2.remaining_quantity), 0)
+        FROM stock_in s2 WHERE s2.ingredient_id = so.ingredient_id AND s2.remaining_quantity > 0 AND s2.unit_cost > 0
+      ), 0)), 0) AS val
+       FROM stock_out so
+       LEFT JOIN stock_in si ON so.stock_in_id = si.id
+       WHERE so.reason IN ('waste', 'expired')
+         AND (so.note IS NULL OR so.note NOT LIKE '%[LƯU TẠM]%')
+         AND so.created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const wasteExpenses = Number(wasteRow[0].val);
+
+    // 4. Refunds received from supplier returns (cash/transfer)
+    const returnExpenseRow = await db.query(
+      `SELECT COALESCE(SUM(so.quantity * COALESCE(si.unit_cost, 0)), 0) AS val
+       FROM stock_out so
+       LEFT JOIN stock_in si ON so.stock_in_id = si.id
+       WHERE so.reason = 'return_to_supplier'
+         AND (so.note NOT LIKE '%Trừ công nợ%' AND so.note NOT LIKE '%deduct%' AND (so.note IS NULL OR so.note NOT LIKE '%[LƯU TẠM]%'))
+         AND so.created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const returnRefunds = Number(returnExpenseRow[0].val);
+
+    const totalExpenses = Math.max(0, paidImportExpenses + debtPaymentsExpense + wasteExpenses);
     const netProfit = totalIncome - totalExpenses;
 
     // 2) Recent Transactions
@@ -412,8 +457,14 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       (
         SELECT 
           CONCAT('EXP-', si.id) as id,
-          'expense' as type,
-          CONCAT('Nhập kho: ', ing.name) as description,
+          CASE 
+            WHEN (si.note LIKE '%Cân bằng kho%' OR si.note LIKE '%hàng thừa%' OR si.batch_code LIKE 'LOT-ADJ-%') THEN 'income'
+            ELSE 'expense'
+          END as type,
+          CASE 
+            WHEN (si.note LIKE '%Cân bằng kho%' OR si.note LIKE '%hàng thừa%' OR si.batch_code LIKE 'LOT-ADJ-%') THEN CONCAT('Cân bằng kho (Hàng thừa): ', ing.name)
+            ELSE CONCAT('Nhập kho: ', ing.name)
+          END as description,
           (si.quantity * si.unit_cost) as amount,
           si.created_at as date,
           'completed' as status,
@@ -440,7 +491,72 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         FROM stock_in si
         JOIN ingredients ing ON si.ingredient_id = ing.id
         LEFT JOIN suppliers sup ON si.supplier_id = sup.id
-        WHERE si.created_at BETWEEN ? AND ?
+        WHERE (si.is_credit IS NULL OR si.is_credit = 0)
+          AND (si.note IS NULL OR si.note NOT LIKE '%[LƯU TẠM]%')
+          AND si.created_at BETWEEN ? AND ?
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('PAY-', dp.id) as id,
+          'expense' as type,
+          CONCAT('Thanh toán nợ NCC: ', sup.name) as description,
+          dp.amount as amount,
+          dp.paid_at as date,
+          'completed' as status,
+          NULL as orderId,
+          NULL as ingredientName,
+          NULL as quantity,
+          NULL as unitCost,
+          NULL as ingredientUnit,
+          sup.name as supplierName,
+          0 as isCredit,
+          NULL as dueDate,
+          NULL as batchCode,
+          dp.note as note,
+          0 as returnedQuantity,
+          NULL as hasRefund,
+          NULL as refundedTotal,
+          'debt_payment' as txSubType
+        FROM debt_payments dp
+        JOIN suppliers sup ON dp.supplier_id = sup.id
+        WHERE dp.paid_at BETWEEN ? AND ?
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('WASTE-', so.id) as id,
+          'expense' as type,
+          CONCAT('Hao hụt/Xuất hủy: ', ing.name) as description,
+          (so.quantity * COALESCE(si.unit_cost, (
+            SELECT SUM(s2.unit_cost * s2.remaining_quantity) / NULLIF(SUM(s2.remaining_quantity), 0)
+            FROM stock_in s2 WHERE s2.ingredient_id = so.ingredient_id AND s2.remaining_quantity > 0 AND s2.unit_cost > 0
+          ), 0)) as amount,
+          so.created_at as date,
+          'completed' as status,
+          NULL as orderId,
+          ing.name as ingredientName,
+          so.quantity as quantity,
+          COALESCE(si.unit_cost, (
+            SELECT SUM(s2.unit_cost * s2.remaining_quantity) / NULLIF(SUM(s2.remaining_quantity), 0)
+            FROM stock_in s2 WHERE s2.ingredient_id = so.ingredient_id AND s2.remaining_quantity > 0 AND s2.unit_cost > 0
+          ), 0) as unitCost,
+          ing.unit as ingredientUnit,
+          NULL as supplierName,
+          0 as isCredit,
+          NULL as dueDate,
+          si.batch_code as batchCode,
+          so.note as note,
+          0 as returnedQuantity,
+          NULL as hasRefund,
+          NULL as refundedTotal,
+          'waste' as txSubType
+        FROM stock_out so
+        JOIN ingredients ing ON so.ingredient_id = ing.id
+        LEFT JOIN stock_in si ON so.stock_in_id = si.id
+        WHERE so.reason IN ('waste', 'expired')
+          AND (so.note IS NULL OR so.note NOT LIKE '%[LƯU TẠM]%')
+          AND so.created_at BETWEEN ? AND ?
       )
       UNION ALL
       (
@@ -476,7 +592,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       ORDER BY date DESC
       LIMIT 100
       `,
-      [startStr, endStr, startStr, endStr, startStr, endStr]
+      [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr]
     );
 
     sendSuccess(
@@ -575,6 +691,52 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
       .filter((d: any) => d.status === "Quá hạn")
       .reduce((s: number, d: any) => s + d.amount, 0);
 
+    // 4) Lịch sử thanh toán công nợ & Trả hàng NCC
+    const recentPaymentRows = await db.query(`
+      SELECT * FROM (
+        SELECT 
+          CONCAT('PAY-', dp.id)             AS id,
+          'pay'                             AS category,
+          dp.supplier_id                    AS supplierId,
+          s.name                           AS supplierName,
+          dp.amount                        AS amount,
+          dp.method                        AS method,
+          dp.note                          AS note,
+          dp.proof_image                   AS proofImage,
+          dp.paid_at                        AS paidAt,
+          COALESCE(u.full_name, 'Hệ thống') AS paidByName,
+          s.total_debt                     AS currentSupplierDebt
+        FROM debt_payments dp
+        JOIN suppliers s ON dp.supplier_id = s.id
+        LEFT JOIN users u ON dp.paid_by = u.id
+
+        UNION ALL
+
+        SELECT 
+          CONCAT('RET-', so.id)             AS id,
+          'return'                          AS category,
+          COALESCE(si.supplier_id, 0)       AS supplierId,
+          COALESCE(sup.name, 'Nhà cung cấp') AS supplierName,
+          (so.quantity * COALESCE(si.unit_cost, 0)) AS amount,
+          'return_goods'                    AS method,
+          CONCAT('Trả hàng: ', so.quantity, ' ', COALESCE(i.unit, 'kg'), ' ', COALESCE(i.name, 'Nguyên liệu'), IF(so.note IS NOT NULL AND so.note != '', CONCAT(' - ', so.note), '')) AS note,
+          NULL                              AS proofImage,
+          so.created_at                     AS paidAt,
+          'Quản lý kho'                     AS paidByName,
+          COALESCE(sup.total_debt, 0)       AS currentSupplierDebt
+        FROM stock_out so
+        JOIN ingredients i ON so.ingredient_id = i.id
+        LEFT JOIN stock_in si ON so.stock_in_id = si.id
+        LEFT JOIN suppliers sup ON si.supplier_id = sup.id
+        WHERE so.reason IN ('return_supplier', 'return_to_supplier')
+           OR so.note LIKE '%Trả hàng%'
+           OR so.note LIKE '%TRẢ HÀNG%'
+           OR so.reason LIKE '%Trả hàng%'
+      ) combined_history
+      ORDER BY paidAt DESC
+      LIMIT 100
+    `);
+
     sendSuccess(
       res,
       {
@@ -588,6 +750,19 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
           date: r.noted_at,
         })),
         supplierDebts,
+        recentPayments: recentPaymentRows.map((r: any) => ({
+          id: r.id,
+          category: r.category,
+          supplierId: r.supplierId,
+          supplierName: r.supplierName,
+          amount: Number(r.amount),
+          method: r.method,
+          note: r.note || "",
+          proofImage: r.proofImage || null,
+          paidAt: r.paidAt,
+          paidByName: r.paidByName,
+          currentSupplierDebt: Number(r.currentSupplierDebt || 0),
+        })),
         summary: {
           totalDebt,
           overdueDebt,

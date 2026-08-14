@@ -12,7 +12,13 @@ export const getAllInventory = async (_req: Request, res: Response): Promise<voi
         name as itemName,
         current_stock as stock, 
         unit, 
-        min_stock as threshold 
+        min_stock as threshold,
+        COALESCE(
+          (SELECT SUM(unit_cost * remaining_quantity) / NULLIF(SUM(remaining_quantity), 0)
+           FROM stock_in WHERE ingredient_id = ingredients.id AND remaining_quantity > 0 AND unit_cost > 0),
+          (SELECT unit_cost FROM stock_in WHERE ingredient_id = ingredients.id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1),
+          0
+        ) AS avgCost
       FROM ingredients 
       WHERE is_deleted = 0
     `);
@@ -70,6 +76,7 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
         FROM stock_in si
         JOIN ingredients i ON si.ingredient_id = i.id
         LEFT JOIN suppliers s ON si.supplier_id = s.id
+        WHERE si.batch_code NOT LIKE 'LOT-ADJ-%'
       )
       ORDER BY timestamp DESC
       LIMIT 100
@@ -315,9 +322,10 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       }
 
       // Check duplicate batch code in recent stock_in entries (within 30 days)
+      // Bỏ qua các record [LƯU TẠM] và [HOÀN THÀNH] vì chúng sẽ bị xóa/thay thế khi nhập kho chính thức
       if (batchNo && !isDraft) {
         const existingBatch = await db.query<any[]>(
-          `SELECT id, created_at FROM stock_in WHERE batch_code = ? AND ingredient_id = ? AND note NOT LIKE '%[LƯU TẠM]%' AND created_at >= NOW() - INTERVAL 30 DAY`,
+          `SELECT id, created_at FROM stock_in WHERE batch_code = ? AND ingredient_id = ? AND note NOT LIKE '%[LƯU TẠM]%' AND note NOT LIKE '%[HOÀN THÀNH]%' AND created_at >= NOW() - INTERVAL 30 DAY`,
           [batchNo, ingredientIdNum]
         );
         if (existingBatch && existingBatch.length > 0) {
@@ -327,11 +335,13 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       }
 
       // Check duplicate import today (same ingredient & supplier within today)
+      // Bỏ qua [HOÀN THÀNH] vì đó là phiếu chờ nhập kho
       if (ingredientIdNum && supplierId && !isDraft) {
         const currentTicketCode = (reasonOrSupplier || "").match(/\[SLIP:([^\]]+)\]/)?.[1];
         const todayDup = await db.query<any[]>(
           `SELECT id, note, created_at FROM stock_in 
-           WHERE ingredient_id = ? AND supplier_id = ? AND created_at >= CURDATE()`,
+           WHERE ingredient_id = ? AND supplier_id = ? AND created_at >= CURDATE()
+             AND note NOT LIKE '%[HOÀN THÀNH]%'`,
           [ingredientIdNum, supplierId]
         );
 
@@ -397,6 +407,24 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
             [cost, supplierId]
           );
         }
+      }
+
+      // Auto-update supplier's main_ingredients with newly imported ingredient name
+      if (supplierId && (!isDraft && !isCompleted)) {
+        try {
+          const ingRows = await db.query<any[]>(`SELECT name FROM ingredients WHERE id = ?`, [ingredientIdNum]);
+          if (ingRows.length > 0) {
+            const ingName = ingRows[0].name;
+            const supRows = await db.query<any[]>(`SELECT main_ingredients FROM suppliers WHERE id = ?`, [supplierId]);
+            if (supRows.length > 0) {
+              const existing = (supRows[0].main_ingredients || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+              if (!existing.some((e: string) => e.toLowerCase() === ingName.toLowerCase())) {
+                const updated = [...existing, ingName].join(", ");
+                await db.query(`UPDATE suppliers SET main_ingredients = ? WHERE id = ?`, [updated, supplierId]);
+              }
+            }
+          }
+        } catch (e) { /* non-critical */ }
       }
     } else if (type === "export" || type === "adjust" || type === "waste") {
       const isReturnToSupplier = reasonType === "return_to_supplier" || reasonType === "return_supplier" || (reasonOrSupplier || "").toLowerCase().includes("trả ncc");
@@ -530,13 +558,35 @@ export const submitStockCheck = async (req: Request, res: Response): Promise<voi
         [actual, ingredient_id]
       );
 
-      // Nếu actual < system → ghi stock_out waste để cân bằng
+      // Nếu actual < system → ghi stock_out waste để cân bằng hụt
+      // Nếu actual > system → ghi stock_in để cân bằng thừa
+      // Giá trị tính theo giá bình quân gia quyền (Weighted Average Cost) của các lô còn hàng
       const diff = actual - system_stock;
+
+      // Tính giá bình quân gia quyền: Tổng giá trị các lô còn lại / Tổng số lượng còn lại
+      const avgCostRow = await db.query(
+        `SELECT 
+           COALESCE(
+             SUM(unit_cost * remaining_quantity) / NULLIF(SUM(remaining_quantity), 0),
+             (SELECT unit_cost FROM stock_in WHERE ingredient_id = ? AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1)
+           ) AS avgCost
+         FROM stock_in 
+         WHERE ingredient_id = ? AND remaining_quantity > 0 AND unit_cost > 0`,
+        [ingredient_id, ingredient_id]
+      );
+      const weightedAvgCost = avgCostRow.length > 0 && avgCostRow[0].avgCost ? Number(avgCostRow[0].avgCost) : 0;
+
       if (diff < 0) {
         await db.query(
           `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by)
-           VALUES (?, ?, 'waste', 'Chênh lệch kiểm kê kho', ?)`,
-          [ingredient_id, Math.abs(diff), userId]
+           VALUES (?, ?, 'waste', ?, ?)`,
+          [ingredient_id, Math.abs(diff), `Chênh lệch kiểm kê kho (Hụt) - Đơn giá BQ: ${Math.round(weightedAvgCost).toLocaleString()}đ`, userId]
+        );
+      } else if (diff > 0) {
+        await db.query(
+          `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by)
+           VALUES (?, ?, ?, ?, ?, NULL, NULL, 'Cân bằng kho: Nhập điều chỉnh hàng thừa (Giá BQ gia quyền)', ?)`,
+          [ingredient_id, `LOT-ADJ-${Date.now()}`, diff, diff, weightedAvgCost, userId]
         );
       }
     }
@@ -579,11 +629,11 @@ export const getTodayCheckList = async (_req: Request, res: Response): Promise<v
 export const paySupplierDebt = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { amount, method = "cash", note } = req.body;
-    const userId = (req as any).user?.id ?? 1;
+    const { amount, method, note, proofImage } = req.body;
+    const userId = (req as any).user?.id || null;
 
     if (!amount || Number(amount) <= 0) {
-      sendError(res, "Số tiền không hợp lệ", 400);
+      sendError(res, "Số tiền thanh toán phải lớn hơn 0", 400);
       return;
     }
 
@@ -598,7 +648,14 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
     }
 
     const supplier = suppliers[0];
-    const payAmount = Math.min(Number(amount), Number(supplier.total_debt));
+    const currentDebt = Number(supplier.total_debt || 0);
+
+    if (Number(amount) > currentDebt) {
+      sendError(res, `Số tiền thanh toán (${Number(amount).toLocaleString('vi-VN')} đ) không được lớn hơn tổng số nợ hiện tại (${currentDebt.toLocaleString('vi-VN')} đ)`, 400);
+      return;
+    }
+
+    const payAmount = Number(amount);
 
     // Trừ nợ
     await db.query(
@@ -606,11 +663,11 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
       [payAmount, id]
     );
 
-    // Ghi lịch sử
-    await db.query(
-      `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [id, payAmount, method, note || null, userId]
+    // Ghi lịch sử thanh toán nợ
+    const payRes = await db.query(
+      `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by, proof_image)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, payAmount, method, note || null, userId, proofImage || null]
     );
 
     // Lấy nợ còn lại
@@ -619,9 +676,14 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
     sendSuccess(
       res,
       {
-        supplierId: id,
+        paymentId: payRes.insertId,
+        supplierId: Number(id),
+        supplierName: supplier.name,
         paid: payAmount,
         remaining: Number(updated[0].total_debt),
+        method,
+        note: note || "",
+        paidAt: new Date().toISOString(),
       },
       "Thanh toán công nợ thành công"
     );
@@ -637,9 +699,9 @@ export const getDebtHistory = async (req: Request, res: Response): Promise<void>
     const rows = await db.query(
       `
       SELECT dp.id, dp.amount, dp.method, dp.note, dp.paid_at,
-             u.full_name AS paid_by_name
+             COALESCE(u.full_name, 'Hệ thống') AS paid_by_name
       FROM debt_payments dp
-      JOIN users u ON dp.paid_by = u.id
+      LEFT JOIN users u ON dp.paid_by = u.id
       WHERE dp.supplier_id = ?
       ORDER BY dp.paid_at DESC
       LIMIT 50
@@ -822,6 +884,7 @@ export const getAllBatches = async (req: Request, res: Response): Promise<void> 
          si.batch_code as batchNo, 
          si.remaining_quantity as quantity, 
          si.expiry_date as expiryDate, 
+         COALESCE(si.unit_cost, 0) as unitCost,
          i.name as ingredientName,
          i.unit
        FROM stock_in si

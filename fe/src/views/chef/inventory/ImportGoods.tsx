@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud, Sparkles, AlertCircle } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, UploadCloud, X, Check, Printer, DownloadCloud, Sparkles, AlertCircle, AlertTriangle, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import { getIngredientsApi, getSuppliersApi, updateInventoryQuantityApi, getInventoryTransactionsApi } from "../../../services/api";
 // @ts-ignore
@@ -53,6 +53,32 @@ const getMultiplier = (baseUnit: string, displayUnit: string): number => {
   const opts = getUnitOptions(baseUnit);
   const found = opts.find(o => o.label === displayUnit);
   return found ? found.toBase : 1;
+};
+
+export const normalizeUnit = (unitStr: string): string => {
+  const u = unitStr.toLowerCase().trim();
+  if (u === "kg" || u === "kilogam" || u === "kilo" || u === "kilogram" || u === "ký" || u === "ky") return "kg";
+  if (u === "g" || u === "gram" || u === "gam") return "g";
+  if (u === "lít" || u === "lit" || u === "liter" || u === "l") return "lít";
+  if (u === "ml" || u === "mililit" || u === "mililiter") return "ml";
+  if (u === "hộp" || u === "hop") return "hộp";
+  if (u === "chai") return "chai";
+  if (u === "lon") return "lon";
+  if (u === "gói" || u === "goi") return "gói";
+  if (u === "túi" || u === "tui") return "túi";
+  if (u === "bó" || u === "bo") return "bó";
+  if (u === "con") return "con";
+  if (u === "quả" || u === "qua" || u === "trái" || u === "trai") return "quả";
+  if (u === "củ" || u === "cu") return "củ";
+  return u;
+};
+
+export const parseExcelNumber = (val: any): number => {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === "number") return val;
+  const str = String(val).replace(/[^0-9.,-]/g, "").replace(",", ".");
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
 };
 
 export const ALLOWED_UNITS = [
@@ -168,7 +194,11 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [importDate, setImportDate] = useState(new Date().toISOString().slice(0, 16));
   const [note, setNote] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("credit"); // "paid" or "credit"
+  const [paymentStatus, setPaymentStatus] = useState("credit"); // "credit" (Ghi nợ - Mặc định) | "paid" (Thanh toán)
+  const [paidAmount, setPaidAmount] = useState<number | string>(0);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank_transfer">("cash");
+  const [paymentProofImage, setPaymentProofImage] = useState<string>("");
+  const [isPaidAmountFocused, setIsPaidAmountFocused] = useState(false);
 
   const [showExcelModal, setShowExcelModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -366,10 +396,34 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
     0
   );
 
+  useEffect(() => {
+    if (paymentStatus === "credit") {
+      setPaidAmount(0);
+    }
+  }, [paymentStatus]);
+
+  const numericPaidAmount = Number(paidAmount) || 0;
+  const isOverPaidAmount = paymentStatus !== "credit" && numericPaidAmount > totalAmount;
+
   const handleSave = async (mode: "draft" | "completed" | "save_print" = "completed") => {
     if (importItems.length === 0) {
       toast.error("Vui lòng chọn ít nhất một mặt hàng để nhập");
       return;
+    }
+
+    if (paymentStatus === "paid") {
+      if (numericPaidAmount <= 0) {
+        toast.error("Vui lòng nhập số tiền thanh toán khi chọn hình thức Thanh toán!");
+        return;
+      }
+      if (numericPaidAmount > totalAmount) {
+        toast.error(`Số tiền thanh toán không được vượt quá tổng cộng (${totalAmount.toLocaleString("vi-VN")} ₫)!`);
+        return;
+      }
+      if (!paymentProofImage) {
+        toast.error("Vui lòng tải ảnh minh chứng / hóa đơn khi chọn hình thức Thanh toán!");
+        return;
+      }
     }
 
     const currentTicket = initialData && initialData[0]?.ticketCode ? initialData[0].ticketCode : undefined;
@@ -410,6 +464,8 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
           ? initialData[0].ticketCode
           : `PN${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}N-${Date.now().toString().slice(-4)}`;
 
+      const isCreditForItems = paymentStatus === "credit" || (paymentStatus === "paid" && numericPaidAmount < totalAmount);
+
       const baseReason = `[SLIP:${slipCode}] Nhập hàng từ ${supplierName}`;
       const reasonOrSupplier = note ? `${baseReason} - Ghi chú: ${note}` : baseReason;
 
@@ -423,7 +479,7 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
             unit: item.baseUnit,
             unitCost: item.unitCost,
             supplierId: selectedSupplier || undefined,
-            isCredit: paymentStatus === "credit",
+            isCredit: isCreditForItems,
             expiryDate: item.expiryDate || undefined,
             batchNo: item.batchNo,
             reasonOrSupplier,
@@ -440,6 +496,8 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
       }
 
       if (mode === "save_print" && onPrintReceipt) {
+        const actualPaid = paymentStatus === "paid" ? numericPaidAmount : 0;
+        const actualDebt = paymentStatus === "credit" ? totalAmount : Math.max(0, totalAmount - numericPaidAmount);
         onPrintReceipt({
           title: "PHIẾU NHẬP HÀNG",
           ticketCode: slipCode,
@@ -456,8 +514,8 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
             total: getActualQty(i) * i.unitCost,
           })),
           totalAmount,
-          paidAmount: paymentStatus === "paid" ? totalAmount : 0,
-          debtAmount: paymentStatus === "credit" ? totalAmount : 0,
+          paidAmount: actualPaid,
+          debtAmount: actualDebt,
           note,
         });
       }
@@ -857,7 +915,7 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center text-sm font-bold">
                 <span className="text-slate-600">Tổng cộng</span>
-                <span className="text-admin-primary text-lg">
+                <span className="text-admin-primary text-lg font-black">
                   {totalAmount.toLocaleString("vi-VN")} ₫
                 </span>
               </div>
@@ -865,17 +923,177 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                 <label className="text-xs font-bold text-slate-600 block mb-1">Trạng thái thanh toán</label>
                 <select
                   value={paymentStatus}
-                  onChange={e => setPaymentStatus(e.target.value)}
-                  className={`w-full p-2 border rounded outline-none text-sm font-semibold cursor-pointer ${
-                    paymentStatus === "paid"
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPaymentStatus(val);
+                    if (val === "paid") {
+                      if (numericPaidAmount === 0 && totalAmount > 0) {
+                        setPaidAmount(totalAmount);
+                      }
+                    } else if (val === "credit") {
+                      setPaidAmount(0);
+                    }
+                  }}
+                  className={`w-full p-2 border rounded-xl outline-none text-xs font-bold cursor-pointer ${
+                    paymentStatus === "credit"
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : numericPaidAmount >= totalAmount
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : "bg-rose-50 text-rose-700 border-rose-200"
+                      : "bg-amber-50 text-amber-700 border-amber-200"
                   }`}
                 >
-                  <option value="paid">Đã thanh toán (Tiền mặt / Chuyển khoản)</option>
-                  <option value="credit">Công nợ (Ghi nợ NCC)</option>
+                  <option value="credit">Ghi nợ (Mua chịu)</option>
+                  <option value="paid">Thanh toán (Tiền mặt / Chuyển khoản)</option>
                 </select>
+
+                {paymentStatus === "credit" && (
+                  <div className="mt-1.5 text-[11px] font-semibold text-rose-600 bg-rose-50 p-2 rounded-lg border border-rose-100 flex items-center gap-1.5">
+                    <Sparkles size={13} className="shrink-0 text-rose-500" />
+                    <span>Toàn bộ <b>{totalAmount.toLocaleString("vi-VN")} ₫</b> sẽ được tính vào nợ NCC.</span>
+                  </div>
+                )}
+
+                {paymentStatus === "paid" && totalAmount > 0 && (
+                  <div className={`mt-1.5 text-[11px] font-extrabold p-2 rounded-lg border flex items-center gap-1.5 ${
+                    numericPaidAmount >= totalAmount
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : numericPaidAmount > 0
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-rose-50 text-rose-700 border-rose-200"
+                  }`}>
+                    <Sparkles size={13} className="shrink-0" />
+                    {numericPaidAmount >= totalAmount ? (
+                      <span>Hệ thống tự nhận biết: <b>Đã thanh toán đủ</b> (Ghi nợ NCC: 0 ₫)</span>
+                    ) : numericPaidAmount > 0 ? (
+                      <span>Hệ thống tự nhận biết: <b>Thanh toán 1 phần</b> (Ghi nợ NCC còn lại: {(totalAmount - numericPaidAmount).toLocaleString("vi-VN")} ₫)</span>
+                    ) : (
+                      <span>Vui lòng nhập số tiền thanh toán ngay &gt; 0 ₫</span>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {paymentStatus === "paid" && (
+                <>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Số tiền thanh toán ngay <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={isPaidAmountFocused ? paidAmount : (paidAmount === "" ? "" : Number(paidAmount).toLocaleString("vi-VN"))}
+                        onFocus={() => setIsPaidAmountFocused(true)}
+                        onBlur={() => setIsPaidAmountFocused(false)}
+                        onChange={(e) => {
+                          const rawVal = e.target.value;
+                          const digits = rawVal.replace(/\D/g, "");
+                          setPaidAmount(digits === "" ? "" : Number(digits));
+                        }}
+                        className={`w-full p-2 pl-7 border rounded-xl font-bold text-xs outline-none transition-all ${
+                          isOverPaidAmount
+                            ? "border-rose-500 bg-rose-50 text-rose-700 focus:border-rose-600"
+                            : "border-slate-300 focus:border-blue-500 text-slate-800"
+                        }`}
+                        placeholder="Nhập số tiền thanh toán..."
+                      />
+                      <span className="absolute left-2.5 top-2 text-slate-400 font-bold text-xs">₫</span>
+                    </div>
+
+                    {paidAmount !== "" && !isNaN(numericPaidAmount) && (
+                      <div className="mt-1 text-[11px] font-bold text-sky-600">
+                        Số tiền nhập: {Number(paidAmount).toLocaleString("vi-VN")} ₫
+                      </div>
+                    )}
+
+                    {isOverPaidAmount ? (
+                      <div className="mt-1 text-[11px] font-extrabold text-rose-600 flex items-center gap-1 p-1.5 bg-rose-50 rounded-lg border border-rose-200">
+                        <AlertTriangle size={13} className="shrink-0" />
+                        <span>Không được nhập vượt quá tổng cộng ({totalAmount.toLocaleString("vi-VN")} ₫)!</span>
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-[11px] font-bold text-slate-500 flex justify-between">
+                        <span>Ghi nợ NCC còn lại:</span>
+                        <span className={totalAmount - numericPaidAmount > 0 ? "text-rose-600 font-black" : "text-emerald-600 font-black"}>
+                          {Math.max(0, totalAmount - numericPaidAmount).toLocaleString("vi-VN")} ₫
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Hình thức thanh toán</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as any)}
+                      className="w-full p-2 border border-slate-300 rounded-xl font-bold text-xs bg-white text-slate-700 outline-none cursor-pointer"
+                    >
+                      <option value="cash">Tiền mặt</option>
+                      <option value="bank_transfer">Chuyển khoản</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Minh chứng thanh toán / Hóa đơn <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="import-proof-upload"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 5 * 1024 * 1024) {
+                                toast.error("Dung lượng ảnh không được vượt quá 5MB");
+                                return;
+                              }
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setPaymentProofImage(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor="import-proof-upload"
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
+                            !paymentProofImage 
+                              ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300"
+                          }`}
+                        >
+                          <Upload size={13} className={!paymentProofImage ? "text-rose-600" : "text-slate-600"} />
+                          {paymentProofImage ? "Thay ảnh minh chứng khác" : "Tải ảnh hóa đơn/chuyển khoản (Bắt buộc)"}
+                        </label>
+                        {paymentProofImage && (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentProofImage("")}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold text-xs transition-colors border border-rose-200"
+                          >
+                            Xóa ảnh
+                          </button>
+                        )}
+                      </div>
+
+                      {paymentProofImage && (
+                        <div className="relative mt-1 rounded-xl border-2 border-slate-200 bg-slate-50 p-2 shadow-xs">
+                          <img
+                            src={paymentProofImage}
+                            alt="Minh chứng hóa đơn"
+                            className="max-h-40 w-full object-contain rounded-lg bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -922,7 +1140,7 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                   const file = e.target.files?.[0];
                   if (!file) return;
                   const reader = new FileReader();
-                  reader.onload = evt => {
+                  reader.onload = async (evt) => {
                     try {
                       const bstr = evt.target?.result;
                       const wb = XLSX.read(bstr, { type: "binary" });
@@ -945,7 +1163,26 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                               s.name.toLowerCase().includes(supplierNameInRow.toLowerCase()) ||
                               supplierNameInRow.toLowerCase().includes(s.name.toLowerCase())
                           );
-                          if (matchedSup) autoSupplierId = matchedSup.id;
+                          if (matchedSup) {
+                            autoSupplierId = matchedSup.id;
+                          } else {
+                            // NCC không tồn tại trong DB → tự động tạo mới
+                            try {
+                              const { addSupplierApi } = await import("../../../services/api");
+                              const newSup = await addSupplierApi({ name: supplierNameInRow.trim() });
+                              if (newSup && newSup.id) {
+                                autoSupplierId = newSup.id;
+                                // Cập nhật danh sách suppliers để dropdown hiển thị đúng
+                                const freshSuppliers = await getSuppliersApi();
+                                setSuppliers(freshSuppliers);
+                                // Cập nhật lại biến suppliers cục bộ cho các vòng lặp sau
+                                suppliers.push({ id: newSup.id, name: supplierNameInRow.trim() });
+                                toast.success(`Đã tự động tạo NCC mới: "${supplierNameInRow.trim()}"`, { id: "auto-ncc" });
+                              }
+                            } catch (err) {
+                              console.warn("Không thể tạo NCC tự động:", err);
+                            }
+                          }
                         }
 
                         const name: string =
@@ -958,19 +1195,19 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                         if (!name.trim()) continue;
 
                         // Unit from Excel column
-                        const excelUnit: string = (
+                        const rawExcelUnit: string = (
                           row["Đơn vị"] ||
                           row["Unit"] ||
                           row.unit ||
                           ""
                         )
                           .toString()
-                          .trim()
-                          .toLowerCase();
+                          .trim();
+                        const excelUnit = normalizeUnit(rawExcelUnit);
 
                         // Strict Unit Validation: Reject garbage units like "ádasdasdsa"
                         if (excelUnit && !ALLOWED_UNITS.includes(excelUnit)) {
-                          toast.error(`Dòng ${rowIndex}: Đơn vị tính "${excelUnit}" của "${name}" không hợp lệ! Vui lòng nhập (kg, g, lít, ml, bao, hộp, chai...)`, { id: "excel-unit-err" });
+                          toast.error(`Dòng ${rowIndex}: Đơn vị tính "${rawExcelUnit}" của "${name}" không hợp lệ! Vui lòng nhập (kg, g, lít, ml, bao, hộp, chai...)`, { id: "excel-unit-err" });
                           if (fileInputRef.current) fileInputRef.current.value = "";
                           return;
                         }
@@ -1032,27 +1269,27 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           return;
                         }
 
-                        const batchVal = (
-                          row["Số lô"] ||
-                          row.Batch ||
-                          `LOT-EXCEL-${Date.now().toString().slice(-6)}`
-                        ).toString().trim();
+                        const rawBatch = row["Số lô"] || row.Batch || row["Mã lô"] || row["Mã Lô"];
+                        const hasExplicitBatch = !!(rawBatch && String(rawBatch).trim() !== "");
+                        const batchVal = hasExplicitBatch
+                          ? String(rawBatch).trim()
+                          : `LOT-EXCEL-${Date.now().toString().slice(-4)}${String(rowIndex).padStart(2, "0")}`;
 
-                        if (newItems.some(item => item.batchNo === batchVal)) {
-                          toast.error(`Dòng ${rowIndex}: Cảnh báo trùng lặp mã lô "${batchVal}" của mặt hàng "${name}" trong file Excel!`, { id: "excel-batch-dup" });
+                        if (hasExplicitBatch && newItems.some(item => item.batchNo === batchVal)) {
+                          toast.error(`Dòng ${rowIndex}: Cảnh báo trùng lặp mã lô "${batchVal}" của mặt hàng "${name}" trong file Excel!`, { id: `excel-batch-dup-${rowIndex}` });
                         }
 
                         newItems.push({
                           ingredientId,
                           ingredientName: name,
                           code: found ? `SP${found.id.toString().padStart(6, "0")}` : "Mới",
-                          quantity: Number(
+                          quantity: parseExcelNumber(
                             row["Số lượng"] || row.Quantity || row.quantity || 1
                           ),
                           displayUnit,
                           baseUnit,
                           unitMultiplier,
-                          unitCost: Number(row["Đơn giá"] || row.Price || row.price || 0),
+                          unitCost: parseExcelNumber(row["Đơn giá"] || row.Price || row.price || 0),
                           batchNo: batchVal,
                           expiryDate,
                           isNew,

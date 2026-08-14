@@ -4,14 +4,110 @@ import { sendSuccess, sendError } from "../utils/response";
 import { addLoyaltyPoints } from "./crm.controller";
 import { io } from "../server";
 
+export const formatDateToYYYYMMDD = (dateVal: any): string => {
+  if (!dateVal) return "";
+  try {
+    let dateObj: Date;
+    if (dateVal instanceof Date) {
+      dateObj = dateVal;
+    } else {
+      const str = String(dateVal);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return str;
+      }
+      
+      if (str.includes("Z") || str.includes("+") || str.includes("T")) {
+        dateObj = new Date(str);
+      } else {
+        const formattedStr = str.trim().replace(" ", "T");
+        if (formattedStr.includes("T")) {
+          dateObj = new Date(formattedStr + "+07:00");
+        } else {
+          dateObj = new Date(str);
+        }
+      }
+    }
+
+    if (isNaN(dateObj.getTime())) {
+      return "";
+    }
+
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+    
+    const parts = formatter.formatToParts(dateObj);
+    const yyyy = parts.find(p => p.type === 'year')?.value;
+    const mm = parts.find(p => p.type === 'month')?.value;
+    const dd = parts.find(p => p.type === 'day')?.value;
+    
+    if (yyyy && mm && dd) {
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  } catch (e) {
+    console.error("Error formatting date to YYYYMMDD:", e);
+  }
+  return "";
+};
+
+export const assignOrderCodes = (orders: any[]) => {
+  // Sort orders by created_at chronological order to assign sequence numbers correctly
+  const sorted = [...orders].sort((a, b) => new Date(a.created_at || a.createdAt || 0).getTime() - new Date(b.created_at || b.createdAt || 0).getTime());
+  
+  // Group by date string (YYYYMMDD)
+  const dateGroups: Record<string, any[]> = {};
+  sorted.forEach(o => {
+    const dateStr = formatDateToYYYYMMDD(o.created_at || o.createdAt);
+    const key = dateStr.replace(/-/g, ""); // e.g. 20260808
+    if (key.length === 8) {
+      if (!dateGroups[key]) {
+        dateGroups[key] = [];
+      }
+      dateGroups[key].push(o);
+    } else {
+      // Fallback for orders without proper date format
+      const fallbackKey = "20260808";
+      if (!dateGroups[fallbackKey]) {
+        dateGroups[fallbackKey] = [];
+      }
+      dateGroups[fallbackKey].push(o);
+    }
+  });
+  
+  // Assign order_code
+  const codesMap: Record<string, string> = {};
+  Object.keys(dateGroups).forEach(dateKey => {
+    const group = dateGroups[dateKey];
+    group.forEach((o, index) => {
+      const yy = dateKey.slice(2, 4); // "26"
+      const mm = dateKey.slice(4, 6); // "08"
+      const dd = dateKey.slice(6, 8); // "08"
+      const seq = String(index + 1).padStart(3, "0"); // "001"
+      const code = `HD${yy}${mm}${dd}-${seq}`;
+      codesMap[String(o.id)] = code;
+    });
+  });
+  
+  // Map back to original orders
+  return orders.map(o => ({
+    ...o,
+    order_code: codesMap[String(o.id)] || `HD-${o.id}`
+  }));
+};
+
 export const getAllInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status, search, dateFrom, dateTo } = req.query;
 
-    const orders = await db.getAllResmanagerOrders();
+    let orders = await db.getAllResmanagerOrders();
+    orders = assignOrderCodes(orders);
 
     let invoices = orders.map((o: any) => ({
       id: String(o.id),
+      order_code: o.order_code,
       tableId: o.table_id ? String(o.table_id) : undefined,
       tableName: o.table_name || undefined,
       customerName: o.guest_name || o.customer_name || undefined,
@@ -62,7 +158,10 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
     }
 
     if (search) {
-      const q = (search as string).toLowerCase();
+      let q = (search as string).toLowerCase();
+      if (q.startsWith("#")) {
+        q = q.slice(1);
+      }
       invoices = invoices.filter(
         (inv: any) =>
           inv.id.toLowerCase().includes(q) ||
@@ -71,13 +170,36 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       );
     }
     if (dateFrom) {
-      invoices = invoices.filter((inv: any) => inv.createdAt >= (dateFrom as string));
+      invoices = invoices.filter((inv: any) => {
+        const itemDate = formatDateToYYYYMMDD(inv.createdAt);
+        return itemDate >= (dateFrom as string);
+      });
     }
     if (dateTo) {
-      invoices = invoices.filter((inv: any) => inv.createdAt <= (dateTo as string));
+      invoices = invoices.filter((inv: any) => {
+        const itemDate = formatDateToYYYYMMDD(inv.createdAt);
+        return itemDate <= (dateTo as string);
+      });
     }
 
-    invoices.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    invoices.sort((a: any, b: any) => {
+      const getPriority = (inv: any) => {
+        if (inv.status === "pending_payment") return 1;
+        if (inv.invoiceStatus === "unpaid") return 2;
+        if (inv.invoiceStatus === "paid") return 3;
+        return 4;
+      };
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+
+      // Chưa thanh toán/Chờ thanh toán thì đến trước được thanh toán trước (createdAt tăng dần)
+      // Đã thanh toán/Đã hủy thì hiển thị hóa đơn mới nhất lên đầu (createdAt giảm dần)
+      if (pA === 1 || pA === 2) {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
     sendSuccess(res, invoices, "Lấy danh sách hóa đơn thành công");
   } catch (error) {
@@ -89,13 +211,56 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
 export const getInvoiceById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const orders = await db.getAllResmanagerOrders();
-    const order = orders.find((o: any) => String(o.id) === id);
-    if (!order) {
+    let orders = await db.getAllResmanagerOrders();
+    orders = assignOrderCodes(orders);
+    const o = orders.find((order: any) => String(order.id) === id);
+    if (!o) {
       sendError(res, "Không tìm thấy hóa đơn", 404);
       return;
     }
-    sendSuccess(res, order, "Lấy chi tiết hóa đơn thành công");
+
+    // Map to normalized Invoice structure matching getAllInvoices
+    const invoice = {
+      id: String(o.id),
+      order_code: o.order_code,
+      tableId: o.table_id ? String(o.table_id) : undefined,
+      tableName: o.table_name || undefined,
+      customerName: o.guest_name || o.customer_name || undefined,
+      customerPhone: o.guest_phone || o.customer_phone || undefined,
+      customerEmail: o.customer_email || undefined,
+      guestCount: o.guest_count || o.items?.length || 0,
+      staffName: o.staff_name || undefined,
+      items: (o.items || []).map((item: any) => ({
+        id: String(item.id),
+        menuItemId: String(item.menu_item_id),
+        name: item.item_name || `Món #${item.menu_item_id}`,
+        price: Number(item.unit_price),
+        quantity: item.quantity,
+        status: item.status,
+        is_refunded: item.is_refunded,
+      })),
+      depositAmount: o.depositAmount || 0,
+      totalAmount: o.totalAmount || 0,
+      subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
+      tax: o.tax || 0,
+      discount: o.discount || 0,
+      vatRate: o.vatRate || 0,
+      status: o.table_status === "pending_payment" || o.status === "pending_payment" ? "pending_payment" : o.status,
+      invoiceStatus:
+        o.status === "completed" || o.status === "paid"
+          ? "paid"
+          : o.status === "cancelled"
+            ? "cancelled"
+            : o.status === "pending_payment"
+              ? "pending"
+              : "unpaid",
+      createdAt: o.created_at,
+      orderType: o.order_type,
+      paymentMethod: o.paymentMethod || undefined,
+      is_early_payment: o.is_early_payment,
+    };
+
+    sendSuccess(res, invoice, "Lấy chi tiết hóa đơn thành công");
   } catch (error) {
     console.error("Error fetching invoice:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -621,26 +786,49 @@ export const getPaymentHistory = async (req: Request, res: Response): Promise<vo
     const { search, dateFrom, dateTo, paymentMethod } = req.query;
     let payments = await db.getResmanagerPayments();
 
+    // Map order_code from orders onto payment records first
+    let ordersList = await db.getAllResmanagerOrders();
+    ordersList = assignOrderCodes(ordersList);
+    const orderCodesMap: Record<string, string> = {};
+    ordersList.forEach((o: any) => {
+      orderCodesMap[String(o.id)] = o.order_code;
+    });
+
+    let enrichedPayments = payments.map((p: any) => ({
+      ...p,
+      order_code: orderCodesMap[String(p.orderId)] || `HD-${p.orderId}`
+    }));
+
     if (search) {
-      const q = (search as string).toLowerCase();
-      payments = payments.filter(
+      let q = (search as string).toLowerCase();
+      if (q.startsWith("#")) {
+        q = q.slice(1);
+      }
+      enrichedPayments = enrichedPayments.filter(
         (p: any) =>
           String(p.orderId).toLowerCase().includes(q) ||
+          (p.order_code || "").toLowerCase().includes(q) ||
           (p.table_name || "").toLowerCase().includes(q) ||
-          (p.guest_name || "").toLowerCase().includes(q),
+          (p.guest_name || "").toLowerCase().includes(q)
       );
     }
     if (dateFrom) {
-      payments = payments.filter((p: any) => p.createdAt >= (dateFrom as string));
+      enrichedPayments = enrichedPayments.filter((p: any) => {
+        const itemDate = formatDateToYYYYMMDD(p.createdAt);
+        return itemDate >= (dateFrom as string);
+      });
     }
     if (dateTo) {
-      payments = payments.filter((p: any) => p.createdAt <= (dateTo as string));
+      enrichedPayments = enrichedPayments.filter((p: any) => {
+        const itemDate = formatDateToYYYYMMDD(p.createdAt);
+        return itemDate <= (dateTo as string);
+      });
     }
     if (paymentMethod && paymentMethod !== "all") {
-      payments = payments.filter((p: any) => p.paymentMethod === paymentMethod);
+      enrichedPayments = enrichedPayments.filter((p: any) => p.paymentMethod === paymentMethod);
     }
 
-    sendSuccess(res, payments, "Lấy lịch sử thanh toán thành công");
+    sendSuccess(res, enrichedPayments, "Lấy lịch sử thanh toán thành công");
   } catch (error) {
     console.error("Error fetching payment history:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);

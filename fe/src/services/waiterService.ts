@@ -87,6 +87,7 @@ export const createOrder = async (data: {
   guest_name?: string;
   guest_phone?: string;
   guest_count?: number;
+  booking_id?: number | null;
 }): Promise<WaiterOrder> => {
   const response = await api.post("/v1/waiter/orders", data);
   return response.data.data;
