@@ -50,11 +50,27 @@ export const getOrderItemsHandler = async (req: Request, res: Response): Promise
 // Tạo order mới (resmanager)
 export const createResmanagerOrderHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count } = req.body;
+    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, booking_id } = req.body;
 
     if (!created_by) {
       sendError(res, "created_by (waiter id) là bắt buộc", 400);
       return;
+    }
+
+    const bId = booking_id ? Number(booking_id) : null;
+    if (bId && Number.isInteger(bId) && bId > 0) {
+      const existingOrders = await db.query<any[]>(
+        "SELECT id, table_id FROM orders WHERE booking_id = ? AND status IN ('open', 'serving', 'pending_payment') LIMIT 1",
+        [bId]
+      );
+      const bookingRows = await db.query<any[]>(
+        "SELECT id, status FROM bookings WHERE id = ? LIMIT 1",
+        [bId]
+      );
+      if (existingOrders.length > 0 || (bookingRows.length > 0 && ["arrived", "completed"].includes(bookingRows[0].status))) {
+        sendError(res, "Đơn đặt bàn này đã được nhân viên khác mở bàn từ trước!", 409);
+        return;
+      }
     }
 
     const requestedTableId = table_id ? Number(table_id) : null;
@@ -88,12 +104,40 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       guest_name: guest_name || null,
       guest_phone: guest_phone || null,
       guest_count: guest_count ? Number(guest_count) : null,
+      booking_id: bId,
     });
+
+    const io = req.app.get("io");
 
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
     if (primaryTableId) {
       await db.updateResmanagerTableStatus(primaryTableId, "serving");
-      // Tự động chuyển món đặt trước (nếu có) sang order_items
+      io?.emit("table:status_changed", { tableId: primaryTableId, status: "serving", guest_name: guest_name || null });
+    }
+
+    if (bId) {
+      const waiterRows = await db.query<any[]>("SELECT name, full_name, username FROM users WHERE id = ? LIMIT 1", [created_by]).catch(() => []);
+      const waiterObj = waiterRows?.[0];
+      const waiterName = waiterObj?.full_name || waiterObj?.name || waiterObj?.username || "Nhân viên";
+      const tableRows = primaryTableId ? await db.query<any[]>("SELECT name FROM tables WHERE id = ? LIMIT 1", [primaryTableId]).catch(() => []) : [];
+      const tableName = tableRows?.[0]?.name || `Bàn ${primaryTableId}`;
+
+      io?.emit("booking:claimed", {
+        bookingId: bId,
+        id: bId,
+        waiterId: Number(created_by),
+        waiterName,
+        tableId: primaryTableId,
+        tableName,
+        status: "arrived",
+      });
+      io?.emit("table:booking_checked_in", {
+        bookingId: bId,
+        id: bId,
+        waiterName,
+        tableId: primaryTableId,
+        tableName,
+      });
     }
 
     sendSuccess(res, order, "Tạo order thành công", 201);

@@ -16,6 +16,7 @@ import {
   Table2,
   ChevronDown,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
@@ -28,7 +29,7 @@ import {
   assignBookingApi,
   Booking,
 } from "../../../services/bookingService";
-import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
+import { getEmptyTables, getTablesV1, ResmanagerTable } from "../../../services/tableService";
 import { userService } from "../../../services/userService";
 import { getBookingValidationStatus } from "../../../services/systemService";
 import { useAppSelector } from "../../../store/hooks";
@@ -94,8 +95,34 @@ export const BookingListPage: React.FC = () => {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assigningBooking, setAssigningBooking] = useState<Booking | null>(null);
   const [assignArea, setAssignArea] = useState("Tầng 2");
-  const [assignWaiter, setAssignWaiter] = useState("Tất cả nhân viên ca trực Tầng 2");
+  const [selectedWaiters, setSelectedWaiters] = useState<string[]>([]);
   const [staffWaiters, setStaffWaiters] = useState<{ id: number; name: string; phone: string; email: string }[]>([]);
+  const [allTables, setAllTables] = useState<any[]>([]);
+
+  useEffect(() => {
+    getTablesV1().then((data) => setAllTables(data || [])).catch(() => {});
+  }, [isAssignModalOpen]);
+
+  const linkedTables = useMemo(() => {
+    if (!assigningBooking || !allTables || allTables.length === 0) return [];
+    const directMatches = allTables.filter((t: any) =>
+      (t.booking_id && Number(t.booking_id) === Number(assigningBooking.id)) ||
+      (assigningBooking.confirmation_code && t.booking_code === assigningBooking.confirmation_code)
+    );
+
+    const tableSet = new Map<number, any>();
+    directMatches.forEach((t) => {
+      tableSet.set(t.id, t);
+      if (t.group_seating_tables && Array.isArray(t.group_seating_tables)) {
+        t.group_seating_tables.forEach((gt: any) => tableSet.set(gt.id, gt));
+      }
+      if (t.merged_children && Array.isArray(t.merged_children)) {
+        t.merged_children.forEach((mc: any) => tableSet.set(mc.id, mc));
+      }
+    });
+
+    return Array.from(tableSet.values());
+  }, [assigningBooking, allTables]);
 
   useEffect(() => {
     getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
@@ -120,7 +147,22 @@ export const BookingListPage: React.FC = () => {
 
   const handleConfirmAssign = async () => {
     if (!assigningBooking) return;
-    const selectedWaiterObj = staffWaiters.find((w) => w.name === assignWaiter);
+    if (selectedWaiters.length === 0) {
+      toast.error("Vui lòng chọn ít nhất 1 nhân viên phục vụ phụ trách!");
+      return;
+    }
+    const waiterNames = selectedWaiters.join(", ");
+
+    const existingAssign = assignmentMap[assigningBooking.id];
+    if (existingAssign && existingAssign.assignedArea === assignArea && existingAssign.assignedWaiterName === waiterNames) {
+      toast("Thông tin phân công không có thay đổi.", { icon: "ℹ️" });
+      setIsAssignModalOpen(false);
+      return;
+    }
+
+    const selectedWaiterObjs = staffWaiters.filter((w) => selectedWaiters.includes(w.name));
+    const selectedWaiterIds = selectedWaiterObjs.map((w) => w.id);
+
     const assignmentPayload = {
       id: `ASSIGN-${Date.now()}`,
       bookingId: assigningBooking.id,
@@ -130,8 +172,9 @@ export const BookingListPage: React.FC = () => {
       partySize: assigningBooking.party_size,
       startTime: assigningBooking.start_time,
       assignedArea: assignArea || "Tầng 2",
-      assignedWaiterName: assignWaiter || "Tất cả nhân viên ca trực Tầng 2",
-      assignedWaiterId: selectedWaiterObj ? selectedWaiterObj.id : null,
+      assignedWaiterName: waiterNames,
+      assignedWaiterId: selectedWaiterObjs.length === 1 ? selectedWaiterObjs[0].id : null,
+      assignedWaiterIds: selectedWaiterIds,
       assignedAt: new Date().toLocaleString("vi-VN"),
       assignedTimestamp: Date.now(),
     };
@@ -158,7 +201,7 @@ export const BookingListPage: React.FC = () => {
       channel.close();
     } catch (e) {}
 
-    toast.success(`Đã phân công ${assignArea} cho ${assignWaiter}!`);
+    toast.success(`Đã phân công ${assignArea} cho ${waiterNames}!`);
     setIsAssignModalOpen(false);
   };
 
@@ -468,7 +511,15 @@ export const BookingListPage: React.FC = () => {
                               setAssigningBooking(b);
                               const existingAssign = assignmentMap[b.id];
                               setAssignArea(existingAssign?.assignedArea || "Tầng 2");
-                              setAssignWaiter(existingAssign?.assignedWaiterName || "Tất cả nhân viên ca trực Tầng 2");
+                              if (existingAssign?.assignedWaiterName) {
+                                const names = existingAssign.assignedWaiterName
+                                  .split(",")
+                                  .map((s: string) => s.trim())
+                                  .filter((s: string) => s && !s.toLowerCase().startsWith("tất cả"));
+                                setSelectedWaiters(names);
+                              } else {
+                                setSelectedWaiters([]);
+                              }
                               setIsAssignModalOpen(true);
                             }}
                             className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-xs transition-all ${
@@ -894,76 +945,169 @@ export const BookingListPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Trạng thái phân công hiện tại nếú có */}
-            {assignmentMap[assigningBooking.id] && (
-              <div className="flex items-center justify-between p-3.5 bg-emerald-50 border border-emerald-200/80 rounded-2xl text-xs text-emerald-900">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-black text-[10px] uppercase">
-                    ✓ ĐÃ PHÂN CÔNG
+            {/* Card thông tin bàn đã gộp nếu nhân viên đã gộp bàn */}
+            {linkedTables.length > 0 && (
+              <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs text-emerald-950 space-y-1.5 shadow-2xs">
+                <div className="flex items-center justify-between font-black text-emerald-900 border-b border-emerald-200/80 pb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <span className="p-1 bg-emerald-200 text-emerald-900 rounded-lg text-xs">🔗</span>
+                    <span>✓ ĐÃ GỘP BÀN PHỤC VỤ ĐOÀN</span>
                   </span>
-                  <span className="font-extrabold">
-                    {assignmentMap[assigningBooking.id].assignedArea} — {assignmentMap[assigningBooking.id].assignedWaiterName}
+                  <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 text-[10px] rounded-md font-extrabold">
+                    {linkedTables.reduce((acc, t) => acc + (t.capacity || 4), 0)} / {assigningBooking.party_size} chỗ
                   </span>
                 </div>
-                <span className="text-[10px] text-emerald-700 font-semibold">
-                  {assignmentMap[assigningBooking.id].assignedAt}
-                </span>
+                <p className="font-extrabold text-emerald-900 text-xs">
+                  Bàn đang ghép: <span className="text-indigo-800 font-black">{linkedTables.map((t) => t.name).join(", ")}</span>
+                </p>
               </div>
             )}
 
-            {/* Form chọn Khu vực & Phục vụ */}
-            <div className="space-y-4 pt-1">
-              <div>
-                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
-                  1. Chọn Khu vực / Tầng phục vụ *
-                </label>
-                <select
-                  value={assignArea}
-                  onChange={(e) => setAssignArea(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                >
-                  <option value="Tầng 2">Tầng 2 (Bàn tiệc / Nhiều người)</option>
-                  <option value="Sân vườn">Sân vườn</option>
-                  <option value="Tầng 1">Tầng 1 (Sảnh chính)</option>
-                  <option value="Khu VIP">Khu VIP</option>
-                </select>
-              </div>
+            {/* Trạng thái phân công & Khóa phân công */}
+            {(() => {
+              const existing = assignmentMap[assigningBooking.id];
+              const isCheckedIn = (assigningBooking.status as string) === "completed" ||
+                                  (assigningBooking.status as string) === "checked_in" ||
+                                  assigningBooking.status === "arrived";
 
-              <div>
-                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
-                  2. Chọn Nhân viên Phục vụ nhận bàn *
-                </label>
-                <select
-                  value={assignWaiter}
-                  onChange={(e) => setAssignWaiter(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                >
-                  <option value={`Tất cả nhân viên ca trực ${assignArea}`}>Tất cả nhân viên ca trực {assignArea}</option>
-                  {staffWaiters.map((w) => (
-                    <option key={w.id} value={w.name}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              if (isCheckedIn) {
+                return (
+                  <div className="p-4 bg-sky-50 border border-sky-200/90 rounded-2xl text-xs text-sky-950 space-y-2">
+                    <div className="flex items-center gap-2 font-black text-sky-900 border-b border-sky-200/60 pb-2">
+                      <span className="p-1.5 bg-sky-200 text-sky-900 rounded-lg text-xs">✅</span>
+                      <span className="uppercase tracking-wider">ĐÃ MỞ BÀN PHỤC VỤ TẠI NHÀ HÀNG</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                      <div>
+                        <span className="text-slate-500 font-semibold text-[11px]">Khu vực:</span>
+                        <p className="font-extrabold text-slate-900 mt-0.5">{existing?.assignedArea || "Tầng 2"}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-semibold text-[11px]">Nhân viên đã nhận:</span>
+                        <p className="font-extrabold text-slate-900 mt-0.5">{existing?.assignedWaiterName || "Tất cả nhân viên"}</p>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-sky-800 font-medium pt-1 italic">
+                      * Đơn đặt bàn này đã được nhân viên mở bàn phục vụ. Không thể chỉnh sửa phân công nữa.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4 pt-1">
+                  {/* 1. Chọn Khu vực */}
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                      1. Chọn Khu vực / Tầng phục vụ {existing && <span className="text-amber-700 font-bold">(Đã cố định khu vực 🔒)</span>} *
+                    </label>
+                    {existing ? (
+                      <div className="w-full px-4 py-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs font-black text-amber-950 flex items-center justify-between">
+                        <span>📍 {existing.assignedArea}</span>
+                        <span className="text-[10px] text-amber-700 font-bold bg-amber-200/60 px-2 py-0.5 rounded-md">Khóa khu vực 🔒</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={assignArea}
+                        onChange={(e) => setAssignArea(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      >
+                        <option value="Tầng 2">Tầng 2</option>
+                        <option value="Sân vườn">Sân vườn</option>
+                      </select>
+                    )}
+                  </div>
+
+                  {/* 2. Chọn/Thêm Nhân viên */}
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                      2. {existing ? "Thêm / Điều chỉnh Nhân viên Phục vụ" : "Chọn Nhân viên Phục vụ nhận bàn"} (Có thể chọn nhiều nhân viên) *
+                    </label>
+
+                    {/* Danh sách nhãn/thẻ nhân viên đã chọn hiển thị phía trên */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2.5 min-h-[38px] p-2 bg-slate-100/70 border border-slate-200/80 rounded-xl">
+                      {selectedWaiters.length === 0 ? (
+                        <span className="text-[11px] font-semibold text-rose-600 italic px-1 flex items-center gap-1">
+                          ⚠️ Chưa chọn nhân viên. Vui lòng tích chọn nhân viên phụ trách bên dưới.
+                        </span>
+                      ) : (
+                        selectedWaiters.map((name) => (
+                          <span
+                            key={name}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-lg shadow-2xs animate-in zoom-in-95 duration-150"
+                          >
+                            <span>👤 {name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedWaiters((prev) => prev.filter((n) => n !== name))}
+                              className="hover:bg-indigo-700 p-0.5 rounded-full text-indigo-100 hover:text-white cursor-pointer transition-colors"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-3">
+                      {staffWaiters.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic p-1">Không tìm thấy nhân viên phục vụ nào.</p>
+                      ) : (
+                        staffWaiters.map((w) => {
+                          const isChecked = selectedWaiters.includes(w.name);
+                          return (
+                            <label key={w.id} className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer select-none hover:text-slate-900">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedWaiters((prev) => [...prev, w.name]);
+                                  } else {
+                                    setSelectedWaiters((prev) => prev.filter((name) => name !== w.name));
+                                  }
+                                }}
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
+                              />
+                              <span>{w.name}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Action buttons */}
             <div className="flex gap-3 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsAssignModalOpen(false)}
-                className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-2xl text-xs transition-colors cursor-pointer"
-              >
-                Hủy thao tác
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmAssign}
-                className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl text-xs shadow-lg shadow-indigo-200 transition-all cursor-pointer active:scale-95"
-              >
-                🚀 Xác nhận & Bắn thông báo thời gian thực
-              </button>
+              {((assigningBooking.status as string) === "completed" || (assigningBooking.status as string) === "checked_in" || assigningBooking.status === "arrived") ? (
+                <button
+                  type="button"
+                  onClick={() => setIsAssignModalOpen(false)}
+                  className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-2xl text-xs transition-colors cursor-pointer"
+                >
+                  Đóng
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsAssignModalOpen(false)}
+                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-2xl text-xs transition-colors cursor-pointer"
+                  >
+                    Hủy thao tác
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAssign}
+                    className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl text-xs shadow-lg shadow-indigo-200 transition-all cursor-pointer active:scale-95"
+                  >
+                    🚀 {assignmentMap[assigningBooking.id] ? "Cập nhật & Bắn thông báo bổ sung" : "Xác nhận & Bắn thông báo thời gian thực"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </Modal>

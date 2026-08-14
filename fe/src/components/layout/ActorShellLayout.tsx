@@ -292,10 +292,37 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       }
     });
 
+    const handleBookingCheckedIn = (data: any) => {
+      const bId = data?.bookingId || data?.id;
+      if (bId) {
+        const storedStr = localStorage.getItem("active_waiter_assigned_booking");
+        if (storedStr) {
+          try {
+            const stored = JSON.parse(storedStr);
+            if (String(stored.bookingId) === String(bId) || String(stored.id) === String(bId)) {
+              localStorage.removeItem("active_waiter_assigned_booking");
+            }
+          } catch {}
+        }
+
+        setAssignedNotification((prev: any) => {
+          if (prev && (String(prev.bookingId) === String(bId) || String(prev.id) === String(bId))) {
+            return null;
+          }
+          return prev;
+        });
+
+        window.dispatchEvent(new CustomEvent("booking_claimed_event", { detail: data }));
+      }
+    };
+    socket.on("table:booking_checked_in", handleBookingCheckedIn);
+    socket.on("booking:claimed", handleBookingCheckedIn);
+
     // Listen for custom event booking_assigned_event
     const handleAssignedEvent = (e: any) => {
       if (e.detail && isIntendedForCurrentUser(e.detail)) {
         setAssignedNotification(e.detail);
+        localStorage.setItem("active_waiter_assigned_booking", JSON.stringify(e.detail));
         playBeepSound();
       }
     };
@@ -308,6 +335,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       channel.onmessage = (msg) => {
         if (msg.data?.type === "NEW_ASSIGNMENT" && isIntendedForCurrentUser(msg.data.payload)) {
           setAssignedNotification(msg.data.payload);
+          localStorage.setItem("active_waiter_assigned_booking", JSON.stringify(msg.data.payload));
           playBeepSound();
         }
       };
