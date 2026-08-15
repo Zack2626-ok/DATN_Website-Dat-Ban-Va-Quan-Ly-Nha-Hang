@@ -62,12 +62,12 @@ CREATE TABLE users (
 
 -- password thật: "123456", hash bcrypt cost 10
 INSERT INTO users (role_id, employee_code, full_name, email, password_hash, phone) VALUES
- (1, 'NV001', 'System Admin',       'admin@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000001'),
- (2, 'NV002', 'Restaurant Manager', 'manager@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000002'),
- (4, 'NV003', 'Cashier 1',          'cashier@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000003'),
- (3, 'NV004', 'Waiter 1',           'waiter1@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000004'),
- (3, 'NV005', 'Waiter 2',           'waiter2@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000005'),
- (5, 'NV006', 'Chef 1',             'chef1@gmail.com',   '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', '0900000006');
+ (1, 'NV001', 'System Admin',       'admin@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000001'),
+ (2, 'NV002', 'Restaurant Manager', 'manager@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000002'),
+ (4, 'NV003', 'Cashier 1',          'cashier@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000003'),
+ (3, 'NV004', 'Waiter 1',           'waiter1@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000004'),
+ (3, 'NV005', 'Waiter 2',           'waiter2@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000005'),
+ (5, 'NV006', 'Chef 1',             'chef1@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000006');
 
 CREATE TABLE customers (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -278,6 +278,7 @@ CREATE TABLE bookings (
     guest_note        TEXT         DEFAULT NULL,
     cancel_reason     TEXT         DEFAULT NULL COMMENT 'Lý do hủy booking',
     note              TEXT         DEFAULT NULL,
+    deposit_amount    DECIMAL(12,2) DEFAULT 0,
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_bookings_code (confirmation_code),
@@ -611,6 +612,7 @@ CREATE TABLE orders (
     note        TEXT         DEFAULT NULL,
     guest_name  VARCHAR(100) DEFAULT NULL,
     guest_phone VARCHAR(20)  DEFAULT NULL,
+    deposit_amount DECIMAL(12,2) DEFAULT 0,
     guest_count INT          DEFAULT NULL COMMENT 'Số lượng khách tại bàn',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     closed_at   DATETIME     DEFAULT NULL,

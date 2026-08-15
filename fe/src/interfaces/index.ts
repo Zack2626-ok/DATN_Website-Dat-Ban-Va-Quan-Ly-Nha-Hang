@@ -120,6 +120,7 @@ export interface User {
   last_login?: string;
   created_at: string;
   updated_at: string;
+  hourly_rate?: number;
   // For UI: include role object when fetching
   role?: Role;
 }

@@ -1,0 +1,1683 @@
+﻿diff --cc be/src/controllers/invoice.controller.ts
+index 1d12ef3,aed24cf..0000000
+--- a/be/src/controllers/invoice.controller.ts
++++ b/be/src/controllers/invoice.controller.ts
+@@@ -21,10 -23,15 +23,20 @@@ export const getAllInvoices = async (re
+          name: item.item_name || `M├│n #${item.menu_item_id}`,
+          price: Number(item.unit_price),
+          quantity: item.quantity,
++         status: item.status,
+        })),
++       depositAmount: o.depositAmount || 0,
+        totalAmount: o.totalAmount || 0,
+++<<<<<<< HEAD
+ +      depositAmount: Number(o.deposit_amount) || 0,
+ +      status: o.status,
+++=======
++       subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
++       tax: o.tax || 0,
++       discount: o.discount || 0,
++       vatRate: o.vatRate || 0,
++       status: o.table_status === "pending_payment" || o.status === "pending_payment" ? "pending_payment" : o.status,
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+        invoiceStatus:
+          o.status === "completed" || o.status === "paid"
+            ? "paid"
+@@@ -117,14 -131,74 +136,85 @@@ export const processPayment = async (re
+        return;
+      }
+  
+++<<<<<<< HEAD
+ +    const subtotal = order.totalAmount;
+ +    const depositAmount = Number(order.deposit_amount) || 0;
+ +    const vat = vatRate !== undefined ? subtotal * (vatRate / 100) : subtotal * 0.1;
+ +    const serviceFee = serviceFeeRate !== undefined ? subtotal * (serviceFeeRate / 100) : 0;
+ +    const voucher = voucherAmount || 0;
+ +    const tip = tipAmount || 0;
+ +    // Calculate finalAmount but make sure it doesn't go below 0
+ +    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher + tip - depositAmount);
+++=======
++     // Kiß╗âm tra cß╗ìc tiß╗ün ─æß║╖t b├án
++     let depositAmount = Number(order.depositAmount || 0);
++     let linkedBookingId: number | null = null;
++ 
++     const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
++     const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
++     
++     // Validate and calculate voucher discount dynamically
++     let calculatedVoucherAmount = Number(voucherAmount || 0);
++     let dbVoucherId: number | null = null;
++     let customerVoucherRecordId: number | null = null;
++ 
++     if (voucherCode) {
++       const vRows = await db.query(
++         "SELECT * FROM vouchers WHERE code = ? AND is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())",
++         [voucherCode]
++       );
++       if (!vRows || vRows.length === 0) {
++         sendError(res, "M├ú voucher kh├┤ng hß╗úp lß╗ç hoß║╖c ─æ├ú hß║┐t hß║ín.", 400);
++         return;
++       }
++       const voucherRecord = vRows[0];
++       dbVoucherId = voucherRecord.id;
++ 
++       // Check max uses
++       if (voucherRecord.max_uses !== null && voucherRecord.used_count >= voucherRecord.max_uses) {
++         sendError(res, "M├ú voucher ─æ├ú hß║┐t l╞░ß╗út sß╗¡ dß╗Ñng.", 400);
++         return;
++       }
++ 
++       // Check min order subtotal
++       if (subtotal < Number(voucherRecord.min_order)) {
++         sendError(res, `─É╞ín h├áng ch╞░a ─æß║ít gi├í trß╗ï tß╗æi thiß╗âu ─æß╗â ├íp dß╗Ñng voucher n├áy (Tß╗æi thiß╗âu: ${Number(voucherRecord.min_order).toLocaleString("vi-VN")}─æ).`, 400);
++         return;
++       }
++ 
++       // Check points cost ownership
++       if (Number(voucherRecord.points_cost || 0) > 0) {
++         if (!order.customer_id) {
++           sendError(res, "Voucher n├áy y├¬u cß║ºu th├┤ng tin th├ánh vi├¬n ─æ├ú ─æß╗òi ─æiß╗âm.", 400);
++           return;
++         }
++         const cvRows = await db.query(
++           "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? AND is_used = 0 LIMIT 1",
++           [order.customer_id, voucherRecord.id]
++         );
++         if (!cvRows || cvRows.length === 0) {
++           sendError(res, "M├ú voucher n├áy ch╞░a ─æ╞░ß╗úc ─æß╗òi bß║▒ng ─æiß╗âm hoß║╖c ─æ├ú ─æ╞░ß╗úc sß╗¡ dß╗Ñng.", 400);
++           return;
++         }
++         customerVoucherRecordId = cvRows[0].id;
++       }
++ 
++       // Re-calculate / verify voucher amount based on voucher type
++       if (voucherRecord.type === "percent") {
++         calculatedVoucherAmount = Math.round(subtotal * (Number(voucherRecord.value) / 100));
++       } else {
++         calculatedVoucherAmount = Number(voucherRecord.value);
++       }
++     }
++ 
++     const voucher = calculatedVoucherAmount;
++     const tip = tipAmount || 0;
++     const pointsToUse = pointsUsed || 0;
++     const pointsDiscount = pointsToUse * 100; // 1 point = 100 VND
++     
++     // Khß║Ñu trß╗½ tiß╗ün cß╗ìc v├á ─æiß╗âm tß╗½ tß╗òng sß╗æ tiß╗ün cß║ºn thanh to├ín
++     const finalAmount = Math.max(0, subtotal + vat - voucher - depositAmount + tip - pointsDiscount);
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+  
+      const payment = await db.createPayment({
+        orderId: id,
+@@@ -136,14 -210,14 +226,15 @@@
+        notes: JSON.stringify({
+          subtotal,
+          vat,
+-         serviceFee,
+          voucher,
+          voucherCode,
+ +        depositAmount,
+          tip,
++         depositAmount,
++         pointsUsed: pointsToUse,
++         pointsDiscount,
+          finalAmount,
+          vatRate: vatRate ?? 10,
+-         serviceFeeRate: serviceFeeRate ?? 0,
+          rawNotes: notes,
+        }),
+        completedAt: new Date().toISOString(),
+diff --cc fe/src/interfaces/invoice.ts
+index 47982aa,f542041..0000000
+--- a/fe/src/interfaces/invoice.ts
++++ b/fe/src/interfaces/invoice.ts
+@@@ -12,6 -12,10 +12,13 @@@ export interface Invoice 
+    guestCount: number;
+    items: OrderItem[];
+    totalAmount: number;
+++<<<<<<< HEAD
+++=======
++   subtotal?: number;
++   tax?: number;
++   discount?: number;
++   vatRate?: number;
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+    depositAmount?: number;
+    status: string;
+    invoiceStatus: InvoiceStatus;
+diff --cc fe/src/views/admin/settings/index.tsx
+index 669adc5,36c89dd..0000000
+--- a/fe/src/views/admin/settings/index.tsx
++++ b/fe/src/views/admin/settings/index.tsx
+@@@ -5,9 -5,8 +5,12 @@@ import 
+    updateRestaurantInfo,
+    type RestaurantInfo,
+  } from "../../../services/restaurantInfoService";
+- 
+  export const AdminSettings: React.FC = () => {
+++<<<<<<< HEAD
+ +  const [activeTab] = useState<"general" | "tax">("general");
+++=======
++   const [activeTab, setActiveTab] = useState<"general" | "tax" | "bank">("general");
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+    const [savedMessage, setSavedMessage] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+diff --cc fe/src/views/cashier/payment/components/InvoiceDetailPanel.tsx
+index aa3e5c5,90d0a85..0000000
+--- a/fe/src/views/cashier/payment/components/InvoiceDetailPanel.tsx
++++ b/fe/src/views/cashier/payment/components/InvoiceDetailPanel.tsx
+@@@ -157,21 -168,35 +168,53 @@@ export const InvoiceDetailPanel: React.
+  
+        {/* Footer: Total & Pay button */}
+        <div className="border-t border-slate-100 p-5">
+++<<<<<<< HEAD
+ +        <div className="flex justify-between items-center mb-2">
+ +          <span className="text-sm font-bold text-slate-600">Tß║ím t├¡nh</span>
+ +          <span className="text-sm font-bold text-slate-900">{formatVnd(invoice.totalAmount)} vn─æ</span>
+ +        </div>
+ +        {invoice.depositAmount && invoice.depositAmount > 0 ? (
+ +          <div className="flex justify-between items-center mb-2 text-amber-600">
+ +            <span className="text-sm font-bold">Trß╗½ tiß╗ün ─æß║╖t cß╗ìc</span>
+ +            <span className="text-sm font-bold">- {formatVnd(invoice.depositAmount / 1000)} vn─æ</span>
+ +          </div>
+ +        ) : null}
+ +        <div className="flex justify-between items-center mb-4 pt-2 border-t border-slate-100">
+ +          <span className="text-base font-black text-slate-800">Kh├ích cß║ºn thanh to├ín</span>
+ +          <span className="text-xl font-black text-blue-600 font-display">
+ +            {formatVnd(Math.max(0, invoice.totalAmount - ((invoice.depositAmount || 0) / 1000)))} vn─æ
+ +          </span>
+++=======
++         <div className="space-y-2 mb-4">
++           <div className="flex justify-between items-center text-xs text-slate-500">
++             <span>Tß║ím t├¡nh</span>
++             <span className="font-semibold text-slate-800">
++               {formatVnd(invoice.subtotal !== undefined ? invoice.subtotal : invoice.items.reduce((sum, item) => sum + item.price * item.quantity, 0))} vn─æ
++             </span>
++           </div>
++           {Boolean(invoice.tax && invoice.tax > 0) && (
++             <div className="flex justify-between items-center text-xs text-slate-500">
++               <span>VAT ({invoice.vatRate || 10}%)</span>
++               <span className="font-semibold text-slate-800">+{formatVnd(invoice.tax || 0)} vn─æ</span>
++             </div>
++           )}
++           {Boolean(invoice.discount && invoice.discount > 0) && (
++             <div className="flex justify-between items-center text-xs text-slate-500">
++               <span>Giß║úm gi├í/Voucher</span>
++               <span className="font-semibold text-emerald-600">-{formatVnd(invoice.discount || 0)} vn─æ</span>
++             </div>
++           )}
++           {Boolean(invoice.depositAmount && invoice.depositAmount > 0) && (
++             <div className="flex justify-between items-center text-xs text-rose-600 font-medium">
++               <span>Tiß╗ün cß╗ìc ─æß║╖t b├án</span>
++               <span className="font-semibold">-{formatVnd(invoice.depositAmount || 0)} vn─æ</span>
++             </div>
++           )}
++           <div className="flex justify-between items-center pt-2 border-t border-slate-100">
++             <span className="text-sm font-bold text-slate-700">Tß╗òng thanh to├ín</span>
++             <span className="text-lg font-black text-blue-600 font-display">{formatVnd(finalAmount)} vn─æ</span>
++           </div>
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+          </div>
+  
+          {canAct && (
+diff --cc fe/src/views/cashier/payment/components/PaymentModal.tsx
+index de5a515,473f158..0000000
+--- a/fe/src/views/cashier/payment/components/PaymentModal.tsx
++++ b/fe/src/views/cashier/payment/components/PaymentModal.tsx
+@@@ -47,14 -60,100 +60,110 @@@ export const PaymentModal: React.FC<Pro
+        .catch(() => {});
+    }, []);
+  
++   useEffect(() => {
++     if (!isOpen) {
++       setSuggestedVouchers([]);
++       setCustomerName(null);
++       setMatchedCustomer(null);
++       setPointsToUse(0);
++       return;
++     }
++ 
++     const loadSuggestions = async () => {
++       setLoadingSuggestions(true);
++       try {
++         const customers = await crmService.getCustomers();
++ 
++         const normalizePhone = (phone?: string | null) => {
++           if (!phone) return "";
++           return phone.replace(/\s+/g, "").replace(/^\+84/, "0");
++         };
++ 
++         const customer = customers.find(c => {
++           const cPhone = normalizePhone(c.phone);
++           const iPhone = normalizePhone(invoice.customerPhone);
++           const phoneMatch = cPhone && iPhone && cPhone === iPhone;
++           const nameMatch = c.name && invoice.customerName && c.name.toLowerCase().trim() === invoice.customerName.toLowerCase().trim();
++           return phoneMatch || nameMatch;
++         });
++ 
++         if (customer) {
++           setCustomerName(customer.name);
++           setMatchedCustomer(customer);
++           const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
++           
++           // Fetch customer-specific redeemed unused vouchers
++           const customerVouchers = await crmService.getCustomerUnusedVouchers(customer.id);
++           
++           const eligible = customerVouchers.filter(v => {
++             if (v.is_active !== 1) return false;
++             if (v.expired_at && new Date(v.expired_at) < new Date()) return false;
++             if (v.max_uses !== null && v.max_uses !== undefined && v.used_count >= v.max_uses) return false;
++             if (subtotal < v.min_order) return false;
++             return true;
++           });
++           setSuggestedVouchers(eligible);
++         } else {
++           setSuggestedVouchers([]);
++           setCustomerName(null);
++           setMatchedCustomer(null);
++           setPointsToUse(0);
++         }
++       } catch (err) {
++         console.error("Failed to load voucher suggestions:", err);
++       } finally {
++         setLoadingSuggestions(false);
++       }
++     };
++ 
++     loadSuggestions();
++   }, [isOpen, invoice.customerPhone, invoice.customerName, invoice.subtotal, invoice.totalAmount]);
++ 
+    const breakdown = useMemo(() => {
+++<<<<<<< HEAD
+ +    const subtotal = invoice.totalAmount;
+ +    const depositAmountK = (invoice.depositAmount || 0) / 1000;
+ +    const vat = subtotal * (vatRate / 100);
+ +    const serviceFee = subtotal * (serviceFeeRate / 100);
+ +    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucherAmount + tipAmount - depositAmountK);
+ +    return { subtotal, depositAmountK, vat, serviceFee, finalAmount };
+ +  }, [invoice.totalAmount, invoice.depositAmount, vatRate, serviceFeeRate, voucherAmount, tipAmount]);
+++=======
++     const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
++     const vat = Math.round(subtotal * (vatRate / 100));
++     const depositAmount = invoice.depositAmount || 0;
++     const pointsDiscount = pointsToUse * 100;
++     const finalAmount = Math.max(0, subtotal + vat + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000) - pointsDiscount);
++     return { subtotal, vat, depositAmount, pointsDiscount, finalAmount };
++   }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, tipAmount, voucherAmount, pointsToUse]);
++ 
++   const vietqrUrl = useMemo(() => {
++     if (!resInfo?.bank_code || !resInfo?.bank_account) return "";
++     const amountVnd = Math.round(breakdown.finalAmount);
++     const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
++     return `https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${amountVnd}&addInfo=${encodeURIComponent(desc)}`;
++   }, [resInfo, breakdown.finalAmount, invoice.id]);
++ 
++   const momoUrl = useMemo(() => {
++     const amountVnd = Math.round(breakdown.finalAmount);
++     const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
++     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`momo://pay?phone=${resInfo?.hotline || "028 3829 4000"}&amount=${amountVnd}&note=${desc}`)}`;
++   }, [resInfo, breakdown.finalAmount, invoice.id]);
++ 
++   const vnpayUrl = useMemo(() => {
++     const amountVnd = Math.round(breakdown.finalAmount);
++     const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
++     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=${amountVnd * 100}&vnp_TxnRef=${invoice.id.slice(-6)}&vnp_OrderInfo=${desc}`)}`;
++   }, [breakdown.finalAmount, invoice.id]);
++ 
++   const copyBankInfo = () => {
++     if (!resInfo) return;
++     const text = `Ng├ón h├áng: ${resInfo.bank_name}\nSß╗æ TK: ${resInfo.bank_account}\nChß╗º TK: ${resInfo.bank_account_name}\nSß╗æ tiß╗ün: ${formatVnd(breakdown.finalAmount)} vn─æ\nNß╗Öi dung: Thanh toan HD${invoice.id.slice(-6)}`;
++     navigator.clipboard.writeText(text);
++     setCopied(true);
++     setTimeout(() => setCopied(false), 2000);
++   };
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+  
+    const handleConfirm = () => {
+      onConfirm({
+@@@ -83,52 -182,13 +192,21 @@@
+              <span className="font-bold text-slate-900">{formatVnd(breakdown.subtotal)} vn─æ</span>
+            </div>
+  
+ +          {/* Deposit */}
+ +          {breakdown.depositAmountK > 0 && (
+ +            <div className="flex justify-between text-xs py-2 border-b border-slate-100 text-amber-600">
+ +              <span className="font-bold">Trß╗½ tiß╗ün ─æß║╖t cß╗ìc</span>
+ +              <span className="font-bold">- {formatVnd(breakdown.depositAmountK)} vn─æ</span>
+ +            </div>
+ +          )}
+ +
+            {/* VAT */}
+-           <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100">
+-             <span className="text-slate-500 flex items-center gap-1.5">
+-               <BadgePercent size={12} className="text-orange-500" />
+-               VAT
++           <div className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100">
++             <span className="text-slate-500 flex items-center gap-1">
++               <BadgePercent size={10} className="text-orange-500" />
++               VAT ({vatRate}%)
+              </span>
+-             <div className="flex items-center gap-2">
+-               <input
+-                 type="number"
+-                 min={0}
+-                 max={100}
+-                 value={vatRate}
+-                 onChange={(e) => setVatRate(Number(e.target.value) || 0)}
+-                 className="w-14 text-right text-xs border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
+-               />
+-               <span className="text-[10px] text-slate-500">%</span>
+-               <span className="font-bold text-slate-900 min-w-[80px] text-right">{formatVnd(breakdown.vat)} vn─æ</span>
+-             </div>
+-           </div>
+- 
+-           {/* Service Fee */}
+-           <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100">
+-             <span className="text-slate-500 flex items-center gap-1.5">
+-               <BadgePercent size={12} className="text-teal-500" />
+-               Ph├¡ dß╗ïch vß╗Ñ
+-             </span>
+-             <div className="flex items-center gap-2">
+-               <input
+-                 type="number"
+-                 min={0}
+-                 max={100}
+-                 value={serviceFeeRate}
+-                 onChange={(e) => setServiceFeeRate(Number(e.target.value) || 0)}
+-                 className="w-14 text-right text-xs border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
+-               />
+-               <span className="text-[10px] text-slate-500">%</span>
+-               <span className="font-bold text-slate-900 min-w-[80px] text-right">{formatVnd(breakdown.serviceFee)} vn─æ</span>
+-             </div>
++             <span className="font-bold text-slate-900 text-[11px]">{formatVnd(breakdown.vat)} vn─æ</span>
+            </div>
+  
+            {/* Voucher */}
+diff --cc fe/src/views/chef/kds/index.tsx
+index 6bb14fe,6c31ab4..0000000
+--- a/fe/src/views/chef/kds/index.tsx
++++ b/fe/src/views/chef/kds/index.tsx
+@@@ -548,70 -582,116 +582,164 @@@ export const ChefKitchenQueue: React.F
+                    Ch╞░a c├│ m├│n ─ân n├áo chß╗¥ nß║Ñu
+                  </div>
+                ) : (
+-                 columns.pending.map((item) => {
+-                   const { timeStr, isDelayed } = getTimerInfo(item.createdAt);
++                 groupedPending.map((group) => {
++                   const earliestCreatedAt = group.items.reduce((earliest, current) => {
++                     const currentMs = new Date(current.createdAt).getTime();
++                     return currentMs < earliest ? currentMs : earliest;
++                   }, Date.now());
++                   const { isDelayed } = getTimerInfo(new Date(earliestCreatedAt).toISOString());
++ 
+                    return (
+                      <div
+-                       key={item.id}
+-                       className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
+-                         isDelayed
+-                           ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
+-                           : "border-slate-200/80 border-l-blue-500 hover:border-blue-300"
+-                       }`}
++                       key={group.tableName}
++                       className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${isDelayed
++                         ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
++                         : "border-slate-200/80 border-l-blue-500 hover:border-blue-300"
++                         }`}
+                      >
+++<<<<<<< HEAD
+ +                      <div>
+ +                        <div className="flex justify-between items-center gap-2">
+ +                          <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
+ +                            B├án: {item.tableName || "Mang vß╗ü"}{item.areaName ? ` - ${item.areaName}` : ""}
+ +                          </span>
+ +                          <span
+ +                            className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
+ +                              isDelayed ? "text-rose-600 bg-rose-50" : "text-slate-500 bg-slate-50 border border-slate-100"
+ +                            }`}
+ +                          >
+ +                            <Clock size={10} /> {timeStr}
+ +                          </span>
+ +                        </div>
+ +                        {(((item.orderType as string) === "pre_order") || (item.kitchenNote && item.kitchenNote.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
+ +                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+ +                            ≡ƒì│ M├│n ─æß║╖t tr╞░ß╗¢c (Nß║Ñu sß║╡n)
+ +                          </div>
+ +                        )}
+ +
+ +                        {/* Dish Details */}
+ +                        <div className="mt-3">
+ +                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-800">
+ +                            <span className="truncate max-w-[80%] leading-snug">{item.name}</span>
+ +                            <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-1 rounded-lg border border-blue-200/60 shadow-sm">
+ +                              x{item.quantity}
+ +                            </span>
+ +                          </div>
+ +                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
+ +                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
+ +                              {getStationLabel(item.kitchenStation)}
+ +                            </span>
+ +                            {item.orderType && (
+ +                              <span className="text-slate-400 font-semibold">
+ +                                ({item.orderType === "dine_in" ? "Tß║íi b├án" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "─Éß║╖t tr╞░ß╗¢c" : "Takeaway"})
+ +                              </span>
+ +                            )}
+ +                          </div>
+ +
+ +                          {/* Notes */}
+ +                          {(item.kitchenNote || (item as any).kitchen_note) && (
+ +                            <div className="mt-2.5 text-[11px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm animate-pulse">
+ +                              ≡ƒô¥ {item.kitchenNote || (item as any).kitchen_note}
+ +                            </div>
+ +                          )}
+ +                        </div>
+++=======
++                       {/* Ti├¬u ─æß╗ü b├án */}
++                       <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
++                         <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
++                           B├án: {group.tableName || "Mang vß╗ü"}{group.areaName ? ` - ${group.areaName}` : ""}
++                         </span>
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+                        </div>
+  
+-                       <button
+-                         onClick={() => handleUpdateStatus(item.id, "cooking")}
+-                         className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/20 active:scale-95"
+-                       >
+-                         <Play size={11} className="fill-white" /> Bß║»t ─æß║ºu nß║Ñu
+-                       </button>
++                       {/* Danh s├ích m├│n */}
++                       <div className="flex flex-col gap-3">
++                         {group.items.map((item) => {
++                           const constituents = getComboConstituents(item.name);
++                           return (
++                             <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
++                               <div className="flex justify-between items-start gap-2">
++                                 <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
++                                   {item.name}
++                                 </div>
++                                 <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-0.5 rounded-lg border border-blue-200/60 shadow-sm whitespace-nowrap">
++                                   x{item.quantity}
++                                 </span>
++                               </div>
++ 
++                               <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
++                                 <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
++                                   {getStationLabel(item.kitchenStation)}
++                                 </span>
++                                 {item.orderType && (
++                                   <span className="text-slate-400 font-semibold">
++                                     ({item.orderType === "dine_in" ? "Tß║íi b├án" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "─Éß║╖t tr╞░ß╗¢c" : "Takeaway"})
++                                   </span>
++                                 )}
++                                 <span className="text-blue-650 font-bold bg-blue-50/60 border border-blue-150 border-blue-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                   ≡ƒòÆ {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
++                                 </span>
++                                 <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                   ≡ƒñ╡ {item.waiterName || "Phß╗Ñc vß╗Ñ"}
++                                 </span>
++                               </div>
++ 
++                               {/* M├│n ─æß║╖t tr╞░ß╗¢c badge */}
++                               {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
++                                 <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
++                                   ≡ƒì│ M├│n ─æß║╖t tr╞░ß╗¢c (Nß║Ñu sß║╡n)
++                                 </div>
++                               )}
++ 
++                               {constituents && (
++                                 <div className="mt-1.5 bg-blue-50/50 rounded-xl p-2.5 border border-blue-100/60 flex flex-col gap-1">
++                                   <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 block">Chi tiß║┐t combo:</span>
++                                   <div className="flex flex-col gap-1 pl-1">
++                                     {constituents.map((sub, idx) => (
++                                       <div key={idx} className="text-[10px] text-slate-650 font-bold flex items-center gap-1.5">
++                                         <span className="h-1 w-1 rounded-full bg-blue-500"></span>
++                                         {sub}
++                                       </div>
++                                     ))}
++                                   </div>
++                                 </div>
++                               )}
++ 
++                               {/* Ghi ch├║ */}
++                               {(item.kitchenNote || (item as any).kitchen_note) && (
++                                 <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
++                                   ≡ƒô¥ {item.kitchenNote || (item as any).kitchen_note}
++                                 </div>
++                               )}
++ 
++                               {/* N├║t nß║Ñu m├│n lß║╗ */}
++                               <button
++                                 onClick={() => handleUpdateStatus(item.id, "cooking")}
++                                 className="mt-2 w-full py-1.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
++                               >
++                                 <Play size={9} className="fill-white" /> Bß║»t ─æß║ºu nß║Ñu
++                               </button>
++                             </div>
++                           )
++                         })}
++                       </div>
++ 
++                       {/* H├ánh ─æß╗Öng cß║ú b├án (nß║┐u c├│ > 1 m├│n) */}
++                       {group.items.length > 1 && (
++                         <button
++                           onClick={() => {
++                             const ids = group.items.map((i) => i.id);
++                             dispatch(updateKdsBatchStatus({ itemIds: ids, status: "cooking" }))
++                               .unwrap()
++                               .catch(() => {
++                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "cooking" })));
++                               });
++                           }}
++                           className="mt-1 w-full py-2 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
++                         >
++                           <Play size={10} className="fill-white" /> Bß║»t ─æß║ºu cß║ú b├án ({group.items.length})
++                         </button>
++                       )}
+                      </div>
+                    );
+                  })
+@@@ -638,79 -718,116 +766,173 @@@
+                    Kh├┤ng c├│ m├│n n├áo ─æang nß║Ñu
+                  </div>
+                ) : (
+-                 columns.cooking.map((item) => {
+-                   const { timeStr, isDelayed } = getTimerInfo(item.updatedAt || item.createdAt);
++                 groupedCooking.map((group) => {
++                   const earliestUpdatedAt = group.items.reduce((earliest, current) => {
++                     const currentMs = new Date(current.updatedAt || current.createdAt).getTime();
++                     return currentMs < earliest ? currentMs : earliest;
++                   }, Date.now());
++                   const { isDelayed } = getTimerInfo(new Date(earliestUpdatedAt).toISOString());
++ 
+                    return (
+                      <div
+-                       key={item.id}
+-                       className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${
+-                         isDelayed
+-                           ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
+-                           : "border-slate-200/80 border-l-amber-500 hover:border-amber-300"
+-                       }`}
++                       key={group.tableName}
++                       className={`bg-white border-l-[5px] rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250 ${isDelayed
++                         ? "border-rose-300 border-l-rose-500 bg-rose-50/20 shadow-lg shadow-rose-100/30 animate-[pulse_3s_infinite]"
++                         : "border-slate-200/80 border-l-amber-500 hover:border-amber-300"
++                         }`}
+                      >
+++<<<<<<< HEAD
+ +                      <div>
+ +                        <div className="flex justify-between items-center gap-2">
+ +                          <div className="flex items-center gap-1.5">
+ +                            <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
+ +                              B├án: {item.tableName || "Mang vß╗ü"}{item.areaName ? ` - ${item.areaName}` : ""}
+ +                            </span>
+ +                            <button
+ +                              onClick={() => handleRecallStatus(item.id)}
+ +                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 border border-slate-100 hover:border-slate-200/80 transition-all cursor-pointer shadow-sm hover:shadow"
+ +                              title="Ho├án t├íc vß╗ü Chß╗¥ nß║Ñu"
+ +                            >
+ +                              <Undo2 size={11} />
+ +                            </button>
+ +                          </div>
+ +                          <span
+ +                            className={`text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md ${
+ +                              isDelayed ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50/55 border border-amber-100/50"
+ +                            }`}
+ +                          >
+ +                            <Clock size={10} className="animate-[spin_4s_linear_infinite]" /> {timeStr}
+ +                          </span>
+ +                        </div>
+ +                        {(((item.orderType as string) === "pre_order") || (item.kitchenNote && item.kitchenNote.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
+ +                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+ +                            ≡ƒì│ M├│n ─æß║╖t tr╞░ß╗¢c (Nß║Ñu sß║╡n)
+ +                          </div>
+ +                        )}
+ +
+ +                        {/* Dish Details */}
+ +                        <div className="mt-3">
+ +                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-800">
+ +                            <span className="truncate max-w-[80%] leading-snug">{item.name}</span>
+ +                            <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 shadow-sm">
+ +                              x{item.quantity}
+ +                            </span>
+ +                          </div>
+ +                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
+ +                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
+ +                              {getStationLabel(item.kitchenStation)}
+ +                            </span>
+ +                            {item.orderType && (
+ +                              <span className="text-slate-400 font-semibold">
+ +                                ({item.orderType === "dine_in" ? "Tß║íi b├án" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "─Éß║╖t tr╞░ß╗¢c" : "Takeaway"})
+ +                              </span>
+ +                            )}
+ +                          </div>
+ +
+ +                          {/* Notes */}
+ +                          {(item.kitchenNote || (item as any).kitchen_note) && (
+ +                            <div className="mt-2.5 text-[11px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm animate-pulse">
+ +                              ≡ƒô¥ {item.kitchenNote || (item as any).kitchen_note}
+ +                            </div>
+ +                          )}
+ +                        </div>
+++=======
++                       {/* Ti├¬u ─æß╗ü b├án */}
++                       <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
++                         <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
++                           B├án: {group.tableName || "Mang vß╗ü"}{group.areaName ? ` - ${group.areaName}` : ""}
++                         </span>
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
++                       </div>
++ 
++                       {/* Danh s├ích m├│n */}
++                       <div className="flex flex-col gap-3">
++                         {group.items.map((item) => {
++                           const constituents = getComboConstituents(item.name);
++                           return (
++                             <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
++                               <div className="flex justify-between items-start gap-2">
++                                 <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
++                                   {item.name}
++                                 </div>
++                                 <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-0.5 rounded-lg border border-amber-200/60 shadow-sm whitespace-nowrap">
++                                   x{item.quantity}
++                                 </span>
++                               </div>
++ 
++                               <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
++                                 <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
++                                   {getStationLabel(item.kitchenStation)}
++                                 </span>
++                                 {item.orderType && (
++                                   <span className="text-slate-400 font-semibold">
++                                     ({item.orderType === "dine_in" ? "Tß║íi b├án" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "─Éß║╖t tr╞░ß╗¢c" : "Takeaway"})
++                                   </span>
++                                 )}
++                                 <span className="text-amber-700 font-bold bg-amber-50/60 border border-amber-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                   ≡ƒòÆ {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
++                                 </span>
++                                 <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                   ≡ƒñ╡ {item.waiterName || "Phß╗Ñc vß╗Ñ"}
++                                 </span>
++                               </div>
++ 
++                               {/* M├│n ─æß║╖t tr╞░ß╗¢c badge */}
++                               {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
++                                 <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
++                                   ≡ƒì│ M├│n ─æß║╖t tr╞░ß╗¢c (Nß║Ñu sß║╡n)
++                                 </div>
++                               )}
++ 
++                               {constituents && (
++                                 <div className="mt-1.5 bg-amber-50/50 rounded-xl p-2.5 border border-amber-100/60 flex flex-col gap-1">
++                                   <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 block">Chi tiß║┐t combo:</span>
++                                   <div className="flex flex-col gap-1 pl-1">
++                                     {constituents.map((sub, idx) => (
++                                       <div key={idx} className="text-[10px] text-slate-650 font-bold flex items-center gap-1.5">
++                                         <span className="h-1 w-1 rounded-full bg-amber-500"></span>
++                                         {sub}
++                                       </div>
++                                     ))}
++                                   </div>
++                                 </div>
++                               )}
++ 
++                               {/* Ghi ch├║ */}
++                               {(item.kitchenNote || (item as any).kitchen_note) && (
++                                 <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
++                                   ≡ƒô¥ {item.kitchenNote || (item as any).kitchen_note}
++                                 </div>
++                               )}
++ 
++                               {/* N├║t ho├án th├ánh m├│n lß║╗ (kh├┤ng c├│ n├║t ho├án t├íc) */}
++                               <button
++                                 onClick={() => handleUpdateStatus(item.id, "done")}
++                                 className="mt-2 w-full py-1.5 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
++                               >
++                                 <Check size={9} /> Ho├án th├ánh
++                               </button>
++                             </div>
++                           )
++                         })}
+                        </div>
+  
+-                       <button
+-                         onClick={() => handleUpdateStatus(item.id, "done")}
+-                         className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95"
+-                       >
+-                         <Check size={11} /> Ho├án th├ánh
+-                       </button>
++                       {/* H├ánh ─æß╗Öng cß║ú b├án (nß║┐u c├│ > 1 m├│n) */}
++                       {group.items.length > 1 && (
++                         <button
++                           onClick={() => {
++                             const ids = group.items.map((i) => i.id);
++                             dispatch(updateKdsBatchStatus({ itemIds: ids, status: "done" }))
++                               .unwrap()
++                               .catch(() => {
++                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "done" })));
++                               });
++                           }}
++                           className="mt-1 w-full py-2 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
++                         >
++                           <Check size={10} className="animate-pulse" /> Ho├án th├ánh cß║ú b├án ({group.items.length})
++                         </button>
++                       )}
+                      </div>
+                    );
+                  })
+@@@ -737,64 -854,179 +959,225 @@@
+                    Ch╞░a c├│ m├│n n├áo ─æ├ú sß║╡n s├áng
+                  </div>
+                ) : (
+-                 columns.done.map((item) => {
+-                   const { timeStr } = getTimerInfo(item.updatedAt || item.createdAt);
++                 groupedDone.map((group) => {
+                    return (
+                      <div
+-                       key={item.id}
+-                       className="bg-white border-l-[5px] border-l-emerald-500 border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250"
++                       key={group.tableName}
++                       className="bg-white border-l-[5px] border-l-emerald-500 border-slate-200/80 rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250"
+                      >
+++<<<<<<< HEAD
+ +                      <div>
+ +                        <div className="flex justify-between items-center gap-2">
+ +                          <div className="flex items-center gap-1.5">
+ +                            <span className="text-[11px] font-extrabold text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
+ +                              B├án: {item.tableName || "Mang vß╗ü"}{item.areaName ? ` - ${item.areaName}` : ""}
+ +                            </span>
+ +                            <button
+ +                              onClick={() => handleRecallStatus(item.id)}
+ +                              className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-650 border border-slate-100 hover:border-slate-200/80 transition-all cursor-pointer shadow-sm hover:shadow"
+ +                              title="Ho├án t├íc vß╗ü ─Éang nß║Ñu"
+ +                            >
+ +                              <Undo2 size={11} />
+ +                            </button>
+ +                          </div>
+ +                          <span className="text-[10px] font-extrabold flex items-center gap-1 px-2 py-0.5 rounded-md text-emerald-600 bg-emerald-55/40 bg-emerald-50 border border-emerald-100">
+ +                            <Clock size={10} /> {timeStr}
+ +                          </span>
+ +                        </div>
+ +                        {(((item.orderType as string) === "pre_order") || (item.kitchenNote && item.kitchenNote.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
+ +                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm">
+ +                            ≡ƒì│ M├│n ─æß║╖t tr╞░ß╗¢c (Nß║Ñu sß║╡n)
+ +                          </div>
+ +                        )}
+ +
+ +                        {/* Dish Details */}
+ +                        <div className="mt-3">
+ +                          <div className="flex justify-between items-center text-[13px] font-extrabold text-slate-650">
+ +                            <span className="line-through text-slate-400 truncate max-w-[80%] leading-snug">{item.name}</span>
+ +                            <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-1 rounded-lg border border-emerald-200/60 shadow-sm">
+ +                              x{item.quantity}
+ +                            </span>
+ +                          </div>
+ +                          <div className="text-[9px] mt-2 flex items-center gap-1.5">
+ +                            <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
+ +                              {getStationLabel(item.kitchenStation)}
+ +                            </span>
+ +                            {item.orderType && (
+ +                              <span className="text-slate-400 font-semibold">
+ +                                ({item.orderType === "dine_in" ? "Tß║íi b├án" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "─Éß║╖t tr╞░ß╗¢c" : "Takeaway"})
+ +                              </span>
+ +                            )}
+ +                          </div>
+ +                        </div>
+++=======
++                       {/* Ti├¬u ─æß╗ü b├án */}
++                       <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
++                         <span className="text-[11px] font-black text-slate-700 px-2.5 py-1 bg-slate-55/40 bg-slate-50 border border-slate-200/80 rounded-lg shadow-inner">
++                           B├án: {group.tableName || "Mang vß╗ü"}{group.areaName ? ` - ${group.areaName}` : ""}
++                         </span>
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+                        </div>
+  
+-                       <button
+-                         onClick={() => handleDeliver(item.id)}
+-                         className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-200 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-95"
+-                       >
+-                         <CheckCheck size={11} /> ─É├ú phß╗Ñc vß╗Ñ
+-                       </button>
++                       {/* Danh s├ích m├│n */}
++                       <div className="flex flex-col gap-3">
++                         {group.items.map((item) => {
++                           const constituents = getComboConstituents(item.name);
++                           return (
++                             <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
++                               <div className="flex justify-between items-start gap-2">
++                                 <div className="text-[13px] font-extrabold text-slate-400 line-through leading-snug">
++                                   {item.name}
++                                 </div>
++                                 <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-0.5 rounded-lg border border-emerald-200/60 shadow-sm whitespace-nowrap">
++                                   x{item.quantity}
++                                 </span>
++                               </div>
++ 
++                               <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
++                                 <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
++                                   {getStationLabel(item.kitchenStation)}
++                                 </span>
++                                 {item.orderType && (
++                                   <span className="text-slate-400 font-semibold">
++                                     ({item.orderType === "dine_in" ? "Tß║íi b├án" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "─Éß║╖t tr╞░ß╗¢c" : "Takeaway"})
++                                   </span>
++                                 )}
++                                 <span className="text-emerald-700 font-bold bg-emerald-50/80 border border-emerald-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                   ≡ƒòÆ {new Date(item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
++                                 </span>
++                                 <span className="text-slate-600 font-extrabold bg-slate-50 border border-slate-200 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                   ≡ƒñ╡ {item.waiterName || "Phß╗Ñc vß╗Ñ"}
++                                 </span>
++                               </div>
++ 
++                               {/* M├│n ─æß║╖t tr╞░ß╗¢c badge */}
++                               {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
++                                 <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
++                                   ≡ƒì│ M├│n ─æß║╖t tr╞░ß╗¢c (Nß║Ñu sß║╡n)
++                                 </div>
++                               )}
++ 
++                               {constituents && (
++                                 <div className="mt-1.5 bg-emerald-50/30 rounded-xl p-2.5 border border-emerald-100/40 flex flex-col gap-1">
++                                   <span className="text-[9px] font-black uppercase tracking-wider text-emerald-650 block">Chi tiß║┐t combo:</span>
++                                   <div className="flex flex-col gap-1 pl-1">
++                                     {constituents.map((sub, idx) => (
++                                       <div key={idx} className="text-[10px] text-slate-400 line-through flex items-center gap-1.5">
++                                         <span className="h-1 w-1 rounded-full bg-slate-350"></span>
++                                         {sub}
++                                       </div>
++                                     ))}
++                                   </div>
++                                 </div>
++                               )}
++                             </div>
++                           );
++                         })}
++                       </div>
++                     </div>
++                   );
++                 })
++               )}
++             </div>
++           </div>
++ 
++           {/* Cß╗Öt 4: Hß╗ºy / Trß║ú m├│n */}
++           <div className="flex flex-col gap-4 bg-rose-50/20 p-4.5 rounded-2xl border border-rose-250/70 shadow-md">
++             <div className="flex justify-between items-center border-b border-rose-200 pb-3">
++               <span className="text-xs font-black uppercase text-rose-700 tracking-wider flex items-center gap-2">
++                 <AlertCircle size={14} className="text-rose-500 animate-pulse" />
++                 Hß╗ºy / Trß║ú m├│n (Returned)
++               </span>
++               <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-[10px] font-extrabold text-rose-700 border border-rose-200/60 shadow-sm">
++                 {columns.voided.length}
++               </span>
++             </div>
++ 
++             <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
++               {groupedVoided.length === 0 ? (
++                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
++                   <Inbox size={22} className="text-slate-350" />
++                   Kh├┤ng c├│ m├│n bß╗ï hß╗ºy hoß║╖c trß║ú vß╗ü
++                 </div>
++               ) : (
++                 groupedVoided.map((group) => {
++                   return (
++                     <div
++                       key={group.tableName}
++                       className="bg-white border-l-[5px] border-l-rose-500 border-slate-200/80 rounded-2xl p-4 flex flex-col gap-4 shadow-sm hover:shadow-md hover:scale-[1.01] transition-all duration-250"
++                     >
++                       {/* Ti├¬u ─æß╗ü b├án */}
++                       <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2">
++                         <span className="text-[11px] font-black text-rose-800 px-2.5 py-1 bg-rose-50 border border-rose-200/85 rounded-lg shadow-inner">
++                           B├án: {group.tableName || "Mang vß╗ü"}{group.areaName ? ` - ${group.areaName}` : ""}
++                         </span>
++                       </div>
++ 
++                       {/* Danh s├ích m├│n */}
++                       <div className="flex flex-col gap-3">
++                         {group.items.map((item) => (
++                           <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
++                             <div className="flex justify-between items-start gap-2">
++                               <div className="text-[13px] font-extrabold text-rose-600/85 line-through leading-snug">
++                                 {item.name}
++                               </div>
++                               <span className="text-rose-600 text-xs font-black bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200 shadow-sm whitespace-nowrap">
++                                 x{item.quantity}
++                               </span>
++                             </div>
++ 
++                             <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
++                               <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-rose-600/70 border border-slate-200/50">
++                                 {getStationLabel(item.kitchenStation)}
++                               </span>
++                               {item.orderType && (
++                                 <span className="text-slate-400 font-semibold">
++                                   ({item.orderType === "dine_in" ? "Tß║íi b├án" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "─Éß║╖t tr╞░ß╗¢c" : "Takeaway"})
++                                 </span>
++                               )}
++                               <span className="text-rose-700 font-bold bg-rose-50/60 border border-rose-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                 ≡ƒòÆ {new Date(item.voidedAt || item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
++                               </span>
++                               <span className="text-slate-600 font-extrabold bg-slate-50 border border-slate-200 px-1.5 py-0.2 rounded whitespace-nowrap">
++                                 ≡ƒñ╡ {item.waiterName || "Phß╗Ñc vß╗Ñ"}
++                               </span>
++                             </div>
++ 
++                             {/* L├╜ do trß║ú m├│n */}
++                             <div className="mt-2 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2.5 py-1.5 rounded-xl flex flex-col gap-0.5 shadow-sm">
++                               <div>ΓÜá∩╕Å L├╜ do: {item.voidReason || "Y├¬u cß║ºu tß╗½ phß╗Ñc vß╗Ñ"}</div>
++                               {item.voidedAt && (
++                                 <div className="text-[8px] text-rose-400 font-medium">Hß╗ºy l├║c: {new Date(item.voidedAt).toLocaleTimeString("vi-VN")}</div>
++                               )}
++                             </div>
++ 
++                             {/* N├║t ─æ├ú xem */}
++                             <button
++                               onClick={() => handleUpdateStatus(item.id, "dismissed" as any)}
++                               className="mt-2.5 w-full py-1.5 bg-linear-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200 shadow-sm hover:shadow"
++                             >
++                               <X size={9} /> ─É├ú xem & x├íc nhß║¡n
++                             </button>
++                           </div>
++                         ))}
++                       </div>
++ 
++                       {/* H├ánh ─æß╗Öng cß║ú b├án (nß║┐u c├│ > 1 m├│n) */}
++                       {group.items.length > 1 && (
++                         <button
++                           onClick={() => {
++                             const ids = group.items.map((i) => i.id);
++                             dispatch(updateKdsBatchStatus({ itemIds: ids, status: "dismissed" }))
++                               .unwrap()
++                               .catch(() => {
++                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "dismissed" as any })));
++                               });
++                           }}
++                           className="mt-1 w-full py-2 bg-linear-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-rose-500/20 active:scale-95"
++                         >
++                           <CheckCheck size={10} /> X├íc nhß║¡n cß║ú b├án ({group.items.length})
++                         </button>
++                       )}
+                      </div>
+                    );
+                  })
+diff --cc fe/src/views/client/BookingPage.tsx
+index 09dd187,6f02ca1..0000000
+--- a/fe/src/views/client/BookingPage.tsx
++++ b/fe/src/views/client/BookingPage.tsx
+@@@ -175,18 -225,6 +225,21 @@@ export const BookingPage: React.FC = (
+          }
+        }
+  
+++<<<<<<< HEAD
+ +      // Tß╗òng hß╗úp m├│n ─ân ─æß║╖t tr╞░ß╗¢c ch├¿n v├áo ghi ch├║
+ +      const orderedItems = Object.entries(preOrderedDishes)
+ +        .map(([idStr, d]) => ({ ...d, id: Number(idStr) }))
+ +        .filter((d) => d.quantity > 0);
+ +      let finalGuestNote = form.note.trim();
+ +      if (orderedItems.length > 0) {
+ +        const foodSummary = orderedItems.map((d) => `${d.quantity}x ${d.name}`).join(", ");
+ +        finalGuestNote = finalGuestNote 
+ +          ? `${finalGuestNote}\n[M├│n ─æß║╖t tr╞░ß╗¢c: ${foodSummary}]`
+ +          : `[M├│n ─æß║╖t tr╞░ß╗¢c: ${foodSummary}]`;
+ +      }
+ +
+++=======
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+        const bookingResult = await createBooking({
+          table_id: Number(form.tableId),
+          customer_id: customerId,
+diff --cc fe/src/views/manager/components/ManagerSidebar.tsx
+index 2fe508d,78f4453..0000000
+--- a/fe/src/views/manager/components/ManagerSidebar.tsx
++++ b/fe/src/views/manager/components/ManagerSidebar.tsx
+@@@ -5,20 -5,23 +5,27 @@@ import 
+    Grid,
+    CalendarDays,
+    Clock,
++   Users,
++   Utensils,
++   UtensilsCrossed,
++   BadgeCheck,
+    LineChart,
+++<<<<<<< HEAD
+ +  Percent,
+++=======
++   CircleDollarSign,
++   TrendingDown,
++   Building2,
++   Database,
++   ChevronDown,
++   Minus,
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+  } from "lucide-react";
+  import { useAppSelector } from "../../../store/hooks";
+- import { ROLE_LABELS } from "../../../constants/roles";
+  
+  /**
+-  * ManagerSidebar - Sidebar ri├¬ng cho Manager role vß╗¢i accordion menu
++  * ManagerSidebar - Recreated Two-Column Neumorphic Soft-UI Sidebar
++  * Adheres strictly to the monochrome grayscale specification & hex color palette.
+   */
+  export const ManagerSidebar: React.FC = () => {
+    const location = useLocation();
+diff --cc fe/src/views/waiter/orders/OrderPage.tsx
+index a3245b7,c07cff4..0000000
+--- a/fe/src/views/waiter/orders/OrderPage.tsx
++++ b/fe/src/views/waiter/orders/OrderPage.tsx
+@@@ -118,43 -122,52 +122,90 @@@ export const OrderPage: React.FC = () =
+        .finally(() => setMenuLoading(false));
+    }, []);
+  
++   const [refreshing, setRefreshing] = useState<boolean>(false);
++ 
++   const fetchOrderData = useCallback(async (showToast = false) => {
++     if (!tableId) return;
++     if (showToast) setRefreshing(true);
++     else setOrderLoading(true);
++ 
++     try {
++       const orders = await getOrdersByTable(Number(tableId));
++       if (orders.length === 0) {
++         setOrderId(null);
++         setOrderStatus(null);
++         setOrderItems([]);
++         if (showToast) toast.success("B├án ch╞░a c├│ order n├áo");
++         return;
++       }
++       const latest = orders[0];
++       setOrderId(latest.id);
++       setOrderStatus(latest.status);
++       const items = await getOrderItems(latest.id);
++       setOrderItems(
++         items.map((i) => ({
++           id: i.id,
++           menuItemId: i.menu_item_id,
++           name: i.item_name,
++           price: Number(i.unit_price),
++           quantity: i.quantity,
++           status: i.status as OrderItemStatus, // Lß║Ñy ─æ├║ng status tß╗½ DB
++           kitchenNote: i.kitchen_note,
++           held: Boolean(i.is_held),
++         })),
++       );
++       if (showToast) toast.success("─É├ú l├ám mß╗¢i dß╗» liß╗çu gß╗ìi m├│n");
++     } catch {
++       setOrderItems([]);
++       if (showToast) toast.error("Lß╗ùi khi tß║úi lß║íi dß╗» liß╗çu");
++     } finally {
++       if (showToast) setRefreshing(false);
++       else setOrderLoading(false);
++     }
++   }, [tableId]);
++ 
+    // Tß║úi order hiß╗çn tß║íi cß╗ºa b├án
+    useEffect(() => {
+++<<<<<<< HEAD
+ +    if (!tableId) return;
+ +    setOrderLoading(true);
+ +    getOrdersByTable(Number(tableId))
+ +      .then(async (orders) => {
+ +        if (orders.length === 0) {
+ +          setOrderId(null);
+ +          setOrderItems([]);
+ +          return;
+ +        }
+ +        const latest = orders[0];
+ +        setOrderId(latest.id);
+ +        const items = await getOrderItems(latest.id);
+ +        setOrderItems(
+ +          items.map((i) => ({
+ +            id: i.id,
+ +            menuItemId: i.menu_item_id,
+ +            name: i.item_name,
+ +            price: Number(i.unit_price),
+ +            quantity: i.quantity,
+ +            status: i.status as OrderItemStatus, // Lß║Ñy ─æ├║ng status tß╗½ DB
+ +            kitchenNote: i.kitchen_note,
+ +            held: Boolean(i.is_held),
+ +          })),
+ +        );
+ +        // L╞░u trß╗» th├┤ng tin deposit amount nß║┐u c├│
+ +        setTable((prev: any) => ({
+ +          ...prev,
+ +          deposit_amount: latest.deposit_amount || 0,
+ +        }));
+ +      })
+ +      .catch(() => {
+ +        setOrderItems([]);
+ +      })
+ +      .finally(() => setOrderLoading(false));
+ +  }, [tableId]);
+++=======
++     fetchOrderData(false);
++   }, [fetchOrderData]);
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
+  
+    const filteredMenu = useMemo(() => {
+      return menuItems.filter((item) => {
+diff --cc fe/src/views/waiter/tables/index.tsx
+index aa41dd4,76d44a4..0000000
+--- a/fe/src/views/waiter/tables/index.tsx
++++ b/fe/src/views/waiter/tables/index.tsx
+@@@ -741,264 -839,292 +839,317 @@@ export const WaiterTableMap: React.FC<W
+                  {(selectedTable.status === "serving" ||
+                    selectedTable.status === "pending_payment" ||
+                    selectedTable.status === "reserved") && (
+++<<<<<<< HEAD
+ +                  <>
+ +                    {/* Customer details card */}
+ +                    <div className="rounded-xl bg-sky-50/50 p-3.5 border border-sky-100 text-xs space-y-1.5">
+ +                      <div className="flex justify-between">
+ +                        <span className="text-slate-400">Kh├ích h├áng:</span>
+ +                        <span className="font-bold text-slate-800">
+ +                          {selectedTable.guest_name || "Kh├ích tß║íi b├án"}
+ +                        </span>
+ +                      </div>
+ +                      <div className="flex justify-between">
+ +                        <span className="text-slate-400 flex items-center gap-1"><Phone size={11} /> S─ÉT:</span>
+ +                        <span className="font-medium text-slate-700">
+ +                          {selectedTable.guest_phone || <span className="italic text-gray-400">Kh├┤ng ghi</span>}
+ +                        </span>
+ +                      </div>
+ +                      <div className="flex justify-between">
+ +                        <span className="text-slate-400">Thß╗¥i gian ─æß║┐n / ─æß║╖t:</span>
+ +                        <span className="font-semibold text-slate-700">
+ +                          {selectedTable.start_time || "Vß╗½a ─æß║┐n"}
+ +                        </span>
+ +                      </div>
+ +                      {true && (
+++=======
++                     <>
++                       {/* Customer details card */}
++                       <div className="rounded-xl bg-sky-50/50 p-3.5 border border-sky-100 text-xs space-y-1.5">
+                          <div className="flex justify-between">
+-                           <span className="text-gray-500">Sß╗æ kh├ích ─æß║╖t/─æang ngß╗ôi:</span>
+-                           <span className="font-bold text-emerald-700">
+-                             {selectedTable.guest_count || "?"} / {selectedTable.capacity} ng╞░ß╗¥i
++                           <span className="text-slate-400">Kh├ích h├áng:</span>
++                           <span className="font-bold text-slate-800">
++                             {selectedTable.guest_name || "Kh├ích tß║íi b├án"}
+                            </span>
+                          </div>
+-                       )}
+-                       {selectedTable.booking_code && (
+                          <div className="flex justify-between">
+-                           <span className="text-gray-500">M├ú ─æß║╖t b├án:</span>
+-                           <span className="font-mono font-bold text-amber-700">
+-                             {selectedTable.booking_code}
++                           <span className="text-slate-400 flex items-center gap-1"><Phone size={11} /> S─ÉT:</span>
++                           <span className="font-medium text-slate-700">
++                             {selectedTable.guest_phone || <span className="italic text-gray-400">Kh├┤ng ghi</span>}
+                            </span>
+                          </div>
+-                       )}
+-                       {((selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0) || (selectedTable.guest_note && selectedTable.guest_note.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
+-                         <div className="mt-2.5 pt-2 border-t border-amber-200/80 bg-amber-50/80 p-2 rounded-lg">
+-                           <span className="font-extrabold text-amber-900 block flex items-center gap-1 mb-1">
+-                             ≡ƒì│ M├│n ─ân ─æ├ú ─æß║╖t tr╞░ß╗¢c:
++                         <div className="flex justify-between">
++                           <span className="text-slate-400">Thß╗¥i gian ─æß║┐n / ─æß║╖t:</span>
++                           <span className="font-semibold text-slate-700">
++                             {selectedTable.start_time || "Vß╗½a ─æß║┐n"}
+                            </span>
+-                           {selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0 ? (
+-                             <ul className="list-disc list-inside text-amber-800 font-semibold space-y-0.5 ml-1">
+-                               {selectedTable.pre_ordered_items.map((item: any, idx: number) => (
+-                                 <li key={idx}>
+-                                   {item.name} <span className="text-amber-950 font-black">x{item.quantity}</span>
+-                                 </li>
+-                               ))}
+-                             </ul>
+-                           ) : (
+-                             <p className="text-amber-800 font-medium whitespace-pre-line">
+-                               {selectedTable.guest_note}
+-                             </p>
+-                           )}
+                          </div>
+-                       )}
+-                     </div>
+  
+-                     {/* N├ÜT KH├üCH ─É├â ─Éß║╛N & Hß╗ªY BOOKING ΓÇö chß╗ë hiß╗çn khi b├án l├á reserved */}
+-                     {selectedTable.status === "reserved" && (
+-                       <div className="flex gap-2">
+-                         <button
+-                           onClick={async () => {
+-                             try {
+-                               const userId = getCurrentUserId();
+-                               const newOrder = await createOrder({
+-                                 table_id: Number(selectedTable.id),
+-                                 created_by: userId,
+-                                 order_type: "dine_in",
+-                                 guest_name: selectedTable.guest_name || undefined,
+-                                 guest_phone: selectedTable.guest_phone || undefined,
+-                                 guest_count: selectedTable.guest_count || undefined,
+-                               });
+++>>>>>>> c79a52e71e9d6fd87e6fb94e8540b30897ee7a09
++                         <div className="flex justify-between">
++                           <span className="text-gray-500">Sß╗æ kh├ích ─æß║╖t/─æang ngß╗ôi:</span>
++                           <span className="font-bold text-emerald-700">
++                             {selectedTable.guest_count || "?"} / {selectedTable.capacity} ng╞░ß╗¥i
++                           </span>
++                         </div>
++                         {selectedTable.booking_code && (
++                           <div className="flex justify-between">
++                             <span className="text-gray-500">M├ú ─æß║╖t b├án:</span>
++                             <span className="font-mono font-bold text-amber-700">
++                               {selectedTable.booking_code}
++                             </span>
++                           </div>
++                         )}
++                         {((selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0) || (selectedTable.guest_note && selectedTable.guest_note.includes("M├│n ─æß║╖t tr╞░ß╗¢c"))) && (
++                           <div className="mt-2.5 pt-2 border-t border-amber-200/80 bg-amber-50/80 p-2 rounded-lg">
++                             <span className="font-extrabold text-amber-900 block flex items-center gap-1 mb-1">
++                               ≡ƒì│ M├│n ─ân ─æ├ú ─æß║╖t tr╞░ß╗¢c:
++                             </span>
++                             {selectedTable.pre_ordered_items && selectedTable.pre_ordered_items.length > 0 ? (
++                               <ul className="list-disc list-inside text-amber-800 font-semibold space-y-0.5 ml-1">
++                                 {selectedTable.pre_ordered_items.map((item: any, idx: number) => (
++                                   <li key={idx}>
++                                     {item.name} <span className="text-amber-950 font-black">x{item.quantity}</span>
++                                   </li>
++                                 ))}
++                               </ul>
++                             ) : (
++                               <p className="text-amber-800 font-medium whitespace-pre-line">
++                                 {selectedTable.guest_note}
++                               </p>
++                             )}
++                           </div>
++                         )}
++                       </div>
+  
++                       {/* N├ÜT KH├üCH ─É├â ─Éß║╛N & Hß╗ªY BOOKING ΓÇö chß╗ë hiß╗çn khi b├án l├á reserved */}
++                       {selectedTable.status === "reserved" && (
++                         <div className="flex gap-2">
++                           <button
++                             onClick={async () => {
+                                try {
+-                                 if (selectedTable.guest_count && selectedTable.guest_count > 0) {
+-                                   const menuItems = await getWaiterMenuItems();
+-                                   const wetTissue = menuItems.find(
+-                                     (m) =>
+-                                       m.name.toLowerCase().includes("kh─ân ╞░ß╗¢t") ||
+-                                       m.name.toLowerCase().includes("kh─ân lß║ính")
+-                                   );
+-                                   if (wetTissue) {
+-                                     await addOrderItem(newOrder.id, {
+-                                       menu_item_id: wetTissue.id,
+-                                       quantity: selectedTable.guest_count,
+-                                       unit_price: wetTissue.price,
+-                                       kitchen_note: "Mß║╖c ─æß╗ïnh theo sß╗æ kh├ích",
+-                                     });
++                                 const userId = getCurrentUserId();
++                                 const newOrder = await createOrder({
++                                   table_id: Number(selectedTable.id),
++                                   created_by: userId,
++                                   order_type: "dine_in",
++                                   guest_name: selectedTable.guest_name || undefined,
++                                   guest_phone: selectedTable.guest_phone || undefined,
++                                   guest_count: selectedTable.guest_count || undefined,
++                                 });
++ 
++                                 try {
++                                   if (selectedTable.guest_count && selectedTable.guest_count > 0) {
++                                     const menuItems = await getWaiterMenuItems();
++                                     const wetTissue = menuItems.find(
++                                       (m) =>
++                                         m.name.toLowerCase().includes("kh─ân ╞░ß╗¢t") ||
++                                         m.name.toLowerCase().includes("kh─ân lß║ính")
++                                     );
++                                     if (wetTissue) {
++                                       await addOrderItem(newOrder.id, {
++                                         menu_item_id: wetTissue.id,
++                                         quantity: selectedTable.guest_count,
++                                         unit_price: wetTissue.price,
++                                         kitchen_note: "Mß║╖c ─æß╗ïnh theo sß╗æ kh├ích",
++                                         created_by: userId,
++                                       });
++                                     }
+                                    }
++                                 } catch (err) {
++                                   console.warn("Lß╗ùi th├¬m kh─ân ╞░ß╗¢t mß║╖c ─æß╗ïnh:", err);
+                                  }
+-                               } catch (err) {
+-                                 console.warn("Lß╗ùi th├¬m kh─ân ╞░ß╗¢t mß║╖c ─æß╗ïnh:", err);
+-                               }
+  
+-                               toast.success(`Γ£à Kh├ích ─æ├ú ─æß║┐n ΓÇö B├án ${selectedTable.name} ─æang phß╗Ñc vß╗Ñ`);
+-                               navigate(`/waiter/orders/${selectedTable.id}`);
+-                             } catch {
+-                               toast.error("Kh├┤ng thß╗â x├íc nhß║¡n kh├ích ─æß║┐n");
+-                             }
+-                           }}
+-                           className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+-                         >
+-                           <UserCheck size={15} /> Kh├ích ─æ├ú ─æß║┐n ΓÇö Bß║»t ─æß║ºu phß╗Ñc vß╗Ñ
+-                         </button>
+-                         <button
+-                           onClick={() => {
+-                             setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name });
+-                             setCancelBookingReason("");
+-                           }}
+-                           className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+-                           title="Hß╗ºy booking"
+-                         >
+-                           <XCircle size={14} /> Hß╗ºy
+-                         </button>
+-                       </div>
+-                     )}
+- 
+-                     {/* Cß║óNH B├üO PH├üT SINH NG╞»ß╗£I */}
+-                     {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
+-                       <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 space-y-2">
+-                         <div className="flex items-start gap-2">
+-                           <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+-                           <div>
+-                             <p className="font-bold text-amber-800">
+-                               B├án ph├ít sinh th├¬m ng╞░ß╗¥i ({selectedTable.guest_count}/{selectedTable.capacity} kh├ích)
+-                             </p>
+-                             <p className="text-[11px] text-amber-700 mt-0.5">
+-                               Bß║ín c├│ thß╗â chuyß╗ân sang b├án lß╗¢n h╞ín hoß║╖c gß╗Öp b├án ─æß╗â phß╗Ñc vß╗Ñ thuß║¡n tiß╗çn.
+-                             </p>
+-                           </div>
+-                         </div>
+-                         <div className="flex gap-2 pt-1">
+-                           <button
+-                             onClick={() => setActiveAction("transfer")}
+-                             className="flex-1 rounded-lg bg-white border border-amber-300 px-3 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer flex items-center justify-center gap-1"
++                                 toast.success(`Γ£à Kh├ích ─æ├ú ─æß║┐n ΓÇö B├án ${selectedTable.name} ─æang phß╗Ñc vß╗Ñ`);
++                                 navigate(`/waiter/orders/${selectedTable.id}`);
++                               } catch {
++                                 toast.error("Kh├┤ng thß╗â x├íc nhß║¡n kh├ích ─æß║┐n");
++                               }
++                             }}
++                             className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                            >
+-                             <ArrowRightLeft size={12} /> Chuyß╗ân b├án
++                             <UserCheck size={15} /> Kh├ích ─æ├ú ─æß║┐n ΓÇö Bß║»t ─æß║ºu phß╗Ñc vß╗Ñ
+                            </button>
+                            <button
+-                             onClick={() => setActiveAction("merge")}
+-                             className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
++                             onClick={() => {
++                               setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name });
++                               setCancelBookingReason("");
++                             }}
++                             className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
++                             title="Hß╗ºy booking"
+                            >
+-                             <GitMerge size={12} /> Gß╗Öp b├án
++                             <XCircle size={14} /> Hß╗ºy
+                            </button>
+                          </div>
+-                       </div>
+-                     )}
+- 
+-                     {/* DANH S├üCH M├ôN ─É├â Gß╗îI (chß╗ë hiß╗ân khi ─æang phß╗Ñc vß╗Ñ / chß╗¥ thanh to├ín) */}
+-                     {(selectedTable.status === "serving" || selectedTable.status === "pending_payment") && (
+-                       <div className="border-t border-sky-50 pt-4 space-y-3">
+-                         <div className="flex items-center justify-between">
+-                           <div className="flex items-center gap-2">
+-                             <Utensils size={15} className="text-sky-600" />
+-                             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+-                               M├│n ─ân ─æ├ú gß╗ìi
+-                             </h4>
++                       )}
++ 
++                       {/* Cß║óNH B├üO PH├üT SINH NG╞»ß╗£I */}
++                       {selectedTable.guest_count && selectedTable.guest_count > selectedTable.capacity && (
++                         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 space-y-2">
++                           <div className="flex items-start gap-2">
++                             <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
++                             <div>
++                               <p className="font-bold text-amber-800">
++                                 B├án ph├ít sinh th├¬m ng╞░ß╗¥i ({selectedTable.guest_count}/{selectedTable.capacity} kh├ích)
++                               </p>
++                               <p className="text-[11px] text-amber-700 mt-0.5">
++                                 Bß║ín c├│ thß╗â chuyß╗ân sang b├án lß╗¢n h╞ín hoß║╖c gß╗Öp b├án ─æß╗â phß╗Ñc vß╗Ñ thuß║¡n tiß╗çn.
++                               </p>
++                             </div>
++                           </div>
++                           <div className="flex gap-2 pt-1">
++                             <button
++                               onClick={() => setActiveAction("transfer")}
++                               className="flex-1 rounded-lg bg-white border border-amber-300 px-3 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer flex items-center justify-center gap-1"
++                             >
++                               <ArrowRightLeft size={12} /> Chuyß╗ân b├án
++                             </button>
++                             <button
++                               onClick={() => setActiveAction("merge")}
++                               className="flex-1 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors cursor-pointer flex items-center justify-center gap-1"
++                             >
++                               <GitMerge size={12} /> Gß╗Öp b├án
++                             </button>
+                            </div>
+-                           <button
+-                             onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
+-                             className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
+-                           >
+-                             <Plus size={13} /> Th├¬m m├│n
+-                           </button>
+                          </div>
++                       )}
+  
+-                         {loadingOrder ? (
+-                           <div className="py-8 text-center text-xs text-gray-400">
+-                             ─Éang tß║úi danh s├ích m├│n...
+-                           </div>
+-                         ) : !activeOrder || activeOrder.items.length === 0 ? (
+-                           <div className="rounded-xl border border-dashed border-sky-100 py-8 text-center text-xs text-gray-400">
+-                             Ch╞░a c├│ m├│n ─ân n├áo trong order. Nhß║Ñn &ldquo;Th├¬m m├│n&rdquo; ─æß╗â gß╗ìi m├│n.
++                       {/* DANH S├üCH M├ôN ─É├â Gß╗îI (chß╗ë hiß╗ân khi ─æang phß╗Ñc vß╗Ñ / chß╗¥ thanh to├ín) */}
++                       {(selectedTable.status === "serving" || selectedTable.status === "pending_payment") && (
++                         <div className="border-t border-sky-50 pt-4 space-y-3">
++                           <div className="flex items-center justify-between">
++                             <div className="flex items-center gap-2">
++                               <Utensils size={15} className="text-sky-600" />
++                               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
++                                 M├│n ─ân ─æ├ú gß╗ìi
++                               </h4>
++                             </div>
++                             {selectedTable.status === "serving" && (
++                               <button
++                                 onClick={() => navigate(`/waiter/orders/${selectedTableId}`)}
++                                 className="flex items-center gap-1 rounded-lg bg-sky-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-sky-600 transition-colors cursor-pointer shadow-2xs"
++                               >
++                                 <Plus size={13} /> Th├¬m m├│n
++                               </button>
++                             )}
+                            </div>
+-                         ) : (
+-                           <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+-                             {activeOrder.items
+-                               .filter((i) => i.status !== "voided" && i.status !== "cancelled")
+-                               .map((item) => {
+-                                 const st = ITEM_STATUS_LABELS[item.status] || ITEM_STATUS_LABELS.pending;
+-                                 return (
+-                                   <div
+-                                     key={item.id}
+-                                     className="flex items-center justify-between p-2.5 rounded-xl border border-sky-50 bg-sky-50/50/50 text-xs"
+-                                   >
+-                                     <div className="min-w-0 flex-1 pr-2">
+-                                       <p className="font-bold text-slate-700 truncate">{item.item_name}</p>
+-                                       <p className="text-[11px] text-slate-400">
+-                                         {item.quantity} x {Number(item.unit_price).toLocaleString()}─æ
+-                                       </p>
+-                                       {item.kitchen_note && (
+-                                         <p className="text-[10px] text-amber-600 italic">
+-                                           ≡ƒô¥ {item.kitchen_note}
++ 
++                           {loadingOrder ? (
++                             <div className="py-8 text-center text-xs text-gray-400">
++                               ─Éang tß║úi danh s├ích m├│n...
++                             </div>
++                           ) : !activeOrder || activeOrder.items.length === 0 ? (
++                             <div className="rounded-xl border border-dashed border-sky-100 py-8 text-center text-xs text-gray-400">
++                               Ch╞░a c├│ m├│n ─ân n├áo trong order. Nhß║Ñn &ldquo;Th├¬m m├│n&rdquo; ─æß╗â gß╗ìi m├│n.
++                             </div>
++                           ) : (
++                             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
++                               {activeOrder.items
++                                 .filter((i) => i.status !== "voided" && i.status !== "cancelled")
++                                 .map((item) => {
++                                   const st = ITEM_STATUS_LABELS[item.status] || ITEM_STATUS_LABELS.pending;
++                                   return (
++                                     <div
++                                       key={item.id}
++                                       className="flex items-center justify-between p-2.5 rounded-xl border border-sky-50 bg-sky-50/50/50 text-xs"
++                                     >
++                                       <div className="min-w-0 flex-1 pr-2">
++                                         <p className="font-bold text-slate-700 truncate">{item.item_name}</p>
++                                         <p className="text-[11px] text-slate-400">
++                                           {item.quantity} x {Number(item.unit_price).toLocaleString()}─æ
+                                          </p>
+-                                       )}
++                                         {item.kitchen_note && (
++                                           <p className="text-[10px] text-amber-600 italic">
++                                             ≡ƒô¥ {item.kitchen_note}
++                                           </p>
++                                         )}
++                                       </div>
++ 
++                                       <div className="flex items-center shrink-0">
++                                         <span
++                                           className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
++                                         >
++                                           {st.label}
++                                         </span>
++                                       </div>
+                                      </div>
++                                   );
++                                 })}
++                             </div>
++                           )}
+  
+-                                     <div className="flex items-center shrink-0">
+-                                       <span
+-                                         className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.badge}`}
+-                                       >
+-                                         {st.label}
+-                                       </span>
+-                                     </div>
+-                                   </div>
+-                                 );
+-                               })}
+-                           </div>
+-                         )}
++                           {/* Tß╗öNG TIß╗ÇN V├Ç IN PHIß║╛U Tß║áM T├ìNH ΓÇö chß╗ë hiß╗ân thß╗ï khi c├│ m├│n */}
++                           {activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
++                             <div className="rounded-xl bg-gray-900 p-3.5 text-white space-y-2 mt-3">
++                               <div className="flex justify-between items-center text-xs text-gray-300">
++                                 <span>Tß║ím t├¡nh (m├│n):</span>
++                                 <span className="font-bold">{(activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount || 0).toLocaleString("vi-VN")} ─æ</span>
++                               </div>
++                               <div className="flex justify-between items-center text-xs text-gray-300">
++                                 <span>VAT (10%):</span>
++                                 <span className="font-bold">+{(activeOrder.tax !== undefined ? activeOrder.tax : Math.round((activeOrder.subtotal || activeOrder.totalAmount || 0) * 0.10)).toLocaleString("vi-VN")} ─æ</span>
++                               </div>
++                               {(activeOrder.depositAmount || 0) > 0 && (
++                                 <div className="flex justify-between items-center text-xs text-amber-400">
++                                   <span>Tiß╗ün cß╗ìc ─æß║╖t b├án:</span>
++                                   <span className="font-bold">-{(activeOrder.depositAmount || 0).toLocaleString("vi-VN")} ─æ</span>
++                                 </div>
++                               )}
++                               <div className="border-t border-gray-700 pt-2 flex items-center justify-between">
++                                 <div>
++                                   <p className="text-[10px] text-gray-400 uppercase font-bold">Tß╗òng thanh to├ín dß╗▒ kiß║┐n:</p>
++                                   <p className="text-base font-black text-sky-400">
++                                     {(activeOrder.totalAmount || 0).toLocaleString("vi-VN")} ─æ
++                                   </p>
++                                 </div>
++                                 <button
++                                   onClick={() => setIsPrintBillOpen(true)}
++                                   className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-sky-100 transition-colors cursor-pointer shadow-md"
++                                 >
++                                   <Printer size={14} /> In phiß║┐u tß║ím t├¡nh
++                                 </button>
++                               </div>
++                             </div>
++                           )}
+  
+-                         {/* Tß╗öNG TIß╗ÇN V├Ç IN PHIß║╛U Tß║áM T├ìNH ΓÇö chß╗ë hiß╗ân thß╗ï khi c├│ m├│n */}
+-                         {activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+-                           <div className="rounded-xl bg-gray-900 p-3.5 text-white flex items-center justify-between mt-3">
+-                             <div>
+-                               <p className="text-[10px] text-gray-400 uppercase font-bold">Tß║ím t├¡nh order:</p>
+-                               <p className="text-base font-black text-sky-600">
+-                                 {(activeOrder?.totalAmount || 0).toLocaleString("vi-VN")} ─æ
+-                               </p>
++                           {/* N├║t thao t├íc chuyß╗ân/gß╗Öp/t├ích ΓÇö CHß╗ê HIß╗éN THß╗è khi b├án ─æang ß╗ƒ trß║íng th├íi phß╗Ñc vß╗Ñ (serving) */}
++                           {selectedTable.status === "serving" && (
++                             <div className={`grid ${((selectedTable.guest_count || 0) > 1) ? "grid-cols-3" : "grid-cols-2"} gap-2 pt-1`}>
++                               <button
++                                 onClick={() => setActiveAction("transfer")}
++                                 className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
++                               >
++                                 <ArrowRightLeft size={13} /> Chuyß╗ân b├án
++                               </button>
++                               <button
++                                 onClick={() => setActiveAction("merge")}
++                                 className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
++                               >
++                                 <GitMerge size={13} /> Gß╗Öp b├án
++                               </button>
++                               {((selectedTable.guest_count || 0) > 1) && (
++                                 <button
++                                   onClick={() => setActiveAction("split")}
++                                   className="rounded-xl border border-sky-100 bg-white px-2 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
++                                 >
++                                   <Copy size={13} className="text-pink-600" /> T├ích b├án
++                                 </button>
++                               )}
+                              </div>
++                           )}
++ 
++                           {selectedTable.status === "serving" && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+                              <button
+-                               onClick={() => setIsPrintBillOpen(true)}
+-                               className="flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-slate-800 hover:bg-sky-100 transition-colors cursor-pointer shadow-md"
++                               onClick={handleRequestPaymentFromTable}
++                               className="w-full rounded-xl border-2 border-purple-200 bg-purple-50/60 px-3 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 shadow-2xs"
+                              >
+-                               <Printer size={14} /> In phiß║┐u tß║ím t├¡nh
++                               <FileText size={14} className="text-purple-600" /> Y├¬u cß║ºu thanh to├ín (Thu ng├ón)
+                              </button>
+-                           </div>
+-                         )}
+- 
+-                         {/* N├║t thao t├íc chuyß╗ân/gß╗Öp & Y├¬u cß║ºu thanh to├ín */}
+-                         <div className="grid grid-cols-2 gap-2 pt-1">
+-                           <button
+-                             onClick={() => setActiveAction("transfer")}
+-                             className="rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+-                           >
+-                             <ArrowRightLeft size={13} /> Chuyß╗ân b├án
+-                           </button>
+-                           <button
+-                             onClick={() => setActiveAction("merge")}
+-                             className="rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-sky-50/50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+-                           >
+-                             <GitMerge size={13} /> Gß╗Öp b├án
+-                           </button>
++                           )}
+                          </div>
+- 
+-                         {selectedTable.status === "serving" && activeOrder && activeOrder.items.filter(i => i.status !== "voided" && i.status !== "cancelled").length > 0 && (
+-                           <button
+-                             onClick={handleRequestPaymentFromTable}
+-                             className="w-full rounded-xl border-2 border-purple-200 bg-purple-50/60 px-3 py-2.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 mt-1.5 shadow-2xs"
+-                           >
+-                             <FileText size={14} className="text-purple-600" /> Y├¬u cß║ºu thanh to├ín (Thu ng├ón)
+-                           </button>
+-                         )}
+-                       </div>
+-                     )}
+-                   </>
+-                 )}
++                       )}
++                     </>
++                   )}
+                </div>
+              </div>
+            ) : (

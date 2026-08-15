@@ -52,6 +52,7 @@ export const PaymentModal: React.FC<Props> = ({
 }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
   const [vatRate, setVatRate] = useState(10);
+  const [serviceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount] = useState(0);
@@ -147,9 +148,10 @@ export const PaymentModal: React.FC<Props> = ({
     const vat = Math.round(subtotal * (vatRate / 100));
     const depositAmount = invoice.depositAmount || 0;
     const pointsDiscount = pointsToUse * 100;
-    const finalAmount = Math.max(0, subtotal + vat + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000) - pointsDiscount);
-    return { subtotal, vat, depositAmount, pointsDiscount, finalAmount };
-  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, tipAmount, voucherAmount, pointsToUse]);
+    const serviceFee = subtotal * (serviceFeeRate / 100);
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000) - pointsDiscount);
+    return { subtotal, vat, serviceFee, depositAmount, pointsDiscount, finalAmount };
+  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, serviceFeeRate, tipAmount, voucherAmount, pointsToUse]);
 
   const momoUrl = useMemo(() => {
     const amountVnd = Math.round(breakdown.finalAmount);
@@ -238,6 +240,14 @@ export const PaymentModal: React.FC<Props> = ({
             <span className="text-slate-500">Tạm tính ({invoice.items.length} món)</span>
             <span className="font-bold text-slate-900">{formatVnd(breakdown.subtotal)} vnđ</span>
           </div>
+
+          {/* Deposit */}
+          {breakdown.depositAmount > 0 && (
+            <div className="flex justify-between text-xs py-2 border-b border-slate-100 text-amber-600">
+              <span className="font-bold">Trừ tiền đặt cọc</span>
+              <span className="font-bold">- {formatVnd(breakdown.depositAmount)} vnđ</span>
+            </div>
+          )}
 
           {/* VAT */}
           <div className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100">

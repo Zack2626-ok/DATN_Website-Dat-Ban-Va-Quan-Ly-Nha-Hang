@@ -31,6 +31,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
     password: "",
     role_id: 2, // Default to MANAGER
     status: "active" as "active" | "inactive",
+    hourly_rate: 0,
   });
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -48,6 +49,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
         password: "", // Always clear password field on start editing
         role_id: editingUser.role_id,
         status: editingUser.status,
+        hourly_rate: editingUser.hourly_rate || 0,
       });
     } else {
       setFormData({
@@ -57,6 +59,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
         password: "",
         role_id: roles[0]?.id || 2,
         status: "active",
+        hourly_rate: 0,
       });
     }
   }, [editingUser, roles, isOpen]);
@@ -132,6 +135,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
       phone: formData.phone.trim() || null,
       role_id: formData.role_id,
       status: formData.status,
+      hourly_rate: Number(formData.hourly_rate) || 0,
     };
 
     if (formData.password) {
@@ -267,6 +271,22 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
             {fieldErrors.phone && (
               <p className="text-xs text-red-500 mt-1 font-semibold">{fieldErrors.phone}</p>
             )}
+          </div>
+
+          {/* Hourly Rate */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+              Lương theo giờ (VNĐ)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={formData.hourly_rate}
+              onChange={(e) => setFormData({ ...formData, hourly_rate: Number(e.target.value) })}
+              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+              placeholder="VD: 25000"
+              disabled={loading}
+            />
           </div>
 
           {/* Password */}

@@ -53,6 +53,7 @@ export interface WaiterOrder {
   split_label?: string | null;
   status: "open" | "serving" | "pending_payment" | "completed" | "cancelled";
   note?: string;
+  deposit_amount?: number;
   created_at: string;
   closed_at?: string | null;
 }

@@ -122,8 +122,8 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
         quantity: item.quantity,
         status: item.status,
       })),
-      depositAmount: o.depositAmount || 0,
-      totalAmount: o.totalAmount || 0,
+              totalAmount: o.totalAmount || 0,
+        depositAmount: Number(o.deposit_amount) || 0,
       subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
       tax: o.tax || 0,
       discount: o.discount || 0,
@@ -270,7 +270,7 @@ export const getInvoiceById = async (req: Request, res: Response): Promise<void>
 export const processPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed } = req.body;
+    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed, serviceFeeRate } = req.body;
 
     if (!paymentMethod) {
       sendError(res, "Phương thức thanh toán là bắt buộc", 400);
@@ -298,8 +298,8 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Kiểm tra cọc tiền đặt bàn
-    let depositAmount = Number(order.depositAmount || 0);
+    // Lấy depositAmount từ Quoc_dev (DB)
+    let depositAmount = Number(order.deposit_amount) || 0;
     let linkedBookingId: number | null = null;
 
     const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
@@ -364,8 +364,9 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     const pointsToUse = pointsUsed || 0;
     const pointsDiscount = pointsToUse * 100; // 1 point = 100 VND
     
-    // Khấu trừ tiền cọc và điểm từ tổng số tiền cần thanh toán
-    const finalAmount = Math.max(0, subtotal + vat - voucher - depositAmount + tip - pointsDiscount);
+    // Khấu trừ tiền cọc và điểm từ tổng số tiền cần thanh toán (kết hợp cả serviceFee nếu có)
+    const serviceFee = serviceFeeRate !== undefined ? Math.round(subtotal * (serviceFeeRate / 100)) : 0;
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher - depositAmount + tip - pointsDiscount);
 
     const payment = await db.createPayment({
       orderId: id,
@@ -379,8 +380,8 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         vat,
         voucher,
         voucherCode,
-        tip,
         depositAmount,
+          tip,
         pointsUsed: pointsToUse,
         pointsDiscount,
         finalAmount,

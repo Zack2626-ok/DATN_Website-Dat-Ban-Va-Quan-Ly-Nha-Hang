@@ -16,6 +16,7 @@ import {
   Database,
   ChevronDown,
   Minus,
+  QrCode,
   Receipt,
   Boxes,
 } from "lucide-react";
@@ -39,6 +40,7 @@ export const ManagerSidebar: React.FC = () => {
   const [openOps, setOpenOps] = useState(true);
   const [openManagement, setOpenManagement] = useState(true);
   const [openReports, setOpenReports] = useState(true);
+  const [openFinance, setOpenFinance] = useState(true);
 
   // Active status helpers
   const isRouteActive = (to: string) => {
@@ -48,6 +50,7 @@ export const ManagerSidebar: React.FC = () => {
   const isOpsActive =
     location.pathname.startsWith("/manager/tables") ||
     location.pathname.startsWith("/manager/bookings") ||
+    location.pathname.startsWith("/manager/qrcodes") ||
     location.pathname.startsWith("/manager/shifts");
 
   const isManagementActive =
@@ -61,6 +64,10 @@ export const ManagerSidebar: React.FC = () => {
     location.pathname.startsWith("/manager/analytics") ||
     location.pathname.startsWith("/manager/finance-report") ||
     location.pathname.startsWith("/manager/loss-debt-report");
+
+  const isFinanceActive =
+    location.pathname.startsWith("/manager/payrolls") ||
+    location.pathname.startsWith("/manager/expenses");
 
   return (
     <aside className="flex w-full shrink-0 flex-col md:w-72 p-2 font-sans select-none">
@@ -158,6 +165,18 @@ export const ManagerSidebar: React.FC = () => {
                         Quản lý đặt bàn
                       </span>
                       <span className="h-2 w-2 rounded-full bg-[#EC4899]" />
+                    </Link>
+
+                    <Link
+                      to="/manager/qrcodes"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/qrcodes")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <QrCode size={16} strokeWidth={1.5} />
+                      Thiết lập QR Code
                     </Link>
 
                     <Link
@@ -264,6 +283,64 @@ export const ManagerSidebar: React.FC = () => {
                     >
                       <Receipt size={16} strokeWidth={1.5} />
                       Quản lý hóa đơn
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              {/* Quản Lý Tiền & Chi Phí Section (Parent item + Tree sub-items) */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setOpenFinance(!openFinance)}
+                  className={`w-full group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 cursor-pointer ${
+                    isFinanceActive
+                      ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                      : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <CircleDollarSign
+                      size={18}
+                      strokeWidth={1.5}
+                      className={
+                        isFinanceActive ? "text-[#FFFFFF]" : "text-[#1A1A1A]"
+                      }
+                    />
+                    Quản Lý Tiền & Chi Phí
+                  </span>
+                  {openFinance ? (
+                    <Minus size={16} strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown size={16} strokeWidth={1.5} />
+                  )}
+                </button>
+
+                {/* Sub-items tree with vertical guide line */}
+                {openFinance && (
+                  <div className="ml-5 border-l border-[#8A8A8A]/30 pl-4 space-y-1.5 py-1">
+                    <Link
+                      to="/manager/payrolls"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/payrolls")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <CircleDollarSign size={16} strokeWidth={1.5} />
+                      Bảng lương
+                    </Link>
+
+                    <Link
+                      to="/manager/expenses"
+                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
+                        isRouteActive("/manager/expenses")
+                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
+                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
+                      }`}
+                    >
+                      <CircleDollarSign size={16} strokeWidth={1.5} />
+                      Chi phí hoạt động
                     </Link>
                   </div>
                 )}

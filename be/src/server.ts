@@ -31,16 +31,19 @@ import eventConfigRoutes from "./routes/eventConfig.routes";
 import eventRoutes from "./routes/event.routes";
 import customerAuthRoutes from "./routes/customerAuth.routes";
 import customerPublicRoutes from "./routes/customerPublic.routes";
+import sessionRoutes from "./routes/session.routes";
 import notificationRoutes from "./routes/notification.routes";
 import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import crmRoutes from "./routes/crm.routes";
+import payrollRoutes from "./routes/payroll.routes";
+import expenseRoutes from "./routes/expense.routes";
 import systemSettingsRoutes from "./routes/system-settings.routes";
 import scheduleRoutes from "./routes/schedule.routes";
 import { ensureScheduleSchema } from "./repositories/schedule.repository";
 import managerDashboardRoutes from './routes/managerDashboardRoutes';
-
+import { setupClientSocket } from "./sockets/clientSocket";
  
 const app = express();
 const httpServer = http.createServer(app);
@@ -57,7 +60,7 @@ const frontendOrigins = [
 // ✅ Socket.io server
 export const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: frontendOrigins,
+    origin: true,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -65,10 +68,10 @@ export const io = new SocketIOServer(httpServer, {
 
 app.set("io", io);
 
-io.on("connection", (socket) => {
+io.on("connection", (socket: any) => {
   console.log(`🔌 Socket.io client connected: ${socket.id}`);
 
-  socket.on("request_server_time", (callback) => {
+  socket.on("request_server_time", (callback: any) => {
     if (typeof callback === "function") {
       callback(new Date().toISOString());
     }
@@ -85,6 +88,9 @@ io.on("connection", (socket) => {
     console.log(`🔌 Socket.io client disconnected: ${socket.id}`);
   });
 });
+
+// Setup client socket for QR ordering
+setupClientSocket(io);
 
 console.log("Server configuration:", {
   port: startPort,
@@ -130,7 +136,7 @@ initDb()
  
 app.use(
   cors({
-    origin: frontendOrigins,
+    origin: true,
     credentials: true,
   }),
 );
@@ -164,6 +170,8 @@ app.use("/api/v1/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/payrolls", payrollRoutes);
+app.use("/api/expenses", expenseRoutes);
 // Must stay before the legacy /api table fallback below.
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/v1/attendance", attendanceRoutes);
@@ -179,6 +187,7 @@ app.use("/api/v1/system-settings", systemSettingsRoutes);
 app.use("/api/v1/schedules", scheduleRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
+app.use("/api/v1/session", sessionRoutes);
 app.use("/api/v1/public", customerPublicRoutes);
 app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
 app.use("/api/restaurant-info", restaurantInfoRoutes);

@@ -10,11 +10,14 @@ import {
   PromotionManagement,
   BookingListPage,
   CRMManagement,
+  QRCodeSettings,
   InvoiceManagement,
   InventoryControl,
 } from "../views/manager";
 import { FinanceReport, LossDebtReport } from "../views/admin";
 import UserManagement from "../views/manager/UserManagement";
+import PayrollPage from "../views/manager/payrolls";
+import ExpensePage from "../views/manager/expenses";
 import RegisterPage from "../views/auth/RegisterPage";
 
 export const ManagerRoutes = () => (
@@ -31,6 +34,7 @@ export const ManagerRoutes = () => (
       <Route path="dashboard" element={<ManagerDashboard />} />
       <Route path="tables" element={<TableMapIndex />} />
       <Route path="bookings" element={<BookingListPage />} />
+      <Route path="qrcodes" element={<QRCodeSettings />} />
       <Route path="staff" element={<UserManagement />} />
       <Route path="menu" element={<MenuManagement />} />
       <Route path="inventory" element={<InventoryControl />} />
@@ -40,6 +44,8 @@ export const ManagerRoutes = () => (
       <Route path="loss-debt-report" element={<LossDebtReport />} />
       <Route path="promotions" element={<PromotionManagement />} />
       <Route path="crm" element={<CRMManagement />} />
+      <Route path="payrolls" element={<PayrollPage />} />
+      <Route path="expenses" element={<ExpensePage />} />
       <Route path="invoices" element={<InvoiceManagement />} />
     </Route>
 

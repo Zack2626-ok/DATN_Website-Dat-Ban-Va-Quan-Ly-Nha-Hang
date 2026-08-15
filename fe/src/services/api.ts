@@ -130,7 +130,13 @@ export const deleteIngredientApi = async (id: string | number): Promise<any> => 
   return response.data.data;
 };
 
-export const updateInventoryQuantityApi = async (id: string | number, payload: any): Promise<any> => {
+export const updateInventoryQuantityApi = async (id: string | number, payloadOrQuantity: any, type?: "import" | "export" | "adjust", reasonOrSupplier?: string): Promise<any> => {
+  let payload;
+  if (typeof payloadOrQuantity === 'object') {
+    payload = payloadOrQuantity;
+  } else {
+    payload = { quantity: payloadOrQuantity, type, reasonOrSupplier };
+  }
   const response = await api.patch(`/inventory/${id}/quantity`, payload);
   return response.data.data;
 };

@@ -5,6 +5,7 @@ import {
   WALK_IN_OVERRIDE_ROLES,
 } from "../constants/shiftTime";
 import { validateOnlineBookingTime, validateWalkInOpeningTime } from "../utils/shiftHelper";
+import { isBookingTimeValidationEnabled } from "../utils/bookingTime";
 
 /** Sends an error response whose shape is stable for all time-policy failures. */
 const sendTimePolicyError = (res: Response, code: string, message: string): void => {
@@ -24,6 +25,10 @@ export const checkOnlineBookingTimeMiddleware: RequestHandler = (
   res: Response,
   next: NextFunction,
 ): void => {
+  if (!isBookingTimeValidationEnabled()) {
+    next();
+    return;
+  }
   const bookingClock = getBookingClock(req.body.start_time);
   if (!bookingClock) {
     next();
@@ -46,6 +51,10 @@ export const checkWalkInOpeningTimeMiddleware: RequestHandler = (
   res: Response,
   next: NextFunction,
 ): void => {
+  if (!isBookingTimeValidationEnabled()) {
+    next();
+    return;
+  }
   if (req.body.order_type === ORDER_TYPE.PRE_ORDER) {
     next();
     return;
