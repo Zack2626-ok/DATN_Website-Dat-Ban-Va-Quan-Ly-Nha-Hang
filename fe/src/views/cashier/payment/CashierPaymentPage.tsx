@@ -484,6 +484,13 @@ export const CashierPaymentPage: React.FC = () => {
           onBankTransferStarted={(session: BankTransferPaymentSession) => {
             paymentSocketRef.current?.emit("payment:subscribe", session.invoiceId);
           }}
+          onBankTransferDemoCompleted={() => {
+            setPaymentOpen(false);
+            dispatch(fetchInvoices());
+            dispatch(fetchTables());
+            dispatch(fetchOrders());
+            showSuccess("Đã mô phỏng tiền về và chốt hóa đơn thành công!");
+          }}
           loading={actionLoading}
         />
       )}

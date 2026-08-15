@@ -17,6 +17,7 @@ import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
 import { crmService, type Voucher, type Customer } from "../../../../services/crmService";
 import {
   initiateBankTransferPayment,
+  simulateBankTransferPayment,
   type BankTransferPaymentSession,
 } from "../../../../services/bankTransferPaymentService";
 
@@ -26,6 +27,7 @@ interface Props {
   invoice: Invoice;
   onConfirm: (data: PaymentRequest) => void;
   onBankTransferStarted: (session: BankTransferPaymentSession) => void;
+  onBankTransferDemoCompleted: () => void;
   loading: boolean;
 }
 
@@ -45,6 +47,7 @@ export const PaymentModal: React.FC<Props> = ({
   invoice,
   onConfirm,
   onBankTransferStarted,
+  onBankTransferDemoCompleted,
   loading,
 }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
@@ -56,6 +59,7 @@ export const PaymentModal: React.FC<Props> = ({
   const [copied, setCopied] = useState(false);
   const [bankTransferSession, setBankTransferSession] = useState<BankTransferPaymentSession | null>(null);
   const [creatingBankTransfer, setCreatingBankTransfer] = useState(false);
+  const [simulatingBankTransfer, setSimulatingBankTransfer] = useState(false);
   const [bankTransferError, setBankTransferError] = useState<string | null>(null);
   const isBankTransfer = paymentMethod === "transfer";
 
@@ -84,6 +88,7 @@ export const PaymentModal: React.FC<Props> = ({
       setPointsToUse(0);
       setBankTransferSession(null);
       setBankTransferError(null);
+      setSimulatingBankTransfer(false);
       return;
     }
 
@@ -183,6 +188,27 @@ export const PaymentModal: React.FC<Props> = ({
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setBankTransferError("Không thể sao chép thông tin tài khoản trên trình duyệt này.");
+    }
+  };
+
+  /** Hoàn tất phiên QR bằng luồng giả lập tiền về khi backend bật demo local. */
+  const handleSimulateBankTransfer = async (): Promise<void> => {
+    if (!bankTransferSession?.demoModeEnabled) return;
+
+    setSimulatingBankTransfer(true);
+    setBankTransferError(null);
+    try {
+      const result = await simulateBankTransferPayment(bankTransferSession.paymentId);
+      if (["completed", "duplicate", "already_paid"].includes(result.status)) {
+        onBankTransferDemoCompleted();
+        return;
+      }
+
+      setBankTransferError("Không thể hoàn tất mô phỏng. Vui lòng tạo lại mã QR.");
+    } catch (error) {
+      setBankTransferError(error instanceof Error ? error.message : "Không thể mô phỏng tiền về.");
+    } finally {
+      setSimulatingBankTransfer(false);
     }
   };
 
@@ -391,6 +417,20 @@ export const PaymentModal: React.FC<Props> = ({
                   <button type="button" onClick={copyBankInfo} className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer">
                     {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? "Đã copy!" : "Copy thông tin TK"}
                   </button>
+                  {bankTransferSession.demoModeEnabled && (
+                    <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-center">
+                      <p className="text-[10px] font-bold text-amber-800">Chế độ demo — không cần chuyển tiền thật</p>
+                      <p className="mt-0.5 text-[9px] text-amber-700">Chỉ dùng để trình diễn luồng đối soát QR ở môi trường local.</p>
+                      <button
+                        type="button"
+                        onClick={handleSimulateBankTransfer}
+                        disabled={simulatingBankTransfer}
+                        className="mt-2 w-full rounded-md bg-amber-500 px-3 py-2 text-[10px] font-bold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {simulatingBankTransfer ? "Đang mô phỏng tiền về..." : "Mô phỏng tiền đã về"}
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="text-[10px] text-slate-600 text-center">Tạo QR để khóa số tiền và nội dung chuyển khoản. Hệ thống không tự xác nhận khi chưa nhận webhook ngân hàng.</p>

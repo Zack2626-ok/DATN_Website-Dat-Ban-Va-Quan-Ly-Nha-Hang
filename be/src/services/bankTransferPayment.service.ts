@@ -40,6 +40,13 @@ export const buildDynamicVietQrUrl = (
   return `https://img.vietqr.io/image/${encodeURIComponent(configuration.bankCode)}-${encodeURIComponent(configuration.accountNumber)}-compact2.png?${params.toString()}`;
 };
 
+/**
+ * Indicates whether the protected local payment simulation is enabled.
+ * This must remain disabled in deployed environments.
+ */
+export const isBankTransferDemoModeEnabled = (): boolean =>
+  process.env.DEMO_PAYMENT_MODE?.trim().toLowerCase() === "true";
+
 /** Verify an HMAC-SHA256 signature in constant time before accepting a bank webhook. */
 export const verifyBankWebhookSignature = (rawPayload: Buffer, providedSignature: string | undefined): boolean => {
   const secret = process.env.BANK_WEBHOOK_SECRET;

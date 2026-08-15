@@ -1859,10 +1859,77 @@ interface BankTransferPaymentRow extends mysql.RowDataPacket {
 }
 
 interface BankTransferOrderRow extends mysql.RowDataPacket {
+  id: number;
   table_id: number | null;
+  status: string;
 }
 
-/** Create or reuse a pending dynamic bank-transfer payment session for an invoice. */
+interface BankTransferSubtotalRow extends mysql.RowDataPacket {
+  subtotal: number | string;
+}
+
+/** Creates or reuses a pending dynamic bank-transfer session for a locked draft invoice. */
+const createPendingBankTransferForLockedInvoice = async (
+  connection: mysql.PoolConnection,
+  invoice: BankTransferInvoiceRow,
+  paymentReference: string,
+): Promise<BankTransferPaymentSession> => {
+  await connection.query(
+    `UPDATE payments
+     SET status = 'expired'
+     WHERE invoice_id = ? AND method = 'bank_transfer'
+       AND status = 'pending' AND expires_at <= NOW()`,
+    [invoice.id],
+  );
+  const [activeRows] = await connection.query<BankTransferPaymentRow[]>(
+    `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+     FROM payments
+     WHERE invoice_id = ? AND method = 'bank_transfer'
+       AND status = 'pending' AND expires_at > NOW()
+     ORDER BY id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [invoice.id],
+  );
+  const activePayment = activeRows[0];
+  if (activePayment?.expires_at) {
+    return {
+      paymentId: activePayment.id,
+      invoiceId: activePayment.invoice_id,
+      amount: Number(activePayment.amount),
+      paymentReference: activePayment.payment_reference,
+      expiresAt: new Date(activePayment.expires_at).toISOString(),
+    };
+  }
+
+  const amount = Number(invoice.total);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Tổng tiền hóa đơn không hợp lệ để tạo mã QR.");
+  }
+  const [insertResult] = await connection.query<mysql.ResultSetHeader>(
+    `INSERT INTO payments (
+      invoice_id, method, amount, received_amount, payment_reference,
+      status, expires_at
+    ) VALUES (?, 'bank_transfer', ?, NULL, ?, 'pending', DATE_ADD(NOW(), INTERVAL 15 MINUTE))`,
+    [invoice.id, amount, paymentReference],
+  );
+  const [createdRows] = await connection.query<BankTransferPaymentRow[]>(
+    `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+     FROM payments WHERE id = ?`,
+    [insertResult.insertId],
+  );
+  const createdPayment = createdRows[0];
+  if (!createdPayment?.expires_at) throw new Error("Không thể tạo phiên thanh toán QR.");
+  return {
+    paymentId: createdPayment.id,
+    invoiceId: createdPayment.invoice_id,
+    amount: Number(createdPayment.amount),
+    paymentReference: createdPayment.payment_reference,
+    expiresAt: new Date(createdPayment.expires_at).toISOString(),
+  };
+};
+
+/** Create or reuse a pending dynamic bank-transfer payment session for an existing invoice. */
 export const createPendingBankTransferPayment = async (
   invoiceId: number,
   paymentReference: string,
@@ -1878,61 +1945,97 @@ export const createPendingBankTransferPayment = async (
     const invoice = invoiceRows[0];
     if (!invoice) throw new Error("Không tìm thấy hóa đơn.");
     if (invoice.status === "paid") throw new Error("Hóa đơn này đã được thanh toán.");
+    return createPendingBankTransferForLockedInvoice(connection, invoice, paymentReference);
+  });
+};
 
-    await connection.query(
-      `UPDATE payments
-       SET status = 'expired'
-       WHERE invoice_id = ? AND method = 'bank_transfer'
-         AND status = 'pending' AND expires_at <= NOW()`,
-      [invoiceId],
+/** Creates a draft invoice from an active order then returns its pending dynamic bank-transfer session. */
+export const createPendingBankTransferPaymentForOrder = async (
+  orderId: number,
+  paymentReference: string,
+): Promise<BankTransferPaymentSession> => {
+  return withTransaction(async (connection) => {
+    const [orderRows] = await connection.query<BankTransferOrderRow[]>(
+      `SELECT id, table_id, status FROM orders WHERE id = ? FOR UPDATE`,
+      [orderId],
     );
-    const [activeRows] = await connection.query<BankTransferPaymentRow[]>(
-      `SELECT id, invoice_id, amount, payment_reference, status, expires_at
-       FROM payments
-       WHERE invoice_id = ? AND method = 'bank_transfer'
-         AND status = 'pending' AND expires_at > NOW()
+    const order = orderRows[0];
+    if (!order) throw new Error("Không tìm thấy đơn thanh toán.");
+    if (["completed", "cancelled", "merged"].includes(order.status)) {
+      throw new Error("Đơn này không còn có thể thanh toán.");
+    }
+
+    const [subtotalRows] = await connection.query<BankTransferSubtotalRow[]>(
+      `SELECT COALESCE(SUM(unit_price * quantity), 0) AS subtotal
+       FROM order_items
+       WHERE order_id = ?
+         AND status NOT IN ('voided', 'cancelled')
+         AND COALESCE(is_refunded, 0) = 0`,
+      [orderId],
+    );
+    const subtotal = Math.round(Number(subtotalRows[0]?.subtotal ?? 0));
+    if (!Number.isFinite(subtotal) || subtotal <= 0) {
+      throw new Error("Đơn chưa có món hợp lệ để tạo mã QR.");
+    }
+    const tax = Math.round(subtotal * 0.1);
+    const total = subtotal + tax;
+
+    const [invoiceRows] = await connection.query<BankTransferInvoiceRow[]>(
+      `SELECT id, order_id, total, status
+       FROM invoices
+       WHERE order_id = ?
        ORDER BY id DESC
        LIMIT 1
        FOR UPDATE`,
-      [invoiceId],
+      [orderId],
     );
-    const activePayment = activeRows[0];
-    if (activePayment?.expires_at) {
-      return {
-        paymentId: activePayment.id,
-        invoiceId: activePayment.invoice_id,
-        amount: Number(activePayment.amount),
-        paymentReference: activePayment.payment_reference,
-        expiresAt: new Date(activePayment.expires_at).toISOString(),
-      };
+    let invoice = invoiceRows[0];
+    if (invoice?.status === "paid") throw new Error("Hóa đơn này đã được thanh toán.");
+
+    if (invoice) {
+      await connection.query(
+        `UPDATE invoices
+         SET subtotal = ?, discount = 0, tax = ?, total = ?
+         WHERE id = ?`,
+        [subtotal, tax, total, invoice.id],
+      );
+      invoice = { ...invoice, total };
+    } else {
+      const [insertResult] = await connection.query<mysql.ResultSetHeader>(
+        `INSERT INTO invoices (order_id, subtotal, discount, tax, service_fee, tips, total, status, paid_at, created_by)
+         VALUES (?, ?, 0, ?, 0, 0, ?, 'draft', NULL, 1)`,
+        [orderId, subtotal, tax, total],
+      );
+      invoice = { id: insertResult.insertId, order_id: orderId, total, status: "draft" } as BankTransferInvoiceRow;
     }
 
-    const amount = Number(invoice.total);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new Error("Tổng tiền hóa đơn không hợp lệ để tạo mã QR.");
-    }
-    const [insertResult] = await connection.query<mysql.ResultSetHeader>(
-      `INSERT INTO payments (
-        invoice_id, method, amount, received_amount, payment_reference,
-        status, expires_at, created_at
-      ) VALUES (?, 'bank_transfer', ?, NULL, ?, 'pending', DATE_ADD(NOW(), INTERVAL 15 MINUTE), NOW())`,
-      [invoiceId, amount, paymentReference],
-    );
-    const [createdRows] = await connection.query<BankTransferPaymentRow[]>(
-      `SELECT id, invoice_id, amount, payment_reference, status, expires_at
-       FROM payments WHERE id = ?`,
-      [insertResult.insertId],
-    );
-    const createdPayment = createdRows[0];
-    if (!createdPayment?.expires_at) throw new Error("Không thể tạo phiên thanh toán QR.");
-    return {
-      paymentId: createdPayment.id,
-      invoiceId: createdPayment.invoice_id,
-      amount: Number(createdPayment.amount),
-      paymentReference: createdPayment.payment_reference,
-      expiresAt: new Date(createdPayment.expires_at).toISOString(),
-    };
+    return createPendingBankTransferForLockedInvoice(connection, invoice, paymentReference);
   });
+};
+
+/** Gets a still-valid pending QR payment from trusted server data for local demo reconciliation. */
+export const getPendingBankTransferPaymentForDemo = async (
+  paymentId: number,
+): Promise<DemoBankTransferPayment | null> => {
+  const rows = await query<BankTransferPaymentRow[]>(
+    `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+     FROM payments
+     WHERE id = ?
+       AND method = 'bank_transfer'
+       AND status = 'pending'
+       AND expires_at > NOW()
+     LIMIT 1`,
+    [paymentId],
+  );
+  const payment = rows[0];
+
+  if (!payment) return null;
+
+  return {
+    paymentId: payment.id,
+    paymentReference: payment.payment_reference,
+    amount: Number(payment.amount),
+  };
 };
 
 /** Reconcile a verified bank webhook exactly once and mark its invoice as paid. */
@@ -3048,6 +3151,12 @@ export interface BankTransferPaymentSession {
   amount: number;
   paymentReference: string;
   expiresAt: string;
+}
+
+export interface DemoBankTransferPayment {
+  paymentId: number;
+  paymentReference: string;
+  amount: number;
 }
 
 export interface BankTransferReconciliationInput {

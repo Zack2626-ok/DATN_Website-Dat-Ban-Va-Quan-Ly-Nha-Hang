@@ -6,35 +6,60 @@ import { sendError, sendSuccess } from "../utils/response";
 import {
   buildDynamicVietQrUrl,
   getBankQrConfiguration,
+  isBankTransferDemoModeEnabled,
   normalizeBankTransferWebhook,
   verifyBankWebhookSignature,
 } from "../services/bankTransferPayment.service";
+import type { BankTransferReconciliationResult } from "../utils/db";
 
 interface InitiateBankTransferBody {
-  invoiceId?: unknown;
+  orderId?: unknown;
 }
 
 interface RawBodyRequest extends Request {
   rawBody?: Buffer;
 }
 
+/** Broadcasts a completed bank-transfer reconciliation after its database transaction commits. */
+const publishCompletedBankTransfer = async (
+  req: Request,
+  reconciliation: BankTransferReconciliationResult,
+  paymentReference: string,
+): Promise<void> => {
+  if (reconciliation.status !== "completed" || !reconciliation.invoiceId) return;
+
+  const socketServer = req.app.get("io") as SocketIOServer | undefined;
+  if (reconciliation.tableId) {
+    const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(reconciliation.tableId);
+    socketServer?.emit("table:merge_resolved", { releasedTableIds });
+  }
+
+  socketServer?.to(`invoice_${reconciliation.invoiceId}`).emit("payment:success", {
+    invoiceId: reconciliation.invoiceId,
+    amount: reconciliation.amount,
+    paymentReference,
+    paidAt: new Date().toISOString(),
+  });
+};
+
 /** Tạo phiên chuyển khoản ngân hàng chờ webhook xác nhận. */
 export const initiateBankTransfer = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { invoiceId: rawInvoiceId } = req.body as InitiateBankTransferBody;
-    const invoiceId = Number(rawInvoiceId);
+    const { orderId: rawOrderId } = req.body as InitiateBankTransferBody;
+    const orderId = Number(rawOrderId);
 
-    if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
-      sendError(res, "Mã hóa đơn không hợp lệ", 400);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      sendError(res, "Mã đơn thanh toán không hợp lệ", 400);
       return;
     }
 
     const qrConfiguration = getBankQrConfiguration();
-    const paymentReference = `RM${invoiceId}-${Date.now()}-${randomBytes(4).toString("hex").toUpperCase()}`;
-    const payment = await db.createPendingBankTransferPayment(invoiceId, paymentReference);
+    const paymentReference = `RM${orderId}-${Date.now()}-${randomBytes(4).toString("hex").toUpperCase()}`;
+    const payment = await db.createPendingBankTransferPaymentForOrder(orderId, paymentReference);
 
     sendSuccess(res, {
       ...payment,
+      demoModeEnabled: isBankTransferDemoModeEnabled(),
       bankCode: qrConfiguration.bankCode,
       accountNumber: qrConfiguration.accountNumber,
       accountName: qrConfiguration.accountName,
@@ -43,6 +68,58 @@ export const initiateBankTransfer = async (req: Request, res: Response): Promise
   } catch (error) {
     const message = error instanceof Error ? error.message : "Không thể tạo phiên chuyển khoản";
     sendError(res, message, 400);
+  }
+};
+
+/** Simulates a successful bank transfer using a server-side pending QR session in local demo mode. */
+export const simulateBankTransferPayment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!isBankTransferDemoModeEnabled()) {
+      sendError(res, "Chế độ mô phỏng thanh toán đang tắt.", 403);
+      return;
+    }
+
+    const paymentId = Number(req.params.paymentId);
+    if (!Number.isInteger(paymentId) || paymentId <= 0) {
+      sendError(res, "Phiên QR không hợp lệ.", 400);
+      return;
+    }
+
+    const payment = await db.getPendingBankTransferPaymentForDemo(paymentId);
+    if (!payment) {
+      sendError(res, "Không tìm thấy phiên QR đang chờ thanh toán hoặc phiên đã hết hạn.", 404);
+      return;
+    }
+
+    const reconciliation = await db.reconcileBankTransferPayment({
+      paymentReference: payment.paymentReference,
+      receivedAmount: payment.amount,
+      bankTransactionId: `DEMO-${payment.paymentId}-${Date.now()}`,
+      webhookPayload: JSON.stringify({
+        source: "local_demo",
+        paymentId: payment.paymentId,
+        simulatedAt: new Date().toISOString(),
+      }),
+    });
+
+    if (reconciliation.status === "not_found") {
+      sendError(res, "Không tìm thấy giao dịch để đối soát.", 404);
+      return;
+    }
+    if (reconciliation.status === "expired") {
+      sendError(res, "Mã QR đã hết hạn, vui lòng tạo lại.", 409);
+      return;
+    }
+    if (reconciliation.status === "amount_mismatch") {
+      sendError(res, "Số tiền mô phỏng không khớp với hóa đơn.", 409);
+      return;
+    }
+
+    await publishCompletedBankTransfer(req, reconciliation, payment.paymentReference);
+    sendSuccess(res, reconciliation, "Đã mô phỏng tiền về và đối soát hóa đơn thành công.");
+  } catch (error) {
+    console.error("simulateBankTransferPayment error:", error);
+    sendError(res, "Không thể mô phỏng thanh toán chuyển khoản.", 500);
   }
 };
 
@@ -87,21 +164,7 @@ export const processBankTransferWebhook = async (req: Request, res: Response): P
       return;
     }
 
-    if (reconciliation.status === "completed" && reconciliation.invoiceId) {
-      const socketServer = req.app.get("io") as SocketIOServer | undefined;
-
-      if (reconciliation.tableId) {
-        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(reconciliation.tableId);
-        socketServer?.emit("table:merge_resolved", { releasedTableIds });
-      }
-
-      socketServer?.to(`invoice_${reconciliation.invoiceId}`).emit("payment:success", {
-        invoiceId: reconciliation.invoiceId,
-        amount: reconciliation.amount,
-        paymentReference: webhookData.paymentReference,
-        paidAt: new Date().toISOString(),
-      });
-    }
+    await publishCompletedBankTransfer(req, reconciliation, webhookData.paymentReference);
 
     sendSuccess(res, reconciliation, reconciliation.status === "completed"
       ? "Đã đối soát chuyển khoản thành công"
