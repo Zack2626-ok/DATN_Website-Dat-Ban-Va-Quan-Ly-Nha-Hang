@@ -74,6 +74,13 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("payment:subscribe", (invoiceId: unknown) => {
+    const normalizedInvoiceId = Number(invoiceId);
+    if (Number.isInteger(normalizedInvoiceId) && normalizedInvoiceId > 0) {
+      socket.join(`invoice_${normalizedInvoiceId}`);
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log(`🔌 Socket.io client disconnected: ${socket.id}`);
   });
@@ -127,7 +134,11 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
+app.use(express.json({
+  verify: (request, _response, buffer) => {
+    (request as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/upload", uploadRoutes);
@@ -142,6 +153,7 @@ app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/v1/inventory", inventoryRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
 
 // Specific routes before wildcard /api fallback

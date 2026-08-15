@@ -334,6 +334,10 @@ export interface BookingEmailDetails {
   end_time?: string;
   table_name?: string;
   area_name?: string;
+  table_names?: string;
+  total_capacity?: number;
+  table_assignments?: BookingEmailTableAssignment[];
+  notification_type?: BookingEmailNotification;
   guest_note?: string;
   pre_order_total?: number;
   deposit_amount?: number;
@@ -347,12 +351,49 @@ export interface BookingEmailDetails {
   }[];
 }
 
+export const BOOKING_EMAIL_NOTIFICATION = {
+  RECEIVED: "received",
+  CONFIRMED: "confirmed",
+} as const;
+
+export type BookingEmailNotification = (typeof BOOKING_EMAIL_NOTIFICATION)[keyof typeof BOOKING_EMAIL_NOTIFICATION];
+
+export interface BookingEmailTableAssignment {
+  table_id: number;
+  table_name: string;
+  area_name?: string | null;
+  allocated_capacity: number;
+}
+
+/** Builds the complete table-group description shown to the customer. */
+const getBookingTableSummary = (booking: BookingEmailDetails): string => {
+  const assignments = booking.table_assignments || [];
+  if (assignments.length > 0) {
+    return assignments
+      .map((assignment) => `${assignment.table_name}${assignment.area_name ? ` (${assignment.area_name})` : ""}`)
+      .join(" + ");
+  }
+  return booking.table_names || `${booking.table_name || "Bàn tự động"}${booking.area_name ? ` (${booking.area_name})` : ""}`;
+};
+
 const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
   const dateObj = new Date(booking.start_time);
   const pad = (num: number) => String(num).padStart(2, "0");
   const timePart = `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
   const datePart = `${pad(dateObj.getDate())}/${pad(dateObj.getMonth() + 1)}/${dateObj.getFullYear()}`;
   const formattedDate = `${timePart} — ${datePart}`;
+  const isConfirmed = booking.notification_type === BOOKING_EMAIL_NOTIFICATION.CONFIRMED;
+  const notificationTitle = isConfirmed
+    ? "🎉 XÁC NHẬN ĐẶT BÀN THÀNH CÔNG"
+    : "📩 YÊU CẦU ĐẶT BÀN ĐÃ GHI NHẬN";
+  const notificationMessage = isConfirmed
+    ? "Đặt bàn của bạn đã được nhà hàng xác nhận. Cụm bàn bên dưới đã được giữ cho quý khách."
+    : "Yêu cầu của bạn đã được ghi nhận và hệ thống đã tạm giữ cụm bàn bên dưới. Nhà hàng sẽ sớm xác nhận đặt bàn.";
+  const tableSummary = getBookingTableSummary(booking);
+  const totalCapacity = booking.total_capacity || (booking.table_assignments || []).reduce(
+    (total, assignment) => total + Number(assignment.allocated_capacity),
+    0,
+  );
 
   const preOrderedItems = booking.pre_ordered_items || [];
   const itemRowsHtml = preOrderedItems.length > 0
@@ -449,7 +490,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
                 <div style="font-size: 10px; color: #a48c68; letter-spacing: 2px; text-transform: uppercase; font-weight: 700;">Nhà Hàng Fine Dining & Thưởng Thức Ẩm Thực</div>
                 <div style="color: #bda06a; font-size: 16px; margin: 15px 0;">◆</div>
                 
-                <div style="font-size: 18px; font-weight: 800; color: #f2ebd9; letter-spacing: 1px; margin-top: 15px;">🎉 XÁC NHẬN ĐẶT BÀN THÀNH CÔNG</div>
+                <div style="font-size: 18px; font-weight: 800; color: #f2ebd9; letter-spacing: 1px; margin-top: 15px;">${notificationTitle}</div>
                 <div style="font-size: 12px; color: #a48c68; letter-spacing: 1px; margin-top: 6px; text-transform: uppercase; font-weight: 700;">
                   MÃ ĐẶT BÀN: #${booking.confirmation_code || booking.id}
                 </div>
@@ -463,7 +504,7 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
                   Xin chào ${booking.guest_name},
                 </p>
                 <p style="font-size: 13px; color: #d0c4b2; line-height: 1.7; margin-top: 0; max-width: 480px; margin-left: auto; margin-right: auto;">
-                  Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ tại nhà hàng <strong>Restro</strong>. Yêu cầu đặt bàn của bạn đã được ghi nhận thành công với các thông tin chi tiết dưới đây:
+                  Cảm ơn bạn đã lựa chọn trải nghiệm dịch vụ tại nhà hàng <strong>Restro</strong>. ${notificationMessage}
                 </p>
               </div>
 
@@ -481,8 +522,8 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
                 </tr>
                 <tr>
                   <td style="width: 50%; vertical-align: top; padding: 15px 10px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
-                    <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">BÀN ĂN CHỌN</div>
-                    <div style="font-size: 15px; font-weight: 700; color: #dcb36c;">${booking.table_name || "Bàn tự động"} ${booking.area_name ? `(${booking.area_name})` : ""}</div>
+                    <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">${isConfirmed ? "CỤM BÀN ĐÃ XÁC NHẬN" : "CỤM BÀN ĐANG GIỮ"}</div>
+                    <div style="font-size: 15px; font-weight: 700; color: #dcb36c;">${tableSummary}${totalCapacity > 0 ? ` — ${totalCapacity} chỗ` : ""}</div>
                   </td>
                   <td style="width: 50%; vertical-align: top; padding: 15px 10px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
                     <div style="font-size: 10px; color: #a48c68; text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 6px;">SỐ ĐIỆN THOẠI</div>
@@ -576,9 +617,13 @@ const generateBookingReceiptHtml = (booking: BookingEmailDetails): string => {
  */
 export const sendBookingConfirmationEmail = async (booking: BookingEmailDetails): Promise<string> => {
   const bookingHtml = generateBookingReceiptHtml(booking);
+  const isConfirmed = booking.notification_type === BOOKING_EMAIL_NOTIFICATION.CONFIRMED;
+  const emailSubject = isConfirmed
+    ? `[Restro] Xác nhận đặt bàn #${booking.confirmation_code || booking.id}`
+    : `[Restro] Đã nhận yêu cầu đặt bàn #${booking.confirmation_code || booking.id}`;
 
   // 1. Save HTML mockup to local directory for instant browser review
-  const fileName = `booking_receipt_${booking.confirmation_code || booking.id}.html`;
+  const fileName = `booking_receipt_${booking.confirmation_code || booking.id}_${isConfirmed ? "confirmed" : "received"}.html`;
   const filePath = path.join(EMAILS_DIR, fileName);
   fs.writeFileSync(filePath, bookingHtml, "utf8");
   const localUrl = `/uploads/emails/${fileName}`;
@@ -609,7 +654,7 @@ export const sendBookingConfirmationEmail = async (booking: BookingEmailDetails)
         await transporter.sendMail({
           from: process.env.SMTP_FROM || `"Restro" <${process.env.SMTP_USER}>`,
           to: targetEmail,
-          subject: `[Restro] Xác Nhận Đặt Bàn Thành Công #${booking.confirmation_code || booking.id}`,
+          subject: emailSubject,
           html: bookingHtml,
         });
 
@@ -634,7 +679,7 @@ export const sendBookingConfirmationEmail = async (booking: BookingEmailDetails)
         const info = await testTransporter.sendMail({
           from: `"Restro" <${testAccount.user}>`,
           to: targetEmail,
-          subject: `[Restro] Xác Nhận Đặt Bàn Thành Công #${booking.confirmation_code || booking.id}`,
+          subject: emailSubject,
           html: bookingHtml,
         });
 

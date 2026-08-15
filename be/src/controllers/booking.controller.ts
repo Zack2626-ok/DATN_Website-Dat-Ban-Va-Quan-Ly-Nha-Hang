@@ -2,11 +2,12 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { getPhoneNumberValidationError } from "../utils/validation";
-import { sendBookingConfirmationEmail } from "../utils/email";
+import { BOOKING_EMAIL_NOTIFICATION, sendBookingConfirmationEmail } from "../utils/email";
 import { notifyWaitersAboutBooking } from "../utils/telegram";
 import {
   BOOKING_CHANNEL,
   BOOKING_DURATION_MINUTES,
+  BOOKING_STATUS,
   MAX_BOOKING_PARTY_SIZE,
   type BookingChannel,
 } from "../constants/booking";
@@ -97,7 +98,10 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     const { table_id, table_ids, booking_channel, customer_id, promotion_id, guest_name, guest_phone, guest_email, email, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
       req.body;
 
-    if (!table_id || !guest_name || !guest_phone || !party_size || !start_time) {
+    const channel: BookingChannel = booking_channel === BOOKING_CHANNEL.DIRECT && req.user
+      ? BOOKING_CHANNEL.DIRECT
+      : BOOKING_CHANNEL.ONLINE;
+    if (!guest_name || !guest_phone || !party_size || !start_time || (channel === BOOKING_CHANNEL.DIRECT && !table_id)) {
       sendError(res, "Thiếu thông tin bắt buộc", 400);
       return;
     }
@@ -115,9 +119,6 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     }
 
     // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
-    const channel: BookingChannel = booking_channel === BOOKING_CHANNEL.DIRECT && req.user
-      ? BOOKING_CHANNEL.DIRECT
-      : BOOKING_CHANNEL.ONLINE;
     const bookingTimeError = getBookingTimeValidationError(start_time, channel);
     if (bookingTimeError) {
       sendError(res, bookingTimeError, 400);
@@ -129,9 +130,9 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     const targetEmail = (guest_email || email || "").trim();
 
     const booking = await db.createBooking({
-      table_id: Number(table_id),
+      table_id: table_id ? Number(table_id) : undefined,
       table_ids,
-      booking_channel: booking_channel || channel,
+      booking_channel: channel,
       customer_id: customer_id ? Number(customer_id) : null,
       promotion_id: promotion_id ? Number(promotion_id) : null,
       guest_name,
@@ -145,20 +146,17 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       pre_ordered_items: pre_ordered_items || items,
     });
 
+    // Giữ lại đầy đủ cụm bàn đã được phân bổ để trả về cho khách và đồng bộ các màn hình.
+    let bookingWithTableAssignments = booking;
+
     // Send Confirmation Email to Customer & generate local preview URL
     let emailPreviewUrl = null;
     try {
       const fullBooking = await db.getBookingById(booking.id);
       if (fullBooking) {
-        // Emit Socket.io events for real-time table status update on Waiter/Manager UI
+        bookingWithTableAssignments = fullBooking;
+        // Đồng bộ booking đã giữ cụm cho màn hình phục vụ và quản lý, không đổi trạng thái vật lý của bàn.
         io.emit("booking:created", { booking: fullBooking });
-        if (fullBooking.table_id) {
-          io.emit("table:status_changed", {
-            tableId: fullBooking.table_id,
-            status: "reserved",
-            guest_name: fullBooking.guest_name,
-          });
-        }
 
         // Gửi thông báo Telegram tới nhóm Waiter
         notifyWaitersAboutBooking(fullBooking).catch((tgErr) => {
@@ -168,13 +166,14 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
         emailPreviewUrl = await sendBookingConfirmationEmail({
           ...fullBooking,
           guest_email: targetEmail || fullBooking.guest_email || undefined,
+          notification_type: BOOKING_EMAIL_NOTIFICATION.RECEIVED,
         });
       }
     } catch (emailErr) {
       console.error("Lỗi khi gửi email xác nhận đặt bàn:", emailErr);
     }
 
-    sendSuccess(res, { ...booking, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
+    sendSuccess(res, { ...bookingWithTableAssignments, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
   } catch (error) {
     console.error("Lỗi khi tạo đơn đặt bàn (createBookingHandler):", error);
     const msg = (error as Error).message;
@@ -242,6 +241,16 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     }
 
     const bId = Number(id);
+    let emailPreviewUrl: string | null = null;
+    if (status === BOOKING_STATUS.CONFIRMED) {
+      const fullBooking = await db.getBookingById(bId);
+      if (fullBooking) {
+        emailPreviewUrl = await sendBookingConfirmationEmail({
+          ...fullBooking,
+          notification_type: BOOKING_EMAIL_NOTIFICATION.CONFIRMED,
+        });
+      }
+    }
     const ioApp = req.app.get("io");
     if (ioApp && bId) {
       ioApp.emit("booking:claimed", {
@@ -256,7 +265,7 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
       });
     }
 
-    sendSuccess(res, { id, status }, "Cập nhật trạng thái đặt bàn thành công");
+    sendSuccess(res, { id, status, email_preview_url: emailPreviewUrl }, "Cập nhật trạng thái đặt bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

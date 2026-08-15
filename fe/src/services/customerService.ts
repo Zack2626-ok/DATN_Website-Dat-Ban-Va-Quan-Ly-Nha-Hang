@@ -207,8 +207,38 @@ export const getAvailableTables = async (
   }
 };
 
-export const createBooking = async (data: {
+export interface BookingTableAssignment {
   table_id: number;
+  table_name: string;
+  area_name?: string | null;
+  allocated_capacity: number;
+  is_primary?: number;
+}
+
+export interface CreatedBooking {
+  id: number;
+  confirmation_code?: string;
+  guest_name?: string;
+  guest_phone?: string;
+  party_size?: number;
+  deposit_amount?: number;
+  deposit_status?: string;
+  pre_order_total?: number;
+  pre_ordered_items?: Array<{
+    id?: number;
+    menu_item_name?: string;
+    quantity: number;
+    unit_price: number;
+  }>;
+  table_name?: string;
+  area_name?: string;
+  table_names?: string;
+  total_capacity?: number;
+  table_assignments?: BookingTableAssignment[];
+}
+
+export const createBooking = async (data: {
+  table_id?: number;
   table_ids?: number[];
   booking_channel?: "online" | "direct";
   customer_id?: number | null;
@@ -220,7 +250,13 @@ export const createBooking = async (data: {
   start_time: string;
   end_time: string;
   guest_note?: string;
-  pre_ordered_items?: any[];
+  pre_ordered_items?: Array<{
+    menu_item_id: number;
+    quantity: number;
+    unit_price?: number;
+    name?: string;
+    note?: string;
+  }>;
   items?: {
     menu_item_id: number;
     quantity: number;
@@ -228,7 +264,7 @@ export const createBooking = async (data: {
     name?: string;
     note?: string;
   }[];
-}): Promise<any> => {
+}): Promise<CreatedBooking> => {
   const response = await customerApi.post("/v1/bookings", data);
   return response.data.data;
 };
@@ -237,7 +273,7 @@ export const cancelBooking = async (id: number): Promise<void> => {
   await customerApi.patch(`/v1/customer/bookings/${id}/cancel`);
 };
 
-export const payBookingDeposit = async (id: number): Promise<any> => {
+export const payBookingDeposit = async (id: number): Promise<CreatedBooking> => {
   const response = await customerApi.patch(`/v1/bookings/${id}/pay-deposit`);
   return response.data.data;
 };

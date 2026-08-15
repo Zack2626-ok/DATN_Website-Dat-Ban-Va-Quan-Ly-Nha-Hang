@@ -9,9 +9,29 @@ export interface BookingNotificationData {
   start_time?: string;
   table_name?: string;
   area_name?: string;
+  table_names?: string;
+  total_capacity?: number;
+  table_assignments?: Array<{
+    table_name: string;
+    area_name?: string | null;
+    allocated_capacity: number;
+  }>;
   guest_note?: string;
   note?: string;
 }
+
+/** Builds a readable held-table group summary for staff notifications. */
+const getBookingTableGroup = (booking: BookingNotificationData): string => {
+  if (booking.table_assignments && booking.table_assignments.length > 0) {
+    return booking.table_assignments
+      .map((assignment) => assignment.area_name
+        ? `${assignment.table_name} (${assignment.area_name})`
+        : assignment.table_name)
+      .join(" + ");
+  }
+
+  return booking.table_names || booking.table_name || "Bàn tự động";
+};
 
 const sendWaiterMessage = async (text: string): Promise<void> => {
   const token = process.env.TELEGRAM_BOT_TOKEN?.replace(/\s+/g, "");
@@ -82,7 +102,7 @@ export const notifyWaitersAboutBooking = async (booking: BookingNotificationData
     const name = booking.guest_name || "Khách vãng lai";
     const phone = booking.guest_phone || "N/A";
     const party = booking.party_size || 1;
-    const table = booking.table_name || "Bàn tự động";
+    const table = getBookingTableGroup(booking);
     const area = booking.area_name || "Chưa xếp khu vực";
     const note = booking.guest_note || booking.note || "Không có";
 
@@ -93,7 +113,8 @@ export const notifyWaitersAboutBooking = async (booking: BookingNotificationData
       `SĐT: ${phone}`,
       `Thời gian: ${formattedTime}`,
       `Số khách: ${party}`,
-      `Bàn: ${table}`,
+      `Cụm bàn giữ tạm: ${table}`,
+      `Sức chứa cụm: ${booking.total_capacity || "Chưa xác định"}`,
       `Khu vực: ${area}`,
       `Ghi chú: ${note}`,
     ].join("\n");
@@ -130,7 +151,8 @@ export const notifyWaitersAboutUpcomingBooking = async (
     `SĐT: ${booking.guest_phone || "N/A"}`,
     `Thời gian: ${formattedTime}`,
     `Số khách: ${booking.party_size || 1}`,
-    `Bàn: ${booking.table_name || "Chưa xác định"}`,
+    `Cụm bàn: ${getBookingTableGroup(booking)}`,
+    `Sức chứa cụm: ${booking.total_capacity || "Chưa xác định"}`,
     `Khu vực: ${booking.area_name || "Chưa xác định"}`,
     `Ghi chú: ${booking.guest_note || booking.note || "Không có"}`,
   ].join("\n");
