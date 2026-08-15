@@ -9,7 +9,7 @@ export const redisClient = new Redis({
   port: Number(process.env.REDIS_PORT) || 6379,
   password: process.env.REDIS_PASSWORD || undefined,
   db: Number(process.env.REDIS_DB) || 0,
-  retryStrategy: (times) => {
+  retryStrategy: (times: number) => {
     // Thử lại kết nối sau mỗi khoảng thời gian, max 3 giây
     return Math.min(times * 50, 3000);
   },
@@ -19,7 +19,7 @@ redisClient.on("connect", () => {
   console.log("🟢 Connected to Redis");
 });
 
-redisClient.on("error", (err) => {
+redisClient.on("error", (err: any) => {
   console.error("🔴 Redis connection error:", err);
 });
 

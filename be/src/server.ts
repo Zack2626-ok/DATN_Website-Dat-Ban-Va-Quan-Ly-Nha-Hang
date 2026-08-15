@@ -71,7 +71,7 @@ app.set("io", io);
 io.on("connection", (socket: any) => {
   console.log(`🔌 Socket.io client connected: ${socket.id}`);
 
-  socket.on("request_server_time", (callback) => {
+  socket.on("request_server_time", (callback: any) => {
     if (typeof callback === "function") {
       callback(new Date().toISOString());
     }
