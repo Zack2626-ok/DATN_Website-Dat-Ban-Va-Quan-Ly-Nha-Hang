@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Solid White Background Circle (Makes the logo pop and gives it a nice rounded shape) -->
+  <circle cx="256" cy="256" r="240" fill="#ffffff" />
+
+  <!-- Outer Ring (Plate border in brand primary color) -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#3E2016" stroke-width="18"/>
+  
+  <!-- Inner Ring (Plate design line in brand primary color) -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#3E2016" stroke-width="6" stroke-dasharray="12 10"/>
+  
+  <!-- Crossed Spoon and Fork Group in brand primary color -->
+  <g transform="translate(256, 256)">
+    <!-- Fork (rotated -45 degrees) -->
+    <g transform="rotate(-45)">
+      <!-- Handle -->
+      <path d="M 0,0 L 0,130" stroke="#3E2016" stroke-width="16" stroke-linecap="round"/>
+      <!-- Neck / Base of head -->
+      <path d="M -12,0 L 12,0 L 20,-30 L -20,-30 Z" fill="#3E2016"/>
+      <!-- Tines -->
+      <path d="M -20,-30 L -20,-80 M -7,-30 L -7,-80 M 7,-30 L 7,-80 M 20,-30 L 20,-80" stroke="#3E2016" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    
+    <!-- Spoon (rotated 45 degrees) -->
+    <g transform="rotate(45)">
+      <!-- Handle -->
+      <path d="M 0,0 L 0,130" stroke="#3E2016" stroke-width="16" stroke-linecap="round"/>
+      <!-- Neck -->
+      <path d="M -8,0 L 8,0 L 12,-25 L -12,-25 Z" fill="#3E2016"/>
+      <!-- Spoon Bowl -->
+      <ellipse cx="0" cy="-55" rx="28" ry="40" fill="#3E2016"/>
+    </g>
+  </g>
+</svg>

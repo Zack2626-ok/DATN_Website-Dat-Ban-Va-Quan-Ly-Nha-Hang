@@ -12,18 +12,16 @@
     "reset": "cd .. && reset_db.bat"
   },
   "dependencies": {
-    "@types/uuid": "^10.0.0",
+    "@google/generative-ai": "^0.24.1",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.9.7",
     "nodemailer": "^8.0.11",
     "socket.io": "^4.8.3",
-    "uuid": "^14.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

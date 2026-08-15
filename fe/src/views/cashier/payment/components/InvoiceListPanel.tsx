@@ -16,8 +16,7 @@ interface Props {
 const STATUS_OPTIONS: { value: InvoiceStatus | "all"; label: string }[] = [
   { value: "all", label: "Tất cả" },
   { value: "unpaid", label: "Chưa thanh toán" },
-  { value: "pending", label: "Chờ thanh toán" },
-  { value: "cancelled", label: "Đã hủy" },
+  { value: "paid", label: "Đã thanh toán" },
 ];
 
 const statusBadge = (status: InvoiceStatus) => {
@@ -132,6 +131,16 @@ export const InvoiceListPanel: React.FC<Props> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-black text-slate-900 truncate">{inv.tableName || "Mang về"}</span>
+                      {inv.is_early_payment && (
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black rounded border border-amber-200 shrink-0">
+                          TT Sớm
+                        </span>
+                      )}
+                      {inv.has_refund && (
+                        <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[9px] font-black rounded border border-red-200 shrink-0">
+                          Hoàn {Number(inv.refunded_total || 0).toLocaleString("vi-VN")}đ
+                        </span>
+                      )}
                       {statusBadge(inv.invoiceStatus)}
                     </div>
                     <p className="text-[10px] text-slate-500 truncate">

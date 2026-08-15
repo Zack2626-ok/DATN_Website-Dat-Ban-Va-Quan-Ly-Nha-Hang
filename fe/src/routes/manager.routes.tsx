@@ -11,6 +11,8 @@ import {
   BookingListPage,
   CRMManagement,
   QRCodeSettings,
+  InvoiceManagement,
+  InventoryControl,
 } from "../views/manager";
 import { FinanceReport, LossDebtReport } from "../views/admin";
 import UserManagement from "../views/manager/UserManagement";
@@ -35,6 +37,7 @@ export const ManagerRoutes = () => (
       <Route path="qrcodes" element={<QRCodeSettings />} />
       <Route path="staff" element={<UserManagement />} />
       <Route path="menu" element={<MenuManagement />} />
+      <Route path="inventory" element={<InventoryControl />} />
       <Route path="shifts" element={<ShiftManagement />} />
       <Route path="analytics" element={<AnalyticsView />} />
       <Route path="finance-report" element={<FinanceReport />} />
@@ -43,6 +46,7 @@ export const ManagerRoutes = () => (
       <Route path="crm" element={<CRMManagement />} />
       <Route path="payrolls" element={<PayrollPage />} />
       <Route path="expenses" element={<ExpensePage />} />
+      <Route path="invoices" element={<InvoiceManagement />} />
     </Route>
 
     {/* Tạo tài khoản nhân viên — chỉ admin/manager mới truy cập được */}

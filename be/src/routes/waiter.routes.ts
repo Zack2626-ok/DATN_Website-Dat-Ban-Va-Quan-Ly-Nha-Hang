@@ -13,7 +13,10 @@ import {
   markItemServedHandler,
   createQROrderHandler,
   requestPaymentHandler,
+  cancelPaymentRequestHandler,
 } from "../controllers/waiter.controller";
+import { authStaff } from "../middlewares/authMiddleware";
+import { checkWalkInOpeningTimeMiddleware } from "../middlewares/shiftTime.middleware";
 
 const router = Router();
 
@@ -27,13 +30,14 @@ router.get("/notifications", getWaiterNotificationsHandler);
 // Orders by table
 router.get("/orders/by-table/:tableId", getOrdersByTableHandler);
 router.get("/orders/:orderId/items", getOrderItemsHandler);
-router.post("/orders", createResmanagerOrderHandler);
+router.post("/orders", authStaff, checkWalkInOpeningTimeMiddleware, createResmanagerOrderHandler);
 router.post("/orders/:orderId/items", addOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/void", voidOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/served", markItemServedHandler);
 router.post("/orders/:orderId/send-to-kitchen", sendItemsToKitchenHandler);
 router.post("/orders/:orderId/hold-items", holdOrderItemsHandler);
 router.post("/orders/:orderId/request-payment", requestPaymentHandler);
+router.post("/orders/:orderId/cancel-payment-request", cancelPaymentRequestHandler);
 
 // QR Order - khách tự đặt qua QR
 router.post("/qr-order", createQROrderHandler);

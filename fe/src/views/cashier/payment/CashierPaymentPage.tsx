@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { io } from "socket.io-client";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   fetchInvoices,
@@ -18,7 +19,9 @@ import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
 import { PaymentModal } from "./components/PaymentModal";
 import { SplitBillModal } from "./components/SplitBillModal";
 import { MergeBillModal } from "./components/MergeBillModal";
-import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
+import { RefundModal } from "./components/RefundModal";
+import { CheckCircle2, X, AlertTriangle, Phone, RefreshCw } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 import { printCashierInvoice } from "../../../utils/printBill";
 
@@ -33,6 +36,7 @@ export const CashierPaymentPage: React.FC = () => {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
 
@@ -40,12 +44,47 @@ export const CashierPaymentPage: React.FC = () => {
     dispatch(fetchInvoices());
     dispatch(fetchTables());
     dispatch(fetchOrders());
-    const interval = setInterval(() => {
+
+    // Thiết lập Socket.io cập nhật thời gian thực cho trang Hóa đơn
+    const socketUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      console.log("⚡ Connected to Socket.io Server for Cashier Payment Page");
+    });
+
+    const triggerRefresh = () => {
       dispatch(fetchInvoices());
       dispatch(fetchTables());
       dispatch(fetchOrders());
-    }, 15000);
-    return () => clearInterval(interval);
+    };
+
+    socket.on("table:status_changed", triggerRefresh);
+    socket.on("table:transferred", triggerRefresh);
+    socket.on("table:merged", triggerRefresh);
+    socket.on("table:merge_resolved", triggerRefresh);
+    socket.on("table:group_seating_changed", triggerRefresh);
+    socket.on("order_updated", triggerRefresh);
+    socket.on("kds_updated", triggerRefresh);
+    socket.on("payment:request", triggerRefresh);
+    socket.on("invoice_refunded", triggerRefresh);
+
+    return () => {
+      socket.off("connect");
+      socket.off("table:status_changed");
+      socket.off("table:transferred");
+      socket.off("table:merged");
+      socket.off("table:merge_resolved");
+      socket.off("table:group_seating_changed");
+      socket.off("order_updated");
+      socket.off("kds_updated");
+      socket.off("payment:request");
+      socket.off("invoice_refunded");
+      socket.disconnect();
+      console.log("🔌 Disconnected Socket.io Client for Cashier Payment Page");
+    };
   }, [dispatch]);
 
   useEffect(() => {
@@ -68,22 +107,24 @@ export const CashierPaymentPage: React.FC = () => {
         const pA = a.status === "pending_payment" ? 1 : 2;
         const pB = b.status === "pending_payment" ? 1 : 2;
         if (pA !== pB) return pA - pB;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        // Đến trước thanh toán trước (createdAt nhỏ hơn lên trước)
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       });
   }, [invoices]);
 
   const filteredInvoices = useMemo(() => {
     let result = [...invoices];
-    if (statusFilter === "pending") {
-      result = result.filter((inv) => inv.status === "pending_payment");
+    if (statusFilter === "unpaid") {
+      result = result.filter(
+        (inv) =>
+          (inv.invoiceStatus === "unpaid" || inv.invoiceStatus === "pending") &&
+          inv.totalAmount > 0
+      );
+    } else if (statusFilter === "paid") {
+      result = result.filter((inv) => inv.invoiceStatus === "paid");
     } else if (statusFilter !== "all") {
       result = result.filter((inv) => inv.invoiceStatus === statusFilter);
     }
-    if (statusFilter === "unpaid") {
-      result = result.filter((inv) => inv.totalAmount > 0);
-    }
-    // Lọc bỏ hóa đơn đã thanh toán khỏi màn hình Active
-    result = result.filter((inv) => inv.invoiceStatus !== "paid");
     // Loại bỏ "Mang về" theo yêu cầu người dùng
     result = result.filter((inv) => inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName));
     if (searchQuery) {
@@ -112,6 +153,12 @@ export const CashierPaymentPage: React.FC = () => {
       const pA = getPriority(a);
       const pB = getPriority(b);
       if (pA !== pB) return pA - pB;
+      
+      // Chưa thanh toán/Chờ thanh toán thì đến trước được thanh toán trước (createdAt tăng dần)
+      // Đã thanh toán/Đã hủy thì hiển thị hóa đơn mới nhất lên đầu (createdAt giảm dần)
+      if (pA === 1 || pA === 2) {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
@@ -276,13 +323,22 @@ export const CashierPaymentPage: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              dispatch(fetchInvoices());
-              dispatch(fetchTables());
-              dispatch(fetchOrders());
+            onClick={async () => {
+              try {
+                await Promise.all([
+                  dispatch(fetchInvoices()).unwrap(),
+                  dispatch(fetchTables()).unwrap(),
+                  dispatch(fetchOrders()).unwrap(),
+                ]);
+                toast.success("Đã làm mới dữ liệu mới nhất!");
+              } catch {
+                toast.error("Không thể làm mới dữ liệu!");
+              }
             }}
-            className="px-3 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white hover:bg-slate-50 cursor-pointer transition-all"
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold border border-slate-200 rounded-xl bg-white hover:bg-slate-50 cursor-pointer transition-all text-slate-700 shadow-2xs hover:shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Làm mới
           </button>
         </div>
@@ -374,6 +430,7 @@ export const CashierPaymentPage: React.FC = () => {
           onMerge={() => setMergeOpen(true)}
           onCancel={handleCancel}
           onPrint={handlePrint}
+          onRefund={() => setRefundOpen(true)}
           loading={actionLoading}
         />
       </div>
@@ -407,6 +464,20 @@ export const CashierPaymentPage: React.FC = () => {
           invoices={invoices}
           onMerge={handleMerge}
           loading={actionLoading}
+        />
+      )}
+
+      {refundOpen && selectedInvoice && (
+        <RefundModal
+          isOpen={refundOpen}
+          onClose={() => setRefundOpen(false)}
+          invoice={selectedInvoice}
+          onSuccess={() => {
+            dispatch(fetchInvoices());
+            dispatch(fetchTables());
+            dispatch(fetchOrders());
+            showSuccess("Đã tạo phiếu hoàn tiền thành công!");
+          }}
         />
       )}
     </div>

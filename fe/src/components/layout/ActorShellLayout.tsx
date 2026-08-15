@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone, Timer } from "lucide-react";
+import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone, Timer, Clock } from "lucide-react";
+import { io } from "socket.io-client";
+import { getBookingValidationStatus, updateBookingValidationStatus } from "../../services/systemService";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
@@ -220,6 +222,198 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const [showLogoutModal, setShowLogoutModal] = React.useState(false);
+
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
+  const [togglingValidation, setTogglingValidation] = useState<boolean>(false);
+
+  // Real-time Booking Assignment Notification
+  const [assignedNotification, setAssignedNotification] = useState<any>(null);
+
+  const getCurrentLoggedUser = useCallback(() => {
+    if (user) return user;
+    try {
+      const reduxState = localStorage.getItem("resmanagerState");
+      if (reduxState) {
+        const parsed = JSON.parse(reduxState);
+        if (parsed?.auth?.user) return parsed.auth.user;
+      }
+    } catch (e) {}
+    return null;
+  }, [user]);
+
+  useEffect(() => {
+    getBookingValidationStatus()
+      .then(setBookingValidationEnabled)
+      .catch(() => {});
+
+    const socket = io(import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000", {
+      transports: ["polling", "websocket"],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
+    socket.on("system:booking_validation_changed", (data: { enabled: boolean }) => {
+      setBookingValidationEnabled(data.enabled);
+    });
+
+    // Helper check: Only show Pop-Up on Waiter role and targeted account
+    const isWaiter = displayRole === "waiter";
+
+    const isIntendedForCurrentUser = (payload: any): boolean => {
+      if (!isWaiter || !payload) return false;
+      const targetWaiter = (payload.assignedWaiterName || "").trim().toLowerCase();
+      if (targetWaiter.startsWith("tất cả") || targetWaiter.includes("tất cả")) return true;
+
+      const currentUser = getCurrentLoggedUser();
+      if (!currentUser) return true;
+
+      const myId = currentUser.id ? String(currentUser.id) : "";
+      const targetId = payload.assignedWaiterId ? String(payload.assignedWaiterId) : "";
+      if (myId && targetId) {
+        if (myId === targetId) return true;
+      }
+
+      const myName = (currentUser.full_name || currentUser.name || currentUser.username || "").trim().toLowerCase();
+      if (myName && targetWaiter) {
+        if (targetWaiter.includes(myName) || myName.includes(targetWaiter)) return true;
+        const myNum = myName.replace(/\D/g, "");
+        const targetNum = targetWaiter.replace(/\D/g, "");
+        if (myNum && targetNum && myNum === targetNum) return true;
+      }
+
+      return true;
+    };
+
+    // Socket.io listener for real-time booking assignment across devices/browsers
+    socket.on("booking:assigned", (data: any) => {
+      console.log("🔔 Received booking:assigned socket payload:", data);
+      if (isIntendedForCurrentUser(data)) {
+        setAssignedNotification(data);
+        playBeepSound();
+      }
+    });
+
+    const handleBookingCheckedIn = (data: any) => {
+      const bId = data?.bookingId || data?.id;
+      if (bId) {
+        const storedStr = localStorage.getItem("active_waiter_assigned_booking");
+        if (storedStr) {
+          try {
+            const stored = JSON.parse(storedStr);
+            if (String(stored.bookingId) === String(bId) || String(stored.id) === String(bId)) {
+              localStorage.removeItem("active_waiter_assigned_booking");
+            }
+          } catch {}
+        }
+
+        setAssignedNotification((prev: any) => {
+          if (prev && (String(prev.bookingId) === String(bId) || String(prev.id) === String(bId))) {
+            return null;
+          }
+          return prev;
+        });
+
+        window.dispatchEvent(new CustomEvent("booking_claimed_event", { detail: data }));
+      }
+    };
+    socket.on("table:booking_checked_in", handleBookingCheckedIn);
+    socket.on("booking:claimed", handleBookingCheckedIn);
+
+    // Listen for custom event booking_assigned_event
+    const handleAssignedEvent = (e: any) => {
+      if (e.detail && isIntendedForCurrentUser(e.detail)) {
+        setAssignedNotification(e.detail);
+        localStorage.setItem("active_waiter_assigned_booking", JSON.stringify(e.detail));
+        playBeepSound();
+      }
+    };
+    window.addEventListener("booking_assigned_event", handleAssignedEvent);
+
+    // BroadcastChannel listener for cross-tab sync
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("booking_notifications");
+      channel.onmessage = (msg) => {
+        if (msg.data?.type === "NEW_ASSIGNMENT" && isIntendedForCurrentUser(msg.data.payload)) {
+          setAssignedNotification(msg.data.payload);
+          localStorage.setItem("active_waiter_assigned_booking", JSON.stringify(msg.data.payload));
+          playBeepSound();
+        }
+      };
+    } catch (err) {}
+
+    // Native storage event listener for cross-window / cross-tab sync
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === "booking_assignments_list" && e.newValue) {
+        try {
+          const list = JSON.parse(e.newValue);
+          if (list.length > 0) {
+            const latest = list[0];
+            if (isIntendedForCurrentUser(latest)) {
+              setAssignedNotification(latest);
+              playBeepSound();
+            }
+          }
+        } catch (err) {}
+      }
+    };
+    window.addEventListener("storage", handleStorageEvent);
+
+    return () => {
+      socket.disconnect();
+      window.removeEventListener("booking_assigned_event", handleAssignedEvent);
+      window.removeEventListener("storage", handleStorageEvent);
+      if (channel) channel.close();
+    };
+  }, [displayRole, getCurrentLoggedUser, user]);
+
+  // Auto check stored assignments for Waiter when accessing /waiter/tables
+  useEffect(() => {
+    if (displayRole === "waiter") {
+      try {
+        const stored = JSON.parse(localStorage.getItem("booking_assignments_list") || "[]");
+        if (stored.length > 0) {
+          const latest = stored[0];
+          const targetWaiter = (latest.assignedWaiterName || "").trim().toLowerCase();
+          const currentUser = getCurrentLoggedUser();
+          const myId = currentUser?.id ? String(currentUser.id) : "";
+          const targetId = latest.assignedWaiterId ? String(latest.assignedWaiterId) : "";
+          const myName = (currentUser?.full_name || currentUser?.name || currentUser?.username || "").trim().toLowerCase();
+
+          let isMatch = targetWaiter.startsWith("tất cả") || 
+            targetWaiter.includes("tất cả") ||
+            (myId && targetId && myId === targetId) ||
+            (myName && targetWaiter && (targetWaiter.includes(myName) || myName.includes(targetWaiter)));
+
+          if (!currentUser) isMatch = true;
+
+          if (isMatch) {
+            const handledKey = "handled_assign_" + (latest.id || latest.bookingId);
+            if (!sessionStorage.getItem(handledKey)) {
+              setAssignedNotification(latest);
+            }
+          }
+        }
+      } catch (e) {}
+    }
+  }, [displayRole, getCurrentLoggedUser, location.pathname, user]);
+
+  const handleToggleBookingValidation = async () => {
+    try {
+      setTogglingValidation(true);
+      const nextState = !bookingValidationEnabled;
+      const updated = await updateBookingValidationStatus(nextState);
+      setBookingValidationEnabled(updated);
+      toast.success(
+        updated
+          ? "🔔 ĐÃ BẬT giới hạn giờ 21:00 (Không nhận đặt bàn sau 21:00)"
+          : "🔓 ĐÃ TẮT giới hạn giờ 21:00 (Tự do test đặt bàn bất kỳ lúc nào)"
+      );
+    } catch {
+      toast.error("Không thể thay đổi trạng thái giới hạn giờ");
+    } finally {
+      setTogglingValidation(false);
+    }
+  };
 
   const playBeepSound = () => {
     try {
@@ -525,6 +719,26 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               </div>
             )}
 
+            {/* Nút Khóa / Nhận đặt bàn 21:00 */}
+            <button
+              type="button"
+              onClick={handleToggleBookingValidation}
+              disabled={togglingValidation}
+              title={
+                bookingValidationEnabled
+                  ? "Đang BẬT giới hạn 21:00 (SÁNG) — Ngưng nhận đặt bàn sau 21:00. Click để TẮT để test tự do."
+                  : "Đang TẮT giới hạn 21:00 (TỐI) — Cho phép test đặt bàn thoải mái bất kỳ lúc nào. Click để BẬT lại."
+              }
+              className={`hidden sm:flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[11px] font-extrabold transition-all border cursor-pointer ${
+                bookingValidationEnabled
+                  ? "border-amber-300 bg-amber-100 text-amber-900 shadow-xs hover:bg-amber-200 ring-2 ring-amber-300/50"
+                  : "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 opacity-60"
+              }`}
+            >
+              <Clock size={14} className={bookingValidationEnabled ? "text-amber-600 animate-pulse" : "text-slate-400"} />
+              <span>{bookingValidationEnabled ? "Giới hạn giờ: BẬT" : "Giới hạn giờ: TẮT"}</span>
+            </button>
+
             {/* Profile Pill Card */}
             <button
               type="button"
@@ -598,6 +812,74 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       >
         <p className="text-slate-700 text-xs font-medium">Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?</p>
       </Modal>
+
+      {/* Real-Time Pop-Up Notification Modal for Waiter (Chỉ hiển thị với Phục vụ) */}
+      {displayRole === "waiter" && assignedNotification && (
+        <div className="fixed top-6 right-6 z-[9999] max-w-md w-full bg-white rounded-3xl shadow-2xl border-2 border-indigo-500 p-6 animate-in slide-in-from-top duration-300 font-sans">
+          <div className="flex items-start justify-between border-b border-indigo-100 pb-3 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl font-bold animate-bounce text-base">📌</span>
+              <div>
+                <h4 className="font-extrabold text-indigo-950 text-xs font-display uppercase tracking-wider">THÔNG BÁO PHÂN CÔNG ĐẶT BÀN LỚN</h4>
+                <span className="text-[10px] text-slate-400 font-semibold">Bởi Quản lý nhà hàng</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const handledKey = "handled_assign_" + (assignedNotification.id || assignedNotification.bookingId);
+                sessionStorage.setItem(handledKey, "true");
+                setAssignedNotification(null);
+              }}
+              className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 space-y-2.5 text-xs text-slate-700 font-sans mb-5">
+            <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
+              <span className="font-extrabold text-indigo-800">Khu vực / Tầng:</span>
+              <span className="font-black text-indigo-950 text-sm bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">{assignedNotification.assignedArea}</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="font-bold text-slate-500">Thông tin khách:</span>
+              <span className="font-bold text-slate-900">{assignedNotification.guestName} ({assignedNotification.guestPhone})</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="font-bold text-slate-500">Số lượng khách:</span>
+              <span className="font-black text-rose-700 text-sm">{assignedNotification.partySize} người</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="font-bold text-slate-500">Thời gian đến:</span>
+              <span className="font-extrabold text-emerald-800">{assignedNotification.startTime}</span>
+            </div>
+
+            <div className="flex justify-between text-[11px] pt-1 border-t border-indigo-100">
+              <span className="text-slate-400">Thời gian phân công:</span>
+              <span className="font-semibold text-slate-600">{assignedNotification.assignedAt}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const targetArea = assignedNotification.assignedArea;
+              const notificationData = assignedNotification;
+              const handledKey = "handled_assign_" + (assignedNotification.id || assignedNotification.bookingId);
+              sessionStorage.setItem(handledKey, "true");
+              setAssignedNotification(null);
+              navigate("/waiter/tables", { state: { autoOpenAssignedBooking: notificationData, targetArea } });
+            }}
+            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+          >
+            🔘 Bấm vào đây để chọn Bàn chính & Mở bàn
+          </button>
+        </div>
+      )}
     </div>
   );
 };

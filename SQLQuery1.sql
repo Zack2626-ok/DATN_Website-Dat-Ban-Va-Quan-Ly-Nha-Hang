@@ -87,11 +87,11 @@ CREATE TABLE customers (
 -- password_hash cho customer 1 (silver) và customer 4 (vip): "123456"
 -- customer 2,3,5: chưa đăng ký tài khoản online (NULL hash)
 INSERT INTO customers (name, phone, email, password_hash, member_level, loyalty_points) VALUES
- ('Nguyen Van A', '0911111111', 'a@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', 'silver', 172),
- ('Tran Thi B',   '0922222222', 'b@gmail.com', NULL,                                                              'gold',   400),
- ('Le Van C',     '0933333333', 'c@gmail.com', NULL,                                                              'bronze',  50),
- ('Pham Thi D',   '0944444444', 'd@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', 'vip',    500),
- ('Hoang Van E',  '0955555555', 'e@gmail.com', NULL,                                                              'gold',   300);
+ ('Nguyen Van An', '0911111111', 'nguyenvanan@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', 'silver', 172),
+ ('Tran Thi Binh', '0922222222', 'tranthibinh@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', 'gold',   400),
+ ('Le Van Cuong', '0933333333', 'levancuong@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', 'bronze',  50),
+ ('Pham Thi Dung', '0944444444', 'phamthidung@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', 'vip',    500),
+ ('Hoang Van Em', '0955555555', 'hoangvanem@gmail.com', '$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa', 'gold',   300);
 
 CREATE TABLE loyalty_transactions (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -208,8 +208,11 @@ CREATE TABLE tables (
     is_deleted       TINYINT(1)   NOT NULL DEFAULT 0,
     deleted_at       DATETIME     DEFAULT NULL,
     maintenance_note TEXT         DEFAULT NULL COMMENT 'Lý do bảo trì (nhân viên nhập khi chuyển trạng thái maintenance)',
+    merged_into_table_id INT          DEFAULT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT
+    INDEX idx_tables_merged_into (merged_into_table_id),
+    CONSTRAINT fk_tables_area FOREIGN KEY (area_id) REFERENCES table_areas(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_tables_merged_into FOREIGN KEY (merged_into_table_id) REFERENCES tables(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tầng 1 (12 bàn) — Thể hiện đầy đủ 6 trạng thái bàn
@@ -288,7 +291,7 @@ CREATE TABLE bookings (
 INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest_phone, party_size, start_time, end_time, confirmation_code, status, guest_note, cancel_reason, note, created_at) VALUES
 
  -- ─── PENDING (3): Chờ nhân viên xác nhận ───────────────────────────────
- (1,  13, 1,    NULL, 'Nguyen Van A',    '0911111111', 4,
+ (1,  13, 1,    NULL, 'Nguyen Van An',    '0911111111', 4,
    '2026-07-31 18:00:00', '2026-07-31 20:00:00', 'BK20260731001',
    'pending', 'Bàn gần cửa sổ, cần 1 ghế cao cho trẻ em',
    NULL, NULL, '2026-07-30 09:00:00'),
@@ -298,29 +301,29 @@ INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest
    'pending', 'Tiệc sinh nhật, cần hỗ trợ mang bánh vào',
    NULL, NULL, '2026-07-30 10:30:00'),
 
- (3,  25, 3,    2,    'Le Van C',        '0933333333', 4,
+ (3,  25, 3,    2,    'Le Van Cuong',    '0933333333', 4,
    '2026-08-01 12:00:00', '2026-08-01 14:00:00', 'BK20260801001',
    'pending', NULL,
    NULL, 'Khách đặt gói tiệc trưa, áp dụng khuyến mãi', '2026-07-30 11:00:00'),
 
  -- ─── CONFIRMED (3): Đã xác nhận — B03 & B06 đang reserved ─────────────
- (4,  3,  2,    1,    'Tran Thi B',      '0922222222', 4,
+ (4,  3,  2,    1,    'Tran Thi Binh',   '0922222222', 4,
    '2026-07-30 20:00:00', '2026-07-30 22:00:00', 'BK20260730001',
    'confirmed', 'Dị ứng hải sản, nhờ báo bếp không dùng hải sản',
    NULL, 'Đã gọi xác nhận lúc 10h sáng', '2026-07-30 08:00:00'),
 
- (5,  6,  4,    NULL, 'Pham Thi D',      '0944444444', 8,
+ (5,  6,  4,    NULL, 'Pham Thi Dung',   '0944444444', 8,
    '2026-07-30 19:00:00', '2026-07-30 21:00:00', 'BK20260730002',
    'confirmed', 'Tiệc gia đình, cần thêm 2 ghế phụ cho trẻ em',
    NULL, 'Khách VIP — ưu tiên phục vụ', '2026-07-30 07:30:00'),
 
- (6,  15, 5,    NULL, 'Hoang Van E',     '0955555555', 4,
+ (6,  15, 5,    NULL, 'Hoang Van Em',    '0955555555', 4,
    '2026-07-31 18:00:00', '2026-07-31 20:00:00', 'BK20260731003',
    'confirmed', NULL,
    NULL, NULL, '2026-07-30 09:15:00'),
 
  -- ─── CANCELLED (3): Đã hủy với lý do cụ thể ───────────────────────────
- (7,  16, 1,    NULL, 'Nguyen Van A',    '0911111111', 2,
+ (7,  16, 1,    NULL, 'Nguyen Van An',    '0911111111', 2,
    '2026-07-29 18:00:00', '2026-07-29 20:00:00', 'BK20260729001',
    'cancelled', NULL,
    'Khách báo bận việc đột xuất, xin hủy đặt bàn',
@@ -332,24 +335,24 @@ INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest
    'Khách không đến sau 30 phút, hệ thống tự hủy',
    NULL, '2026-07-27 20:00:00'),
 
- (9,  18, 3,    NULL, 'Le Van C',        '0933333333', 6,
+ (9,  18, 3,    NULL, 'Le Van Cuong',    '0933333333', 6,
    '2026-07-27 18:00:00', '2026-07-27 20:00:00', 'BK20260727001',
    'cancelled', NULL,
    'Nhà hàng chủ động hủy: hết bàn khu vực khách yêu cầu, đã liên hệ báo khách',
    NULL, '2026-07-26 15:00:00'),
 
  -- ─── COMPLETED (3): Đã hoàn thành ─────────────────────────────────────
- (10, 10, 4,    NULL, 'Pham Thi D',      '0944444444', 4,
+ (10, 10, 4,    NULL, 'Pham Thi Dung',   '0944444444', 4,
    '2026-07-29 19:00:00', '2026-07-29 21:00:00', 'BK20260729002',
    'completed', NULL,
    NULL, 'Khách hài lòng, đánh giá 5 sao, sẽ quay lại', '2026-07-28 16:00:00'),
 
- (11, 11, 2,    NULL, 'Tran Thi B',      '0922222222', 2,
+ (11, 11, 2,    NULL, 'Tran Thi Binh',   '0922222222', 2,
    '2026-07-28 18:00:00', '2026-07-28 20:00:00', 'BK20260728002',
    'completed', 'Góc yên tĩnh, ít người qua lại',
    NULL, NULL, '2026-07-27 10:00:00'),
 
- (12, 12, 5,    NULL, 'Hoang Van E',     '0955555555', 6,
+ (12, 12, 5,    NULL, 'Hoang Van Em',    '0955555555', 6,
    '2026-07-26 19:00:00', '2026-07-26 21:00:00', 'BK20260726001',
    'completed', NULL,
    NULL, NULL, '2026-07-25 11:00:00');
@@ -357,23 +360,77 @@ INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest
 -- ─── GIỮ LẠI: table_merges & table_splits (không có data demo) ──────────
 
 CREATE TABLE table_merges (
-    id               INT      NOT NULL AUTO_INCREMENT,
-    primary_table_id INT      NOT NULL,
-    merged_table_id  INT      NOT NULL,
-    merged_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id               INT                       NOT NULL AUTO_INCREMENT,
+    primary_table_id INT                       NOT NULL,
+    merged_table_id  INT                       NOT NULL,
+    primary_order_id INT                       DEFAULT NULL,
+    merged_order_id  INT                       DEFAULT NULL,
+    merged_by        INT                       DEFAULT NULL,
+    status           ENUM('active','resolved') NOT NULL DEFAULT 'active',
+    merged_at        DATETIME                  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at      DATETIME                  DEFAULT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_merge_primary FOREIGN KEY (primary_table_id) REFERENCES tables(id) ON DELETE CASCADE,
-    CONSTRAINT fk_merge_merged  FOREIGN KEY (merged_table_id)  REFERENCES tables(id) ON DELETE CASCADE
+    INDEX idx_table_merges_primary_status (primary_table_id, status),
+    INDEX idx_table_merges_merged_status (merged_table_id, status),
+    CONSTRAINT fk_merge_primary FOREIGN KEY (primary_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_merge_merged  FOREIGN KEY (merged_table_id)  REFERENCES tables(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE table_split_sessions (
+    id INT NOT NULL AUTO_INCREMENT,
+    parent_table_id INT NOT NULL,
+    parent_order_id INT NOT NULL,
+    status ENUM('active', 'completed', 'cancelled') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME NULL,
+    PRIMARY KEY (id),
+    INDEX idx_split_sessions_table (parent_table_id),
+    INDEX idx_split_sessions_order (parent_order_id),
+    INDEX idx_split_sessions_status (status),
+    CONSTRAINT fk_split_session_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_split_session_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE table_splits (
-    id              INT          NOT NULL AUTO_INCREMENT,
-    parent_table_id INT          NOT NULL,
-    child_label     VARCHAR(10)  NOT NULL,
-    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id INT NOT NULL AUTO_INCREMENT,
+    split_session_id INT NOT NULL,
+    parent_table_id INT NOT NULL,
+    parent_order_id INT NOT NULL,
+    child_order_id INT NOT NULL,
+    child_label VARCHAR(100) NOT NULL,
+    guest_count INT NOT NULL DEFAULT 1,
+    status ENUM('active', 'paid', 'cancelled') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_split_parent FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE CASCADE
+    INDEX idx_splits_session (split_session_id),
+    INDEX idx_splits_parent_table (parent_table_id),
+    INDEX idx_splits_parent_order (parent_order_id),
+    INDEX idx_splits_child_order (child_order_id),
+    INDEX idx_splits_status (status),
+    CONSTRAINT fk_splits_session FOREIGN KEY (split_session_id) REFERENCES table_split_sessions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_splits_parent_table FOREIGN KEY (parent_table_id) REFERENCES tables(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_splits_parent_order FOREIGN KEY (parent_order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_splits_child_order FOREIGN KEY (child_order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE invoice_item_splits (
+    id INT NOT NULL AUTO_INCREMENT,
+    parent_invoice_id INT NOT NULL,
+    child_invoice_id INT NOT NULL,
+    order_item_id INT NOT NULL,
+    quantity INT NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_item_splits_parent (parent_invoice_id),
+    INDEX idx_item_splits_child (child_invoice_id),
+    INDEX idx_item_splits_order_item (order_item_id),
+    CONSTRAINT fk_item_splits_parent FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+    CONSTRAINT fk_item_splits_child FOREIGN KEY (child_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+    CONSTRAINT fk_item_splits_order_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 
 -- ============================================================================
@@ -551,36 +608,40 @@ CREATE TABLE orders (
     created_by  INT          NOT NULL,
     order_type  ENUM('dine_in','takeaway','delivery') NOT NULL DEFAULT 'dine_in',
     split_label VARCHAR(10)  DEFAULT NULL,
-    status      ENUM('open','serving','pending_payment','completed','cancelled') NOT NULL DEFAULT 'open',
+    status      ENUM('open','serving','pending_payment','completed','cancelled','merged') NOT NULL DEFAULT 'open',
     note        TEXT         DEFAULT NULL,
     guest_name  VARCHAR(100) DEFAULT NULL,
     guest_phone VARCHAR(20)  DEFAULT NULL,
     deposit_amount DECIMAL(12,2) DEFAULT 0,
+    guest_count INT          DEFAULT NULL COMMENT 'Số lượng khách tại bàn',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     closed_at   DATETIME     DEFAULT NULL,
+    merged_into_order_id INT DEFAULT NULL,
     PRIMARY KEY (id),
+    INDEX idx_orders_merged_into (merged_into_order_id),
     CONSTRAINT fk_orders_table    FOREIGN KEY (table_id)    REFERENCES tables(id)    ON DELETE SET NULL,
     CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
-    CONSTRAINT fk_orders_user     FOREIGN KEY (created_by)  REFERENCES users(id)     ON DELETE RESTRICT
+    CONSTRAINT fk_orders_user     FOREIGN KEY (created_by)  REFERENCES users(id)     ON DELETE RESTRICT,
+    CONSTRAINT fk_orders_merged_into FOREIGN KEY (merged_into_order_id) REFERENCES orders(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, created_at, closed_at) VALUES
+INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, guest_count, created_at, closed_at) VALUES
  -- ─── SERVING (2) ───────────────────────────────────────────────────────
- (1,  4,  1,    4, 'dine_in', NULL, 'serving',         'Khách yêu cầu ít muối',              NULL,           NULL,         '2026-07-30 18:00:00', NULL),
- (2,  8,  NULL, 5, 'dine_in', NULL, 'serving',         NULL,                                 'Tran Van Binh','0988887777', '2026-07-30 19:00:00', NULL),
+ (1,  4,  1,    4, 'dine_in', NULL, 'serving',         'Khách yêu cầu ít muối',              NULL,           NULL,         4, '2026-07-30 18:00:00', NULL),
+ (2,  8,  NULL, 5, 'dine_in', NULL, 'serving',         NULL,                                 'Tran Van Binh','0988887777', 5, '2026-07-30 19:00:00', NULL),
  -- ─── PENDING_PAYMENT (2) ────────────────────────────────────────────────
- (3,  5,  2,    4, 'dine_in', NULL, 'pending_payment', 'Khách muốn in hóa đơn',              NULL,           NULL,         '2026-07-30 17:30:00', NULL),
- (4,  1,  NULL, 5, 'dine_in', NULL, 'pending_payment', NULL,                                 'Le Thi Hoa',   '0966778899', '2026-07-30 17:00:00', NULL),
+ (3,  5,  2,    4, 'dine_in', NULL, 'pending_payment', 'Khách muốn in hóa đơn',              NULL,           NULL,         2, '2026-07-30 17:30:00', NULL),
+ (4,  1,  NULL, 5, 'dine_in', NULL, 'pending_payment', NULL,                                 'Le Thi Hoa',   '0966778899', 3, '2026-07-30 17:00:00', NULL),
  -- ─── OPEN (1): Vừa mở bàn, chưa gọi hết món ────────────────────────────
- (5,  7,  NULL, 4, 'dine_in', NULL, 'open',            NULL,                                 'Nguyen Hoang', '0912344321', '2026-07-30 19:30:00', NULL),
+ (5,  7,  NULL, 4, 'dine_in', NULL, 'open',            NULL,                                 'Nguyen Hoang', '0912344321', 4, '2026-07-30 19:30:00', NULL),
  -- ─── COMPLETED (5) ──────────────────────────────────────────────────────
- (6,  2,  3,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-30 17:00:00', '2026-07-30 19:00:00'),
- (7,  10, 4,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-29 19:00:00', '2026-07-29 21:00:00'),
- (8,  11, 5,    5, 'dine_in', NULL, 'completed',       'Khách phản hồi: món hơi chậm',       NULL,           NULL,         '2026-07-28 12:00:00', '2026-07-28 13:30:00'),
- (9,  12, 1,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-28 18:00:00', '2026-07-28 20:00:00'),
- (10, 13, 2,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         '2026-07-27 19:00:00', '2026-07-27 21:00:00'),
+ (6,  2,  3,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         3, '2026-07-30 17:00:00', '2026-07-30 19:00:00'),
+ (7,  10, 4,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         4, '2026-07-29 19:00:00', '2026-07-29 21:00:00'),
+ (8,  11, 5,    5, 'dine_in', NULL, 'completed',       'Khách phản hồi: món hơi chậm',       NULL,           NULL,         2, '2026-07-28 12:00:00', '2026-07-28 13:30:00'),
+ (9,  12, 1,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         4, '2026-07-28 18:00:00', '2026-07-28 20:00:00'),
+ (10, 13, 2,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         3, '2026-07-27 19:00:00', '2026-07-27 21:00:00'),
  -- ─── CANCELLED (1) ──────────────────────────────────────────────────────
- (11, NULL, NULL, 4, 'dine_in', NULL, 'cancelled', 'Khách đổi ý sau khi gọi món, yêu cầu hủy', 'Vu Thi Lan', '0977112233', '2026-07-29 20:00:00', NULL);
+ (11, NULL, NULL, 4, 'dine_in', NULL, 'cancelled', 'Khách đổi ý sau khi gọi món, yêu cầu hủy', 'Vu Thi Lan', '0977112233', 2, '2026-07-29 20:00:00', NULL);
 
 -- ============================================================================
 --  ORDER ITEMS: Đủ 5 trạng thái — pending | cooking | done | cancelled | voided
@@ -603,6 +664,7 @@ INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_lab
 CREATE TABLE order_items (
     id            INT           NOT NULL AUTO_INCREMENT,
     order_id      INT           NOT NULL,
+    source_order_id INT         DEFAULT NULL,
     menu_item_id  INT           NOT NULL,
     quantity      INT           NOT NULL DEFAULT 1,
     unit_price    DECIMAL(10,2) NOT NULL,
@@ -616,9 +678,16 @@ CREATE TABLE order_items (
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     CONSTRAINT fk_orderitems_order FOREIGN KEY (order_id)     REFERENCES orders(id)     ON DELETE CASCADE,
+    CONSTRAINT fk_orderitems_source_order FOREIGN KEY (source_order_id) REFERENCES orders(id) ON DELETE SET NULL,
     CONSTRAINT fk_orderitems_menu  FOREIGN KEY (menu_item_id) REFERENCES menu_items(id) ON DELETE RESTRICT,
-    INDEX idx_orderitems_station (order_id, status)
+    INDEX idx_orderitems_station (order_id, status),
+    INDEX idx_orderitems_source_order (source_order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE table_merges
+    ADD CONSTRAINT fk_merge_primary_order FOREIGN KEY (primary_order_id) REFERENCES orders(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_merge_merged_order  FOREIGN KEY (merged_order_id)  REFERENCES orders(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_merge_user          FOREIGN KEY (merged_by)        REFERENCES users(id)  ON DELETE SET NULL;
 
 INSERT INTO order_items (id, order_id, menu_item_id, quantity, unit_price, seat_number, course_number, kitchen_note, status, voided_at, void_reason) VALUES
  -- Order 1 (serving, B04, customer 1) — DEMO: done + cooking + pending
@@ -834,15 +903,15 @@ CREATE TABLE stock_in (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, created_at) VALUES
- (1, 'LOT-TB-0701', 50.000, 47.500, 250000.00, 1, '2026-08-15', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
- (2, 'LOT-TG-0701', 40.000, 39.700, 120000.00, 1, '2026-08-05', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
- (3, 'LOT-CH-0701', 20.000, 20.000, 400000.00, 2, '2026-07-28', 'Cá hồi sắp hết hạn', 2, '2026-07-01 08:30:00'),
- (4, 'LOT-TM-0701', 30.000, 29.100, 180000.00, 2, '2026-08-10', 'Nhập hàng tháng 7', 2, '2026-07-01 08:30:00'),
- (5, 'LOT-RA-0701', 25.000, 24.750,  30000.00, 3, '2026-08-02', 'Nhập hàng tháng 7', 2, '2026-07-01 09:00:00'),
+ (1, 'LOT-TB-0701', 50.000, 47.500, 250000.00, 1, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
+ (2, 'LOT-TG-0701', 40.000, 39.700, 120000.00, 1, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 08:00:00'),
+ (3, 'LOT-CH-0701', 20.000, 20.000, 400000.00, 2, '2026-12-31', 'Cá hồi nhập mới',    2, '2026-07-01 08:30:00'),
+ (4, 'LOT-TM-0701', 30.000, 29.100, 180000.00, 2, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 08:30:00'),
+ (5, 'LOT-RA-0701', 25.000, 24.750,  30000.00, 3, '2026-12-31', 'Nhập hàng tháng 7', 2, '2026-07-01 09:00:00'),
  (6, 'LOT-GA-0701', 100.000, 100.000, 20000.00, 3, NULL, 'Gạo không hết hạn',  2, '2026-07-01 09:00:00'),
- (9, 'LOT-TC-0710', 15.000, 15.000,  80000.00, 3, '2026-08-01', 'Nhập trái cây',      2, '2026-07-10 09:00:00'),
+ (9, 'LOT-TC-0710', 15.000, 15.000,  80000.00, 3, '2026-12-31', 'Nhập trái cây',      2, '2026-07-10 09:00:00'),
  (10,'LOT-BM-0710', 30.000, 30.000,  25000.00, 3, '2027-07-10', 'Nhập bột mì',        2, '2026-07-10 09:00:00'),
- (1, 'LOT-TB-0801', 10.000,  8.000, 260000.00, 1, '2026-09-01', 'Lô hàng có trả lại NCC', 2, '2026-08-01 08:00:00');
+ (1, 'LOT-TB-0801', 10.000,  8.000, 260000.00, 1, '2026-12-31', 'Lô hàng có trả lại NCC', 2, '2026-08-01 08:00:00');
 
 CREATE TABLE stock_out (
     id             INT           NOT NULL AUTO_INCREMENT,

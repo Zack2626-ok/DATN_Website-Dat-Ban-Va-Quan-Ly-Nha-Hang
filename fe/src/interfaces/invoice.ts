@@ -4,6 +4,7 @@ export type InvoiceStatus = "unpaid" | "pending" | "paid" | "cancelled";
 
 export interface Invoice {
   id: string;
+  order_code?: string;
   tableId?: string;
   tableName?: string;
   customerName?: string;
@@ -23,6 +24,10 @@ export interface Invoice {
   orderType?: string;
   paymentMethod?: string;
   staffName?: string;
+  is_early_payment?: boolean;
+  is_early_paid?: boolean;
+  refunded_total?: number;
+  has_refund?: boolean;
 }
 
 export interface PaymentBreakdown {

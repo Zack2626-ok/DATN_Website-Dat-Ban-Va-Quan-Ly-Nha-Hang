@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
+import { formatVietnamBookingDateTime, getWalkInTimeValidationError } from "../utils/bookingTime";
+import { ORDER_TYPE } from "../constants/order";
+import { WALK_IN_OVERRIDE_ROLES } from "../constants/shiftTime";
 
 // Lấy menu items (resmanager schema)
 export const getResmanagerMenuItemsHandler = async (req: Request, res: Response): Promise<void> => {
@@ -48,23 +51,55 @@ export const getOrderItemsHandler = async (req: Request, res: Response): Promise
 // Tạo order mới (resmanager)
 export const createResmanagerOrderHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count } = req.body;
+    const { table_id, customer_id, created_by, order_type, note, guest_name, guest_phone, guest_count, booking_id } = req.body;
 
     if (!created_by) {
       sendError(res, "created_by (waiter id) là bắt buộc", 400);
       return;
     }
 
-    let depositAmount = 0;
-    if (table_id) {
-      const activeBooking = await db.getActiveBookingForTable(Number(table_id));
-      if (activeBooking) {
-        depositAmount = activeBooking.deposit_amount || 0;
+    const bId = booking_id ? Number(booking_id) : null;
+    if (bId && Number.isInteger(bId) && bId > 0) {
+      const existingOrders = await db.query<any[]>(
+        "SELECT id, table_id FROM orders WHERE booking_id = ? AND status IN ('open', 'serving', 'pending_payment') LIMIT 1",
+        [bId]
+      );
+      const bookingRows = await db.query<any[]>(
+        "SELECT id, status FROM bookings WHERE id = ? LIMIT 1",
+        [bId]
+      );
+      if (existingOrders.length > 0 || (bookingRows.length > 0 && ["arrived", "completed"].includes(bookingRows[0].status))) {
+        sendError(res, "Đơn đặt bàn này đã được nhân viên khác mở bàn từ trước!", 409);
+        return;
+      }
+    }
+
+    const requestedTableId = table_id ? Number(table_id) : null;
+    const primaryTableId = requestedTableId ? await db.resolveResmanagerPrimaryTableId(requestedTableId) : null;
+
+    if (primaryTableId && order_type !== ORDER_TYPE.PRE_ORDER) {
+      const currentTime = formatVietnamBookingDateTime();
+      const bookingConflict = await db.getWalkInBookingConflictForTable(primaryTableId, currentTime);
+      if (bookingConflict) {
+        sendError(
+          res,
+          `Bàn này có lịch đặt lúc ${bookingConflict.booking_clock}. Vui lòng chọn bàn khác hoặc nhận khách từ mục Lịch đặt đúng giờ.`,
+          409,
+        );
+        return;
+      }
+
+      const roleName = String(req.user?.role ?? req.user?.role_name ?? "").toLowerCase();
+      const isOverrideRole = WALK_IN_OVERRIDE_ROLES.includes(roleName as any);
+      const walkInTimeError = getWalkInTimeValidationError(new Date(), isOverrideRole);
+      if (walkInTimeError) {
+        sendError(res, walkInTimeError, 400);
+        return;
       }
     }
 
     const order = await db.createResmanagerOrder({
-      table_id: table_id ? Number(table_id) : null,
+      table_id: primaryTableId,
       customer_id: customer_id ? Number(customer_id) : null,
       created_by: Number(created_by),
       order_type: order_type || "dine_in",
@@ -72,15 +107,40 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       guest_name: guest_name || null,
       guest_phone: guest_phone || null,
       guest_count: guest_count ? Number(guest_count) : null,
-      deposit_amount: depositAmount,
+      booking_id: bId,
     });
 
+    const io = req.app.get("io");
+
     // Khi mở order, cập nhật trạng thái bàn thành 'serving'
-    if (table_id) {
-      await db.updateResmanagerTableStatus(Number(table_id), "serving");
-      // Tự động chuyển món đặt trước (nếu có) sang order_items
-      await db.transferBookingItemsToOrder(Number(table_id), order.id);
-      await db.completeActiveBookingForTable(Number(table_id));
+    if (primaryTableId) {
+      await db.updateResmanagerTableStatus(primaryTableId, "serving");
+      io?.emit("table:status_changed", { tableId: primaryTableId, status: "serving", guest_name: guest_name || null });
+    }
+
+    if (bId) {
+      const waiterRows = await db.query<any[]>("SELECT name, full_name, username FROM users WHERE id = ? LIMIT 1", [created_by]).catch(() => []);
+      const waiterObj = waiterRows?.[0];
+      const waiterName = waiterObj?.full_name || waiterObj?.name || waiterObj?.username || "Nhân viên";
+      const tableRows = primaryTableId ? await db.query<any[]>("SELECT name FROM tables WHERE id = ? LIMIT 1", [primaryTableId]).catch(() => []) : [];
+      const tableName = tableRows?.[0]?.name || `Bàn ${primaryTableId}`;
+
+      io?.emit("booking:claimed", {
+        bookingId: bId,
+        id: bId,
+        waiterId: Number(created_by),
+        waiterName,
+        tableId: primaryTableId,
+        tableName,
+        status: "arrived",
+      });
+      io?.emit("table:booking_checked_in", {
+        bookingId: bId,
+        id: bId,
+        waiterName,
+        tableId: primaryTableId,
+        tableName,
+      });
     }
 
     sendSuccess(res, order, "Tạo order thành công", 201);
@@ -129,6 +189,16 @@ export const voidOrderItemHandler = async (req: Request, res: Response): Promise
     const { orderId, itemId } = req.params;
     const { reason } = req.body;
 
+    // Kiểm tra trạng thái hiện tại của món ăn
+    const items = await db.query<any[]>("SELECT status FROM order_items WHERE id = ?", [Number(itemId)]);
+    if (items && items.length > 0) {
+      const currentStatus = items[0].status;
+      if (currentStatus === "cooking") {
+        sendError(res, "Không thể hủy món ăn khi bếp đang nấu!", 400);
+        return;
+      }
+    }
+
     const success = await db.voidResmanagerOrderItem(Number(itemId), reason || "Waiter cancelled");
     if (!success) {
       sendError(res, "Không tìm thấy món", 404);
@@ -161,6 +231,10 @@ export const sendItemsToKitchenHandler = async (req: Request, res: Response): Pr
 
     await db.sendResmanagerOrderItemsToKitchen(item_ids.map(Number));
 
+    // Báo Socket.io cập nhật KDS và Order
+    req.app.get("io")?.emit("kds_updated");
+    req.app.get("io")?.emit("order_updated");
+
     sendSuccess(res, { orderId, sent: item_ids.length }, "Đã gửi món xuống bếp");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -187,6 +261,9 @@ export const holdOrderItemsHandler = async (req: Request, res: Response): Promis
       sendError(res, "Không thể cập nhật trạng thái hold", 400);
       return;
     }
+
+    // Báo Socket.io cập nhật Order
+    req.app.get("io")?.emit("order_updated");
 
     sendSuccess(res, { orderId, item_ids, held }, held ? "Đã hold món" : "Đã bỏ hold món");
   } catch (error) {
@@ -219,11 +296,10 @@ export const markItemServedHandler = async (req: Request, res: Response): Promis
   }
 };
 
-// Waiter gửi yêu cầu thanh toán cho thu ngân
 export const requestPaymentHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { orderId } = req.params;
-    const { note } = req.body;
+    const { note, isEarlyPayment } = req.body;
 
     const orders = await db.getAllResmanagerOrders();
     const order = orders.find((o: any) => String(o.id) === orderId);
@@ -236,16 +312,22 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
       return;
     }
 
-    await db.updateOrderStatus(orderId, "pending_payment");
-
-    if (order.table_id) {
-      await db.updateResmanagerTableStatus(Number(order.table_id), "pending_payment");
+    if (isEarlyPayment) {
+      await db.query("UPDATE orders SET is_early_payment = 1 WHERE id = ?", [orderId]);
+    } else {
+      await db.updateOrderStatus(orderId, "pending_payment");
+      if (order.table_id) {
+        await db.updateResmanagerTableStatus(Number(order.table_id), "pending_payment");
+      }
     }
 
     const waiterName = req.user?.email || "Phục vụ";
+    const title = isEarlyPayment ? "Yêu cầu thanh toán sớm" : "Yêu cầu thanh toán";
+    const content = `${waiterName} yêu cầu ${isEarlyPayment ? "thanh toán sớm" : "thanh toán"} đơn #${orderId} - Bàn ${order.table_name || "?"}`;
+
     await db.createNotification(
-      "Yêu cầu thanh toán",
-      `${waiterName} yêu cầu thanh toán đơn #${orderId} - Bàn ${order.table_name || "?"}`,
+      title,
+      content,
       "payment_request",
       "cashier"
     );
@@ -257,11 +339,39 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
       waiterName,
       totalAmount: order.totalAmount,
       note,
+      isEarlyPayment: !!isEarlyPayment,
     });
 
-    sendSuccess(res, { orderId, status: "pending_payment", waiterName }, "Đã gửi yêu cầu thanh toán");
+    sendSuccess(res, { orderId, status: isEarlyPayment ? order.status : "pending_payment", isEarlyPayment: !!isEarlyPayment, waiterName }, "Đã gửi yêu cầu thanh toán");
   } catch (error) {
     console.error("Error requesting payment:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Waiter / Manager hủy yêu cầu thanh toán (quay lại trạng thái phục vụ)
+export const cancelPaymentRequestHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId } = req.params;
+
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => String(o.id) === orderId);
+    if (!order) {
+      sendError(res, "Không tìm thấy đơn hàng", 404);
+      return;
+    }
+
+    await db.updateOrderStatus(orderId, "serving");
+
+    if (order.table_id) {
+      await db.updateResmanagerTableStatus(Number(order.table_id), "serving");
+    }
+
+    req.app.get("io")?.emit("table:status_changed", { tableId: order.table_id, status: "serving" });
+
+    sendSuccess(res, { orderId, status: "serving" }, "Đã hủy yêu cầu thanh toán, tiếp tục phục vụ");
+  } catch (error) {
+    console.error("Error cancelling payment request:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };

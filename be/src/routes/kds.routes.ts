@@ -6,6 +6,7 @@ import {
   recallKdsItemStatusHandler,
   getKdsVoidAlertsHandler,
   getKdsHistoryHandler,
+  reuseKdsItemToTargetHandler,
 } from "../controllers/kds.controller";
 
 const router = Router();
@@ -27,5 +28,8 @@ router.get("/void-alerts", getKdsVoidAlertsHandler);
 
 // Lấy lịch sử nấu ăn và món trả về
 router.get("/history", getKdsHistoryHandler);
+
+// Tái sử dụng món hủy dư cho bàn khác
+router.post("/items/:id/reuse-to/:targetId", reuseKdsItemToTargetHandler);
 
 export default router;

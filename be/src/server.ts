@@ -39,6 +39,10 @@ import analyticsRoutes from "./routes/analytics.routes";
 import crmRoutes from "./routes/crm.routes";
 import payrollRoutes from "./routes/payroll.routes";
 import expenseRoutes from "./routes/expense.routes";
+import systemSettingsRoutes from "./routes/system-settings.routes";
+import scheduleRoutes from "./routes/schedule.routes";
+import { ensureScheduleSchema } from "./repositories/schedule.repository";
+import managerDashboardRoutes from './routes/managerDashboardRoutes';
 import { setupClientSocket } from "./sockets/clientSocket";
  
 const app = express();
@@ -62,8 +66,17 @@ export const io = new SocketIOServer(httpServer, {
   },
 });
 
+app.set("io", io);
+
 io.on("connection", (socket: any) => {
   console.log(`🔌 Socket.io client connected: ${socket.id}`);
+
+  socket.on("request_server_time", (callback) => {
+    if (typeof callback === "function") {
+      callback(new Date().toISOString());
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log(`🔌 Socket.io client disconnected: ${socket.id}`);
   });
@@ -98,7 +111,8 @@ const startServer = (port: number): void => {
 };
  
 initDb()
-  .then(() => {
+  .then(async () => {
+    await ensureScheduleSchema();
     console.log("✅ Database mode: MySQL");
     startBookingReminderScheduler();
     startCustomerTelegramBot();
@@ -126,11 +140,13 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/v1/manager", managerDashboardRoutes);
 // API KDS: nhà bếp
 app.use("/api/kds", kdsRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/menu", menuRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/v1/inventory", inventoryRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
 
@@ -138,6 +154,7 @@ app.use("/api/promotions", promotionRoutes);
 app.use("/api/restaurant-info", restaurantInfoRoutes);
 app.use("/api/v1/public/restaurant-info", restaurantInfoRoutes);
 app.use("/api/invoices", invoiceRoutes);
+app.use("/api/v1/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
@@ -145,6 +162,7 @@ app.use("/api/payrolls", payrollRoutes);
 app.use("/api/expenses", expenseRoutes);
 // Must stay before the legacy /api table fallback below.
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/v1/attendance", attendanceRoutes);
 
 app.use("/api", tableRoutes); // support /api/v1/tables and /api/v1/table-areas
 // Resmanager schema routes (waiter module)
@@ -153,6 +171,8 @@ app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/waiter", waiterRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 app.use("/api/v1/crm", crmRoutes);
+app.use("/api/v1/system-settings", systemSettingsRoutes);
+app.use("/api/v1/schedules", scheduleRoutes);
 
 app.use("/api/v1/customer", customerAuthRoutes);
 app.use("/api/v1/session", sessionRoutes);

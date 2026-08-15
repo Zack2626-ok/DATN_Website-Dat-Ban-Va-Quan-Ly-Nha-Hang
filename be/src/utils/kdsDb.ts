@@ -73,6 +73,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.order_id    AS orderId,
        oi.menu_item_id AS menuItemId,
        m.name,
+       m.kitchen_station AS dbKitchenStation,
        oi.quantity,
        oi.unit_price  AS unitPrice,
        oi.seat_number AS seatNumber,
@@ -81,12 +82,15 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
        oi.status,
        oi.created_at  AS createdAt,
        oi.updated_at  AS updatedAt,
-       t.name         AS tableName,
+       COALESCE(o.split_label, t.name) AS tableName,
+       o.split_label  AS splitLabel,
        ta.name        AS areaName,
        o.order_type   AS orderType,
        oi.void_reason  AS voidReason,
        oi.voided_at    AS voidedAt,
        oi.chef_dismissed AS chefDismissed,
+       oi.is_cooked_cancelled AS isCookedCancelled,
+       oi.was_reused   AS wasReused,
        u.full_name    AS waiterName
      FROM order_items oi
      JOIN orders o      ON oi.order_id     = o.id
@@ -94,15 +98,20 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      LEFT JOIN users u  ON oi.created_by   = u.id
-     WHERE (oi.status IN ('waiting_kitchen', 'cooking') 
-        OR (oi.status = 'done' AND oi.updated_at >= NOW() - INTERVAL 3 MINUTE)
-        OR (oi.status IN ('cancelled', 'voided') AND oi.chef_dismissed = 0))
-       AND oi.created_at >= NOW() - INTERVAL 6 HOUR
+     WHERE (oi.status IN ('pending', 'waiting_kitchen', 'cooking') 
+        OR oi.status = 'done'
+        OR (oi.status IN ('cancelled', 'voided') 
+            AND (oi.chef_dismissed = 0 
+                 OR (oi.chef_dismissed = 1 
+                     AND oi.is_cooked_cancelled = 1 
+                     AND oi.was_reused = 0 
+                     AND TIMESTAMPDIFF(MINUTE, COALESCE(oi.voided_at, oi.updated_at, oi.created_at), NOW()) < 120))))
+       AND (o.status IN ('open', 'serving') OR (o.status = 'completed' AND o.is_early_paid = 1))
      ORDER BY oi.created_at ASC`
   );
 
   return rows.map((row) => {
-    const kitchenStation = getKitchenStationFromName(row.name);
+    const kitchenStation = row.dbKitchenStation || getKitchenStationFromName(row.name);
     return {
       id: row.id,
       orderId: row.orderId,
@@ -123,6 +132,8 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
       voidReason: row.voidReason || undefined,
       voidedAt: row.voidedAt || undefined,
       chefDismissed: row.chefDismissed !== undefined ? Number(row.chefDismissed) : 0,
+      isCookedCancelled: row.isCookedCancelled !== undefined ? Number(row.isCookedCancelled) : 0,
+      wasReused: row.wasReused !== undefined ? Number(row.wasReused) : 0,
       waiterName: row.waiterName || "Phục vụ"
     };
   }).filter((item) => {
@@ -163,6 +174,14 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
     return result.affectedRows > 0;
   }
 
+  if (status === "discarded") {
+    const result = await query<any>(
+      "UPDATE order_items SET chef_dismissed = 1, is_cooked_cancelled = 0 WHERE id = ?",
+      [id]
+    );
+    return result.affectedRows > 0;
+  }
+
   // Get current status before update to handle refund properly
   const rows = await query<any[]>("SELECT status FROM order_items WHERE id = ?", [id]);
   const currentStatus = rows.length > 0 ? rows[0].status : null;
@@ -191,11 +210,22 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
     }
   }
 
-  // If status is cancelled/voided, log it to the in-memory alerts and refund if it was done
+  // If status is cancelled/voided, log it to the in-memory alerts
   if (status === "cancelled" || status === "voided") {
     try {
-      if (currentStatus === "done") {
-        await refundInventoryForItem(id);
+      if (currentStatus === "done" || currentStatus === "cooking") {
+        // Đánh dấu món đã nấu/đang nấu bị hủy để tái sử dụng
+        await query(
+          "UPDATE order_items SET is_cooked_cancelled = 1 WHERE id = ?",
+          [id]
+        );
+
+        if (currentStatus === "cooking") {
+          // Trừ kho dưới dạng hao hụt do bếp đã chuẩn bị/bắt đầu nấu
+          await deductInventoryForItem(id, "waste", "Hao hụt do hủy món đang nấu");
+        }
+
+        console.log(`[KDS] Món đã/đang nấu bị hủy (ID: ${id}) - Không hoàn kho và được tính vào hao hụt.`);
       }
       
       const itemInfo = await getSingleKdsItemInfo(id);
@@ -211,7 +241,7 @@ export const updateKdsItemStatusInDb = async (id: string | number, status: strin
         });
       }
     } catch (e) {
-      console.warn("Failed to log void alert in memory or refund:", e);
+      console.warn("Failed to log void alert in memory or mark is_cooked_cancelled:", e);
     }
   }
 
@@ -293,13 +323,19 @@ export const getKdsHistoryFromDb = async (date?: string): Promise<any[]> => {
        oi.void_reason  AS voidReason,
        oi.voided_at    AS voidedAt,
        oi.kitchen_note AS kitchenNote,
-       u.full_name    AS waiterName
+       u.full_name    AS waiterName,
+       oi.was_reused   AS wasReused,
+       oi.reused_by_order_item_id AS reusedByOrderItemId,
+       COALESCE(target_o.split_label, target_t.name) AS targetTableName
      FROM order_items oi
      JOIN orders o      ON oi.order_id     = o.id
      JOIN menu_items m  ON oi.menu_item_id = m.id
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      LEFT JOIN users u  ON oi.created_by    = u.id
+     LEFT JOIN order_items reused_oi ON oi.reused_by_order_item_id = reused_oi.id
+     LEFT JOIN orders target_o ON reused_oi.order_id = target_o.id
+     LEFT JOIN tables target_t ON target_o.table_id = target_t.id
      WHERE oi.status IN ('done', 'served', 'delivered', 'cancelled', 'voided')
        ${dateFilter}
      ORDER BY oi.created_at DESC`,
@@ -325,7 +361,10 @@ export const getKdsHistoryFromDb = async (date?: string): Promise<any[]> => {
       voidReason: row.voidReason || undefined,
       voidedAt: row.voidedAt || undefined,
       kitchenNote: row.kitchenNote || undefined,
-      waiterName: row.waiterName || "Phục vụ"
+      waiterName: row.waiterName || "Phục vụ",
+      wasReused: row.wasReused,
+      reusedByOrderItemId: row.reusedByOrderItemId,
+      targetTableName: row.targetTableName
     };
   });
 };

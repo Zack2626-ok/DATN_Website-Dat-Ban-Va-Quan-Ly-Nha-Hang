@@ -35,8 +35,7 @@ export const TableCard: React.FC<TableCardProps> = ({
     };
   }, [showMenu, onToggleMenu]);
 
-  // Chọn style màu sắc dựa vào trạng thái ENUM của bàn
-  const getStatusStyles = (status: ResmanagerTable["status"]) => {
+  const getStatusStyles = (status: ResmanagerTable["status"], isEarlyPaid?: boolean | number, isEarlyPayment?: boolean | number) => {
     switch (status) {
       case "empty":
         return {
@@ -53,6 +52,22 @@ export const TableCard: React.FC<TableCardProps> = ({
           label: "Đặt trước",
         };
       case "serving":
+        if (isEarlyPaid) {
+          return {
+            bg: "bg-emerald-50 border-emerald-300 hover:bg-emerald-100/80",
+            text: "text-emerald-800",
+            badge: "bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold",
+            label: "Đang phục vụ (đã thanh toán)",
+          };
+        }
+        if (isEarlyPayment) {
+          return {
+            bg: "bg-amber-50 border-amber-300 hover:bg-amber-100/80",
+            text: "text-amber-800",
+            badge: "bg-amber-100 text-amber-800 border-amber-300 font-extrabold",
+            label: "Đang phục vụ (thanh toán sớm)",
+          };
+        }
         return {
           bg: "bg-emerald-50 border-emerald-200 hover:bg-emerald-100/80",
           text: "text-emerald-700",
@@ -71,7 +86,7 @@ export const TableCard: React.FC<TableCardProps> = ({
           bg: "bg-blue-50 border-blue-200 hover:bg-blue-100/80",
           text: "text-blue-700",
           badge: "bg-blue-100 text-blue-700 border-blue-300",
-          label: "🧹 Đang dọn dẹp",
+          label: "Đã thanh toán",
         };
       default:
         return {
@@ -83,7 +98,7 @@ export const TableCard: React.FC<TableCardProps> = ({
     }
   };
 
-  const styles = getStatusStyles(table.status);
+  const styles = getStatusStyles(table.status, table.is_early_paid, table.is_early_payment);
 
   const handleMenuClick = (e: React.MouseEvent, action: string) => {
     e.stopPropagation();
@@ -194,29 +209,33 @@ export const TableCard: React.FC<TableCardProps> = ({
                     <Eye size={12} className="text-blue-600" />
                     Xem order
                   </button>
-                  <button
-                    onClick={(e) => handleMenuClick(e, "transfer")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
-                  >
-                    <ArrowLeftRight size={12} className="text-indigo-600" />
-                    Chuyển bàn
-                  </button>
-                  <button
-                    onClick={(e) => handleMenuClick(e, "merge")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
-                  >
-                    <Link2 size={12} className="text-purple-600" />
-                    Gộp bàn
-                  </button>
-                  {/* Tách bàn chỉ hiển thị khi có nhiều hơn 1 khách */}
-                  {((table.guest_count || 0) > 1) && (
-                    <button
-                      onClick={(e) => handleMenuClick(e, "split")}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
-                    >
-                      <Copy size={12} className="text-pink-600" />
-                      Tách bàn
-                    </button>
+                  {!table.is_early_paid && (
+                    <>
+                      <button
+                        onClick={(e) => handleMenuClick(e, "transfer")}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
+                      >
+                        <ArrowLeftRight size={12} className="text-indigo-600" />
+                        Chuyển bàn
+                      </button>
+                      <button
+                        onClick={(e) => handleMenuClick(e, "merge")}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
+                      >
+                        <Link2 size={12} className="text-purple-600" />
+                        Gộp bàn
+                      </button>
+                      {/* Tách bàn chỉ hiển thị khi có nhiều hơn 1 khách */}
+                      {((table.guest_count || 0) > 1) && (
+                        <button
+                          onClick={(e) => handleMenuClick(e, "split")}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 hover:bg-sky-50/50 transition-colors"
+                        >
+                          <Copy size={12} className="text-pink-600" />
+                          Tách bàn
+                        </button>
+                      )}
+                    </>
                   )}
                   {(table.is_merged_primary || table.is_merged_child) && (
                     <button
@@ -227,13 +246,15 @@ export const TableCard: React.FC<TableCardProps> = ({
                       Bỏ gộp bàn
                     </button>
                   )}
-                  <button
-                    onClick={(e) => handleMenuClick(e, "request_payment")}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors border-t border-sky-50 mt-1 font-semibold"
-                  >
-                    <FileText size={12} className="text-rose-500" />
-                    Yêu cầu thanh toán
-                  </button>
+                  {!table.is_early_paid && (
+                    <button
+                      onClick={(e) => handleMenuClick(e, "request_payment")}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors border-t border-sky-50 mt-1 font-semibold"
+                    >
+                      <FileText size={12} className="text-rose-500" />
+                      Yêu cầu thanh toán
+                    </button>
+                  )}
                 </>
               )}
 

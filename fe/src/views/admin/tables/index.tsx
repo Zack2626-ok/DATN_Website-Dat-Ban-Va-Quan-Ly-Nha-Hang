@@ -160,7 +160,7 @@ export const WaiterTableMap: React.FC = () => {
               occupied: "Đang phục vụ",
               serving: "Đang phục vụ",
               pending_payment: "Chờ thanh toán",
-              cleaning: "🧹 Đang dọn dẹp",
+              cleaning: "Đã thanh toán",
             };
 
             return (

@@ -24,19 +24,83 @@ export const printCashierInvoice = (
     const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 
     const tableName = invoice.tableName || invoice.table_name || "Khách lẻ";
-    const invId = invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A";
+    const invId = invoice.order_code || (invoice.id ? `#${String(invoice.id).slice(-8).toUpperCase()}` : "N/A");
     const guestName = invoice.customerName || invoice.customer_name || invoice.guestName || invoice.guest_name || "";
     const guestPhone = invoice.customerPhone || invoice.customer_phone || invoice.guestPhone || invoice.guest_phone || "";
-    const validItems = (invoice.items || []).filter((item: any) => item.status !== "voided" && item.status !== "cancelled");
+    const allItems = (invoice.items || []).filter((item: any) => item.status !== "cancelled");
+    const activeItems = allItems.filter((item: any) => !item.is_refunded && item.status !== "voided");
+    const refundedItems = allItems.filter((item: any) => item.is_refunded || item.status === "voided");
 
-    const subtotal = invoice.subtotal !== undefined ? Number(invoice.subtotal) : Number(invoice.totalAmount || 0);
-    const tax = Number(invoice.tax || 0);
-    const vatRate = Number(invoice.vatRate || (tax > 0 && subtotal > 0 ? Math.round((tax / subtotal) * 100) : 10));
+    // Tính từ active items (món chưa hoàn)
+    const activeSubtotal = activeItems.reduce((s: number, i: any) => s + Number(i.price || i.unit_price || 0) * Number(i.quantity || 1), 0);
+    const hasRefund = refundedItems.length > 0;
+
+    // Nếu có món đã hoàn: tính lại toàn bộ từ active items (tránh dùng giá trị cũ từ DB)
+    // Nếu không có hoàn: dùng giá trị từ invoice như bình thường
+    const originalSubtotal = invoice.subtotal !== undefined ? Number(invoice.subtotal) : activeSubtotal;
+    const subtotal = hasRefund ? activeSubtotal : originalSubtotal;
+
+    const vatRateNum = Number(invoice.vatRate || 10);
+    const tax = hasRefund
+      ? Math.round(activeSubtotal * vatRateNum / 100)
+      : Number(invoice.tax || 0);
+    const vatRate = vatRateNum;
+
     const voucherDiscount = invoice.voucherDiscount !== undefined ? Number(invoice.voucherDiscount) : (invoice.pointsDiscount !== undefined ? 0 : Number(invoice.discount || 0));
     const pointsDiscount = Number(invoice.pointsDiscount || 0);
     const discount = Number(invoice.discount || 0);
     const depositAmount = Number(invoice.depositAmount || 0);
-    const finalAmount = Number(invoice.totalAmount !== undefined ? invoice.totalAmount : Math.max(0, subtotal + tax - depositAmount - discount));
+
+    // Discount/điểm giữ nguyên không đổi dù có hoàn tiền
+    // (Đây là quyền lợi khách đã được hưởng khi thanh toán)
+    const totalDiscount = voucherDiscount + pointsDiscount || discount;
+
+    const finalAmount = hasRefund
+      ? Math.max(0, subtotal + tax - totalDiscount - depositAmount)
+      : Number(invoice.totalAmount !== undefined ? invoice.totalAmount : Math.max(0, subtotal + tax - depositAmount - discount));
+
+
+    // Helper in từng món
+    const renderItem = (item: any, isRefunded: boolean) => {
+      const itemName = item.item_name || item.name || item.menu_item_name || "—";
+      const constituents = getComboConstituents(itemName);
+      const subItemsHtml = constituents
+        ? `<div style="font-size: 9px; color: #555; padding-left: 12px; margin-top: 2px; line-height: 1.2;">
+                ${constituents.map((sub: string) => `<div>• ${sub}</div>`).join("")}
+               </div>`
+        : "";
+      const qty = Number(item.quantity || 1);
+      const price = Number(item.price || item.unit_price || 0);
+      const lineTotal = qty * price;
+
+      if (isRefunded) {
+        return `
+          <div class="item-block" style="opacity:0.7;">
+            <div class="bold" style="font-size: 11px; text-decoration: line-through; color: #dc2626;">${itemName}</div>
+            <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px; text-decoration: line-through; color: #dc2626;">
+              <span>${qty} x ${price.toLocaleString("vi-VN")}</span>
+              <span class="bold">[Đã hoàn] -${lineTotal.toLocaleString("vi-VN")}đ</span>
+            </div>
+            ${subItemsHtml}
+          </div>
+        `;
+      }
+      return `
+        <div class="item-block">
+          <div class="bold" style="font-size: 11px;">${itemName}</div>
+          <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
+            <span>${qty} x ${price.toLocaleString("vi-VN")}</span>
+            <span class="bold">${lineTotal.toLocaleString("vi-VN")}đ</span>
+          </div>
+          ${subItemsHtml}
+          ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
+        </div>
+      `;
+    };
+
+    const activeItemsHtml = activeItems.map((item: any) => renderItem(item, false)).join("");
+    const refundedItemsHtml = refundedItems.map((item: any) => renderItem(item, true)).join("");
+
 
     // Meta & Contact Info
     const rAddr = restaurantInfo?.address || "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM";
@@ -91,32 +155,35 @@ export const printCashierInvoice = (
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
             font-family: 'Courier New', Courier, monospace;
-            font-size: 11px;
-            width: 80mm;
-            padding: 8px 8px;
+            font-size: 12px;
+            width: 76mm;
+            margin: 0 auto;
+            padding: 4mm 2mm;
             color: #000;
             background-color: #fff;
           }
           .center { text-align: center; }
           .bold { font-weight: bold; }
-          .lg { font-size: 13px; }
-          .xl { font-size: 15px; }
-          .divider { border-top: 1px dashed #000; margin: 8px 0; }
-          .row { display: flex; justify-content: space-between; margin: 4px 0; }
-          .total-row { font-size: 13px; font-weight: bold; margin-top: 6px; }
-          .note { font-size: 9px; color: #333; font-style: italic; margin-top: 4px; }
-          .item-note { font-size: 9px; color: #555; padding-left: 10px; margin-top: 1px; }
-          .qr-section { text-align: center; margin-top: 10px; padding: 8px; border: 1px dashed #000; border-radius: 4px; }
-          .qr-section img { width: 130px; height: 130px; margin-top: 4px; }
-          .qr-section p { font-size: 9px; margin-top: 2px; }
-          .item-block { margin: 6px 0; }
+          .lg { font-size: 14px; }
+          .xl { font-size: 16px; }
+          .divider { border-top: 1px dashed #000; margin: 6px 0; }
+          .row { display: flex; justify-content: space-between; margin: 3px 0; }
+          .total-row { font-size: 14px; font-weight: bold; margin-top: 4px; }
+          .note { font-size: 10px; color: #333; font-style: italic; margin-top: 4px; }
+          .item-note { font-size: 10px; color: #555; padding-left: 10px; margin-top: 1px; }
+          .qr-section { text-align: center; margin-top: 8px; padding: 6px; border: 1px dashed #000; border-radius: 4px; }
+          .qr-section img { width: 120px; height: 120px; margin-top: 4px; }
+          .qr-section p { font-size: 10px; margin-top: 2px; }
+          .item-block { margin: 4px 0; }
           @media print {
             @page {
-              size: auto;
-              margin: 0mm;
+              size: 80mm auto;
+              margin: 0;
             }
             body {
-              margin: 8mm 6mm;
+              width: 76mm;
+              margin: 0 auto;
+              padding: 2mm 0mm;
             }
           }
         </style>
@@ -138,26 +205,8 @@ export const printCashierInvoice = (
         ${guestPhone ? `<div class="row"><span>SĐT:</span><span>${guestPhone}</span></div>` : ""}
         ` : ""}
         <div class="divider"></div>
-        ${validItems.map((item: any) => {
-          const itemName = item.item_name || item.name || item.menu_item_name || "—";
-          const constituents = getComboConstituents(itemName);
-          const subItemsHtml = constituents 
-            ? `<div style="font-size: 9px; color: #555; padding-left: 12px; margin-top: 2px; line-height: 1.2;">
-                ${constituents.map(sub => `<div>• ${sub}</div>`).join("")}
-               </div>`
-            : "";
-          return `
-            <div class="item-block">
-              <div class="bold" style="font-size: 11px;">${itemName}</div>
-              <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
-                <span>${item.quantity} x ${Number(item.price || item.unit_price || 0).toLocaleString("vi-VN")}</span>
-                <span class="bold">${(item.quantity * Number(item.price || item.unit_price || 0)).toLocaleString("vi-VN")}đ</span>
-              </div>
-              ${subItemsHtml}
-              ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
-            </div>
-          `;
-        }).join("")}
+        ${activeItemsHtml}
+        ${refundedItems.length > 0 ? `<div style="border-top: 1px dashed #dc2626; margin: 4px 0; font-size:9px; color:#dc2626; text-align:center;">— Các món đã hoàn tiền —</div>${refundedItemsHtml}` : ""}
         <div class="divider"></div>
         <div class="row">
           <span>Tạm tính:</span>
@@ -171,28 +220,30 @@ export const printCashierInvoice = (
         ` : ""}
         ${voucherDiscount > 0 ? `
         <div class="row">
-          <span>Voucher/Giảm giá:</span>
+          <span>Voucher/Gi\u1ea3m gi\u00e1:</span>
           <span>-${voucherDiscount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
         ${pointsDiscount > 0 ? `
         <div class="row">
-          <span>Khấu trừ điểm:</span>
+          <span>Kh\u1ea5u tr\u1eeb \u0111i\u1ec3m:</span>
           <span>-${pointsDiscount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
         ${(discount > 0 && voucherDiscount === 0 && pointsDiscount === 0) ? `
         <div class="row">
-          <span>Voucher/Giảm giá:</span>
+          <span>Voucher/Gi\u1ea3m gi\u00e1:</span>
           <span>-${discount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
+
         ${depositAmount > 0 ? `
         <div class="row">
-          <span>Tiền cọc đặt bàn:</span>
+          <span>Ti\u1ec1n cọc đặt b\u00e0n:</span>
           <span>-${depositAmount.toLocaleString("vi-VN")} đ</span>
         </div>
         ` : ""}
+
         <div class="divider"></div>
         <div class="row total-row">
           <span>TỔNG THANH TOÁN:</span>
@@ -216,10 +267,157 @@ export const printCashierInvoice = (
     `);
     printWindow.document.close();
     printWindow.focus();
+    printWindow.onafterprint = () => {
+      printWindow?.close();
+    };
     setTimeout(() => {
       if (printWindow) {
         printWindow.print();
-        printWindow.close();
+      }
+    }, 300);
+  } catch (err) {
+    console.error("Lỗi khi ghi tài liệu in:", err);
+    alert("Có lỗi xảy ra khi chuẩn bị bản in. Vui lòng thử lại.");
+    if (printWindow) {
+      printWindow.close();
+    }
+  }
+};
+
+export const printExpenseInvoice = (
+  expense: any,
+  restaurantName: string = "NHÀ HÀNG RESMANAGER",
+  restaurantInfo?: any
+) => {
+  let printWindow: Window | null = null;
+  try {
+    printWindow = window.open("", "_blank", "width=400,height=600");
+    if (!printWindow) {
+      alert("Không thể mở cửa sổ in. Vui lòng cho phép trình duyệt hiển thị cửa sổ bật lên (pop-up) để in hóa đơn.");
+      return;
+    }
+  } catch (err) {
+    console.error("Lỗi khi mở cửa sổ in:", err);
+    alert("Không thể mở cửa sổ in do bảo mật trình duyệt. Vui lòng cho phép pop-up và thử lại.");
+    return;
+  }
+
+  try {
+    const now = new Date();
+    const printDate = now.toLocaleDateString("vi-VN");
+    const printTime = now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+
+    const formatDateTime = (dateStr: string) => {
+      if (!dateStr) return "-";
+      const d = new Date(dateStr);
+      return d.toLocaleString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      });
+    };
+
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>Hóa đơn thanh toán - #${expense.id}</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            width: 72mm;
+            margin: 0 auto;
+            padding: 4mm 2mm;
+            font-size: 10px;
+            line-height: 1.4;
+            color: #000;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .divider { border-top: 1px dashed #000; margin: 6px 0; }
+          .title { font-size: 12px; font-weight: bold; letter-spacing: 1px; margin: 6px 0; text-transform: uppercase; }
+          .row { display: flex; justify-content: space-between; margin: 3px 0; }
+          .total-row { font-size: 11px; font-weight: bold; margin-top: 6px; }
+          .signatures { display: grid; grid-template-cols: 1fr 1fr; text-align: center; margin-top: 15px; font-size: 9px; font-family: sans-serif; }
+          .signature-space { height: 35px; border-bottom: 1px dashed #aaa; width: 80%; margin: 5px auto; }
+        </style>
+      </head>
+      <body>
+        <div class="center">
+          <p class="bold" style="font-size: 12px; margin: 0;">${restaurantName.toUpperCase()}</p>
+          <p style="font-size: 8px; margin: 2px 0 0 0; color: #555;">ĐƠN VỊ KINH DOANH F&B</p>
+          <p style="font-size: 8px; margin: 2px 0 0 0; color: #555;">Địa chỉ: ${restaurantInfo?.address || "123 Nguyễn Huệ, Quận 1, TP.HCM"}</p>
+          <p style="font-size: 8px; margin: 2px 0 0 0; color: #555;">Hotline: ${restaurantInfo?.hotline || "028 3829 4000"}</p>
+        </div>
+
+        <div class="divider"></div>
+        <div class="center title">HÓA ĐƠN THANH TOÁN</div>
+        <div class="divider"></div>
+
+        <div class="row">
+          <span>Mã hóa đơn:</span>
+          <span class="bold">#${expense.id}</span>
+        </div>
+        <div class="row">
+          <span>Hạng mục:</span>
+          <span class="bold">${expense.category}</span>
+        </div>
+        <div class="row">
+          <span>Người gửi:</span>
+          <span>Ban Quản lý Nhà hàng</span>
+        </div>
+        <div class="row">
+          <span>Người nhận:</span>
+          <span class="bold">${expense.payee || "Đơn vị cung cấp lẻ"}</span>
+        </div>
+        <div class="row">
+          <span>Thời gian:</span>
+          <span>${formatDateTime(expense.date)}</span>
+        </div>
+        <div class="row">
+          <span style="min-width: 80px;">Ghi chú chi:</span>
+          <span style="text-align: right; max-width: 160px; word-wrap: break-word;">${expense.note || "—"}</span>
+        </div>
+
+        <div class="divider"></div>
+        <div class="row total-row">
+          <span>TỔNG THANH TOÁN:</span>
+          <span class="bold">-${expense.amount.toLocaleString("vi-VN")} đ</span>
+        </div>
+        <div class="divider"></div>
+
+        <div class="signatures">
+          <div>
+            <p>Người gửi (Lập phiếu)</p>
+            <div class="signature-space"></div>
+            <p class="bold" style="margin-top: 4px;">Quản lý</p>
+          </div>
+          <div>
+            <p>Người nhận (Ký nhận)</p>
+            <div class="signature-space"></div>
+            <p class="bold" style="margin-top: 4px;">${expense.payee ? expense.payee.slice(0, 12) + (expense.payee.length > 12 ? "..." : "") : "Đại diện nhận"}</p>
+          </div>
+        </div>
+
+        <div class="divider" style="margin-top: 15px;"></div>
+        <p style="font-size: 8px; text-align: center; color: #555; margin: 4px 0 0 0;">Bản in hóa đơn chi phí nội bộ</p>
+        <p style="font-size: 8px; text-align: center; color: #555; margin: 2px 0 0 0;">In lúc: ${printTime} ${printDate}</p>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.onafterprint = () => {
+      printWindow?.close();
+    };
+    setTimeout(() => {
+      if (printWindow) {
+        printWindow.print();
       }
     }, 300);
   } catch (err) {
