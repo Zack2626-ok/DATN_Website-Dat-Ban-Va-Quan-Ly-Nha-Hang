@@ -262,6 +262,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     });
 
     // 6) Cash Flow Summary
+    // a) Material Expenses
     const expenseRows = await db.query(
       `SELECT 
          CASE 
@@ -283,6 +284,26 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       category: r.category,
       amount: Number(r.amount),
     }));
+
+    // b) Payroll Expenses
+    const payrollRow = await db.query(
+      `SELECT COALESCE(SUM(total_salary), 0) AS val FROM payrolls WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const salaryCost = Number(payrollRow[0].val);
+    if (salaryCost > 0) {
+      expenseItems.push({ category: 'Trả lương nhân viên', amount: salaryCost });
+    }
+
+    // c) Operational Expenses
+    const opsExpenseRow = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const operationalCost = Number(opsExpenseRow[0].val);
+    if (operationalCost > 0) {
+      expenseItems.push({ category: 'Chi phí vận hành', amount: operationalCost });
+    }
 
     const totalIncome = totalRevenue + eventRevenue;
     const totalExpenses = expenseItems.reduce((s: number, e: any) => s + e.amount, 0);
@@ -333,11 +354,25 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     );
     const totalIncome = Number(incomeRow[0].val);
 
-    const expenseRow = await db.query(
+    const stockInRow = await db.query(
       `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val FROM stock_in WHERE created_at BETWEEN ? AND ?`,
       [startStr, endStr]
     );
-    const totalExpenses = Number(expenseRow[0].val);
+    const materialCost = Number(stockInRow[0].val);
+
+    const payrollRow = await db.query(
+      `SELECT COALESCE(SUM(total_salary), 0) AS val FROM payrolls WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const salaryCost = Number(payrollRow[0].val);
+
+    const opsExpenseRow = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const operationalCost = Number(opsExpenseRow[0].val);
+
+    const totalExpenses = materialCost + salaryCost + operationalCost;
     const netProfit = totalIncome - totalExpenses;
 
     // 2) Recent Transactions
@@ -357,7 +392,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       UNION ALL
       (
         SELECT 
-          CONCAT('EXP-', id) as id,
+          CONCAT('EXP-MAT-', id) as id,
           'expense' as type,
           COALESCE(note, 'Nhập nguyên liệu') as description,
           (quantity * unit_cost) as amount,
@@ -366,16 +401,41 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         FROM stock_in 
         WHERE created_at BETWEEN ? AND ?
       )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('EXP-SAL-', p.id) as id,
+          'expense' as type,
+          CONCAT('Trả lương nhân viên ', u.full_name, ' tháng ', p.month, '/', p.year) as description,
+          p.total_salary as amount,
+          p.paid_at as date,
+          'completed' as status
+        FROM payrolls p
+        JOIN users u ON p.user_id = u.id
+        WHERE p.status = 'paid' AND p.paid_at BETWEEN ? AND ?
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('EXP-OPS-', id) as id,
+          'expense' as type,
+          CONCAT('Chi phí: ', title) as description,
+          amount as amount,
+          expense_date as date,
+          'completed' as status
+        FROM operational_expenses 
+        WHERE expense_date BETWEEN ? AND ?
+      )
       ORDER BY date DESC
       LIMIT 100
       `,
-      [startStr, endStr, startStr, endStr]
+      [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr]
     );
 
     sendSuccess(
       res,
       {
-        summary: { totalIncome, totalExpenses, netProfit },
+        summary: { totalIncome, totalExpenses, netProfit, materialCost, salaryCost, operationalCost },
         recentTransactions: txRows,
       },
       "Tải báo cáo tài chính thành công"

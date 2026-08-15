@@ -40,7 +40,7 @@ export const FinanceReport: React.FC = () => {
       ring: "ring-emerald-100",
     },
     {
-      label: "Chi phí vận hành",
+      label: "Tổng chi phí",
       value: data.summary.totalExpenses,
       icon: ArrowDownCircle,
       accent: "from-rose-500 to-rose-400",
@@ -99,6 +99,22 @@ export const FinanceReport: React.FC = () => {
             <p className="mt-4 text-2xl font-black tabular-nums text-[#1A1A1A]">
               {formatCurrency(item.value)}
             </p>
+            {item.label === "Tổng chi phí" && data.summary.materialCost !== undefined && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-1.5 text-xs font-medium text-slate-500">
+                <div className="flex justify-between items-center">
+                  <span>Nguyên liệu:</span>
+                  <span className="text-slate-700 font-semibold">{formatCurrency(data.summary.materialCost)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Lương NV:</span>
+                  <span className="text-slate-700 font-semibold">{formatCurrency(data.summary.salaryCost)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Vận hành:</span>
+                  <span className="text-slate-700 font-semibold">{formatCurrency(data.summary.operationalCost)}</span>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -14,6 +14,8 @@ import {
 } from "../views/manager";
 import { FinanceReport, LossDebtReport } from "../views/admin";
 import UserManagement from "../views/manager/UserManagement";
+import PayrollPage from "../views/manager/payrolls";
+import ExpensePage from "../views/manager/expenses";
 import RegisterPage from "../views/auth/RegisterPage";
 
 export const ManagerRoutes = () => (
@@ -39,6 +41,8 @@ export const ManagerRoutes = () => (
       <Route path="loss-debt-report" element={<LossDebtReport />} />
       <Route path="promotions" element={<PromotionManagement />} />
       <Route path="crm" element={<CRMManagement />} />
+      <Route path="payrolls" element={<PayrollPage />} />
+      <Route path="expenses" element={<ExpensePage />} />
     </Route>
 
     {/* Tạo tài khoản nhân viên — chỉ admin/manager mới truy cập được */}

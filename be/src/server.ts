@@ -37,6 +37,8 @@ import restaurantInfoRoutes from "./routes/restaurantInfo.routes";
 import attendanceRoutes from "./routes/attendance.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import crmRoutes from "./routes/crm.routes";
+import payrollRoutes from "./routes/payroll.routes";
+import expenseRoutes from "./routes/expense.routes";
 import { setupClientSocket } from "./sockets/clientSocket";
  
 const app = express();
@@ -139,6 +141,8 @@ app.use("/api/invoices", invoiceRoutes);
 app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/payrolls", payrollRoutes);
+app.use("/api/expenses", expenseRoutes);
 // Must stay before the legacy /api table fallback below.
 app.use("/api/attendance", attendanceRoutes);
 

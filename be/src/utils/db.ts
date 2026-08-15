@@ -1,4 +1,4 @@
-﻿import mysql from "mysql2/promise";
+import mysql from "mysql2/promise";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import fs from "fs";
@@ -334,6 +334,35 @@ const createDatabaseTables = async (): Promise<void> => {
       PRIMARY KEY (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS operational_expenses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      category ENUM('rent', 'utilities', 'marketing', 'maintenance', 'other') NOT NULL,
+      amount DECIMAL(12,2) NOT NULL,
+      is_recurring TINYINT(1) DEFAULT 0,
+      expense_date DATE NOT NULL,
+      created_by VARCHAR(50),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS payrolls (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(50) NOT NULL,
+      month INT NOT NULL,
+      year INT NOT NULL,
+      total_hours DECIMAL(6,2) DEFAULT 0.00,
+      hourly_rate DECIMAL(12,2) DEFAULT 0.00,
+      total_salary DECIMAL(12,2) DEFAULT 0.00,
+      status ENUM('pending', 'paid') DEFAULT 'pending',
+      paid_at DATETIME NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_user_month_year (user_id, month, year)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
 };
 
 export const initDb = async (): Promise<boolean> => {
@@ -469,6 +498,16 @@ const runSchemaMigrations = async (): Promise<void> => {
       await query(`ALTER TABLE users ADD COLUMN employee_code VARCHAR(20) DEFAULT NULL AFTER role_id`);
       await query(`UPDATE users SET employee_code = CONCAT('NV', LPAD(id, 3, '0')) WHERE employee_code IS NULL`);
       console.log("✅ Migration: added users.employee_code");
+    }
+
+    // Add hourly_rate to users if not exists
+    const hourlyRateCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'hourly_rate'`,
+    );
+    if (hourlyRateCols.length === 0) {
+      await query(`ALTER TABLE users ADD COLUMN hourly_rate DECIMAL(12,2) DEFAULT 0.00`);
+      console.log("✅ Migration: added users.hourly_rate");
     }
 
     // Ensure tables.status includes 'cleaning' and 'maintenance'
@@ -3033,9 +3072,9 @@ export const getUsers = async (): Promise<any[]> => {
 
 export const createResmanagerUser = async (data: any): Promise<any> => {
   const result = await query(`
-    INSERT INTO users (role_id, full_name, email, password_hash, phone, status, is_deleted)
-    VALUES (?, ?, ?, ?, ?, ?, 0)
-  `, [data.role_id, data.full_name, data.email, data.password, data.phone || null, data.status || 'active']);
+    INSERT INTO users (role_id, full_name, email, password_hash, phone, status, hourly_rate, is_deleted)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+  `, [data.role_id, data.full_name, data.email, data.password, data.phone || null, data.status || 'active', data.hourly_rate || 0]);
   return { id: result.insertId, ...data, is_deleted: 0 };
 };
 
