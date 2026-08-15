@@ -61,6 +61,7 @@ export const BookingPage: React.FC = () => {
   const [createdBooking, setCreatedBooking] = useState<CreatedBooking | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
+  const [preOrderedDishes] = useState<Record<number, any>>({});
 
   const handlePayDeposit = async () => {
     if (!createdBooking?.id) return;
@@ -305,21 +306,21 @@ export const BookingPage: React.FC = () => {
                <span className="font-bold text-amber-600">Chờ nhà hàng xác nhận</span>
              </div>
              {/* Deposit Information Box */}
-             {createdBooking?.deposit_amount > 0 && (
+             {Boolean(createdBooking && (createdBooking.deposit_amount ?? 0) > 0) && (
                <div className="mt-4 pt-3 border-t border-client-accent space-y-3">
                  <div className="flex justify-between text-xs items-center">
                    <span className="text-client-muted font-bold uppercase tracking-wider">Tiền cọc món (20%):</span>
-                   <span className="font-black text-rose-600 text-sm font-mono">{Number(createdBooking.deposit_amount).toLocaleString("vi-VN")}đ</span>
+                   <span className="font-black text-rose-600 text-sm font-mono">{Number(createdBooking?.deposit_amount || 0).toLocaleString("vi-VN")}đ</span>
                  </div>
                  <div className="flex justify-between text-xs items-center">
                    <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái cọc:</span>
-                   {createdBooking.deposit_status === "paid" ? (
+                   {createdBooking?.deposit_status === "paid" ? (
                      <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 uppercase text-[10px] tracking-wider">Đã đặt cọc</span>
                    ) : (
                      <span className="font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-lg border border-rose-100 uppercase text-[10px] tracking-wider">Chờ thanh toán</span>
                    )}
                  </div>
-                 {createdBooking.deposit_status !== "paid" && (
+                 {createdBooking?.deposit_status !== "paid" && (
                    <button
                      type="button"
                      onClick={() => setShowPaymentModal(true)}
@@ -463,7 +464,7 @@ export const BookingPage: React.FC = () => {
               {/* VietQR image */}
               <div className="my-4">
                 <img
-                  src={`https://img.vietqr.io/image/MB-0912345678-compact2.png?amount=${createdBooking.deposit_amount}&addInfo=${createdBooking.confirmation_code}&accountName=NHA%20HANG%20RESMANAGER`}
+                  src={`https://img.vietqr.io/image/MB-0912345678-compact2.png?amount=${createdBooking?.deposit_amount || 0}&addInfo=${createdBooking?.confirmation_code || ""}&accountName=NHA%20HANG%20RESMANAGER`}
                   alt="Mã QR Chuyển khoản VietQR"
                   className="mx-auto w-52 h-52 object-contain border border-client-accent rounded-2xl shadow-xs p-2 bg-white"
                 />
@@ -474,8 +475,8 @@ export const BookingPage: React.FC = () => {
                 <div className="flex justify-between"><span>Ngân hàng:</span> <span className="font-bold text-client-text">MB Bank</span></div>
                 <div className="flex justify-between"><span>Số tài khoản:</span> <span className="font-bold text-client-text">0912345678</span></div>
                 <div className="flex justify-between"><span>Chủ tài khoản:</span> <span className="font-bold text-client-text">NHA HANG RESMANAGER</span></div>
-                <div className="flex justify-between"><span>Số tiền cọc (20%):</span> <span className="font-bold text-rose-600 text-sm font-mono">{Number(createdBooking.deposit_amount).toLocaleString("vi-VN")}đ</span></div>
-                <div className="flex justify-between"><span>Nội dung chuyển:</span> <span className="font-bold text-client-primary uppercase font-mono">{createdBooking.confirmation_code}</span></div>
+                <div className="flex justify-between"><span>Số tiền cọc (20%):</span> <span className="font-bold text-rose-600 text-sm font-mono">{Number(createdBooking?.deposit_amount || 0).toLocaleString("vi-VN")}đ</span></div>
+                <div className="flex justify-between"><span>Nội dung chuyển:</span> <span className="font-bold text-client-primary uppercase font-mono">{createdBooking?.confirmation_code || ""}</span></div>
               </div>
 
               {/* Simulated Payment Actions */}

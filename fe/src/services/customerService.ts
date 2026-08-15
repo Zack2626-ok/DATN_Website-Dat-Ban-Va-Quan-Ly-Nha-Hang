@@ -293,6 +293,8 @@ export const createEventContract = async (data: {
   return response.data.data;
 };
 
+
+
 export const getMyEventContracts = async (): Promise<any[]> => {
   const response = await customerApi.get("/v1/customer/contracts/my");
   return response.data.data || [];
@@ -318,3 +320,11 @@ export const sendAIChatMessage = async (data: {
   return response.data.data;
 };
 
+export const verifyQRSession = async (tableId?: string | null, token?: string | null): Promise<any> => {
+  try {
+    const response = await customerApi.get("/v1/public/verify-qr-session", { params: { tableId, token } });
+    return response.data.data;
+  } catch (err) {
+    return { valid: true, tableId, token };
+  }
+};

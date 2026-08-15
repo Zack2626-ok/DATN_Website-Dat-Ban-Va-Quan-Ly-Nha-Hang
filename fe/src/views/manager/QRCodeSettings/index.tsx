@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import QRCode from "react-qr-code";
 import { Printer } from "lucide-react";
-import { getTableAreas, getTables } from "../../../services/tableService";
-import type { TableArea, ResmanagerTable } from "../../../types/table.types";
+import { getTableAreas, getTables, type ResmanagerTable } from "../../../services/tableService";
+import type { TableArea } from "../../../interfaces/table.interface";
 
 /**
  * QRCodeSettings - Màn hình thiết lập và in QR Code cho từng bàn
@@ -46,7 +46,7 @@ export const QRCodeSettings: React.FC = () => {
     window.print();
   };
 
-  const handlePrintSingle = (tableId: number) => {
+  const handlePrintSingle = (_tableId: number) => {
     // Để in 1 mã duy nhất, chúng ta có thể dùng CSS class.
     // Tạm thời ở mức cơ bản, in toàn bộ trang hoặc sử dụng logic ẩn các phần tử không cần thiết.
     // Vì yêu cầu là giao diện tĩnh in ấn, ta mở print dialog.
