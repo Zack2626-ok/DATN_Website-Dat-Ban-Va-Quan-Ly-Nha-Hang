@@ -1,6 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { qrUtils } from "../utils/qr";
-import { cartUtils, redisUtils } from "../utils/redis";
+import { cartUtils, lockUtils } from "../utils/memoryStore";
 import { query } from "../utils/db";
 
 export const setupClientSocket = (io: Server) => {
@@ -66,7 +66,7 @@ export const setupClientSocket = (io: Server) => {
     // Lắng nghe sự kiện Chốt Đơn (Checkout)
     socket.on("client_submit_order", async () => {
       const lockKey = `lock:submit_order:${sessionId}`;
-      const acquired = await redisUtils.acquireLock(lockKey, 5000);
+      const acquired = await lockUtils.acquireLock(lockKey, 5000);
       if (!acquired) {
         return socket.emit("cart_error", { message: "Đang xử lý đơn hàng, vui lòng thử lại sau giây lát." });
       }
@@ -139,7 +139,7 @@ export const setupClientSocket = (io: Server) => {
         console.error("Error submitting order:", error);
         socket.emit("cart_error", { message: "Không thể gửi đơn hàng" });
       } finally {
-        await redisUtils.releaseLock(lockKey);
+        await lockUtils.releaseLock(lockKey);
       }
     });
 

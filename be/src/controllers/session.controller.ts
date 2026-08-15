@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { query } from "../utils/db";
 import { qrUtils } from "../utils/qr";
-import { cartUtils } from "../utils/redis";
+import { cartUtils } from "../utils/memoryStore";
 import { v4 as uuidv4 } from "uuid";
 
 export const sessionController = {
