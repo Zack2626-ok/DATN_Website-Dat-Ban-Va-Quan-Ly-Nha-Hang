@@ -1610,7 +1610,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                             </button>
                           )}
 
-                          {selectedTable.status === "serving" && selectedTable.is_early_paid && (
+                          {selectedTable.status === "serving" && !!selectedTable.is_early_paid && (
                             (() => {
                               const activeItems = (activeOrder?.items || []).filter(
                                 (i) => i.status !== "voided" && i.status !== "cancelled"

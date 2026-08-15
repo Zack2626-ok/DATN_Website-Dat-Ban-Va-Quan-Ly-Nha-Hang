@@ -3,6 +3,7 @@ import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { formatVietnamBookingDateTime, getWalkInTimeValidationError } from "../utils/bookingTime";
 import { ORDER_TYPE } from "../constants/order";
+import { WALK_IN_OVERRIDE_ROLES } from "../constants/shiftTime";
 
 // Lấy menu items (resmanager schema)
 export const getResmanagerMenuItemsHandler = async (req: Request, res: Response): Promise<void> => {
@@ -88,7 +89,9 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
         return;
       }
 
-      const walkInTimeError = getWalkInTimeValidationError();
+      const roleName = String(req.user?.role ?? req.user?.role_name ?? "").toLowerCase();
+      const isOverrideRole = WALK_IN_OVERRIDE_ROLES.includes(roleName as any);
+      const walkInTimeError = getWalkInTimeValidationError(new Date(), isOverrideRole);
       if (walkInTimeError) {
         sendError(res, walkInTimeError, 400);
         return;
