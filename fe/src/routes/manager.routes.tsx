@@ -16,6 +16,7 @@ import {
 import { FinanceReport, LossDebtReport } from "../views/admin";
 import UserManagement from "../views/manager/UserManagement";
 import RegisterPage from "../views/auth/RegisterPage";
+import { SystemSettingsPage } from "../views/manager/settings";
 
 export const ManagerRoutes = () => (
   <>
@@ -36,6 +37,7 @@ export const ManagerRoutes = () => (
       <Route path="inventory" element={<InventoryControl />} />
       <Route path="shifts" element={<ShiftManagement />} />
       <Route path="analytics" element={<AnalyticsView />} />
+      <Route path="settings" element={<SystemSettingsPage />} />
       <Route path="finance-report" element={<FinanceReport />} />
       <Route path="loss-debt-report" element={<LossDebtReport />} />
       <Route path="promotions" element={<PromotionManagement />} />

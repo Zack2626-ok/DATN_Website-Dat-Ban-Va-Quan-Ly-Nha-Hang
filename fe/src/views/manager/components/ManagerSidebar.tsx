@@ -18,6 +18,7 @@ import {
   Minus,
   Receipt,
   Boxes,
+  Settings,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 
@@ -341,6 +342,29 @@ export const ManagerSidebar: React.FC = () => {
                 </div>
               )}
 
+              {/* Cấu hình hệ thống (tách riêng khỏi Dashboard) */}
+              <Link
+                to="/manager/settings"
+                className={`group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 ${
+                  isRouteActive("/manager/settings")
+                    ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
+                    : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <Settings
+                    size={18}
+                    strokeWidth={1.5}
+                    className={
+                      isRouteActive("/manager/settings")
+                        ? "text-[#FFFFFF]"
+                        : "text-[#1A1A1A]"
+                    }
+                  />
+                  Cấu hình hệ thống
+                </span>
+              </Link>
+
               {/* Admin Settings */}
               {canManageSystem && (
                 <Link
@@ -382,4 +406,3 @@ export const ManagerSidebar: React.FC = () => {
     </aside>
   );
 };
-
