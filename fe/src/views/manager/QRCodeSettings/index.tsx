@@ -2,14 +2,13 @@ import React, { useEffect, useState, useMemo } from "react";
 import QRCode from "react-qr-code";
 import { Printer } from "lucide-react";
 import { getTableAreas, getTables } from "../../../services/tableService";
-import type { TableArea, ResmanagerTable } from "../../../types/table.types";
 
 /**
  * QRCodeSettings - Màn hình thiết lập và in QR Code cho từng bàn
  */
 export const QRCodeSettings: React.FC = () => {
-  const [areas, setAreas] = useState<TableArea[]>([]);
-  const [tables, setTables] = useState<ResmanagerTable[]>([]);
+  const [areas, setAreas] = useState<any[]>([]);
+  const [tables, setTables] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -46,14 +45,14 @@ export const QRCodeSettings: React.FC = () => {
     window.print();
   };
 
-  const handlePrintSingle = (tableId: number) => {
+  const handlePrintSingle = (_tableId: number) => {
     // Để in 1 mã duy nhất, chúng ta có thể dùng CSS class.
     // Tạm thời ở mức cơ bản, in toàn bộ trang hoặc sử dụng logic ẩn các phần tử không cần thiết.
     // Vì yêu cầu là giao diện tĩnh in ấn, ta mở print dialog.
     window.print();
   };
 
-  const getTableQRUrl = (table: ResmanagerTable) => {
+  const getTableQRUrl = (table: any) => {
     // Sinh URL QR Code (Lấy theo domain hiện tại của web)
     const baseUrl = window.location.origin; 
     const token = btoa(`table_${table.id}_static_auth`);

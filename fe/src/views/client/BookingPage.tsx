@@ -202,17 +202,7 @@ export const BookingPage: React.FC = () => {
         }
       }
 
-      // Tổng hợp món ăn đặt trước chèn vào ghi chú
-      const orderedItems = Object.entries(preOrderedDishes)
-        .map(([idStr, d]) => ({ ...d, id: Number(idStr) }))
-        .filter((d) => d.quantity > 0);
-      let finalGuestNote = form.note.trim();
-      if (orderedItems.length > 0) {
-        const foodSummary = orderedItems.map((d) => `${d.quantity}x ${d.name}`).join(", ");
-        finalGuestNote = finalGuestNote 
-          ? `${finalGuestNote}\n[Món đặt trước: ${foodSummary}]`
-          : `[Món đặt trước: ${foodSummary}]`;
-      }
+
       const bookingResult = await createBooking({
         table_id: targetTableId,
         customer_id: customerId,

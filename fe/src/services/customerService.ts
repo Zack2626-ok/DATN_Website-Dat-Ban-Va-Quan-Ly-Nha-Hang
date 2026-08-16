@@ -282,3 +282,8 @@ export const sendAIChatMessage = async (data: {
   return response.data.data;
 };
 
+export const verifyQRSession = async (token: string): Promise<any> => {
+  const response = await customerApi.post('/session/verify', { token });
+  return response.data;
+};
+
