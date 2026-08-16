@@ -255,6 +255,7 @@ export const getInvoiceById = async (req: Request, res: Response): Promise<void>
               ? "pending"
               : "unpaid",
       createdAt: o.created_at,
+      arrivedAt: o.arrivedAt || o.created_at || o.createdAt,
       orderType: o.order_type,
       paymentMethod: o.paymentMethod || undefined,
       is_early_payment: o.is_early_payment,
@@ -458,6 +459,16 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     }
 
     const updatedOrder = { ...order, status: "completed" };
+    req.app.get("io")?.emit("payment:updated", {
+      orderId: id,
+      tableId: order.table_id,
+      status: "completed",
+      paymentMethod,
+    });
+    req.app.get("io")?.emit("invoice:updated", {
+      orderId: id,
+      status: "completed",
+    });
     sendSuccess(res, { payment, order: updatedOrder }, "Thanh toán thành công");
   } catch (error) {
     console.error("Error processing payment:", error);
@@ -486,6 +497,15 @@ export const cancelInvoice = async (req: Request, res: Response): Promise<void> 
     if (order.table_id) {
       await db.updateResmanagerTableStatus(Number(order.table_id), "empty");
     }
+
+    req.app.get("io")?.emit("payment:updated", {
+      orderId: id,
+      status: "cancelled",
+    });
+    req.app.get("io")?.emit("invoice:updated", {
+      orderId: id,
+      status: "cancelled",
+    });
 
     sendSuccess(res, { id, status: "cancelled", reason }, "Hủy hóa đơn thành công");
   } catch (error) {

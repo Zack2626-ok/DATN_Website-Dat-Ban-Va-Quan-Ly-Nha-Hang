@@ -125,6 +125,49 @@ export const CashierPaymentPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("⚡ Cashier connected to payment socket");
+    });
+
+    socket.on("payment:request", (data: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string }) => {
+      const label = data.tableName || (data.tableId ? `bàn ${data.tableId}` : `đơn #${data.orderId || ""}`);
+      showSuccess(`Có yêu cầu thanh toán mới cho ${label}`);
+      dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+    });
+
+    socket.on("payment:updated", () => {
+      dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+    });
+
+    socket.on("invoice:updated", () => {
+      dispatch(fetchInvoices());
+      dispatch(fetchTables());
+      dispatch(fetchOrders());
+    });
+
+    return () => {
+      socket.off("connect");
+      socket.off("payment:request");
+      socket.off("payment:updated");
+      socket.off("invoice:updated");
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [dispatch, showSuccess]);
+
+  useEffect(() => {
     if (error) {
       const timer = setTimeout(() => dispatch(clearInvoiceError()), 5000);
       return () => clearTimeout(timer);
@@ -208,7 +251,6 @@ export const CashierPaymentPage: React.FC = () => {
     () => invoices.find((inv) => inv.id === selectedInvoiceId) || null,
     [invoices, selectedInvoiceId],
   );
-
   useEffect(() => {
     selectedInvoiceRef.current = selectedInvoice;
   }, [selectedInvoice]);
@@ -221,7 +263,6 @@ export const CashierPaymentPage: React.FC = () => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
   }, []);
-
   const handleSelectInvoice = useCallback(
     (id: string) => {
       dispatch(selectInvoice(id));

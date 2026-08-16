@@ -83,8 +83,13 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
             </h3>
             <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
               <span className="flex items-center gap-1">
-                <Clock size={12} /> {formatTime(invoice.createdAt)}
+                <Clock size={12} /> Tạo: {formatTime(invoice.createdAt)}
               </span>
+              {invoice.arrivedAt && (
+                <span className="flex items-center gap-1 text-amber-600">
+                  <Clock size={12} /> Vào bàn: {formatTime(invoice.arrivedAt)}
+                </span>
+              )}
               {invoice.tableName && (
                 <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold text-[10px]">
                   {invoice.tableName}

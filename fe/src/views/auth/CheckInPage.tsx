@@ -170,9 +170,11 @@ export default function CheckInPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    intervalRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
+    intervalRef.current = window.setInterval(() => setCurrentTime(new Date()), 1000);
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+      }
     };
   }, []);
 
