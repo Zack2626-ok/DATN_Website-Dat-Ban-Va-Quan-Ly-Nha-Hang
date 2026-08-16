@@ -1126,6 +1126,20 @@ const runSchemaMigrations = async (): Promise<void> => {
 
     await query(`ALTER TABLE debt_payments ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
     await query(`ALTER TABLE debt_payments MODIFY COLUMN paid_by INT NULL`).catch(() => {});
+
+    // Dynamic bank-transfer reconciliation fields. Each statement is intentionally
+    // idempotent because existing demo databases may already contain payments.
+    await query(`ALTER TABLE payments ADD COLUMN received_amount DECIMAL(14,2) NULL`).catch(() => {});
+    await query(`ALTER TABLE payments ADD COLUMN payment_reference VARCHAR(80) NULL`).catch(() => {});
+    await query(`ALTER TABLE payments ADD COLUMN bank_transaction_id VARCHAR(120) NULL`).catch(() => {});
+    await query(`ALTER TABLE payments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'completed'`).catch(() => {});
+    await query(`ALTER TABLE payments MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'completed'`).catch(() => {});
+    await query(`ALTER TABLE payments ADD COLUMN expires_at DATETIME NULL`).catch(() => {});
+    await query(`ALTER TABLE payments ADD COLUMN inventory_deducted_at DATETIME NULL`).catch(() => {});
+    await query(`ALTER TABLE payments ADD COLUMN webhook_payload LONGTEXT NULL`).catch(() => {});
+    await query(`ALTER TABLE payments ADD UNIQUE INDEX uq_payments_reference (payment_reference)`).catch(() => {});
+    await query(`ALTER TABLE payments ADD UNIQUE INDEX uq_payments_bank_transaction (bank_transaction_id)`).catch(() => {});
+    await query(`ALTER TABLE payments ADD INDEX idx_payments_reconciliation (status, expires_at)`).catch(() => {});
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -1826,6 +1840,284 @@ export const getPaymentsByOrderId = async (orderId: string): Promise<Payment[]> 
     ORDER BY p.paid_at DESC
   `, [orderId, orderId]);
   return rows.map(normalizePayment);
+};
+
+interface BankTransferInvoiceRow extends mysql.RowDataPacket {
+  id: number;
+  order_id: number;
+  total: number | string;
+  status: string;
+}
+
+interface BankTransferPaymentRow extends mysql.RowDataPacket {
+  id: number;
+  invoice_id: number;
+  amount: number | string;
+  payment_reference: string;
+  status: string;
+  expires_at: Date | string | null;
+}
+
+interface BankTransferOrderRow extends mysql.RowDataPacket {
+  id: number;
+  table_id: number | null;
+  status: string;
+}
+
+interface BankTransferSubtotalRow extends mysql.RowDataPacket {
+  subtotal: number | string;
+}
+
+/** Creates or reuses a pending dynamic bank-transfer session for a locked draft invoice. */
+const createPendingBankTransferForLockedInvoice = async (
+  connection: mysql.PoolConnection,
+  invoice: BankTransferInvoiceRow,
+  paymentReference: string,
+): Promise<BankTransferPaymentSession> => {
+  await connection.query(
+    `UPDATE payments
+     SET status = 'expired'
+     WHERE invoice_id = ? AND method = 'bank_transfer'
+       AND status = 'pending' AND expires_at <= NOW()`,
+    [invoice.id],
+  );
+  const [activeRows] = await connection.query<BankTransferPaymentRow[]>(
+    `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+     FROM payments
+     WHERE invoice_id = ? AND method = 'bank_transfer'
+       AND status = 'pending' AND expires_at > NOW()
+     ORDER BY id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [invoice.id],
+  );
+  const activePayment = activeRows[0];
+  if (activePayment?.expires_at) {
+    return {
+      paymentId: activePayment.id,
+      invoiceId: activePayment.invoice_id,
+      amount: Number(activePayment.amount),
+      paymentReference: activePayment.payment_reference,
+      expiresAt: new Date(activePayment.expires_at).toISOString(),
+    };
+  }
+
+  const amount = Number(invoice.total);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Tổng tiền hóa đơn không hợp lệ để tạo mã QR.");
+  }
+  const [insertResult] = await connection.query<mysql.ResultSetHeader>(
+    `INSERT INTO payments (
+      invoice_id, method, amount, received_amount, payment_reference,
+      status, expires_at
+    ) VALUES (?, 'bank_transfer', ?, NULL, ?, 'pending', DATE_ADD(NOW(), INTERVAL 15 MINUTE))`,
+    [invoice.id, amount, paymentReference],
+  );
+  const [createdRows] = await connection.query<BankTransferPaymentRow[]>(
+    `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+     FROM payments WHERE id = ?`,
+    [insertResult.insertId],
+  );
+  const createdPayment = createdRows[0];
+  if (!createdPayment?.expires_at) throw new Error("Không thể tạo phiên thanh toán QR.");
+  return {
+    paymentId: createdPayment.id,
+    invoiceId: createdPayment.invoice_id,
+    amount: Number(createdPayment.amount),
+    paymentReference: createdPayment.payment_reference,
+    expiresAt: new Date(createdPayment.expires_at).toISOString(),
+  };
+};
+
+/** Create or reuse a pending dynamic bank-transfer payment session for an existing invoice. */
+export const createPendingBankTransferPayment = async (
+  invoiceId: number,
+  paymentReference: string,
+): Promise<BankTransferPaymentSession> => {
+  return withTransaction(async (connection) => {
+    const [invoiceRows] = await connection.query<BankTransferInvoiceRow[]>(
+      `SELECT id, order_id, total, status
+       FROM invoices
+       WHERE id = ?
+       FOR UPDATE`,
+      [invoiceId],
+    );
+    const invoice = invoiceRows[0];
+    if (!invoice) throw new Error("Không tìm thấy hóa đơn.");
+    if (invoice.status === "paid") throw new Error("Hóa đơn này đã được thanh toán.");
+    return createPendingBankTransferForLockedInvoice(connection, invoice, paymentReference);
+  });
+};
+
+/** Creates a draft invoice from an active order then returns its pending dynamic bank-transfer session. */
+export const createPendingBankTransferPaymentForOrder = async (
+  orderId: number,
+  paymentReference: string,
+): Promise<BankTransferPaymentSession> => {
+  return withTransaction(async (connection) => {
+    const [orderRows] = await connection.query<BankTransferOrderRow[]>(
+      `SELECT id, table_id, status FROM orders WHERE id = ? FOR UPDATE`,
+      [orderId],
+    );
+    const order = orderRows[0];
+    if (!order) throw new Error("Không tìm thấy đơn thanh toán.");
+    if (["completed", "cancelled", "merged"].includes(order.status)) {
+      throw new Error("Đơn này không còn có thể thanh toán.");
+    }
+
+    const [subtotalRows] = await connection.query<BankTransferSubtotalRow[]>(
+      `SELECT COALESCE(SUM(unit_price * quantity), 0) AS subtotal
+       FROM order_items
+       WHERE order_id = ?
+         AND status NOT IN ('voided', 'cancelled')
+         AND COALESCE(is_refunded, 0) = 0`,
+      [orderId],
+    );
+    const subtotal = Math.round(Number(subtotalRows[0]?.subtotal ?? 0));
+    if (!Number.isFinite(subtotal) || subtotal <= 0) {
+      throw new Error("Đơn chưa có món hợp lệ để tạo mã QR.");
+    }
+    const tax = Math.round(subtotal * 0.1);
+    const total = subtotal + tax;
+
+    const [invoiceRows] = await connection.query<BankTransferInvoiceRow[]>(
+      `SELECT id, order_id, total, status
+       FROM invoices
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+    let invoice = invoiceRows[0];
+    if (invoice?.status === "paid") throw new Error("Hóa đơn này đã được thanh toán.");
+
+    if (invoice) {
+      await connection.query(
+        `UPDATE invoices
+         SET subtotal = ?, discount = 0, tax = ?, total = ?
+         WHERE id = ?`,
+        [subtotal, tax, total, invoice.id],
+      );
+      invoice = { ...invoice, total };
+    } else {
+      const [insertResult] = await connection.query<mysql.ResultSetHeader>(
+        `INSERT INTO invoices (order_id, subtotal, discount, tax, service_fee, tips, total, status, paid_at, created_by)
+         VALUES (?, ?, 0, ?, 0, 0, ?, 'draft', NULL, 1)`,
+        [orderId, subtotal, tax, total],
+      );
+      invoice = { id: insertResult.insertId, order_id: orderId, total, status: "draft" } as BankTransferInvoiceRow;
+    }
+
+    return createPendingBankTransferForLockedInvoice(connection, invoice, paymentReference);
+  });
+};
+
+/** Gets a still-valid pending QR payment from trusted server data for local demo reconciliation. */
+export const getPendingBankTransferPaymentForDemo = async (
+  paymentId: number,
+): Promise<DemoBankTransferPayment | null> => {
+  const rows = await query<BankTransferPaymentRow[]>(
+    `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+     FROM payments
+     WHERE id = ?
+       AND method = 'bank_transfer'
+       AND status = 'pending'
+       AND expires_at > NOW()
+     LIMIT 1`,
+    [paymentId],
+  );
+  const payment = rows[0];
+
+  if (!payment) return null;
+
+  return {
+    paymentId: payment.id,
+    paymentReference: payment.payment_reference,
+    amount: Number(payment.amount),
+  };
+};
+
+/** Reconcile a verified bank webhook exactly once and mark its invoice as paid. */
+export const reconcileBankTransferPayment = async (
+  input: BankTransferReconciliationInput,
+): Promise<BankTransferReconciliationResult> => {
+  return withTransaction(async (connection) => {
+    // This must remain the first lock in the transaction: it serializes duplicate webhooks.
+    const [paymentRows] = await connection.query<BankTransferPaymentRow[]>(
+      `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+       FROM payments
+       WHERE payment_reference = ?
+       FOR UPDATE`,
+      [input.paymentReference],
+    );
+    const payment = paymentRows[0];
+    if (!payment) return { status: "not_found" };
+    if (payment.status === "completed") {
+      return { status: "duplicate", invoiceId: payment.invoice_id, amount: Number(payment.amount) };
+    }
+    if (payment.status === "expired" || !payment.expires_at || new Date(payment.expires_at).getTime() <= Date.now()) {
+      await connection.query(
+        `UPDATE payments SET status = 'expired', webhook_payload = ? WHERE id = ?`,
+        [input.webhookPayload, payment.id],
+      );
+      return { status: "expired", invoiceId: payment.invoice_id };
+    }
+    if (Number(payment.amount) !== input.receivedAmount) {
+      await connection.query(
+        `UPDATE payments
+         SET status = 'failed', received_amount = ?, bank_transaction_id = ?, webhook_payload = ?
+         WHERE id = ?`,
+        [input.receivedAmount, input.bankTransactionId, input.webhookPayload, payment.id],
+      );
+      return { status: "amount_mismatch", invoiceId: payment.invoice_id, amount: Number(payment.amount) };
+    }
+    if (input.bankTransactionId) {
+      const [duplicateTransactionRows] = await connection.query<BankTransferPaymentRow[]>(
+        `SELECT id, invoice_id, amount, payment_reference, status, expires_at
+         FROM payments
+         WHERE bank_transaction_id = ? AND id <> ?
+         FOR UPDATE`,
+        [input.bankTransactionId, payment.id],
+      );
+      if (duplicateTransactionRows.length > 0) {
+        return { status: "duplicate", invoiceId: payment.invoice_id, amount: Number(payment.amount) };
+      }
+    }
+
+    const [invoiceRows] = await connection.query<BankTransferInvoiceRow[]>(
+      `SELECT id, order_id, total, status FROM invoices WHERE id = ? FOR UPDATE`,
+      [payment.invoice_id],
+    );
+    const invoice = invoiceRows[0];
+    if (!invoice || invoice.status === "paid") {
+      return { status: "already_paid", invoiceId: payment.invoice_id };
+    }
+    const [orderRows] = await connection.query<BankTransferOrderRow[]>(
+      `SELECT table_id FROM orders WHERE id = ? FOR UPDATE`,
+      [invoice.order_id],
+    );
+
+    await connection.query(
+      `UPDATE payments
+       SET status = 'completed', received_amount = ?, bank_transaction_id = ?,
+           webhook_payload = ?, paid_at = NOW(),
+           inventory_deducted_at = COALESCE(inventory_deducted_at, NOW())
+       WHERE id = ?`,
+      [input.receivedAmount, input.bankTransactionId, input.webhookPayload, payment.id],
+    );
+    await connection.query(
+      `UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = ?`,
+      [payment.invoice_id],
+    );
+    await connection.query(`UPDATE orders SET status = 'completed', closed_at = NOW() WHERE id = ?`, [invoice.order_id]);
+    return {
+      status: "completed",
+      invoiceId: payment.invoice_id,
+      tableId: orderRows[0]?.table_id ?? undefined,
+      amount: Number(payment.amount),
+    };
+  });
 };
 
 export const createPayment = async (payment: Omit<Payment, "id" | "createdAt">): Promise<Payment> => {
@@ -2838,28 +3130,81 @@ export const getBookingById = async (id: number): Promise<any | null> => {
      ORDER BY bta.is_primary DESC, t.name ASC`,
     [id],
   );
+  const tableAssignments = booking.table_assignments as Array<{
+    table_id: number;
+    table_name: string;
+    area_name: string | null;
+    allocated_capacity: number;
+  }>;
+  booking.table_ids = tableAssignments.map((assignment) => Number(assignment.table_id));
+  booking.table_names = tableAssignments.map((assignment) => assignment.table_name).join(", ");
+  booking.total_capacity = tableAssignments.reduce(
+    (total, assignment) => total + Number(assignment.allocated_capacity),
+    0,
+  );
   return booking;
 };
 
+export interface BankTransferPaymentSession {
+  paymentId: number;
+  invoiceId: number;
+  amount: number;
+  paymentReference: string;
+  expiresAt: string;
+}
+
+export interface DemoBankTransferPayment {
+  paymentId: number;
+  paymentReference: string;
+  amount: number;
+}
+
+export interface BankTransferReconciliationInput {
+  paymentReference: string;
+  receivedAmount: number;
+  bankTransactionId: string | null;
+  webhookPayload: string;
+}
+
+export interface BankTransferReconciliationResult {
+  status: "completed" | "duplicate" | "expired" | "not_found" | "amount_mismatch" | "already_paid";
+  invoiceId?: number;
+  tableId?: number;
+  amount?: number;
+}
+
 export const createBooking = async (data: any): Promise<any> => {
   const requestedPartySize = Number(data.party_size);
-  const rawTableIds: unknown[] = Array.isArray(data.table_ids) ? data.table_ids : [data.table_id];
-  const requestedTableIds = [...new Set(
+  const isOnlineBooking = !data.booking_channel || data.booking_channel === "online" || data.booking_channel === "ONLINE";
+  const rawTableIds: unknown[] = Array.isArray(data.table_ids)
+    ? data.table_ids
+    : data.table_id ? [data.table_id] : [];
+  let requestedTableIds = [...new Set(
     rawTableIds
       .map((tableId) => Number(tableId))
       .filter((tableId): tableId is number => Number.isInteger(tableId)),
   )];
-  const requestedPrimaryTableId = Number(data.table_id);
-  if (!Number.isInteger(requestedPrimaryTableId) || !requestedTableIds.includes(requestedPrimaryTableId)) {
-    throw new Error("Cụm bàn đặt trước không hợp lệ.");
-  }
-  const isOnlineBooking = !data.booking_channel || data.booking_channel === "online" || data.booking_channel === "ONLINE";
-  if (!isOnlineBooking) {
-    const availableOptions = await getAvailableBookingTableOptions(
-      requestedPartySize,
-      data.start_time,
-      data.end_time,
-    );
+  let requestedPrimaryTableId = Number(data.table_id);
+  const availableOptions = await getAvailableBookingTableOptions(
+    requestedPartySize,
+    data.start_time,
+    data.end_time,
+  );
+
+  if (requestedTableIds.length === 0) {
+    if (!isOnlineBooking) {
+      throw new Error("Vui lòng chọn bàn cho lượt khách trực tiếp.");
+    }
+    const autoAllocatedOption = availableOptions[0];
+    if (!autoAllocatedOption) {
+      throw new Error("Không còn cụm bàn phù hợp trong khung giờ đã chọn.");
+    }
+    requestedTableIds = autoAllocatedOption.tables.map((table) => table.id);
+    requestedPrimaryTableId = autoAllocatedOption.primaryTable.id;
+  } else {
+    if (!Number.isInteger(requestedPrimaryTableId) || !requestedTableIds.includes(requestedPrimaryTableId)) {
+      throw new Error("Cụm bàn đặt trước không hợp lệ.");
+    }
     const requestedOptionKey = requestedTableIds.sort((left, right) => left - right).join(",");
     const selectedTableIsAvailable = availableOptions.some(
       (option) => option.primaryTable.id === requestedPrimaryTableId
@@ -2878,8 +3223,8 @@ export const createBooking = async (data: any): Promise<any> => {
     const tablePlaceholders = requestedTableIds.map(() => "?").join(",");
     await connection.query(`SELECT id FROM tables WHERE id IN (${tablePlaceholders}) FOR UPDATE`, requestedTableIds);
 
-    // Kiểm tra trùng lịch đặt bàn (Overbooking prevention - bỏ qua nếu là đặt online)
-    if (!isOnlineBooking) {
+    // Kiểm tra trùng lịch đặt bàn sau khi khóa bàn để chống overbooking giữa các request đồng thời.
+    {
       const [overlaps] = await connection.query<any[]>(`
         SELECT b.id FROM bookings b
         WHERE b.table_id IN (${tablePlaceholders}) AND b.status IN (?, ?)
@@ -2987,7 +3332,7 @@ export const createBooking = async (data: any): Promise<any> => {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
     `, [
-      data.table_id,
+      requestedPrimaryTableId,
       validCustomerId,
       validPromotionId,
       data.guest_name,

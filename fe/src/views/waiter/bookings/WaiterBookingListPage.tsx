@@ -18,8 +18,8 @@ import { io, Socket } from "socket.io-client";
 import {
   getBookings,
   updateBookingStatus,
-  Booking,
 } from "../../../services/bookingService";
+import type { Booking } from "../../../services/bookingService";
 
 const formatYMD = (dateObj: Date): string => {
   const yyyy = dateObj.getFullYear();
@@ -56,6 +56,13 @@ const formatShortDate = (dateStr?: string): string => {
   const dateObj = new Date(dateStr.replace(" ", "T"));
   if (isNaN(dateObj.getTime())) return dateStr.split(" ")[0] || "";
   return `${dateObj.getDate()}/${dateObj.getMonth() + 1}/${dateObj.getFullYear()}`;
+};
+
+/**
+ * Trả về toàn bộ cụm bàn đã được hệ thống giữ hoặc gán cho một booking.
+ */
+const getHeldTableGroupLabel = (booking: Booking): string => {
+  return booking.table_names || booking.table_name || "";
 };
 
 const COMMON_CANCEL_REASONS = [
@@ -125,6 +132,7 @@ export const WaiterBookingListPage: React.FC = () => {
     };
 
     socket.on("booking:assigned", handleRealtimeRefresh);
+    socket.on("booking:created", handleRealtimeRefresh);
     socket.on("booking:claimed", handleRealtimeRefresh);
     socket.on("table:booking_checked_in", handleRealtimeRefresh);
     socket.on("booking:updated", handleRealtimeRefresh);
@@ -691,8 +699,10 @@ export const WaiterBookingListPage: React.FC = () => {
                   <span className="font-black text-indigo-950 text-xs bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">
                     📍 Khu vực: {assignmentMap[detailModalBooking.id]?.assignedArea || (detailModalBooking as any).assigned_area || detailModalBooking.area_name || "Tầng 2"}
                   </span>
-                  <span className="font-bold text-slate-700 text-xs">
-                    Bàn: {["arrived", "completed", "checked_in"].includes(detailModalBooking.status) ? (detailModalBooking.table_names || detailModalBooking.table_name || "Bàn đã mở") : "Chưa gán bàn (Chờ nhân viên mở bàn)"}
+                  <span className="font-bold text-slate-700 text-xs text-right">
+                    {getHeldTableGroupLabel(detailModalBooking)
+                      ? `Cụm bàn đã giữ: ${getHeldTableGroupLabel(detailModalBooking)}`
+                      : "Chưa có cụm bàn được hệ thống giữ"}
                   </span>
                 </div>
               </div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Phone, Mail, CheckCircle, ArrowRight, Calendar, Loader2, Printer, Star } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getAvailableTables, createBooking, Customer, payBookingDeposit } from "../../services/customerService";
+import { createBooking, payBookingDeposit } from "../../services/customerService";
+import type { CreatedBooking, Customer } from "../../services/customerService";
 import { getComboConstituents } from "../../utils/comboHelper";
 import {
   BOOKING_DURATION_MINUTES,
@@ -34,6 +35,20 @@ const getBookingEndTime = (date: string, time: string): string => {
   }).format(end).replace("T", " ");
 };
 
+/** Formats the table group held by the server for an online booking. */
+const getHeldTableSummary = (booking: CreatedBooking | null): string => {
+  const assignments = booking?.table_assignments ?? [];
+  if (assignments.length > 0) {
+    return assignments
+      .map((assignment) => assignment.area_name
+        ? `${assignment.table_name} (${assignment.area_name})`
+        : assignment.table_name)
+      .join(" + ");
+  }
+
+  return booking?.table_names || booking?.table_name || "Đang cập nhật";
+};
+
 export const BookingPage: React.FC = () => {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -43,9 +58,10 @@ export const BookingPage: React.FC = () => {
     getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
   }, []);
 
-  const [createdBooking, setCreatedBooking] = useState<any>(null);
+  const [createdBooking, setCreatedBooking] = useState<CreatedBooking | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
+  const [preOrderedDishes] = useState<Record<number, any>>({});
 
   const handlePayDeposit = async () => {
     if (!createdBooking?.id) return;
@@ -178,16 +194,6 @@ export const BookingPage: React.FC = () => {
 
     setSubmitting(true);
     try {
-      // Auto find available table for guest count and schedule, with fallback for group bookings
-      let tables = await getAvailableTables(form.date, form.time, guestCount).catch(() => []);
-      if (!tables || tables.length === 0) {
-        tables = await getAvailableTables(form.date, form.time, 1).catch(() => []);
-      }
-
-      const primaryTable = tables && tables.length > 0 ? tables[0] : null;
-      const targetTableId = primaryTable ? Number(primaryTable.id) : 1;
-      const targetTableName = primaryTable ? primaryTable.name : "Khu vực sảnh";
-      const targetAreaName = primaryTable ? (primaryTable.area_name || "Tầng 2") : "Tầng 2";
       const startTimeStr = `${form.date} ${form.time}:00`;
       const endTimeStr = getBookingEndTime(form.date, form.time);
 
@@ -214,7 +220,6 @@ export const BookingPage: React.FC = () => {
           : `[Món đặt trước: ${foodSummary}]`;
       }
       const bookingResult = await createBooking({
-        table_id: targetTableId,
         customer_id: customerId,
         promotion_id: null,
         guest_name: form.name.trim(),
@@ -227,13 +232,9 @@ export const BookingPage: React.FC = () => {
         booking_channel: "online",
       });
 
-      setCreatedBooking({
-        ...bookingResult,
-        table_name: targetTableName,
-        area_name: targetAreaName
-      });
+      setCreatedBooking(bookingResult);
       setStep(4);
-      toast.success("Đặt bàn thành công!");
+      toast.success("Yêu cầu đặt bàn đã được ghi nhận và giữ cụm bàn.");
     } catch (err: any) {
       const errMsg: string = err.response?.data?.message || "";
       toast.error(errMsg || "Đặt bàn thất bại. Vui lòng thử lại.");
@@ -255,10 +256,10 @@ export const BookingPage: React.FC = () => {
           {/* Card Upper Section */}
           <div className="flex flex-col items-center">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-extrabold uppercase tracking-wider mb-3">
-              <CheckCircle size={12} /> Đặt bàn thành công
+              <CheckCircle size={12} /> Đã giữ cụm bàn
             </span>
             <h1 className="text-xl font-bold text-client-text font-display">Cảm ơn quý khách!</h1>
-            <p className="text-xs text-client-muted mt-1">Yêu cầu đặt bàn của bạn đã được tiếp nhận</p>
+            <p className="text-xs text-client-muted mt-1">Yêu cầu đã được ghi nhận; cụm bàn bên dưới đang được giữ tạm.</p>
           </div>
 
           <div className="mt-6 p-4 bg-client-bg border border-dashed border-client-accent rounded-2xl relative">
@@ -298,26 +299,28 @@ export const BookingPage: React.FC = () => {
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Người đặt:</span> <span className="font-semibold text-client-text">{createdBooking?.guest_name || form.name}</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Số lượng khách:</span> <span className="font-semibold text-client-text">{createdBooking?.party_size || form.guests} người</span></div>
+             <div className="flex justify-between gap-4 text-xs"><span className="shrink-0 text-client-muted font-bold uppercase tracking-wider">Cụm bàn giữ tạm:</span> <span className="text-right font-semibold text-client-text">{getHeldTableSummary(createdBooking)}</span></div>
+             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Sức chứa cụm:</span> <span className="font-semibold text-client-text">{createdBooking?.total_capacity || "-"} người</span></div>
              <div className="flex justify-between text-xs">
                <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái đặt:</span> 
-               <span className="font-bold text-amber-600">Chờ xác nhận</span>
+               <span className="font-bold text-amber-600">Chờ nhà hàng xác nhận</span>
              </div>
              {/* Deposit Information Box */}
-             {createdBooking?.deposit_amount > 0 && (
+             {Boolean(createdBooking && (createdBooking.deposit_amount ?? 0) > 0) && (
                <div className="mt-4 pt-3 border-t border-client-accent space-y-3">
                  <div className="flex justify-between text-xs items-center">
                    <span className="text-client-muted font-bold uppercase tracking-wider">Tiền cọc món (20%):</span>
-                   <span className="font-black text-rose-600 text-sm font-mono">{Number(createdBooking.deposit_amount).toLocaleString("vi-VN")}đ</span>
+                   <span className="font-black text-rose-600 text-sm font-mono">{Number(createdBooking?.deposit_amount || 0).toLocaleString("vi-VN")}đ</span>
                  </div>
                  <div className="flex justify-between text-xs items-center">
                    <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái cọc:</span>
-                   {createdBooking.deposit_status === "paid" ? (
+                   {createdBooking?.deposit_status === "paid" ? (
                      <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 uppercase text-[10px] tracking-wider">Đã đặt cọc</span>
                    ) : (
                      <span className="font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-lg border border-rose-100 uppercase text-[10px] tracking-wider">Chờ thanh toán</span>
                    )}
                  </div>
-                 {createdBooking.deposit_status !== "paid" && (
+                 {createdBooking?.deposit_status !== "paid" && (
                    <button
                      type="button"
                      onClick={() => setShowPaymentModal(true)}
@@ -377,6 +380,8 @@ export const BookingPage: React.FC = () => {
             <div className="flex justify-between"><span>Số điện thoại:</span> <span>{createdBooking?.guest_phone || form.phone}</span></div>
             <div className="flex justify-between"><span>Thời gian đến:</span> <span className="font-bold">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
             <div className="flex justify-between"><span>Số lượng khách:</span> <span>{createdBooking?.party_size || form.guests} người</span></div>
+            <div className="flex justify-between gap-4"><span>Cụm bàn giữ tạm:</span> <span className="text-right font-bold">{getHeldTableSummary(createdBooking)}</span></div>
+            <div className="flex justify-between"><span>Sức chứa cụm:</span> <span>{createdBooking?.total_capacity || "-"} người</span></div>
             <div className="flex justify-between"><span>Trạng thái:</span> <span className="font-bold uppercase text-xs">Chờ xác nhận</span></div>
           </div>
 
@@ -459,7 +464,7 @@ export const BookingPage: React.FC = () => {
               {/* VietQR image */}
               <div className="my-4">
                 <img
-                  src={`https://img.vietqr.io/image/MB-0912345678-compact2.png?amount=${createdBooking.deposit_amount}&addInfo=${createdBooking.confirmation_code}&accountName=NHA%20HANG%20RESMANAGER`}
+                  src={`https://img.vietqr.io/image/MB-0912345678-compact2.png?amount=${createdBooking?.deposit_amount || 0}&addInfo=${createdBooking?.confirmation_code || ""}&accountName=NHA%20HANG%20RESMANAGER`}
                   alt="Mã QR Chuyển khoản VietQR"
                   className="mx-auto w-52 h-52 object-contain border border-client-accent rounded-2xl shadow-xs p-2 bg-white"
                 />
@@ -470,8 +475,8 @@ export const BookingPage: React.FC = () => {
                 <div className="flex justify-between"><span>Ngân hàng:</span> <span className="font-bold text-client-text">MB Bank</span></div>
                 <div className="flex justify-between"><span>Số tài khoản:</span> <span className="font-bold text-client-text">0912345678</span></div>
                 <div className="flex justify-between"><span>Chủ tài khoản:</span> <span className="font-bold text-client-text">NHA HANG RESMANAGER</span></div>
-                <div className="flex justify-between"><span>Số tiền cọc (20%):</span> <span className="font-bold text-rose-600 text-sm font-mono">{Number(createdBooking.deposit_amount).toLocaleString("vi-VN")}đ</span></div>
-                <div className="flex justify-between"><span>Nội dung chuyển:</span> <span className="font-bold text-client-primary uppercase font-mono">{createdBooking.confirmation_code}</span></div>
+                <div className="flex justify-between"><span>Số tiền cọc (20%):</span> <span className="font-bold text-rose-600 text-sm font-mono">{Number(createdBooking?.deposit_amount || 0).toLocaleString("vi-VN")}đ</span></div>
+                <div className="flex justify-between"><span>Nội dung chuyển:</span> <span className="font-bold text-client-primary uppercase font-mono">{createdBooking?.confirmation_code || ""}</span></div>
               </div>
 
               {/* Simulated Payment Actions */}

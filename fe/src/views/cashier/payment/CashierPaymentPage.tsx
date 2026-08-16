@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { io } from "socket.io-client";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { io, type Socket } from "socket.io-client";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   fetchInvoices,
@@ -13,7 +13,7 @@ import {
 } from "../../../store/invoiceSlice";
 import { fetchTables } from "../../../store/tableSlice";
 import { fetchOrders } from "../../../store/orderSlice";
-import type { InvoiceStatus, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
+import type { Invoice, InvoiceStatus, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
 import { InvoiceListPanel } from "./components/InvoiceListPanel";
 import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
 import { PaymentModal } from "./components/PaymentModal";
@@ -23,7 +23,14 @@ import { RefundModal } from "./components/RefundModal";
 import { CheckCircle2, X, AlertTriangle, Phone, RefreshCw } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
+import type { BankTransferPaymentSession } from "../../../services/bankTransferPaymentService";
 import { printCashierInvoice } from "../../../utils/printBill";
+
+interface PaymentSuccessEvent {
+  invoiceId: number;
+  amount: number;
+  paymentReference: string;
+}
 
 export const CashierPaymentPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -39,6 +46,9 @@ export const CashierPaymentPage: React.FC = () => {
   const [refundOpen, setRefundOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+  const paymentSocketRef = useRef<Socket | null>(null);
+  const selectedInvoiceRef = useRef<Invoice | null>(null);
+  const restaurantInfoRef = useRef<RestaurantInfo | null>(null);
 
   useEffect(() => {
     dispatch(fetchInvoices());
@@ -50,6 +60,7 @@ export const CashierPaymentPage: React.FC = () => {
     const socket = io(socketUrl, {
       transports: ["websocket", "polling"],
     });
+    paymentSocketRef.current = socket;
 
     socket.on("connect", () => {
       console.log("⚡ Connected to Socket.io Server for Cashier Payment Page");
@@ -61,6 +72,23 @@ export const CashierPaymentPage: React.FC = () => {
       dispatch(fetchOrders());
     };
 
+    /** Handles a confirmed bank transfer emitted only after webhook reconciliation. */
+    const handleBankTransferSuccess = (payload: PaymentSuccessEvent): void => {
+      const activeInvoice = selectedInvoiceRef.current;
+
+      triggerRefresh();
+      if (!activeInvoice || Number(activeInvoice.id) !== payload.invoiceId) return;
+
+      setPaymentOpen(false);
+      setSuccessMsg("Đã nhận chuyển khoản ngân hàng thành công!");
+      window.setTimeout(() => setSuccessMsg(null), 3000);
+      printCashierInvoice(
+        { ...activeInvoice, paymentMethod: "transfer", totalAmount: payload.amount },
+        restaurantInfoRef.current?.name,
+        restaurantInfoRef.current,
+      );
+    };
+
     socket.on("table:status_changed", triggerRefresh);
     socket.on("table:transferred", triggerRefresh);
     socket.on("table:merged", triggerRefresh);
@@ -70,6 +98,7 @@ export const CashierPaymentPage: React.FC = () => {
     socket.on("kds_updated", triggerRefresh);
     socket.on("payment:request", triggerRefresh);
     socket.on("invoice_refunded", triggerRefresh);
+    socket.on("payment:success", handleBankTransferSuccess);
 
     return () => {
       socket.off("connect");
@@ -82,6 +111,8 @@ export const CashierPaymentPage: React.FC = () => {
       socket.off("kds_updated");
       socket.off("payment:request");
       socket.off("invoice_refunded");
+      socket.off("payment:success", handleBankTransferSuccess);
+      if (paymentSocketRef.current === socket) paymentSocketRef.current = null;
       socket.disconnect();
       console.log("🔌 Disconnected Socket.io Client for Cashier Payment Page");
     };
@@ -177,6 +208,14 @@ export const CashierPaymentPage: React.FC = () => {
     () => invoices.find((inv) => inv.id === selectedInvoiceId) || null,
     [invoices, selectedInvoiceId],
   );
+
+  useEffect(() => {
+    selectedInvoiceRef.current = selectedInvoice;
+  }, [selectedInvoice]);
+
+  useEffect(() => {
+    restaurantInfoRef.current = restaurantInfo;
+  }, [restaurantInfo]);
 
   const showSuccess = useCallback((msg: string) => {
     setSuccessMsg(msg);
@@ -442,6 +481,16 @@ export const CashierPaymentPage: React.FC = () => {
           onClose={() => setPaymentOpen(false)}
           invoice={selectedInvoice}
           onConfirm={handleConfirmPayment}
+          onBankTransferStarted={(session: BankTransferPaymentSession) => {
+            paymentSocketRef.current?.emit("payment:subscribe", session.invoiceId);
+          }}
+          onBankTransferDemoCompleted={() => {
+            setPaymentOpen(false);
+            dispatch(fetchInvoices());
+            dispatch(fetchTables());
+            dispatch(fetchOrders());
+            showSuccess("Đã mô phỏng tiền về và chốt hóa đơn thành công!");
+          }}
           loading={actionLoading}
         />
       )}
