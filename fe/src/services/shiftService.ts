@@ -1,23 +1,24 @@
 import type { Shift, Attendance, ShiftEmployee } from "../interfaces/shift.interface";
+import api from "./axiosInstance";
 
-// Danh sách nhân viên mock dựa trên CSDL
+// Danh sÃƒÂ¡ch nhÃƒÂ¢n viÃƒÂªn mock dÃ¡Â»Â±a trÃƒÂªn CSDL
 const MOCK_EMPLOYEES: ShiftEmployee[] = [
-  { id: 2, full_name: "Restaurant Manager", role_name: "Quản lý" },
-  { id: 3, full_name: "Cashier 1", role_name: "Thu ngân" },
-  { id: 4, full_name: "Waiter 1", role_name: "Phục vụ" },
-  { id: 5, full_name: "Waiter 2", role_name: "Phục vụ" },
-  { id: 6, full_name: "Chef 1", role_name: "Đầu bếp" },
-  { id: 7, full_name: "Sales Event 1", role_name: "Tổ chức Sự kiện" },
+  { id: 2, full_name: "Restaurant Manager", role_name: "QuÃ¡ÂºÂ£n lÃƒÂ½" },
+  { id: 3, full_name: "Cashier 1", role_name: "Thu ngÃƒÂ¢n" },
+  { id: 4, full_name: "Waiter 1", role_name: "PhÃ¡Â»Â¥c vÃ¡Â»Â¥" },
+  { id: 5, full_name: "Waiter 2", role_name: "PhÃ¡Â»Â¥c vÃ¡Â»Â¥" },
+  { id: 6, full_name: "Chef 1", role_name: "Ã„ÂÃ¡ÂºÂ§u bÃ¡ÂºÂ¿p" },
+  { id: 7, full_name: "Sales Event 1", role_name: "TÃ¡Â»â€¢ chÃ¡Â»Â©c SÃ¡Â»Â± kiÃ¡Â»â€¡n" },
 ];
 
-// Khởi tạo CSDL Mock trong LocalStorage nếu chưa có
+// KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o CSDL Mock trong LocalStorage nÃ¡ÂºÂ¿u chÃ†Â°a cÃƒÂ³
 const initLocalStorage = () => {
   if (!localStorage.getItem("resmanager_shifts")) {
     const defaultShifts: Shift[] = [
-      { id: 1, employee_id: 2, start_time: "2026-06-23T08:00", end_time: "2026-06-23T18:00", cash_open: 2000000, cash_close: 2500000, note: "Ca sáng quản lý" },
-      { id: 2, employee_id: 3, start_time: "2026-06-23T10:00", end_time: "2026-06-23T22:00", cash_open: 1000000, cash_close: 1200000, note: "Ca chiều thu ngân" },
-      { id: 3, employee_id: 4, start_time: "2026-06-23T07:00", end_time: "2026-06-23T15:00", cash_open: 500000, cash_close: 520000, note: "Ca sáng phục vụ" },
-      { id: 4, employee_id: 5, start_time: "2026-06-23T15:00", end_time: null, cash_open: 500000, cash_close: null, note: "Ca tối phục vụ (chưa đóng)" },
+      { id: 1, employee_id: 2, start_time: "2026-06-23T08:00", end_time: "2026-06-23T18:00", cash_open: 2000000, cash_close: 2500000, note: "Ca sÃƒÂ¡ng quÃ¡ÂºÂ£n lÃƒÂ½" },
+      { id: 2, employee_id: 3, start_time: "2026-06-23T10:00", end_time: "2026-06-23T22:00", cash_open: 1000000, cash_close: 1200000, note: "Ca chiÃ¡Â»Âu thu ngÃƒÂ¢n" },
+      { id: 3, employee_id: 4, start_time: "2026-06-23T07:00", end_time: "2026-06-23T15:00", cash_open: 500000, cash_close: 520000, note: "Ca sÃƒÂ¡ng phÃ¡Â»Â¥c vÃ¡Â»Â¥" },
+      { id: 4, employee_id: 5, start_time: "2026-06-23T15:00", end_time: null, cash_open: 500000, cash_close: null, note: "Ca tÃ¡Â»â€˜i phÃ¡Â»Â¥c vÃ¡Â»Â¥ (chÃ†Â°a Ã„â€˜ÃƒÂ³ng)" },
     ];
     localStorage.setItem("resmanager_shifts", JSON.stringify(defaultShifts));
   }
@@ -44,19 +45,7 @@ const getShiftsFromStorage = (): Shift[] => {
     const emp = MOCK_EMPLOYEES.find(e => e.id === s.employee_id);
     return {
       ...s,
-      employee_name: emp ? emp.full_name : "Không rõ",
-      employee_role: emp ? emp.role_name : "N/A"
-    };
-  });
-};
-
-const getAttendanceFromStorage = (): Attendance[] => {
-  const attendances: Attendance[] = JSON.parse(localStorage.getItem("resmanager_attendance") || "[]");
-  return attendances.map(a => {
-    const emp = MOCK_EMPLOYEES.find(e => e.id === a.employee_id);
-    return {
-      ...a,
-      employee_name: emp ? emp.full_name : "Không rõ",
+      employee_name: emp ? emp.full_name : "KhÃƒÂ´ng rÃƒÂµ",
       employee_role: emp ? emp.role_name : "N/A"
     };
   });
@@ -64,9 +53,8 @@ const getAttendanceFromStorage = (): Attendance[] => {
 
 // APIs export
 export const getEmployees = async (): Promise<ShiftEmployee[]> => {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve([...MOCK_EMPLOYEES]), 300);
-  });
+  const response = await api.get("/attendance/employees");
+  return response.data.data || [];
 };
 
 export const getShifts = async (): Promise<Shift[]> => {
@@ -114,7 +102,7 @@ export const closeShift = async (
       const shifts = getShiftsFromStorage();
       const idx = shifts.findIndex(s => s.id === id);
       if (idx === -1) {
-        reject(new Error("Không tìm thấy ca làm việc cần đóng"));
+        reject(new Error("KhÃƒÂ´ng tÃƒÂ¬m thÃ¡ÂºÂ¥y ca lÃƒÂ m viÃ¡Â»â€¡c cÃ¡ÂºÂ§n Ã„â€˜ÃƒÂ³ng"));
         return;
       }
       shifts[idx].end_time = data.end_time;
@@ -129,60 +117,24 @@ export const closeShift = async (
 };
 
 export const getAttendance = async (): Promise<Attendance[]> => {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(getAttendanceFromStorage()), 300);
-  });
+  const response = await api.get("/attendance");
+  return response.data.data || [];
 };
 
-export const clockIn = async (employeeId: number): Promise<Attendance> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const attendances = getAttendanceFromStorage();
-      const newId = attendances.length > 0 ? Math.max(...attendances.map(a => a.id)) + 1 : 1;
-      
-      // Tạo múi giờ VN (UTC+7)
-      const now = new Date();
-      const tzOffset = 7 * 60 * 60 * 1000;
-      const localTime = new Date(now.getTime() + tzOffset);
-      const clockInTime = localTime.toISOString().slice(0, 16); // format: YYYY-MM-DDTHH:MM
+/** Optional explanation attached when a scheduled employee clocks in late or out early. */
+export interface AttendanceReasonPayload {
+  late_reason?: string;
+  early_reason?: string;
+}
 
-      const newAttendance: Attendance = {
-        id: newId,
-        employee_id: employeeId,
-        clock_in: clockInTime,
-        clock_out: null,
-      };
-      attendances.push(newAttendance);
-      localStorage.setItem("resmanager_attendance", JSON.stringify(attendances));
-      resolve({
-        ...newAttendance,
-        employee_name: MOCK_EMPLOYEES.find(e => e.id === employeeId)?.full_name,
-        employee_role: MOCK_EMPLOYEES.find(e => e.id === employeeId)?.role_name,
-      });
-    }, 400);
-  });
+/** Records a clock-in and forwards an optional late-arrival explanation. */
+export const clockIn = async (employeeId: number, payload: AttendanceReasonPayload = {}): Promise<Attendance> => {
+  const response = await api.post("/attendance/employee/clock-in", { employee_id: employeeId, ...payload });
+  return response.data.data;
 };
 
-export const clockOut = async (employeeId: number): Promise<Attendance> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const attendances = getAttendanceFromStorage();
-      // Tìm bản ghi clock_in mới nhất chưa clock_out của nhân viên này
-      const activeIdx = attendances.findIndex(a => a.employee_id === employeeId && a.clock_out === null);
-      if (activeIdx === -1) {
-        reject(new Error("Nhân viên này hiện không trong trạng thái Check-in."));
-        return;
-      }
-
-      // Tạo múi giờ VN (UTC+7)
-      const now = new Date();
-      const tzOffset = 7 * 60 * 60 * 1000;
-      const localTime = new Date(now.getTime() + tzOffset);
-      const clockOutTime = localTime.toISOString().slice(0, 16);
-
-      attendances[activeIdx].clock_out = clockOutTime;
-      localStorage.setItem("resmanager_attendance", JSON.stringify(attendances));
-      resolve(attendances[activeIdx]);
-    }, 400);
-  });
+/** Records a clock-out and forwards an optional early-departure explanation. */
+export const clockOut = async (employeeId: number, payload: AttendanceReasonPayload = {}): Promise<Attendance> => {
+  const response = await api.post("/attendance/employee/clock-out", { employee_id: employeeId, ...payload });
+  return response.data.data;
 };

@@ -11,16 +11,23 @@ import {
   Clock,
   CheckCircle2,
   Printer,
-  } from "lucide-react";
+  RotateCcw,
+} from "lucide-react";
 import { getPaymentHistoryApi, getInvoiceByIdApi } from "../../../services/invoiceService";
+import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
 import { printCashierInvoice } from "../../../utils/printBill";
+import { RefundModal } from "../payment/components/RefundModal";
+import type { Invoice } from "../../../interfaces/invoice";
 
 interface PaymentRecord {
   id: string;
   orderId: string;
   amount: number;
+  originalAmount?: number;
   paymentMethod: string;
   status: string;
+  has_refund?: boolean;
+  refunded_total?: number;
   discountAmount?: number;
   discountReason?: string;
   notes?: string;
@@ -63,19 +70,41 @@ export const PaymentHistoryPage: React.FC = () => {
 
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
-  
+
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [loadingInvoiceId, setLoadingInvoiceId] = useState<string | null>(null);
+  const [selectedRefundInvoice, setSelectedRefundInvoice] = useState<Invoice | null>(null);
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+
+  useEffect(() => {
+    getRestaurantInfo().then(setRestaurantInfo).catch(console.error);
+  }, []);
 
   const handlePrint = async (orderId: string) => {
     try {
       setPrintingId(orderId);
       const invoice = await getInvoiceByIdApi(orderId);
-      printCashierInvoice(invoice);
+      printCashierInvoice(invoice, restaurantInfo?.name, restaurantInfo);
     } catch (error) {
       console.error("Failed to print invoice:", error);
       alert("Không thể tải chi tiết hóa đơn để in.");
     } finally {
       setPrintingId(null);
+    }
+  };
+
+  const handleOpenRefundModal = async (orderId: string) => {
+    try {
+      setLoadingInvoiceId(orderId);
+      const inv = await getInvoiceByIdApi(orderId);
+      setSelectedRefundInvoice(inv);
+      setRefundModalOpen(true);
+    } catch (error) {
+      console.error("Failed to load invoice for refund:", error);
+      alert("Không thể tải chi tiết hóa đơn để hoàn tiền.");
+    } finally {
+      setLoadingInvoiceId(null);
     }
   };
 
@@ -199,11 +228,10 @@ export const PaymentHistoryPage: React.FC = () => {
             <button
               key={opt.value}
               onClick={() => setMethodFilter(opt.value)}
-              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                methodFilter === opt.value
+              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${methodFilter === opt.value
                   ? "bg-blue-600 text-white border-blue-600"
                   : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
-              }`}
+                }`}
             >
               {opt.label}
             </button>
@@ -261,10 +289,21 @@ export const PaymentHistoryPage: React.FC = () => {
                             {method.icon} {method.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right font-black text-slate-900">{formatVnd(p.amount)} vnđ</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="font-black text-slate-900">{formatVnd(p.amount)} vnđ</div>
+                          {p.has_refund && p.refunded_total ? (
+                            <div className="text-[9px] text-red-500 font-bold mt-0.5">
+                              Hoàn: -{formatVnd(p.refunded_total)}đ
+                            </div>
+                          ) : null}
+                        </td>
                         <td className="px-4 py-3 text-slate-500">{formatTime(p.completedAt || p.createdAt)}</td>
                         <td className="px-4 py-3 text-center">
-                          {p.status === "completed" ? (
+                          {p.status === "refunded" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+                              <RotateCcw size={11} /> Hoàn tiền
+                            </span>
+                          ) : p.status === "completed" ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <CheckCircle2 size={11} /> Thành công
                             </span>
@@ -275,14 +314,24 @@ export const PaymentHistoryPage: React.FC = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => handlePrint(p.orderId)}
-                            disabled={printingId === p.orderId}
-                            title="In lại hóa đơn"
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors disabled:opacity-50 cursor-pointer"
-                          >
-                            <Printer size={14} />
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleOpenRefundModal(p.orderId)}
+                              disabled={loadingInvoiceId === p.orderId}
+                              title="Tạo phiếu hoàn tiền cho món ăn"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              <RotateCcw size={14} />
+                            </button>
+                            <button
+                              onClick={() => handlePrint(p.orderId)}
+                              disabled={printingId === p.orderId}
+                              title="In lại hóa đơn"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              <Printer size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -331,11 +380,10 @@ export const PaymentHistoryPage: React.FC = () => {
                         <button
                           key={page}
                           onClick={() => setCurrentPage(page)}
-                          className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                            currentPage === page
+                          className={`relative inline-flex items-center rounded-lg px-3 py-2 text-xs font-bold transition-all cursor-pointer ${currentPage === page
                               ? "z-10 bg-blue-600 text-white"
                               : "text-slate-900 ring-1 ring-inset ring-slate-200 hover:bg-slate-50 focus:outline-none"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>
@@ -355,7 +403,17 @@ export const PaymentHistoryPage: React.FC = () => {
           </>
         )}
       </div>
+
+      {refundModalOpen && selectedRefundInvoice && (
+        <RefundModal
+          isOpen={refundModalOpen}
+          onClose={() => setRefundModalOpen(false)}
+          invoice={selectedRefundInvoice}
+          onSuccess={() => {
+            fetchPayments();
+          }}
+        />
+      )}
     </div>
   );
 };
-

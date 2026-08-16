@@ -58,10 +58,16 @@ export interface Table {
 }
 
 export interface OrderItem {
+  id?: number;
   menuItemId: string | number;
   name: string;
   price: number;
   quantity: number;
+  status?: string;
+  is_refunded?: boolean;
+  refunded_at?: string;
+  refund_reason?: string;
+  refund_amount?: number;
 }
 
 export interface Order {
@@ -114,6 +120,7 @@ export interface User {
   last_login?: string;
   created_at: string;
   updated_at: string;
+  hourly_rate?: number;
   // For UI: include role object when fetching
   role?: Role;
 }

@@ -1,11 +1,13 @@
 import { Request, Response } from "express";
 import { sendSuccess, sendError } from "../utils/response";
+import { io } from "../server";
 import {
   getKdsItemsFromDb,
   updateKdsItemStatusInDb,
   recallKdsItemStatusInDb,
   getKdsVoidAlertsFromDb,
-} from "../utils/kdsDb";
+  getKdsHistoryFromDb,
+} from "../utils/kdsDb";import { reuseCancelledKdsItem } from "../utils/db";
 
 /**
  * GET /api/kds/items
@@ -38,6 +40,9 @@ export const updateKdsItemStatusHandler = async (req: Request, res: Response): P
 
     const success = await updateKdsItemStatusInDb(id, status);
     if (success) {
+      io.emit("order_updated");
+      io.emit("kds_updated");
+      io.emit("table_updated");
       sendSuccess(res, { id, status }, "Cập nhật trạng thái món ăn thành công!");
     } else {
       sendError(res, "Không tìm thấy hoặc không thể cập nhật món ăn!", 404);
@@ -72,6 +77,12 @@ export const updateKdsBatchStatusHandler = async (req: Request, res: Response): 
       if (success) successCount++;
     }
 
+    if (successCount > 0) {
+      io.emit("order_updated");
+      io.emit("kds_updated");
+      io.emit("table_updated");
+    }
+
     sendSuccess(
       res,
       { successCount, total: itemIds.length, status },
@@ -92,6 +103,9 @@ export const recallKdsItemStatusHandler = async (req: Request, res: Response): P
     const { id } = req.params;
     const success = await recallKdsItemStatusInDb(id);
     if (success) {
+      io.emit("order_updated");
+      io.emit("kds_updated");
+      io.emit("table_updated");
       sendSuccess(res, { id }, "Hoàn tác trạng thái món ăn thành công!");
     } else {
       sendError(res, "Không thể hoàn tác trạng thái món ăn này (có thể không có lịch sử trạng thái cũ)!", 400);
@@ -113,5 +127,48 @@ export const getKdsVoidAlertsHandler = async (_req: Request, res: Response): Pro
   } catch (err) {
     console.error("Error in getKdsVoidAlertsHandler:", err);
     sendError(res, `Lỗi tải danh sách cảnh báo hủy món: ${(err as Error).message}`, 500);
+  }
+};
+
+/**
+ * GET /api/kds/history
+ * Fetch historical/completed and voided KDS items for a specific date
+ */
+export const getKdsHistoryHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { date } = req.query;
+    const history = await getKdsHistoryFromDb(date as string);
+    sendSuccess(res, history, "Tải lịch sử nấu ăn KDS thành công!");
+  } catch (err) {
+    console.error("Error in getKdsHistoryHandler:", err);
+    sendError(res, `Lỗi tải lịch sử nấu ăn KDS: ${(err as Error).message}`, 500);
+  }
+};
+
+/**
+ * POST /api/kds/items/:id/reuse-to/:targetId
+ * Reuse a cooked cancelled item for another waiting table
+ */
+export const reuseKdsItemToTargetHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id, targetId } = req.params;
+    
+    if (!id || !targetId) {
+      sendError(res, "ID món hủy và ID món nhận là bắt buộc!", 400);
+      return;
+    }
+
+    const success = await reuseCancelledKdsItem(Number(id), Number(targetId));
+    if (success) {
+      io.emit("order_updated");
+      io.emit("kds_updated");
+      io.emit("table_updated");
+      sendSuccess(res, null, "Tái sử dụng món hủy cho bàn khác thành công!");
+    } else {
+      sendError(res, "Không thể tái sử dụng món ăn này!", 400);
+    }
+  } catch (err) {
+    console.error("Error in reuseKdsItemToTargetHandler:", err);
+    sendError(res, `Lỗi tái sử dụng món ăn: ${(err as Error).message}`, 500);
   }
 };

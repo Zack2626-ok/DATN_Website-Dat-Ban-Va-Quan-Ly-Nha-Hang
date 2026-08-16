@@ -15,12 +15,19 @@ import { Modal } from "../../../../components/Modal";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
 import { crmService, type Voucher, type Customer } from "../../../../services/crmService";
+import {
+  initiateBankTransferPayment,
+  simulateBankTransferPayment,
+  type BankTransferPaymentSession,
+} from "../../../../services/bankTransferPaymentService";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   invoice: Invoice;
   onConfirm: (data: PaymentRequest) => void;
+  onBankTransferStarted: (session: BankTransferPaymentSession) => void;
+  onBankTransferDemoCompleted: () => void;
   loading: boolean;
 }
 
@@ -34,14 +41,28 @@ const PAYMENT_METHODS = [
   { value: "vnpay" as const, label: "Cổng VNPay", icon: QrCode, color: "bg-sky-50 border-sky-200 text-sky-700" },
 ];
 
-export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConfirm, loading }) => {
+export const PaymentModal: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  invoice,
+  onConfirm,
+  onBankTransferStarted,
+  onBankTransferDemoCompleted,
+  loading,
+}) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
   const [vatRate, setVatRate] = useState(10);
+  const [serviceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount] = useState(0);
   const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
   const [copied, setCopied] = useState(false);
+  const [bankTransferSession, setBankTransferSession] = useState<BankTransferPaymentSession | null>(null);
+  const [creatingBankTransfer, setCreatingBankTransfer] = useState(false);
+  const [simulatingBankTransfer, setSimulatingBankTransfer] = useState(false);
+  const [bankTransferError, setBankTransferError] = useState<string | null>(null);
+  const isBankTransfer = paymentMethod === "transfer";
 
   const [suggestedVouchers, setSuggestedVouchers] = useState<Voucher[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -66,16 +87,16 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
       setCustomerName(null);
       setMatchedCustomer(null);
       setPointsToUse(0);
+      setBankTransferSession(null);
+      setBankTransferError(null);
+      setSimulatingBankTransfer(false);
       return;
     }
 
     const loadSuggestions = async () => {
       setLoadingSuggestions(true);
       try {
-        const [customers, vouchers] = await Promise.all([
-          crmService.getCustomers(),
-          crmService.getVouchers(),
-        ]);
+        const customers = await crmService.getCustomers();
 
         const normalizePhone = (phone?: string | null) => {
           if (!phone) return "";
@@ -95,9 +116,13 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
           setMatchedCustomer(customer);
           const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
           
-          const eligible = vouchers.filter(v => {
+          // Fetch customer-specific redeemed unused vouchers
+          const customerVouchers = await crmService.getCustomerUnusedVouchers(customer.id);
+          
+          const eligible = customerVouchers.filter(v => {
             if (v.is_active !== 1) return false;
             if (v.expired_at && new Date(v.expired_at) < new Date()) return false;
+            if (v.max_uses !== null && v.max_uses !== undefined && v.used_count >= v.max_uses) return false;
             if (subtotal < v.min_order) return false;
             return true;
           });
@@ -123,16 +148,10 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
     const vat = Math.round(subtotal * (vatRate / 100));
     const depositAmount = invoice.depositAmount || 0;
     const pointsDiscount = pointsToUse * 100;
-    const finalAmount = Math.max(0, subtotal + vat + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000) - pointsDiscount);
-    return { subtotal, vat, depositAmount, pointsDiscount, finalAmount };
-  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, tipAmount, voucherAmount, pointsToUse]);
-
-  const vietqrUrl = useMemo(() => {
-    if (!resInfo?.bank_code || !resInfo?.bank_account) return "";
-    const amountVnd = Math.round(breakdown.finalAmount);
-    const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
-    return `https://img.vietqr.io/image/${resInfo.bank_code}-${resInfo.bank_account}-compact2.png?amount=${amountVnd}&addInfo=${encodeURIComponent(desc)}`;
-  }, [resInfo, breakdown.finalAmount, invoice.id]);
+    const serviceFee = subtotal * (serviceFeeRate / 100);
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee + (tipAmount * 1000) - depositAmount - (voucherAmount * 1000) - pointsDiscount);
+    return { subtotal, vat, serviceFee, depositAmount, pointsDiscount, finalAmount };
+  }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, serviceFeeRate, tipAmount, voucherAmount, pointsToUse]);
 
   const momoUrl = useMemo(() => {
     const amountVnd = Math.round(breakdown.finalAmount);
@@ -146,12 +165,53 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=${amountVnd * 100}&vnp_TxnRef=${invoice.id.slice(-6)}&vnp_OrderInfo=${desc}`)}`;
   }, [breakdown.finalAmount, invoice.id]);
 
-  const copyBankInfo = () => {
-    if (!resInfo) return;
-    const text = `Ngân hàng: ${resInfo.bank_name}\nSố TK: ${resInfo.bank_account}\nChủ TK: ${resInfo.bank_account_name}\nSố tiền: ${formatVnd(breakdown.finalAmount)} vnđ\nNội dung: Thanh toan HD${invoice.id.slice(-6)}`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  /** Tạo QR động và đăng ký lắng nghe kết quả thanh toán của hóa đơn. */
+  const handleCreateBankTransfer = async (): Promise<void> => {
+    setCreatingBankTransfer(true);
+    setBankTransferError(null);
+    try {
+      const session = await initiateBankTransferPayment(invoice.id);
+      setBankTransferSession(session);
+      onBankTransferStarted(session);
+    } catch (error) {
+      setBankTransferError(error instanceof Error ? error.message : "Không thể tạo mã QR chuyển khoản.");
+    } finally {
+      setCreatingBankTransfer(false);
+    }
+  };
+
+  /** Sao chép chính xác thông tin của phiên QR đang chờ thanh toán. */
+  const copyBankInfo = async (): Promise<void> => {
+    if (!bankTransferSession) return;
+    const text = `Ngân hàng: ${bankTransferSession.bankCode}\nSố TK: ${bankTransferSession.accountNumber}\nChủ TK: ${bankTransferSession.accountName}\nSố tiền: ${formatVnd(bankTransferSession.amount)} vnđ\nNội dung: ${bankTransferSession.paymentReference}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setBankTransferError("Không thể sao chép thông tin tài khoản trên trình duyệt này.");
+    }
+  };
+
+  /** Hoàn tất phiên QR bằng luồng giả lập tiền về khi backend bật demo local. */
+  const handleSimulateBankTransfer = async (): Promise<void> => {
+    if (!bankTransferSession?.demoModeEnabled) return;
+
+    setSimulatingBankTransfer(true);
+    setBankTransferError(null);
+    try {
+      const result = await simulateBankTransferPayment(bankTransferSession.paymentId);
+      if (["completed", "duplicate", "already_paid"].includes(result.status)) {
+        onBankTransferDemoCompleted();
+        return;
+      }
+
+      setBankTransferError("Không thể hoàn tất mô phỏng. Vui lòng tạo lại mã QR.");
+    } catch (error) {
+      setBankTransferError(error instanceof Error ? error.message : "Không thể mô phỏng tiền về.");
+    } finally {
+      setSimulatingBankTransfer(false);
+    }
   };
 
   const handleConfirm = () => {
@@ -181,6 +241,14 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
             <span className="font-bold text-slate-900">{formatVnd(breakdown.subtotal)} vnđ</span>
           </div>
 
+          {/* Deposit */}
+          {breakdown.depositAmount > 0 && (
+            <div className="flex justify-between text-xs py-2 border-b border-slate-100 text-amber-600">
+              <span className="font-bold">Trừ tiền đặt cọc</span>
+              <span className="font-bold">- {formatVnd(breakdown.depositAmount)} vnđ</span>
+            </div>
+          )}
+
           {/* VAT */}
           <div className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100">
             <span className="text-slate-500 flex items-center gap-1">
@@ -200,6 +268,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
               <input
                 type="text"
                 value={voucherCode}
+                disabled={isBankTransfer}
                 onChange={(e) => setVoucherCode(e.target.value)}
                 placeholder="Mã voucher"
                 className="flex-1 text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
@@ -208,6 +277,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 type="number"
                 min={0}
                 value={voucherAmount || ""}
+                disabled={isBankTransfer}
                 onChange={(e) => setVoucherAmount(Number(e.target.value) || 0)}
                 placeholder="Số tiền"
                 className="w-20 text-right text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
@@ -240,11 +310,12 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                         <button
                           key={v.id}
                           type="button"
+                          disabled={isBankTransfer}
                           onClick={() => {
                             setVoucherCode(v.code);
                             setVoucherAmount(Math.round(discountVal / 1000));
                           }}
-                          className="px-2 py-1 rounded bg-white hover:bg-pink-100 border border-pink-200 text-[10px] font-bold text-pink-700 transition-all flex items-center gap-1 cursor-pointer"
+                          className="px-2 py-1 rounded bg-white hover:bg-pink-100 border border-pink-200 text-[10px] font-bold text-pink-700 transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <span className="bg-pink-600 text-white px-1 py-0.2 rounded text-[8px] font-black uppercase">{v.code}</span>
                           <span>Giảm {displayVal}</span>
@@ -276,6 +347,7 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                     min={0}
                     max={matchedCustomer.loyalty_points}
                     value={pointsToUse || ""}
+                    disabled={isBankTransfer}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 0;
                       setPointsToUse(Math.min(val, matchedCustomer.loyalty_points));
@@ -291,6 +363,11 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
                 </div>
               </div>
             </div>
+          )}
+          {isBankTransfer && (
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-medium text-blue-700">
+              QR chuyển khoản dùng đúng tổng tiền hóa đơn; voucher và điểm tích lũy không được áp dụng ở bước này.
+            </p>
           )}
 
           {/* Final total */}
@@ -310,7 +387,15 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
               return (
                 <button
                   key={pm.value}
-                  onClick={() => setPaymentMethod(pm.value)}
+                  onClick={() => {
+                    setPaymentMethod(pm.value);
+                    setBankTransferError(null);
+                    if (pm.value === "transfer") {
+                      setVoucherCode("");
+                      setVoucherAmount(0);
+                      setPointsToUse(0);
+                    }
+                  }}
                   className={`p-2.5 rounded-xl border-2 flex flex-col items-center gap-1.5 cursor-pointer transition-all ${
                     isSelected ? `${pm.color} border-current shadow-sm` : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
                   }`}
@@ -323,39 +408,44 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
           </div>
 
           {/* VietQR when transfer selected */}
-          {paymentMethod === "transfer" && resInfo?.bank_code && (
+          {paymentMethod === "transfer" && (
             <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-3 flex flex-col items-center gap-2 animate-fade-in">
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-700">
                 <QrCode size={14} />
-                Quét mã VietQR để chuyển khoản
+                VietQR động — chờ ngân hàng xác nhận
               </div>
-              <img
-                src={vietqrUrl}
-                alt="VietQR"
-                className="w-48 h-48 rounded-lg border border-blue-200 bg-white"
-              />
-              <div className="w-full text-[10px] text-slate-600 space-y-0.5">
-                <div className="flex justify-between">
-                  <span>Ngân hàng:</span>
-                  <span className="font-bold">{resInfo.bank_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Số TK:</span>
-                  <span className="font-bold">{resInfo.bank_account}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Chủ TK:</span>
-                  <span className="font-bold">{resInfo.bank_account_name}</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={copyBankInfo}
-                className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
-              >
-                {copied ? <Check size={12} /> : <Copy size={12} />}
-                {copied ? "Đã copy!" : "Copy thông tin TK"}
-              </button>
+              {bankTransferSession ? (
+                <>
+                  <img src={bankTransferSession.qrUrl} alt="VietQR động" className="w-48 h-48 rounded-lg border border-blue-200 bg-white" />
+                  <div className="w-full text-[10px] text-slate-600 space-y-0.5">
+                    <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{bankTransferSession.bankCode}</span></div>
+                    <div className="flex justify-between"><span>Số TK:</span><span className="font-bold">{bankTransferSession.accountNumber}</span></div>
+                    <div className="flex justify-between"><span>Nội dung:</span><span className="font-bold break-all text-right">{bankTransferSession.paymentReference}</span></div>
+                    <div className="flex justify-between"><span>Số tiền:</span><span className="font-bold text-blue-700">{formatVnd(bankTransferSession.amount)} vnđ</span></div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 text-center">QR hết hạn lúc {new Date(bankTransferSession.expiresAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}. Hóa đơn sẽ tự chốt khi tiền về.</p>
+                  <button type="button" onClick={copyBankInfo} className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer">
+                    {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? "Đã copy!" : "Copy thông tin TK"}
+                  </button>
+                  {bankTransferSession.demoModeEnabled && (
+                    <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-center">
+                      <p className="text-[10px] font-bold text-amber-800">Chế độ demo — không cần chuyển tiền thật</p>
+                      <p className="mt-0.5 text-[9px] text-amber-700">Chỉ dùng để trình diễn luồng đối soát QR ở môi trường local.</p>
+                      <button
+                        type="button"
+                        onClick={handleSimulateBankTransfer}
+                        disabled={simulatingBankTransfer}
+                        className="mt-2 w-full rounded-md bg-amber-500 px-3 py-2 text-[10px] font-bold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {simulatingBankTransfer ? "Đang mô phỏng tiền về..." : "Mô phỏng tiền đã về"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-[10px] text-slate-600 text-center">Tạo QR để khóa số tiền và nội dung chuyển khoản. Hệ thống không tự xác nhận khi chưa nhận webhook ngân hàng.</p>
+              )}
+              {bankTransferError && <p className="text-[10px] text-red-600 text-center">{bankTransferError}</p>}
             </div>
           )}
 
@@ -427,16 +517,18 @@ export const PaymentModal: React.FC<Props> = ({ isOpen, onClose, invoice, onConf
 
           {/* Confirm button */}
           <button
-            onClick={handleConfirm}
-            disabled={loading}
+            onClick={paymentMethod === "transfer" ? handleCreateBankTransfer : handleConfirm}
+            disabled={loading || creatingBankTransfer || (paymentMethod === "transfer" && Boolean(bankTransferSession))}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
           >
-            {loading ? (
+            {paymentMethod === "transfer" && bankTransferSession ? (
+              "Đang chờ ngân hàng xác nhận"
+            ) : loading || creatingBankTransfer ? (
               "Đang xử lý..."
             ) : (
               <>
                 <CreditCard size={16} />
-                Xác nhận thanh toán {formatVnd(breakdown.finalAmount)} vnđ
+                {paymentMethod === "transfer" ? "Tạo QR chuyển khoản" : `Xác nhận thanh toán ${formatVnd(breakdown.finalAmount)} vnđ`}
               </>
             )}
           </button>

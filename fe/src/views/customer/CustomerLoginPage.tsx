@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { UtensilsCrossed, Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
+import { UtensilsCrossed, Mail, Lock, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { loginCustomer } from "../../services/customerService";
 
 /**
  * CustomerLoginPage — Trang đăng nhập dành riêng cho Khách hàng
  * URL: /customer/login
- * Tách biệt hoàn toàn với /auth/login (nhân viên)
+ * Sử dụng tông màu đỏ gạch (#a72d1e) và vàng kim (#dfb05b) đồng bộ với Trang chủ
  */
 export default function CustomerLoginPage() {
   const navigate = useNavigate();
@@ -52,40 +52,57 @@ export default function CustomerLoginPage() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center bg-cover bg-center relative p-6"
+      className="min-h-screen flex items-center justify-center bg-cover bg-center relative p-6 font-sans"
       style={{
         backgroundImage:
           "url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2070')",
       }}
     >
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-gray-900/60" />
+      {/* Nút quay về trang chủ */}
+      <Link
+        to="/"
+        className="absolute top-6 left-6 z-20 flex items-center gap-2 px-4 py-2 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-md text-xs font-bold transition border border-white/10 shadow-lg"
+      >
+        <ArrowLeft size={14} className="text-[#dfb05b]" /> Về trang chủ
+      </Link>
 
-      <div className="relative z-10 w-full max-w-md">
-        {/* Logo */}
+      {/* Overlay ấm cúng */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/60 to-black/70 backdrop-blur-[2px]" />
+
+      <div className="relative z-10 w-full max-w-md animate-fade-in">
+        {/* Logo Brand Restro */}
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600/80 text-white backdrop-blur-sm shadow-xl">
+          <div className="flex justify-center mb-3">
+            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#a72d1e] text-white shadow-xl ring-4 ring-[#dfb05b]/30">
               <UtensilsCrossed size={32} />
             </span>
           </div>
-          <h1 className="text-4xl font-bold text-white drop-shadow-sm">ResManager</h1>
-          <p className="text-gray-300 mt-2">Đăng nhập để đặt bàn &amp; quản lý tài khoản</p>
+          <h1 className="text-4xl font-extrabold text-white font-display tracking-tight drop-shadow-md">
+            Restro
+          </h1>
+          <p className="text-[#dfb05b] text-xs uppercase tracking-widest font-bold mt-1">
+            Fine Dining &amp; Culinary Experience
+          </p>
         </div>
 
-        {/* Card */}
-        <div className="backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl shadow-2xl p-8">
-          <h2 className="text-2xl font-bold text-center text-white mb-2">
+        {/* Card Form Đăng Nhập */}
+        <div className="backdrop-blur-xl bg-[#2a221c]/80 border border-[#dfb05b]/30 rounded-3xl shadow-2xl p-8 text-white relative overflow-hidden">
+          {/* Vệt trang trí góc */}
+          <div className="absolute -top-12 -right-12 w-28 h-28 bg-[#a72d1e]/20 rounded-full blur-2xl pointer-events-none" />
+
+          <h2 className="text-2xl font-extrabold text-center font-display mb-1 text-white">
             Đăng nhập Khách hàng
           </h2>
-          <p className="text-center text-gray-300 text-sm mb-8">
+          <p className="text-center text-gray-300 text-xs mb-6">
             Chào mừng trở lại! Vui lòng nhập thông tin của bạn.
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="text-white text-sm font-medium block mb-2">Email</label>
+              <label className="text-xs font-bold text-[#dfb05b] uppercase tracking-wider block mb-1.5">
+                Email
+              </label>
               <div className="relative">
                 <Mail size={16} className="absolute left-4 top-3.5 text-gray-400" />
                 <input
@@ -95,14 +112,16 @@ export default function CustomerLoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="email@example.com"
-                  className="w-full bg-black/20 border border-white/20 rounded-xl pl-11 pr-4 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-400 outline-none transition"
+                  className="w-full bg-black/40 border border-white/20 rounded-xl pl-11 pr-4 py-3 text-white text-sm placeholder-gray-400 focus:ring-2 focus:ring-[#dfb05b] focus:border-[#dfb05b] outline-none transition"
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label className="text-white text-sm font-medium block mb-2">Mật khẩu</label>
+              <label className="text-xs font-bold text-[#dfb05b] uppercase tracking-wider block mb-1.5">
+                Mật khẩu
+              </label>
               <div className="relative">
                 <Lock size={16} className="absolute left-4 top-3.5 text-gray-400" />
                 <input
@@ -112,12 +131,12 @@ export default function CustomerLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Nhập mật khẩu"
-                  className="w-full bg-black/20 border border-white/20 rounded-xl pl-11 pr-11 py-3 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-400 outline-none transition"
+                  className="w-full bg-black/40 border border-white/20 rounded-xl pl-11 pr-11 py-3 text-white text-sm placeholder-gray-400 focus:ring-2 focus:ring-[#dfb05b] focus:border-[#dfb05b] outline-none transition"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-4 top-3.5 text-gray-400 hover:text-white transition"
+                  className="absolute right-4 top-3.5 text-gray-400 hover:text-white transition cursor-pointer"
                   aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -125,38 +144,38 @@ export default function CustomerLoginPage() {
               </div>
             </div>
 
-            {/* Submit */}
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 hover:scale-[1.02] transition shadow-[0_0_20px_rgba(37,99,235,0.5)] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl bg-[#a72d1e] hover:bg-[#8e2316] text-white font-bold text-sm transition-all duration-200 shadow-[0_4px_20px_rgba(167,45,30,0.5)] active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  Đang đăng nhập...
+                  Đang xử lý...
                 </>
               ) : (
-                "Đăng nhập"
+                "Đăng nhập ngay"
               )}
             </button>
 
             {/* Links */}
-            <div className="text-center space-y-2 pt-2">
+            <div className="text-center space-y-3 pt-4 border-t border-white/10 mt-6">
               <p className="text-gray-300 text-sm">
                 Chưa có tài khoản?{" "}
                 <Link
                   to={`/customer/register?redirect=${encodeURIComponent(redirectParam)}`}
-                  className="text-blue-300 font-bold hover:text-blue-200 underline transition"
+                  className="text-[#dfb05b] font-extrabold hover:text-[#f3cb7c] underline transition"
                 >
                   Đăng ký ngay
                 </Link>
               </p>
-              <p className="text-gray-500 text-xs">
-                Bạn là nhân viên?{" "}
+              <p className="text-gray-400 text-xs">
+                Bạn là nhân viên nhà hàng?{" "}
                 <Link
                   to="/auth/login"
-                  className="text-gray-400 hover:text-gray-300 underline transition"
+                  className="text-gray-300 hover:text-white underline transition"
                 >
                   Đăng nhập nội bộ
                 </Link>
@@ -168,3 +187,4 @@ export default function CustomerLoginPage() {
     </div>
   );
 }
+

@@ -16,6 +16,44 @@ export interface CustomerAuthResponse {
   customer: Customer;
 }
 
+export interface CustomerLoyaltyTransaction {
+  id: number;
+  points: number;
+  type: "earn" | "redeem";
+  note: string | null;
+  created_at: string;
+}
+
+export interface CustomerLoyaltySummary {
+  loyalty_points: number;
+  member_level: Customer["member_level"];
+  transactions: CustomerLoyaltyTransaction[];
+}
+
+export interface CustomerTierRewardVoucher {
+  id: number;
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  min_order: number;
+  points_cost: number;
+  required_member_level: Customer["member_level"];
+  is_unlocked: boolean;
+  is_redeemed: boolean;
+}
+
+export interface CustomerOwnedVoucher {
+  customer_voucher_id: number;
+  id: number;
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  min_order: number;
+  expired_at: string | null;
+  redeemed_at: string;
+  is_used: number;
+}
+
 export interface PublicMenuResponse {
   items: any[];
   categories: any[];
@@ -109,17 +147,23 @@ export const changeCustomerPassword = async (data: {
   await customerApi.patch("/v1/customer/me/change-password", data);
 };
 
-export const getCustomerLoyalty = async (): Promise<{
-  loyalty_points: number;
-  member_level: string;
-  transactions: any[];
-}> => {
+export const getCustomerLoyalty = async (): Promise<CustomerLoyaltySummary> => {
   const response = await customerApi.get("/v1/customer/loyalty");
   return response.data.data;
 };
 
-export const getCustomerVouchers = async (): Promise<any[]> => {
+export const getCustomerVouchers = async (): Promise<CustomerTierRewardVoucher[]> => {
   const response = await customerApi.get("/v1/customer/vouchers");
+  return response.data.data || [];
+};
+
+export const redeemVoucher = async (voucherId: number): Promise<{ loyalty_points: number; member_level: Customer["member_level"] }> => {
+  const response = await customerApi.post("/v1/customer/vouchers/redeem", { voucherId, voucher_id: voucherId });
+  return response.data.data;
+};
+
+export const getMyUnusedVouchers = async (): Promise<CustomerOwnedVoucher[]> => {
+  const response = await customerApi.get("/v1/customer/my-unused-vouchers");
   return response.data.data || [];
 };
 
@@ -129,14 +173,74 @@ export const getMyBookings = async (): Promise<any[]> => {
   return response.data.data || [];
 };
 
-export const getAvailableTables = async (startTime: string): Promise<any[]> => {
-  // Use existing table routes empty endpoint
-  const response = await customerApi.get(`/v1/tables/empty?start_time=${encodeURIComponent(startTime)}`);
-  return response.data.data || [];
+export const submitBookingReview = async (
+  bookingId: number,
+  data: { rating: number; comment?: string }
+): Promise<any> => {
+  const response = await customerApi.post(`/v1/customer/bookings/${bookingId}/review`, data);
+  return response.data;
 };
 
-export const createBooking = async (data: {
+export interface AvailableBookingTable {
+  id: number;
+  name: string;
+  capacity: number;
+  area_name?: string;
+  row_pos?: string | number;
+}
+
+/** Gets tables that can serve the requested party during the full booking interval. */
+export const getAvailableTables = async (
+  date: string,
+  time?: string,
+  guests?: number,
+): Promise<AvailableBookingTable[]> => {
+  if (time !== undefined && guests !== undefined) {
+    const response = await customerApi.get("/v1/bookings/available-tables", {
+      params: { date, time, guests },
+    });
+    return response.data.data?.tables || [];
+  } else {
+    // Fallback for single startTime string
+    const response = await customerApi.get(`/v1/tables/empty?start_time=${encodeURIComponent(date)}`);
+    return response.data.data || [];
+  }
+};
+
+export interface BookingTableAssignment {
   table_id: number;
+  table_name: string;
+  area_name?: string | null;
+  allocated_capacity: number;
+  is_primary?: number;
+}
+
+export interface CreatedBooking {
+  id: number;
+  confirmation_code?: string;
+  guest_name?: string;
+  guest_phone?: string;
+  party_size?: number;
+  deposit_amount?: number;
+  deposit_status?: string;
+  pre_order_total?: number;
+  pre_ordered_items?: Array<{
+    id?: number;
+    menu_item_name?: string;
+    quantity: number;
+    unit_price: number;
+  }>;
+  table_name?: string;
+  area_name?: string;
+  table_names?: string;
+  total_capacity?: number;
+  table_assignments?: BookingTableAssignment[];
+}
+
+export const createBooking = async (data: {
+  table_id?: number;
+  table_ids?: number[];
+  booking_channel?: "online" | "direct";
   customer_id?: number | null;
   promotion_id?: number | null;
   guest_name: string;
@@ -146,7 +250,13 @@ export const createBooking = async (data: {
   start_time: string;
   end_time: string;
   guest_note?: string;
-  pre_ordered_items?: any[];
+  pre_ordered_items?: Array<{
+    menu_item_id: number;
+    quantity: number;
+    unit_price?: number;
+    name?: string;
+    note?: string;
+  }>;
   items?: {
     menu_item_id: number;
     quantity: number;
@@ -154,7 +264,7 @@ export const createBooking = async (data: {
     name?: string;
     note?: string;
   }[];
-}): Promise<any> => {
+}): Promise<CreatedBooking> => {
   const response = await customerApi.post("/v1/bookings", data);
   return response.data.data;
 };
@@ -163,7 +273,7 @@ export const cancelBooking = async (id: number): Promise<void> => {
   await customerApi.patch(`/v1/customer/bookings/${id}/cancel`);
 };
 
-export const payBookingDeposit = async (id: number): Promise<any> => {
+export const payBookingDeposit = async (id: number): Promise<CreatedBooking> => {
   const response = await customerApi.patch(`/v1/bookings/${id}/pay-deposit`);
   return response.data.data;
 };
@@ -183,6 +293,8 @@ export const createEventContract = async (data: {
   return response.data.data;
 };
 
+
+
 export const getMyEventContracts = async (): Promise<any[]> => {
   const response = await customerApi.get("/v1/customer/contracts/my");
   return response.data.data || [];
@@ -200,3 +312,19 @@ export const createQROrder = async (data: {
   return response.data.data;
 };
 
+export const sendAIChatMessage = async (data: {
+  text: string;
+  messages: { role: "user" | "model"; text: string }[];
+}): Promise<{ reply: string; intent?: any; booking_created?: boolean; booking?: any }> => {
+  const response = await customerApi.post("/v1/public/ai-chat", data);
+  return response.data.data;
+};
+
+export const verifyQRSession = async (tableId?: string | null, token?: string | null): Promise<any> => {
+  try {
+    const response = await customerApi.get("/v1/public/verify-qr-session", { params: { tableId, token } });
+    return response.data.data;
+  } catch (err) {
+    return { valid: true, tableId, token };
+  }
+};

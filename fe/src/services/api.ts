@@ -68,6 +68,14 @@ export const getKdsVoidAlertsApi = async (): Promise<any[]> => {
 };
 
 /**
+ * Reuse a cooked cancelled item for another waiting table
+ */
+export const reuseKdsItemApi = async (cancelledItemId: string | number, targetItemId: string | number): Promise<any> => {
+  const response = await api.post(`/kds/items/${cancelledItemId}/reuse-to/${targetItemId}`);
+  return response.data.data;
+};
+
+/**
  * Fetch notifications, optionally filtered by user role
  */
 export const getNotificationsApi = async (role?: string): Promise<any[]> => {
@@ -91,6 +99,13 @@ export const clearNotificationsApi = async (role?: string): Promise<any> => {
   return response.data.data;
 };
 
+/**
+ * Fetch KDS history of completed and returned items
+ */
+export const getKdsHistoryApi = async (date?: string): Promise<any[]> => {
+  const response = await api.get("/kds/history", { params: { date } });
+  return response.data.data;
+};
 
 /**
  * Fetch all real ingredients from backend
@@ -115,8 +130,34 @@ export const deleteIngredientApi = async (id: string | number): Promise<any> => 
   return response.data.data;
 };
 
-export const updateInventoryQuantityApi = async (id: string | number, quantity: number, type: "import" | "export" | "adjust", reasonOrSupplier?: string): Promise<any> => {
-  const response = await api.patch(`/inventory/${id}/quantity`, { quantity, type, reasonOrSupplier });
+export const updateInventoryQuantityApi = async (id: string | number, payloadOrQuantity: any, type?: "import" | "export" | "adjust", reasonOrSupplier?: string): Promise<any> => {
+  let payload;
+  if (typeof payloadOrQuantity === 'object') {
+    payload = payloadOrQuantity;
+  } else {
+    payload = { quantity: payloadOrQuantity, type, reasonOrSupplier };
+  }
+  const response = await api.patch(`/inventory/${id}/quantity`, payload);
+  return response.data.data;
+};
+
+export const deleteInventoryTransactionApi = async (id: string | number): Promise<any> => {
+  const response = await api.delete(`/inventory/transactions/${id}`);
+  return response.data.data;
+};
+
+export const getIngredientBatchesApi = async (id: string | number): Promise<any[]> => {
+  const response = await api.get(`/inventory/${id}/batches`);
+  return response.data.data;
+};
+
+export const wasteExpiredBatchesApi = async (): Promise<any> => {
+  const response = await api.post(`/inventory/waste-expired`);
+  return response.data.data;
+};
+
+export const paySupplierDebtApi = async (id: string, data: { amount: number; note: string; paymentMethod: string }): Promise<any> => {
+  const response = await api.patch(`/inventory/suppliers/${id}/pay`, data);
   return response.data.data;
 };
 
@@ -156,5 +197,20 @@ export const updateSupplierApi = async (id: string | number, data: any): Promise
 
 export const deleteSupplierApi = async (id: string | number): Promise<any> => {
   const response = await api.delete(`/inventory/suppliers/${id}`);
+  return response.data.data;
+};
+
+export const getAllBatchesApi = async (): Promise<any> => {
+  const response = await api.get('/inventory/batches/all');
+  return response.data.data;
+};
+
+/**
+ * Submit inventory check records (cân bằng kho kiểm kê)
+ * Dùng route POST /inventory/stock-check thay vì updateInventoryQuantity
+ * để tránh tạo stock_in làm ô nhiễm tab Nhập hàng
+ */
+export const submitStockCheckApi = async (records: { ingredient_id: number; actual_stock: number }[]): Promise<any> => {
+  const response = await api.post('/inventory/stock-check', { records });
   return response.data.data;
 };

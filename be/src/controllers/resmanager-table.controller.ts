@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
+import { TABLE_STATUS, type TableStatus } from "../constants/table";
+import { BOOKING_SCHEDULE_MODE, type BookingScheduleMode } from "../constants/booking";
+
 
 // Lấy tất cả khu vực bàn (table_areas)
 export const getTableAreasHandler = async (_req: Request, res: Response): Promise<void> => {
@@ -27,10 +30,78 @@ export const getResmanagerTablesHandler = async (req: Request, res: Response): P
 export const getEmptyTablesHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const startTime = req.query.start_time as string | undefined;
-    const tables = await db.getEmptyTablesForBooking(startTime);
+    const endTime = req.query.end_time as string | undefined;
+    const tables = await db.getEmptyTablesForBooking(startTime, endTime);
     sendSuccess(res, tables, "Lấy danh sách bàn trống thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Tách bàn — POST /api/v1/tables/:id/split
+export const splitTableHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parentTableId = Number(req.params.id);
+    const { groups } = req.body;
+    const createdBy = req.user?.userId ? Number(req.user.userId) : 1;
+
+    if (!Array.isArray(groups) || groups.length < 2) {
+      sendError(res, "Danh sách nhóm cần tách (groups) phải là mảng tối thiểu 2 nhóm.", 400);
+      return;
+    }
+
+    const result = await db.splitResmanagerTable(parentTableId, groups, createdBy);
+
+    req.app.get("io")?.emit("table:split", {
+      parentTableId,
+      splitSessionId: result.splitSessionId,
+      subOrders: result.subOrders,
+    });
+    req.app.get("io")?.emit("table:status_changed", { tableId: parentTableId, status: "serving" });
+
+    sendSuccess(res, result, "Tách bàn thành công", 201);
+  } catch (error) {
+    const statusCode = error instanceof db.TableSplitValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
+  }
+};
+
+// Lấy danh sách sub-orders active của bàn — GET /api/v1/tables/:id/splits
+export const getTableSplitsHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    const splits = await db.getTableActiveSplits(tableId);
+    sendSuccess(res, splits, "Lấy thông tin nhóm tách bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Chuyển món giữa các nhóm sub-orders — POST /api/v1/tables/:id/split/items/move
+export const moveSplitItemsHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    const { source_child_order_id, target_child_order_id, order_item_id, quantity } = req.body;
+
+    if (!source_child_order_id || !target_child_order_id || !order_item_id || !quantity) {
+      sendError(res, "Thiếu thông tin chuyển món (source_child_order_id, target_child_order_id, order_item_id, quantity).", 400);
+      return;
+    }
+
+    await db.moveSplitOrderItems(
+      tableId,
+      Number(source_child_order_id),
+      Number(target_child_order_id),
+      Number(order_item_id),
+      Number(quantity)
+    );
+
+    req.app.get("io")?.emit("table:split-updated", { tableId, sourceChildOrderId: Number(source_child_order_id), targetChildOrderId: Number(target_child_order_id) });
+
+    sendSuccess(res, true, "Chuyển món giữa các nhóm thành công");
+  } catch (error) {
+    const statusCode = error instanceof db.TableSplitValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
   }
 };
 
@@ -49,33 +120,114 @@ export const getResmanagerTableHandler = async (req: Request, res: Response): Pr
   }
 };
 
+/** Returns one table's booking calendar without changing its physical service status. */
+export const getTableBookingScheduleHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    if (!Number.isInteger(tableId) || tableId <= 0) {
+      sendError(res, "Mã bàn không hợp lệ.", 400);
+      return;
+    }
+    const table = await db.getResmanagerTableById(tableId);
+    if (!table) {
+      sendError(res, "Không tìm thấy bàn.", 404);
+      return;
+    }
+    const startDate = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
+    const endDate = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if ((startDate && !datePattern.test(startDate)) || (endDate && !datePattern.test(endDate))) {
+      sendError(res, "Ngày lọc phải theo định dạng YYYY-MM-DD.", 400);
+      return;
+    }
+    const requestedMode = typeof req.query.mode === "string" ? req.query.mode : BOOKING_SCHEDULE_MODE.CURRENT;
+    if (requestedMode !== BOOKING_SCHEDULE_MODE.CURRENT && requestedMode !== BOOKING_SCHEDULE_MODE.HISTORY) {
+      sendError(res, "Chế độ lịch đặt không hợp lệ.", 400);
+      return;
+    }
+    const schedule = await db.getBookingSchedule({
+      tableId,
+      startDate,
+      endDate,
+      mode: requestedMode as BookingScheduleMode,
+    });
+    sendSuccess(res, { table, schedule }, "Lấy lịch đặt của bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+/** Checks a booked party in and opens its linked service order within the allowed time window. */
+export const checkInTableBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    const bookingId = Number(req.params.bookingId);
+    const createdBy = Number(req.body.created_by);
+    if (!Number.isInteger(tableId) || tableId <= 0 || !Number.isInteger(bookingId) || bookingId <= 0) {
+      sendError(res, "Bàn hoặc lịch đặt không hợp lệ.", 400);
+      return;
+    }
+    if (!Number.isInteger(createdBy) || createdBy <= 0) {
+      sendError(res, "Không xác định được nhân viên thực hiện check-in.", 400);
+      return;
+    }
+    const result = await db.checkInScheduledBooking(tableId, bookingId, createdBy);
+    req.app.get("io")?.emit("table:booking_checked_in", result);
+    sendSuccess(res, result, "Khách đã đến, bàn đang được phục vụ.", 201);
+  } catch (error) {
+    sendError(res, (error as Error).message, 400);
+  }
+};
+
+/** Resolve a selected table to the active order owned by its merge root. */
+export const getActiveOrderForTableHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tableId = Number(req.params.id);
+    if (!Number.isInteger(tableId) || tableId <= 0) {
+      sendError(res, "Mã bàn không hợp lệ", 400);
+      return;
+    }
+    const resolution = await db.getResmanagerActiveOrderForTable(tableId);
+    sendSuccess(res, resolution, "Lấy đơn đang phục vụ thành công");
+  } catch (error) {
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
+  }
+};
+
 // Cập nhật trạng thái bàn
 export const updateResmanagerTableStatusHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { status, maintenance_note } = req.body;
 
-    const validStatuses = ["empty", "reserved", "serving", "pending_payment", "cleaning", "maintenance"];
-    if (!status || !validStatuses.includes(status)) {
+    const validStatuses = Object.values(TABLE_STATUS);
+    if (typeof status !== "string" || !validStatuses.includes(status as TableStatus)) {
       sendError(res, `Trạng thái phải là: ${validStatuses.join(", ")}`, 400);
       return;
     }
 
     // Bắt buộc phải có lý do khi chuyển sang bảo trì
-    if (status === "maintenance" && !maintenance_note?.trim()) {
+    const tableStatus = status as TableStatus;
+    if (tableStatus === TABLE_STATUS.MAINTENANCE && !maintenance_note?.trim()) {
       sendError(res, "Vui lòng nhập lý do bảo trì (maintenance_note)", 400);
       return;
     }
 
-    const success = await db.updateResmanagerTableStatus(
+    const updateResult = await db.updateResmanagerTableStatus(
       Number(id),
-      status,
+      tableStatus,
       maintenance_note?.trim() || undefined,
     );
-    if (!success) {
+    if (!updateResult) {
       sendError(res, "Không tìm thấy bàn", 404);
       return;
     }
+
+    const io = req.app.get("io");
+    updateResult.updatedTableIds.forEach((tableId) => {
+      io?.emit("table:status_changed", { tableId, status: tableStatus });
+    });
 
     sendSuccess(res, { id, status, maintenance_note: maintenance_note?.trim() || null }, "Cập nhật trạng thái bàn thành công");
   } catch (error) {
@@ -83,28 +235,47 @@ export const updateResmanagerTableStatusHandler = async (req: Request, res: Resp
   }
 };
 
-// Chuyển bàn — POST /api/v1/tables/:id/transfer
+interface TransferTableRequestBody {
+  target_table_id?: unknown;
+  reason?: unknown;
+}
+
+/** Transfers one standalone active order to an empty physical table. */
 export const transferTableHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const sourceTableId = Number(req.params.id);
-    const { target_table_id } = req.body;
+    const { target_table_id, reason } = req.body as TransferTableRequestBody;
+    const targetTableId = Number(target_table_id);
 
-    if (!target_table_id) {
-      sendError(res, "target_table_id là bắt buộc", 400);
+    if (!Number.isInteger(sourceTableId) || sourceTableId <= 0
+      || !Number.isInteger(targetTableId) || targetTableId <= 0) {
+      sendError(res, "ID bàn nguồn và target_table_id phải hợp lệ", 400);
       return;
     }
 
-    const success = await db.transferResmanagerOrder(sourceTableId, Number(target_table_id));
-    if (!success) {
-      sendError(res, "Không thể chuyển bàn — bàn nguồn phải đang phục vụ hoặc chờ thanh toán", 400);
-      return;
-    }
+    const transferredByValue = req.user?.userId ? Number(req.user.userId) : null;
+    const transferredBy = Number.isInteger(transferredByValue) && Number(transferredByValue) > 0
+      ? Number(transferredByValue)
+      : null;
+    const transferReason = typeof reason === "string" ? reason.trim().slice(0, 500) : undefined;
+    const result = await db.transferResmanagerOrder(
+      sourceTableId,
+      targetTableId,
+      transferredBy,
+      transferReason || undefined,
+    );
 
-    // Emit socket event nếu có
-    req.app.get("io")?.emit("table:transferred", { sourceTableId, targetTableId: Number(target_table_id) });
-
-    sendSuccess(res, { sourceTableId, targetTableId: Number(target_table_id) }, "Chuyển bàn thành công");
+    const io = req.app.get("io");
+    io?.to("pos_lounge").emit("table:transferred", result);
+    io?.emit("table:transferred", result);
+    io?.emit("kds:order_table_transferred", result);
+    sendSuccess(res, result, "Chuyển bàn thành công");
+    return;
   } catch (error) {
+    if (error instanceof db.TableTransferValidationError) {
+      sendError(res, error.message, 400);
+      return;
+    }
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
@@ -159,63 +330,66 @@ export const mergeTableHandler = async (req: Request, res: Response): Promise<vo
       clusterTables.push(mergedTable);
     }
 
-    const success = await db.mergeResmanagerTables(primaryTableId, merged_table_ids.map(Number));
+    const mergedBy = req.user?.userId ? Number(req.user.userId) : null;
+    const result = await db.mergeResmanagerTablesTransactionally(
+      primaryTableId,
+      merged_table_ids.map(Number),
+      Number.isInteger(mergedBy) && Number(mergedBy) > 0 ? Number(mergedBy) : null,
+    );
 
-    if (!success) {
-      sendError(res, "Không thể gộp bàn", 400);
-      return;
-    }
+    const io = req.app.get("io");
+    io?.to("pos_lounge").emit("table:merged", result);
+    io?.emit("table:merged", result);
 
-    req.app.get("io")?.emit("table:merged", { primaryTableId, mergedTableIds: merged_table_ids });
-
-    sendSuccess(res, { primaryTableId, mergedTableIds: merged_table_ids }, "Gộp bàn thành công");
+    sendSuccess(res, result, "Gộp bàn thành công");
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
   }
 };
 
 // Bỏ gộp bàn — DELETE /api/v1/tables/:id/merge
-export const unmergeTableHandler = async (req: Request, res: Response): Promise<void> => {
+/** Allocate a large party to separate tables while keeping one primary order and invoice. */
+export const arrangeGroupSeatingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const primaryTableId = Number(req.params.id);
-    await db.unmergeResmanagerTable(primaryTableId);
+    const { assigned_table_ids } = req.body;
+    if (!Number.isInteger(primaryTableId) || primaryTableId <= 0) {
+      sendError(res, "ID bàn chính không hợp lệ", 400);
+      return;
+    }
+    if (!Array.isArray(assigned_table_ids) || assigned_table_ids.length === 0) {
+      sendError(res, "assigned_table_ids là bắt buộc (mảng các bàn xếp cho đoàn)", 400);
+      return;
+    }
 
-    req.app.get("io")?.emit("table:unmerged", { primaryTableId });
-
-    sendSuccess(res, { primaryTableId }, "Bỏ gộp bàn thành công");
+    const arrangedBy = req.user?.userId ? Number(req.user.userId) : null;
+    const result = await db.arrangeGroupSeatingTransactionally(
+      primaryTableId,
+      assigned_table_ids.map(Number),
+      Number.isInteger(arrangedBy) && Number(arrangedBy) > 0 ? Number(arrangedBy) : null,
+    );
+    const io = req.app.get("io");
+    io?.to("pos_lounge").emit("table:group_seating_changed", result);
+    io?.emit("table:group_seating_changed", result);
+    sendSuccess(res, result, "Xếp bàn đoàn thành công");
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
   }
 };
 
-// Tách bàn — POST /api/v1/tables/:id/split
-export const splitTableHandler = async (req: Request, res: Response): Promise<void> => {
+export const unmergeTableHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const parentTableId = Number(req.params.id);
-    const { target_table_id, child_label, item_ids } = req.body;
+    const primaryTableId = Number(req.params.id);
+    const mergedTableIds = await db.unmergeResmanagerTablesTransactionally(primaryTableId);
 
-    if (!target_table_id || !child_label) {
-      sendError(res, "target_table_id và child_label là bắt buộc", 400);
-      return;
-    }
+    req.app.get("io")?.emit("table:unmerged", { primaryTableId });
 
-    const result = await db.splitResmanagerTable(
-      parentTableId,
-      child_label,
-      Number(target_table_id),
-      Array.isArray(item_ids) ? item_ids.map(Number) : [],
-    );
-
-    if (!result.success) {
-      sendError(res, "Không tìm thấy order để tách hoặc bàn nguồn không hợp lệ", 400);
-      return;
-    }
-
-    req.app.get("io")?.emit("table:split", { parentTableId, targetTableId: Number(target_table_id), newOrderId: result.newOrderId });
-
-    sendSuccess(res, { parentTableId, targetTableId: Number(target_table_id), newOrderId: result.newOrderId }, "Tách bàn thành công");
+    sendSuccess(res, { primaryTableId, mergedTableIds }, "Bỏ gộp bàn thành công");
   } catch (error) {
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    const statusCode = error instanceof db.TableMergeValidationError ? 400 : 500;
+    sendError(res, (error as Error).message, statusCode);
   }
 };
 
@@ -223,7 +397,6 @@ export const splitTableHandler = async (req: Request, res: Response): Promise<vo
 export const createResmanagerTableHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { area_id, name, capacity, row_pos, col_pos } = req.body;
-
     if (!area_id || !name || !capacity || !row_pos || !col_pos) {
       sendError(res, "Các trường dữ liệu: khu vực, tên bàn, sức chứa, dòng và cột là bắt buộc!", 400);
       return;
@@ -262,11 +435,25 @@ export const updateResmanagerTableHandler = async (req: Request, res: Response):
     const id = Number(req.params.id);
     const { area_id, name, capacity, row_pos, col_pos } = req.body;
 
-    // Lấy thông tin tọa độ hiện tại trong DB
-    const currentTable = await db.getResmanagerTableCoordinates(id);
+    // Lấy thông tin bàn hiện tại trong DB
+    const currentTable = await db.getResmanagerTableById(id);
     if (!currentTable) {
       sendError(res, "Không tìm thấy bàn cần cập nhật", 404);
       return;
+    }
+
+    // Chặn thay đổi sức chứa khi có khách đang ngồi hoặc có lịch đặt bàn
+    if (capacity !== undefined && Number(capacity) !== Number(currentTable.capacity)) {
+      const hasActiveOrders = await db.hasActiveOrdersForTable(id);
+      const hasActiveBookings = await db.hasActiveBookingsForTable(id);
+      if (hasActiveOrders || hasActiveBookings) {
+        sendError(
+          res,
+          "Không thể thay đổi sức chứa của bàn khi đang có khách ngồi hoặc có lịch đặt bàn!",
+          400
+        );
+        return;
+      }
     }
 
     const data: any = {};

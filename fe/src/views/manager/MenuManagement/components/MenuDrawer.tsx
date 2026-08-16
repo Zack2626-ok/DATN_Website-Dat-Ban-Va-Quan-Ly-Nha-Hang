@@ -763,14 +763,14 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-sky-200 text-slate-600 rounded-lg hover:bg-sky-50/50 transition-colors font-medium text-sm"
+            className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-full hover:bg-slate-50 transition-colors font-bold text-xs"
           >
             Hủy bỏ
           </button>
           <button
             type="submit"
             form="menu-drawer-form"
-            className="flex-1 px-4 py-2.5 bg-sky-500 text-white rounded-lg hover:bg-[#ff4449] transition-colors font-medium text-sm flex items-center justify-center gap-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+            className="flex-1 px-4 py-2.5 bg-[#3E2016] text-white rounded-full hover:bg-[#5C2E17] transition-all font-black text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer"
           >
             <Save size={18} />
             Lưu món ăn

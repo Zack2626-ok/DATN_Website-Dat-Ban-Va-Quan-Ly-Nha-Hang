@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Printer, X, Receipt, Clock, User, Phone, QrCode } from "lucide-react";
 import type { WaiterOrderItem } from "../../../services/waiterService";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
+import { getComboConstituents } from "../../../utils/comboHelper";
 
 interface ProvisionalBillModalProps {
   isOpen: boolean;
@@ -126,16 +127,26 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
         ${startTime ? `<div class="row"><span>Giờ đến:</span><span>${startTime}</span></div>` : ""}
         ` : ""}
         <div class="divider"></div>
-        ${validItems.map(item => `
-          <div class="item-block">
-            <div class="bold" style="font-size: 11px;">${item.item_name || (item as any).menu_item_name || "—"}</div>
-            <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
-              <span>${item.quantity} x ${Number(item.unit_price).toLocaleString("vi-VN")}</span>
-              <span class="bold">${(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
+        ${validItems.map(item => {
+          const itemName = item.item_name || (item as any).menu_item_name || "—";
+          const constituents = getComboConstituents(itemName);
+          const subItemsHtml = constituents 
+            ? `<div style="font-size: 9px; color: #555; padding-left: 12px; margin-top: 2px; line-height: 1.2;">
+                ${constituents.map(sub => `<div>• ${sub}</div>`).join("")}
+               </div>`
+            : "";
+          return `
+            <div class="item-block">
+              <div class="bold" style="font-size: 11px;">${itemName}</div>
+              <div style="display: flex; justify-content: space-between; padding-left: 10px; margin-top: 2px;">
+                <span>${item.quantity} x ${Number(item.unit_price).toLocaleString("vi-VN")}</span>
+                <span class="bold">${(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
+              </div>
+              ${subItemsHtml}
+              ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
             </div>
-            ${item.kitchen_note ? `<div class="item-note">↳ ${item.kitchen_note}</div>` : ""}
-          </div>
-        `).join("")}
+          `;
+        }).join("")}
         <div class="divider"></div>
         <div class="row">
           <span>Tạm tính (món):</span>
@@ -176,9 +187,13 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
     `);
     printWindow.document.close();
     printWindow.focus();
+    printWindow.onafterprint = () => {
+      printWindow?.close();
+    };
     setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
+      if (printWindow) {
+        printWindow.print();
+      }
     }, 300);
   };
 
@@ -236,20 +251,37 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
             {validItems.length === 0 ? (
               <p className="text-center text-gray-400 py-4">Chưa có món ăn nào.</p>
             ) : (
-              validItems.map((item) => (
-                <div key={item.id} className="py-0.5">
-                  <div className="font-bold text-slate-800 text-[11px] leading-tight">
-                    {item.item_name || (item as any).menu_item_name || "—"}
+              validItems.map((item) => {
+                const itemName = item.item_name || (item as any).menu_item_name || "—";
+                const constituents = getComboConstituents(itemName);
+                return (
+                  <div key={item.id} className="py-1 border-b border-sky-50 last:border-0 animate-fade-in">
+                    <div className="font-bold text-slate-800 text-[11px] leading-tight">
+                      {itemName}
+                    </div>
+                    <div className="flex justify-between text-[11px] pl-2.5 text-slate-500 mt-0.5">
+                      <span>{item.quantity} × {Number(item.unit_price).toLocaleString("vi-VN")}đ</span>
+                      <span className="font-bold text-slate-700">{(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
+                    </div>
+                    {constituents && (
+                      <div className="pl-2.5 mt-1 flex flex-col gap-0.5">
+                        <span className="text-[9px] text-sky-600 font-extrabold uppercase tracking-wider block">Gồm có:</span>
+                        <div className="grid grid-cols-1 gap-0.5">
+                          {constituents.map((sub, sIdx) => (
+                            <div key={sIdx} className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
+                              <span className="h-0.5 w-0.5 rounded-full bg-sky-400"></span>
+                              {sub}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {item.kitchen_note && (
+                      <p className="text-[10px] text-sky-600 italic pl-2.5 mt-0.5">↳ {item.kitchen_note}</p>
+                    )}
                   </div>
-                  <div className="flex justify-between text-[11px] pl-2.5 text-slate-500 mt-0.5">
-                    <span>{item.quantity} × {Number(item.unit_price).toLocaleString("vi-VN")}đ</span>
-                    <span className="font-bold text-slate-700">{(item.quantity * Number(item.unit_price)).toLocaleString("vi-VN")}đ</span>
-                  </div>
-                  {item.kitchen_note && (
-                    <p className="text-[10px] text-sky-600 italic pl-2.5 mt-0.5">↳ {item.kitchen_note}</p>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 

@@ -28,6 +28,7 @@ export interface Voucher {
   value: number;
   min_order: number;
   max_uses: number | null;
+  points_required?: number;
   used_count: number;
   expired_at: string | null;
   is_active: number;
@@ -76,6 +77,10 @@ export const crmService = {
   },
   getCustomerLoyalty: async (id: number): Promise<LoyaltyTransaction[]> => {
     const res = await api.get(`/v1/crm/customers/${id}/loyalty`);
+    return res.data.data || [];
+  },
+  getCustomerUnusedVouchers: async (id: number): Promise<Voucher[]> => {
+    const res = await api.get(`/v1/crm/customers/${id}/vouchers`);
     return res.data.data || [];
   },
 

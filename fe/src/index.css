@@ -5,13 +5,13 @@
   --font-display: "Playfair Display", serif;
   --font-sans: "Outfit", system-ui, sans-serif;
 
-  --color-brand-primary: #0ea5e9; /* Sky 500 */
-  --color-brand-primary-hover: #0284c7; /* Sky 600 */
-  --color-brand-secondary: #7dd3fc; /* Sky 300 */
-  --color-brand-dark: #0369a1; /* Sky 700 */
-  --color-brand-dark-light: #f0f9ff; /* Sky 50 */
+  --color-brand-primary: #3E2016; /* Warm Client Brown */
+  --color-brand-primary-hover: #5C2E17;
+  --color-brand-secondary: #D4A373;
+  --color-brand-dark: #2A170E;
+  --color-brand-dark-light: #F8F6F2;
   --color-brand-dark-card: #ffffff;
-  --color-brand-accent: #38bdf8; /* Sky 400 */
+  --color-brand-accent: #5C2E17;
 
   --color-status-available: #10b981;
   --color-status-reserved: #f59e0b;
@@ -19,14 +19,25 @@
   --color-status-cleaning: #3b82f6;
 
   /* Admin Workstation Theme Colors */
-  --color-admin-primary: #0f62fe; /* Professional Royal Blue */
-  --color-admin-primary-hover: #0043ce;
-  --color-admin-primary-light: #e8f1ff;
-  --color-admin-bg: #f8fafc;
+  --color-admin-primary: #3E2016; /* Warm Client Brown */
+  --color-admin-primary-hover: #5C2E17;
+  --color-admin-primary-light: #F8F6F2;
+  --color-admin-bg: #E4E4E4;
   --color-admin-card: #ffffff;
   --color-admin-border: #e2e8f0;
-  --color-admin-text-main: #0f172a;
-  --color-admin-text-sub: #475569;
+  --color-admin-text-main: #1A1A1A;
+  --color-admin-text-sub: #8A8A8A;
+
+  /* Client / Customer Page Theme Colors (Restro Style) */
+  --color-client-primary: #a72d1e; /* Deep terracotta red */
+  --color-client-primary-hover: #8e2316;
+  --color-client-secondary: #dfb05b; /* Warm mustard gold */
+  --color-client-secondary-hover: #c99c4c;
+  --color-client-bg: #fdfbf7; /* Elegant soft cream background */
+  --color-client-card: #ffffff;
+  --color-client-text: #2a221c; /* Deep warm charcoal */
+  --color-client-muted: #7b6f65; /* Muted warm grey */
+  --color-client-accent: #f0eae1; /* Light sand/beige */
 }
 
 * {

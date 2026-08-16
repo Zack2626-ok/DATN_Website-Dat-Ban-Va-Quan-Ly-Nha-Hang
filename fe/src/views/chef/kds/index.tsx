@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import { io } from "socket.io-client";
 import { toast } from "react-hot-toast";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
@@ -6,6 +7,7 @@ import {
   fetchKdsVoidAlerts,
   updateKdsItemStatus,
   updateKdsBatchStatus,
+  reuseKdsItem,
   setStationFilter,
   dismissVoidAlert,
   dismissNewAlert,
@@ -30,6 +32,7 @@ import {
   X,
   FolderKanban
 } from "lucide-react";
+import { getComboConstituents } from "../../../utils/comboHelper";
 
 export const ChefKitchenQueue: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -146,7 +149,7 @@ export const ChefKitchenQueue: React.FC = () => {
                   } max-w-sm w-full bg-white/95 backdrop-blur-md shadow-2xl rounded-2xl pointer-events-auto flex border border-red-200/80 p-4 transition-all duration-300 transform scale-100 hover:scale-[1.02]`}
               >
                 <div className="flex-1 w-0 flex items-start gap-3">
-                  <div className="flex-shrink-0 pt-0.5">
+                  <div className="shrink-0 pt-0.5">
                     <div className="bg-red-500 text-white p-2 rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center animate-bounce" style={{ animationDuration: '3s' }}>
                       <AlertCircle size={18} className="stroke-[2.5]" />
                     </div>
@@ -182,7 +185,7 @@ export const ChefKitchenQueue: React.FC = () => {
     }
   }, [items]);
 
-  // Fetch data immediately and setup polling every 3 seconds
+  // Fetch data immediately and setup polling fallback & Socket.io sync
   useEffect(() => {
     const loadData = () => {
       dispatch(fetchKdsItems(stationFilter === "all" ? undefined : stationFilter));
@@ -190,8 +193,39 @@ export const ChefKitchenQueue: React.FC = () => {
     };
 
     loadData();
-    const interval = setInterval(loadData, 3000);
-    return () => clearInterval(interval);
+
+    // Thiết lập Socket.IO đồng bộ thời gian thực
+    const socketUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("connect", () => {
+      console.log("⚡ Connected to Socket.io Server for KDS screen");
+    });
+
+    socket.on("kds_updated", () => {
+      loadData();
+    });
+    socket.on("order_updated", () => {
+      loadData();
+    });
+    socket.on("order:item_voided", () => {
+      loadData();
+    });
+
+    // Polling dự phòng khi lag hoặc rớt socket
+    const interval = setInterval(loadData, 15000);
+
+    return () => {
+      clearInterval(interval);
+      socket.off("connect");
+      socket.off("kds_updated");
+      socket.off("order_updated");
+      socket.off("order:item_voided");
+      socket.disconnect();
+      console.log("🔌 Disconnected Socket.io Client for KDS screen");
+    };
   }, [dispatch, stationFilter]);
 
   // Audio trigger on new active alerts
@@ -216,6 +250,17 @@ export const ChefKitchenQueue: React.FC = () => {
       });
   };
 
+  const handleReuseItem = (cancelledItemId: string | number, targetItemId: string | number) => {
+    dispatch(reuseKdsItem({ cancelledItemId, targetItemId }))
+      .unwrap()
+      .then(() => {
+        toast.success("Tái sử dụng món hủy thành công!");
+      })
+      .catch((err) => {
+        toast.error(err || "Lỗi khi tái sử dụng món ăn");
+      });
+  };
+
   const getTableNumber = (tableName?: string): number => {
     if (!tableName) return 999999;
     if (tableName === "Mang về") return 99999;
@@ -225,11 +270,16 @@ export const ChefKitchenQueue: React.FC = () => {
 
   // Group kitchen items into 4 columns: Chờ nấu (pending), Đang nấu (cooking), Sẵn sàng (done), Hủy/Trả món (voided)
   const columns = useMemo(() => {
+    const now = Date.now();
     return {
       pending: filteredItems.filter((item) => item.status === "pending" || item.status === "waiting_kitchen"),
       cooking: filteredItems.filter((item) => item.status === "cooking"),
-      done: filteredItems.filter((item) => item.status === "done"),
-      voided: filteredItems.filter((item) => (item.status === "voided" || item.status === "cancelled") && item.chefDismissed !== 1),
+      done: filteredItems.filter((item) => {
+        if (item.status !== "done") return false;
+        const updatedTime = item.updatedAt ? new Date(item.updatedAt).getTime() : new Date(item.createdAt).getTime();
+        return now - updatedTime < 3 * 60 * 1000;
+      }),
+      voided: filteredItems.filter((item) => item.status === "voided" || item.status === "cancelled"),
     };
   }, [filteredItems]);
 
@@ -255,6 +305,57 @@ export const ChefKitchenQueue: React.FC = () => {
   const groupedCooking = useMemo(() => groupItemsByTable(columns.cooking), [columns.cooking]);
   const groupedDone = useMemo(() => groupItemsByTable(columns.done), [columns.done]);
   const groupedVoided = useMemo(() => groupItemsByTable(columns.voided), [columns.voided]);
+
+  const groupedVoidAlerts = useMemo(() => {
+    const activeVoid = voidAlerts.filter((a) => !a.dismissed);
+    const groups: Record<string, { tableName: string; orderId: string | number; items: typeof activeVoid }> = {};
+    activeVoid.forEach((alert) => {
+      const key = `${alert.tableName}_${alert.orderId}`;
+      if (!groups[key]) {
+        groups[key] = {
+          tableName: alert.tableName,
+          orderId: alert.orderId,
+          items: [],
+        };
+      }
+      groups[key].items.push(alert);
+    });
+    return Object.values(groups);
+  }, [voidAlerts]);
+
+  const groupedNewAlerts = useMemo(() => {
+    const activeNew = newAlerts.filter((a) => !a.dismissed);
+    const groups: Record<string, { tableName: string; orderId: string | number; items: typeof activeNew }> = {};
+    activeNew.forEach((alert) => {
+      const key = `${alert.tableName}_${alert.orderId}`;
+      if (!groups[key]) {
+        groups[key] = {
+          tableName: alert.tableName,
+          orderId: alert.orderId,
+          items: [],
+        };
+      }
+      groups[key].items.push(alert);
+    });
+    return Object.values(groups);
+  }, [newAlerts]);
+
+  const groupedChangeAlerts = useMemo(() => {
+    const activeChange = changeAlerts.filter((a) => !a.dismissed);
+    const groups: Record<string, { tableName: string; orderId: string | number; items: typeof activeChange }> = {};
+    activeChange.forEach((alert) => {
+      const key = `${alert.tableName}_${alert.orderId}`;
+      if (!groups[key]) {
+        groups[key] = {
+          tableName: alert.tableName,
+          orderId: alert.orderId,
+          items: [],
+        };
+      }
+      groups[key].items.push(alert);
+    });
+    return Object.values(groups);
+  }, [changeAlerts]);
 
   // Group pending items for Batch Cooking
   const batchGroups = useMemo(() => {
@@ -352,13 +453,13 @@ export const ChefKitchenQueue: React.FC = () => {
   };
 
   return (
-    <div className="bg-slate-50 text-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-6 select-none min-h-[700px] transition-all">
+    <div className="bg-slate-50 text-slate-800 p-6 rounded-2xl shadow-xl border border-slate-200 flex flex-col gap-6 select-none min-h-175 transition-all">
 
       {/* 1. KDS Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-5 gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <ChefHat size={28} className="text-[#0f62fe]" />
+            <ChefHat size={28} className="text-admin-primary" />
             <h3 className="text-2xl font-black tracking-tight text-slate-800 font-display">
               Hệ Thống Hiển Thị Bếp (KDS)
             </h3>
@@ -398,7 +499,7 @@ export const ChefKitchenQueue: React.FC = () => {
             <button
               onClick={() => setActiveTab("kanban")}
               className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer transition-all ${activeTab === "kanban"
-                ? "bg-[#0f62fe] text-white shadow-md"
+                ? "bg-admin-primary text-white shadow-md"
                 : "text-slate-600 hover:text-slate-850"
                 }`}
             >
@@ -408,7 +509,7 @@ export const ChefKitchenQueue: React.FC = () => {
             <button
               onClick={() => setActiveTab("batch")}
               className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 cursor-pointer transition-all ${activeTab === "batch"
-                ? "bg-[#0f62fe] text-white shadow-md"
+                ? "bg-admin-primary text-white shadow-md"
                 : "text-slate-600 hover:text-slate-850"
                 }`}
             >
@@ -420,114 +521,143 @@ export const ChefKitchenQueue: React.FC = () => {
       </div>
 
       {/* 2. Void Alerts Banner */}
-      {voidAlerts.filter((a) => !a.dismissed).length > 0 && (
+      {groupedVoidAlerts.length > 0 && (
         <div className="flex flex-col gap-2">
-          {voidAlerts
-            .filter((a) => !a.dismissed)
-            .map((alert) => (
-              <div
-                key={alert.id}
-                className="bg-rose-50 border border-rose-200 text-rose-700 p-3.5 rounded-xl flex items-center justify-between gap-3 animate-pulse shadow-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="bg-rose-500 text-white p-1.5 rounded-lg">
-                    <AlertCircle size={16} />
+          {groupedVoidAlerts.map((group, index) => (
+            <div
+              key={index}
+              className="bg-rose-50 border border-rose-200 text-rose-700 p-3.5 rounded-xl flex items-center justify-between gap-4 animate-pulse shadow-sm"
+            >
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <div className="bg-rose-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
+                  <AlertCircle size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-black text-rose-800 flex items-center gap-2 flex-wrap">
+                    CẢNH BÁO HỦY MÓN - BÀN: <strong className="text-rose-900 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
                   </div>
-                  <div>
-                    <div className="text-sm font-black text-rose-800">
-                      CẢNH BÁO HỦY MÓN: {alert.name} (x{alert.quantity})
-                    </div>
-                    <div className="text-[11px] text-rose-600 mt-0.5">
-                      Bàn: <strong className="text-rose-900">{alert.tableName}</strong> | Lý do: {alert.voidReason || "Yêu cầu từ nhân viên phục vụ"}
-                    </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-rose-750">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="flex flex-col bg-rose-100/40 px-2.5 py-1 rounded-lg border border-rose-200/50">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-extrabold text-rose-900">{item.name}</span>
+                          <span className="bg-rose-200 text-rose-950 px-1 py-0.2 rounded font-black text-[9px]">x{item.quantity}</span>
+                        </div>
+                        {item.voidReason && (
+                          <span className="text-[10px] text-rose-600 italic">Lý do: {item.voidReason}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => dispatch(dismissVoidAlert(alert.id))}
-                  className="bg-rose-100 hover:bg-rose-200 text-rose-800 px-3 py-1.5 rounded-lg text-xs font-bold border border-rose-300 flex items-center gap-1 cursor-pointer transition-colors"
-                >
-                  <X size={12} />
-                  Đã xem & Xác nhận
-                </button>
               </div>
-            ))}
+              <button
+                onClick={() => {
+                  group.items.forEach((item) => {
+                    dispatch(dismissVoidAlert(item.id));
+                  });
+                }}
+                className="bg-rose-100 hover:bg-rose-200 text-rose-800 px-3 py-1.5 rounded-lg text-xs font-bold border border-rose-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
+              >
+                <X size={12} />
+                Đã xem & Xác nhận ({group.items.length})
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
       {/* 2.1 New Item Alerts Banner */}
-      {newAlerts.filter((a) => !a.dismissed).length > 0 && (
+      {groupedNewAlerts.length > 0 && (
         <div className="flex flex-col gap-2 mt-2">
-          {newAlerts
-            .filter((a) => !a.dismissed)
-            .map((alert) => (
-              <div
-                key={alert.id}
-                className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3.5 rounded-xl flex items-center justify-between gap-3 animate-pulse shadow-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="bg-emerald-500 text-white p-1.5 rounded-lg">
-                    <Info size={16} />
+          {groupedNewAlerts.map((group, index) => (
+            <div
+              key={index}
+              className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3.5 rounded-xl flex items-center justify-between gap-4 animate-pulse shadow-sm"
+            >
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <div className="bg-emerald-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
+                  <Info size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-black text-emerald-800 flex items-center gap-2 flex-wrap">
+                    MÓN MỚI - BÀN: <strong className="text-emerald-900 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
                   </div>
-                  <div>
-                    <div className="text-sm font-black text-emerald-800">
-                      MÓN MỚI: {alert.name} (x{alert.quantity})
-                    </div>
-                    <div className="text-[11px] text-emerald-600 mt-0.5">
-                      Bàn: <strong className="text-emerald-900">{alert.tableName}</strong> | Trạm: {getStationLabel(alert.kitchenStation)}
-                    </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-emerald-750">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="flex items-center gap-1.5 bg-emerald-100/40 px-2.5 py-1 rounded-lg border border-emerald-200/50">
+                        <span className="font-extrabold text-emerald-900">{item.name}</span>
+                        <span className="bg-emerald-200 text-emerald-950 px-1 py-0.2 rounded font-black text-[9px]">x{item.quantity}</span>
+                        <span className="text-[10px] text-emerald-600 bg-emerald-100/60 px-1 py-0.2 rounded">({getStationLabel(item.kitchenStation)})</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => dispatch(dismissNewAlert(alert.id))}
-                  className="bg-emerald-100 hover:bg-emerald-200 text-emerald-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-300 flex items-center gap-1 cursor-pointer transition-colors"
-                >
-                  <X size={12} />
-                  Đã xem
-                </button>
               </div>
-            ))}
+              <button
+                onClick={() => {
+                  group.items.forEach((item) => {
+                    dispatch(dismissNewAlert(item.id));
+                  });
+                }}
+                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
+              >
+                <X size={12} />
+                Đã xem ({group.items.length})
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
       {/* 2.2 Changed Item Alerts Banner */}
-      {changeAlerts.filter((a) => !a.dismissed).length > 0 && (
+      {groupedChangeAlerts.length > 0 && (
         <div className="flex flex-col gap-2 mt-2">
-          {changeAlerts
-            .filter((a) => !a.dismissed)
-            .map((alert) => (
-              <div
-                key={alert.id}
-                className="bg-amber-50 border border-amber-200 text-amber-700 p-3.5 rounded-xl flex items-center justify-between gap-3 animate-pulse shadow-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="bg-amber-500 text-white p-1.5 rounded-lg">
-                    <RefreshCcw size={16} />
+          {groupedChangeAlerts.map((group, index) => (
+            <div
+              key={index}
+              className="bg-amber-50 border border-amber-200 text-amber-700 p-3.5 rounded-xl flex items-center justify-between gap-4 animate-pulse shadow-sm"
+            >
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <div className="bg-amber-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
+                  <RefreshCcw size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-black text-amber-800 flex items-center gap-2 flex-wrap">
+                    THAY ĐỔI YÊU CẦU - BÀN: <strong className="text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
                   </div>
-                  <div>
-                    <div className="text-sm font-black text-amber-800">
-                      ĐỔI {alert.changeType === "quantity" ? "SỐ LƯỢNG" : "GHI CHÚ"}: {alert.name}
-                    </div>
-                    <div className="text-[11px] text-amber-600 mt-0.5">
-                      Bàn: <strong className="text-amber-900">{alert.tableName}</strong> | Thay đổi: {alert.oldValue} ➔ <strong className="text-amber-750 bg-amber-100 px-1.5 py-0.5 rounded font-black">{alert.newValue}</strong>
-                    </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-amber-750">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="flex items-center gap-1.5 bg-amber-100/40 px-2.5 py-1 rounded-lg border border-amber-200/50">
+                        <span className="font-extrabold text-amber-900">{item.name}</span>
+                        <span className="text-[10px] text-amber-600 bg-amber-100/60 px-1 py-0.2 rounded font-semibold">
+                          {item.changeType === "quantity" ? "Số lượng" : "Ghi chú"}: {item.oldValue} ➔ <strong className="text-amber-750 bg-amber-100 px-1 rounded font-black">{item.newValue}</strong>
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => dispatch(dismissChangeAlert(alert.id))}
-                  className="bg-amber-100 hover:bg-amber-200 text-amber-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300 flex items-center gap-1 cursor-pointer transition-colors"
-                >
-                  <X size={12} />
-                  Đã xác nhận
-                </button>
               </div>
-            ))}
+              <button
+                onClick={() => {
+                  group.items.forEach((item) => {
+                    dispatch(dismissChangeAlert(item.id));
+                  });
+                }}
+                className="bg-amber-100 hover:bg-amber-200 text-amber-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
+              >
+                <X size={12} />
+                Đã xác nhận ({group.items.length})
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
       {/* 3. KDS Station Filters */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 text-xs text-slate-500 font-bold">
-          <Filter size={13} className="text-[#0f62fe]" />
+          <Filter size={13} className="text-admin-primary" />
           Bộ lọc trạm bếp:
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -536,7 +666,7 @@ export const ChefKitchenQueue: React.FC = () => {
               key={station}
               onClick={() => dispatch(setStationFilter(station))}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${stationFilter === station
-                ? "bg-[#0f62fe] text-white border border-[#0f62fe]"
+                ? "bg-admin-primary text-white border border-admin-primary"
                 : "bg-slate-100 hover:bg-slate-200 text-slate-650 border border-slate-250"
                 }`}
             >
@@ -555,7 +685,7 @@ export const ChefKitchenQueue: React.FC = () => {
         /* 4. Kanban View */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {/* Cột 1: Chờ nấu */}
-          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+          <div className="flex flex-col gap-4 bg-admin-bg p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <span className="text-xs font-black uppercase text-blue-700 tracking-wider flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
@@ -569,7 +699,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedPending.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -600,54 +730,74 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Danh sách món */}
                       <div className="flex flex-col gap-3">
-                        {group.items.map((item) => (
-                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
-                                {item.name}
-                              </div>
-                              <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-0.5 rounded-lg border border-blue-200/60 shadow-sm whitespace-nowrap">
-                                x{item.quantity}
-                              </span>
-                            </div>
-
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
-                                {getStationLabel(item.kitchenStation)}
-                              </span>
-                              {item.orderType && (
-                                <span className="text-slate-400 font-semibold">
-                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                        {group.items.map((item) => {
+                          const constituents = getComboConstituents(item.name);
+                          return (
+                            <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
+                                  {item.name}
+                                </div>
+                                <span className="text-blue-600 text-xs font-black bg-blue-50/80 px-2 py-0.5 rounded-lg border border-blue-200/60 shadow-sm whitespace-nowrap">
+                                  x{item.quantity}
                                 </span>
+                              </div>
+
+                              <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-blue-600 border border-slate-200/50">
+                                  {getStationLabel(item.kitchenStation)}
+                                </span>
+                                {item.orderType && (
+                                  <span className="text-slate-400 font-semibold">
+                                    ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                                  </span>
+                                )}
+                                <span className="text-blue-650 font-bold bg-blue-50/60 border border-blue-150 border-blue-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                                <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🤵 {item.waiterName || "Phục vụ"}
+                                </span>
+                              </div>
+
+                              {/* Món đặt trước badge */}
+                              {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                                <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
+                                  🍳 Món đặt trước (Nấu sẵn)
+                                </div>
                               )}
-                              <span className="text-blue-650 font-bold bg-blue-50/60 border border-blue-150 border-blue-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
-                                🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
+
+                              {constituents && (
+                                <div className="mt-1.5 bg-blue-50/50 rounded-xl p-2.5 border border-blue-100/60 flex flex-col gap-1">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-blue-600 block">Chi tiết combo:</span>
+                                  <div className="flex flex-col gap-1 pl-1">
+                                    {constituents.map((sub, idx) => (
+                                      <div key={idx} className="text-[10px] text-slate-650 font-bold flex items-center gap-1.5">
+                                        <span className="h-1 w-1 rounded-full bg-blue-500"></span>
+                                        {sub}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Ghi chú */}
+                              {(item.kitchenNote || (item as any).kitchen_note) && (
+                                <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
+                                  📝 {item.kitchenNote || (item as any).kitchen_note}
+                                </div>
+                              )}
+
+                              {/* Nút nấu món lẻ */}
+                              <button
+                                onClick={() => handleUpdateStatus(item.id, "cooking")}
+                                className="mt-2 w-full py-1.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              >
+                                <Play size={9} className="fill-white" /> Bắt đầu nấu
+                              </button>
                             </div>
-
-                            {/* Món đặt trước badge */}
-                            {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
-                              <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
-                                🍳 Món đặt trước (Nấu sẵn)
-                              </div>
-                            )}
-
-                            {/* Ghi chú */}
-                            {(item.kitchenNote || (item as any).kitchen_note) && (
-                              <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
-                                📝 {item.kitchenNote || (item as any).kitchen_note}
-                              </div>
-                            )}
-
-                            {/* Nút nấu món lẻ */}
-                            <button
-                              onClick={() => handleUpdateStatus(item.id, "cooking")}
-                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
-                            >
-                              <Play size={9} className="fill-white" /> Bắt đầu nấu
-                            </button>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
 
                       {/* Hành động cả bàn (nếu có > 1 món) */}
@@ -661,7 +811,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "cooking" })));
                               });
                           }}
-                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
+                          className="mt-1 w-full py-2 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
                         >
                           <Play size={10} className="fill-white" /> Bắt đầu cả bàn ({group.items.length})
                         </button>
@@ -674,7 +824,7 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {/* Cột 2: Đang nấu */}
-          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+          <div className="flex flex-col gap-4 bg-admin-bg p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <span className="text-xs font-black uppercase text-amber-700 tracking-wider flex items-center gap-2">
                 <Flame size={14} className="text-amber-500 animate-pulse" />
@@ -685,7 +835,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedCooking.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -716,54 +866,74 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Danh sách món */}
                       <div className="flex flex-col gap-3">
-                        {group.items.map((item) => (
-                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
-                                {item.name}
-                              </div>
-                              <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-0.5 rounded-lg border border-amber-200/60 shadow-sm whitespace-nowrap">
-                                x{item.quantity}
-                              </span>
-                            </div>
-
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
-                                {getStationLabel(item.kitchenStation)}
-                              </span>
-                              {item.orderType && (
-                                <span className="text-slate-400 font-semibold">
-                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                        {group.items.map((item) => {
+                          const constituents = getComboConstituents(item.name);
+                          return (
+                            <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="text-[13px] font-extrabold text-slate-800 leading-snug">
+                                  {item.name}
+                                </div>
+                                <span className="text-amber-600 text-xs font-black bg-amber-50/80 px-2 py-0.5 rounded-lg border border-amber-200/60 shadow-sm whitespace-nowrap">
+                                  x{item.quantity}
                                 </span>
+                              </div>
+
+                              <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-amber-600 border border-slate-200/50">
+                                  {getStationLabel(item.kitchenStation)}
+                                </span>
+                                {item.orderType && (
+                                  <span className="text-slate-400 font-semibold">
+                                    ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                                  </span>
+                                )}
+                                <span className="text-amber-700 font-bold bg-amber-50/60 border border-amber-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                                <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🤵 {item.waiterName || "Phục vụ"}
+                                </span>
+                              </div>
+
+                              {/* Món đặt trước badge */}
+                              {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                                <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
+                                  🍳 Món đặt trước (Nấu sẵn)
+                                </div>
                               )}
-                              <span className="text-amber-700 font-bold bg-amber-50/60 border border-amber-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
-                                🕒 {new Date(item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
+
+                              {constituents && (
+                                <div className="mt-1.5 bg-amber-50/50 rounded-xl p-2.5 border border-amber-100/60 flex flex-col gap-1">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 block">Chi tiết combo:</span>
+                                  <div className="flex flex-col gap-1 pl-1">
+                                    {constituents.map((sub, idx) => (
+                                      <div key={idx} className="text-[10px] text-slate-650 font-bold flex items-center gap-1.5">
+                                        <span className="h-1 w-1 rounded-full bg-amber-500"></span>
+                                        {sub}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Ghi chú */}
+                              {(item.kitchenNote || (item as any).kitchen_note) && (
+                                <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
+                                  📝 {item.kitchenNote || (item as any).kitchen_note}
+                                </div>
+                              )}
+
+                              {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
+                              <button
+                                onClick={() => handleUpdateStatus(item.id, "done")}
+                                className="mt-2 w-full py-1.5 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
+                              >
+                                <Check size={9} /> Hoàn thành
+                              </button>
                             </div>
-
-                            {/* Món đặt trước badge */}
-                            {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
-                              <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
-                                🍳 Món đặt trước (Nấu sẵn)
-                              </div>
-                            )}
-
-                            {/* Ghi chú */}
-                            {(item.kitchenNote || (item as any).kitchen_note) && (
-                              <div className="mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200/60 px-2 py-1 rounded-xl flex items-center gap-1 shadow-sm">
-                                📝 {item.kitchenNote || (item as any).kitchen_note}
-                              </div>
-                            )}
-
-                            {/* Nút hoàn thành món lẻ (không có nút hoàn tác) */}
-                            <button
-                              onClick={() => handleUpdateStatus(item.id, "done")}
-                              className="mt-2 w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-650 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200"
-                            >
-                              <Check size={9} /> Hoàn thành
-                            </button>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
 
                       {/* Hành động cả bàn (nếu có > 1 món) */}
@@ -777,7 +947,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "done" })));
                               });
                           }}
-                          className="mt-1 w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
+                          className="mt-1 w-full py-2 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-emerald-500/20 active:scale-95"
                         >
                           <Check size={10} className="animate-pulse" /> Hoàn thành cả bàn ({group.items.length})
                         </button>
@@ -790,7 +960,7 @@ export const ChefKitchenQueue: React.FC = () => {
           </div>
 
           {/* Cột 3: Sẵn sàng */}
-          <div className="flex flex-col gap-4 bg-[#f8fafc] p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
+          <div className="flex flex-col gap-4 bg-admin-bg p-4.5 rounded-2xl border border-slate-200/80 shadow-md">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <span className="text-xs font-black uppercase text-emerald-700 tracking-wider flex items-center gap-2">
                 <CheckCheck size={14} className="text-emerald-500" />
@@ -801,7 +971,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedDone.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -823,39 +993,59 @@ export const ChefKitchenQueue: React.FC = () => {
 
                       {/* Danh sách món */}
                       <div className="flex flex-col gap-3">
-                        {group.items.map((item) => (
-                          <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="text-[13px] font-extrabold text-slate-400 line-through leading-snug">
-                                {item.name}
-                              </div>
-                              <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-0.5 rounded-lg border border-emerald-200/60 shadow-sm whitespace-nowrap">
-                                x{item.quantity}
-                              </span>
-                            </div>
-
-                            <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
-                                {getStationLabel(item.kitchenStation)}
-                              </span>
-                              {item.orderType && (
-                                <span className="text-slate-400 font-semibold">
-                                  ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                        {group.items.map((item) => {
+                          const constituents = getComboConstituents(item.name);
+                          return (
+                            <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="text-[13px] font-extrabold text-slate-400 line-through leading-snug">
+                                  {item.name}
+                                </div>
+                                <span className="text-emerald-600 text-xs font-black bg-emerald-50/80 px-2 py-0.5 rounded-lg border border-emerald-200/60 shadow-sm whitespace-nowrap">
+                                  x{item.quantity}
                                 </span>
-                              )}
-                              <span className="text-emerald-700 font-bold bg-emerald-50/80 border border-emerald-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
-                                🕒 {new Date(item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </span>
-                            </div>
-
-                            {/* Món đặt trước badge */}
-                            {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
-                              <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
-                                🍳 Món đặt trước (Nấu sẵn)
                               </div>
-                            )}
-                          </div>
-                        ))}
+
+                              <div className="text-[9px] flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="bg-slate-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider text-slate-500 border border-slate-200/50">
+                                  {getStationLabel(item.kitchenStation)}
+                                </span>
+                                {item.orderType && (
+                                  <span className="text-slate-400 font-semibold">
+                                    ({item.orderType === "dine_in" ? "Tại bàn" : item.orderType === "delivery" ? "Ship" : (item.orderType as string) === "pre_order" ? "Đặt trước" : "Takeaway"})
+                                  </span>
+                                )}
+                                <span className="text-emerald-700 font-bold bg-emerald-50/80 border border-emerald-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🕒 {new Date(item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                </span>
+                                <span className="text-slate-600 font-extrabold bg-slate-50 border border-slate-200 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                  🤵 {item.waiterName || "Phục vụ"}
+                                </span>
+                              </div>
+
+                              {/* Món đặt trước badge */}
+                              {((item.orderType as string) === "pre_order" || (item.kitchenNote && item.kitchenNote.includes("Món đặt trước"))) && (
+                                <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-black text-[10px] uppercase shadow-sm w-fit">
+                                  🍳 Món đặt trước (Nấu sẵn)
+                                </div>
+                              )}
+
+                              {constituents && (
+                                <div className="mt-1.5 bg-emerald-50/30 rounded-xl p-2.5 border border-emerald-100/40 flex flex-col gap-1">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-650 block">Chi tiết combo:</span>
+                                  <div className="flex flex-col gap-1 pl-1">
+                                    {constituents.map((sub, idx) => (
+                                      <div key={idx} className="text-[10px] text-slate-400 line-through flex items-center gap-1.5">
+                                        <span className="h-1 w-1 rounded-full bg-slate-350"></span>
+                                        {sub}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -876,7 +1066,7 @@ export const ChefKitchenQueue: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-3.5 min-h-[500px] max-h-[620px] overflow-y-auto pr-1 scrollbar">
+            <div className="flex flex-col gap-3.5 min-h-125 max-h-155 overflow-y-auto pr-1 scrollbar">
               {groupedVoided.length === 0 ? (
                 <div className="text-center py-24 text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
                   <Inbox size={22} className="text-slate-350" />
@@ -901,8 +1091,15 @@ export const ChefKitchenQueue: React.FC = () => {
                         {group.items.map((item) => (
                           <div key={item.id} className="flex flex-col gap-1 pb-2 border-b border-slate-100/60 last:border-0 last:pb-0">
                             <div className="flex justify-between items-start gap-2">
-                              <div className="text-[13px] font-extrabold text-rose-600/85 line-through leading-snug">
-                                {item.name}
+                              <div className="flex flex-col gap-1 flex-1">
+                                <div className="text-[13px] font-extrabold text-rose-600/85 line-through leading-snug">
+                                  {item.name}
+                                </div>
+                                {item.chefDismissed === 1 && (
+                                  <span className="text-[9px] font-black uppercase text-amber-600 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded-md w-fit mt-0.5 flex items-center gap-1 animate-pulse">
+                                    🔄 Chờ tái sử dụng (2h)
+                                  </span>
+                                )}
                               </div>
                               <span className="text-rose-600 text-xs font-black bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200 shadow-sm whitespace-nowrap">
                                 x{item.quantity}
@@ -921,6 +1118,9 @@ export const ChefKitchenQueue: React.FC = () => {
                               <span className="text-rose-700 font-bold bg-rose-50/60 border border-rose-200/50 px-1.5 py-0.2 rounded whitespace-nowrap">
                                 🕒 {new Date(item.voidedAt || item.updatedAt || item.createdAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                               </span>
+                              <span className="text-slate-600 font-extrabold bg-slate-50 border border-slate-200 px-1.5 py-0.2 rounded whitespace-nowrap">
+                                🤵 {item.waiterName || "Phục vụ"}
+                              </span>
                             </div>
 
                             {/* Lý do trả món */}
@@ -931,13 +1131,67 @@ export const ChefKitchenQueue: React.FC = () => {
                               )}
                             </div>
 
-                            {/* Nút đã xem */}
-                            <button
-                              onClick={() => handleUpdateStatus(item.id, "dismissed" as any)}
-                              className="mt-2.5 w-full py-1.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200 shadow-sm hover:shadow"
-                            >
-                              <X size={9} /> Đã xem & xác nhận
-                            </button>
+                            {/* Tái sử dụng món hủy dư và nút hành động */}
+                            {(() => {
+                              const matchingWaitingItems = items.filter(
+                                (i) => i.menuItemId === item.menuItemId &&
+                                  (i.status === "pending" || i.status === "waiting_kitchen" || i.status === "cooking")
+                              );
+                              const isConfirmed = item.chefDismissed === 1;
+
+                              return (
+                                <>
+                                  {isConfirmed && (
+                                    <div className="mt-2.5 border-t border-slate-150 pt-2 animate-[fadeIn_0.3s_ease-out]">
+                                      {matchingWaitingItems.length > 0 ? (
+                                        <>
+                                          <p className="text-[9px] font-black text-slate-800 uppercase mb-1.5 flex items-center gap-1">
+                                            🔄 Món trùng đang chờ nấu:
+                                          </p>
+                                          <div className="flex flex-col gap-1.5">
+                                            {matchingWaitingItems.map((targetItem) => (
+                                              <button
+                                                key={targetItem.id}
+                                                onClick={() => {
+                                                  const confirmMsg = `Bạn có chắc chắn muốn đi đơn món "${item.name}" này cho Bàn "${targetItem.tableName || "Mang về"}" không?`;
+                                                  if (window.confirm(confirmMsg)) {
+                                                    handleReuseItem(item.id, targetItem.id);
+                                                  }
+                                                }}
+                                                className="w-full py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-850 border border-emerald-250 rounded-lg text-[9px] font-extrabold flex items-center justify-between transition-all duration-200 cursor-pointer shadow-xs hover:shadow"
+                                              >
+                                                <span>Đi đơn cho Bàn {targetItem.tableName || "Mang về"}</span>
+                                                <span className="bg-emerald-200 text-emerald-950 px-1 py-0.2 rounded font-black text-[8px]">x{targetItem.quantity}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="text-[10px] text-slate-400 font-semibold italic flex items-center justify-center gap-1 py-1.5 bg-slate-50 border border-slate-150 rounded-lg">
+                                          <span>⏳ Đang đợi bàn khác order...</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {item.chefDismissed !== 1 ? (
+                                    <button
+                                      onClick={() => handleUpdateStatus(item.id, "dismissed" as any)}
+                                      className="mt-2.5 w-full py-1.5 bg-linear-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200 shadow-sm hover:shadow"
+                                    >
+                                      <X size={9} /> Đã xem & xác nhận
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleUpdateStatus(item.id, "discarded" as any)}
+                                      className="mt-2.5 w-full py-1.5 bg-slate-150 hover:bg-slate-250 text-slate-650 border border-slate-300 rounded-lg text-[10px] font-black tracking-wide flex items-center justify-center gap-1 cursor-pointer uppercase transition-all duration-200 shadow-sm hover:shadow"
+                                    >
+                                      <X size={9} /> Bỏ qua & Ẩn đi
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>
@@ -953,7 +1207,7 @@ export const ChefKitchenQueue: React.FC = () => {
                                 ids.forEach((id) => dispatch(updateItemStatusLocal({ id, status: "dismissed" as any })));
                               });
                           }}
-                          className="mt-1 w-full py-2 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-rose-500/20 active:scale-95"
+                          className="mt-1 w-full py-2 bg-linear-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white rounded-xl text-xs font-black tracking-wide flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all duration-205 shadow-md hover:shadow-rose-500/20 active:scale-95"
                         >
                           <CheckCheck size={10} /> Xác nhận cả bàn ({group.items.length})
                         </button>
@@ -996,7 +1250,7 @@ export const ChefKitchenQueue: React.FC = () => {
                     <div>
                       {/* Station and name */}
                       <div className="flex justify-between items-center">
-                        <span className="bg-blue-50 border border-blue-200 text-[#0f62fe] text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                        <span className="bg-blue-50 border border-blue-200 text-admin-primary text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
                           {getStationLabel(group.kitchenStation)}
                         </span>
                         <span className="text-xs text-slate-500 font-semibold">
@@ -1019,14 +1273,14 @@ export const ChefKitchenQueue: React.FC = () => {
                                     className={`w-1.5 h-1.5 rounded-full ${item.status === "pending" || item.status === "waiting_kitchen" ? "bg-slate-350" : "bg-amber-500"
                                       }`}
                                   />
-                                  Bàn {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""}:
+                                  Bàn {item.tableName || "Mang về"}{item.areaName ? ` - ${item.areaName}` : ""} ({item.waiterName || "Phục vụ"}):
                                 </span>
                                 <span className="font-bold flex gap-2">
                                   <span>x{item.quantity}</span>
                                   <span
                                     className={`text-[10px] px-1 rounded font-bold ${item.status === "pending" || item.status === "waiting_kitchen"
-                                        ? "bg-slate-100 text-slate-500 border border-slate-200"
-                                        : "bg-amber-50 text-amber-600 border border-amber-200"
+                                      ? "bg-slate-100 text-slate-500 border border-slate-200"
+                                      : "bg-amber-50 text-amber-600 border border-amber-200"
                                       }`}
                                   >
                                     {item.status === "pending" || item.status === "waiting_kitchen" ? "Chờ" : "Nấu"}
@@ -1049,7 +1303,7 @@ export const ChefKitchenQueue: React.FC = () => {
                       {totalPendingQty > 0 && (
                         <button
                           onClick={() => handleBatchStartCooking(group.items)}
-                          className="flex-1 py-2 bg-[#0f62fe] hover:bg-blue-600 active:scale-95 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all"
+                          className="flex-1 py-2 bg-admin-primary hover:bg-blue-600 active:scale-95 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-all"
                         >
                           <Play size={11} />
                           Nấu mẻ chờ (x{totalPendingQty})

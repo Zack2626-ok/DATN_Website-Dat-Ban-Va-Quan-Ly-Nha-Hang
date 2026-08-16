@@ -1,12 +1,17 @@
 import { Router } from "express";
-import { getMyAttendance, clockIn, clockOut, isCheckedInToday } from "../controllers/attendance.controller";
-import { authStaff } from "../middlewares/authMiddleware";
+import { clockIn, clockInEmployeeByManager, clockOut, clockOutEmployeeByManager, getAllAttendance, getAttendanceEmployees, getMyAttendance, isCheckedInToday, MANAGE_ATTENDANCE_ROLES } from "../controllers/attendance.controller";
+import { authStaff, checkRole } from "../middlewares/authMiddleware";
+import { checkClockInScheduleMiddleware, checkClockOutScheduleMiddleware } from "../middlewares/attendanceSchedule.middleware";
 
 const router = Router();
 
+router.get("/", authStaff, checkRole(MANAGE_ATTENDANCE_ROLES), getAllAttendance);
+router.get("/employees", authStaff, checkRole(MANAGE_ATTENDANCE_ROLES), getAttendanceEmployees);
 router.get("/me", authStaff, getMyAttendance);
 router.get("/status", authStaff, isCheckedInToday);
-router.post("/clock-in", authStaff, clockIn);
-router.post("/clock-out", authStaff, clockOut);
+router.post("/clock-in", authStaff, checkClockInScheduleMiddleware, clockIn);
+router.post("/clock-out", authStaff, checkClockOutScheduleMiddleware, clockOut);
+router.post("/employee/clock-in", authStaff, checkRole(MANAGE_ATTENDANCE_ROLES), checkClockInScheduleMiddleware, clockInEmployeeByManager);
+router.post("/employee/clock-out", authStaff, checkRole(MANAGE_ATTENDANCE_ROLES), checkClockOutScheduleMiddleware, clockOutEmployeeByManager);
 
 export default router;

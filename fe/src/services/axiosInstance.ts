@@ -11,6 +11,10 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("accessToken");
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  
+  // Bỏ qua trang xác nhận của localtunnel để API không bị chặn HTML
+  config.headers["Bypass-Tunnel-Reminder"] = "true";
+  
   return config;
 });
 

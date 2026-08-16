@@ -25,7 +25,7 @@ export const getUsersHandler = async (_req: Request, res: Response): Promise<voi
 
 export const createUserHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { full_name, email, password, role_id, phone, status } = req.body;
+    const { full_name, email, password, role_id, phone, status, hourly_rate } = req.body;
 
     if (!full_name || !email || !password || !role_id) {
       sendError(res, "Họ và tên, email, mật khẩu và vai trò là bắt buộc!", 400);
@@ -54,6 +54,7 @@ export const createUserHandler = async (req: Request, res: Response): Promise<vo
       role_id,
       phone,
       status: status || "active",
+      hourly_rate: Number(hourly_rate) || 0,
     });
 
     sendSuccess(res, newUser, "Tạo tài khoản nhân viên thành công!", 201);
@@ -66,7 +67,7 @@ export const createUserHandler = async (req: Request, res: Response): Promise<vo
 export const updateUserHandler = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { full_name, email, password, role_id, phone, status, is_deleted, deleted_at } = req.body;
+    const { full_name, email, password, role_id, phone, status, is_deleted, deleted_at, hourly_rate } = req.body;
 
     if (!id) {
       sendError(res, "ID nhân viên là bắt buộc", 400);
@@ -109,6 +110,7 @@ export const updateUserHandler = async (req: Request, res: Response): Promise<vo
       status,
       is_deleted,
       deleted_at,
+      hourly_rate: hourly_rate !== undefined ? Number(hourly_rate) : undefined,
     };
 
     if (password) {

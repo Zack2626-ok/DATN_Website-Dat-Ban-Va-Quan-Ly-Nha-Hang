@@ -11,6 +11,10 @@ export interface WaiterMenuItem {
   kitchen_station: "hot_kitchen" | "bar" | "cold_kitchen";
   is_featured: number;
   is_active: number;
+  available?: boolean;
+  out_of_stock?: boolean;
+  is_expired?: boolean;
+  stock_status_reason?: string;
 }
 
 export interface WaiterCategory {
@@ -31,7 +35,7 @@ export interface WaiterOrderItem {
   seat_number?: number | null;
   course_number: number;
   kitchen_note?: string;
-  status: "pending" | "cooking" | "done" | "served" | "cancelled" | "voided";
+  status: "pending" | "waiting_kitchen" | "cooking" | "done" | "served" | "cancelled" | "voided";
   is_held?: number | boolean;
   voided_at?: string | null;
   void_reason?: string | null;
@@ -49,6 +53,7 @@ export interface WaiterOrder {
   split_label?: string | null;
   status: "open" | "serving" | "pending_payment" | "completed" | "cancelled";
   note?: string;
+  deposit_amount?: number;
   created_at: string;
   closed_at?: string | null;
 }
@@ -83,6 +88,7 @@ export const createOrder = async (data: {
   guest_name?: string;
   guest_phone?: string;
   guest_count?: number;
+  booking_id?: number | null;
 }): Promise<WaiterOrder> => {
   const response = await api.post("/v1/waiter/orders", data);
   return response.data.data;
@@ -97,6 +103,7 @@ export const addOrderItem = async (
     seat_number?: number | null;
     course_number?: number;
     kitchen_note?: string;
+    created_by?: number;
   },
 ): Promise<WaiterOrderItem> => {
   const response = await api.post(`/v1/waiter/orders/${orderId}/items`, data);
@@ -134,7 +141,12 @@ export const markItemAsServed = async (orderId: number, itemId: number): Promise
   await api.patch(`/v1/waiter/orders/${orderId}/items/${itemId}/served`);
 };
 
-export const requestPayment = async (orderId: number, note?: string): Promise<{ orderId: number; status: string; waiterName: string }> => {
-  const response = await api.post(`/v1/waiter/orders/${orderId}/request-payment`, { note });
+export const requestPayment = async (orderId: number, note?: string, isEarlyPayment?: boolean): Promise<{ orderId: number; status: string; waiterName: string }> => {
+  const response = await api.post(`/v1/waiter/orders/${orderId}/request-payment`, { note, isEarlyPayment });
+  return response.data.data;
+};
+
+export const cancelPaymentRequest = async (orderId: number): Promise<{ orderId: number; status: string }> => {
+  const response = await api.post(`/v1/waiter/orders/${orderId}/cancel-payment-request`);
   return response.data.data;
 };

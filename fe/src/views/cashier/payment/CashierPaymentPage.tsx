@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { io, type Socket } from "socket.io-client";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   fetchInvoices,
@@ -12,16 +13,24 @@ import {
 } from "../../../store/invoiceSlice";
 import { fetchTables } from "../../../store/tableSlice";
 import { fetchOrders } from "../../../store/orderSlice";
-import type { InvoiceStatus, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
+import type { Invoice, InvoiceStatus, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
 import { InvoiceListPanel } from "./components/InvoiceListPanel";
 import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
 import { PaymentModal } from "./components/PaymentModal";
 import { SplitBillModal } from "./components/SplitBillModal";
 import { MergeBillModal } from "./components/MergeBillModal";
-import { CheckCircle2, X, AlertTriangle, Phone } from "lucide-react";
+import { RefundModal } from "./components/RefundModal";
+import { CheckCircle2, X, AlertTriangle, Phone, RefreshCw } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
+import type { BankTransferPaymentSession } from "../../../services/bankTransferPaymentService";
 import { printCashierInvoice } from "../../../utils/printBill";
-import { io, type Socket } from "socket.io-client";
+
+interface PaymentSuccessEvent {
+  invoiceId: number;
+  amount: number;
+  paymentReference: string;
+}
 
 export const CashierPaymentPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -34,25 +43,79 @@ export const CashierPaymentPage: React.FC = () => {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-
-  const showSuccess = useCallback((msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3000);
-  }, []);
+  const paymentSocketRef = useRef<Socket | null>(null);
+  const selectedInvoiceRef = useRef<Invoice | null>(null);
+  const restaurantInfoRef = useRef<RestaurantInfo | null>(null);
 
   useEffect(() => {
     dispatch(fetchInvoices());
     dispatch(fetchTables());
     dispatch(fetchOrders());
-    const interval = setInterval(() => {
+
+    // Thiết lập Socket.io cập nhật thời gian thực cho trang Hóa đơn
+    const socketUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+    });
+    paymentSocketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("⚡ Connected to Socket.io Server for Cashier Payment Page");
+    });
+
+    const triggerRefresh = () => {
       dispatch(fetchInvoices());
       dispatch(fetchTables());
       dispatch(fetchOrders());
-    }, 15000);
-    return () => clearInterval(interval);
+    };
+
+    /** Handles a confirmed bank transfer emitted only after webhook reconciliation. */
+    const handleBankTransferSuccess = (payload: PaymentSuccessEvent): void => {
+      const activeInvoice = selectedInvoiceRef.current;
+
+      triggerRefresh();
+      if (!activeInvoice || Number(activeInvoice.id) !== payload.invoiceId) return;
+
+      setPaymentOpen(false);
+      setSuccessMsg("Đã nhận chuyển khoản ngân hàng thành công!");
+      window.setTimeout(() => setSuccessMsg(null), 3000);
+      printCashierInvoice(
+        { ...activeInvoice, paymentMethod: "transfer", totalAmount: payload.amount },
+        restaurantInfoRef.current?.name,
+        restaurantInfoRef.current,
+      );
+    };
+
+    socket.on("table:status_changed", triggerRefresh);
+    socket.on("table:transferred", triggerRefresh);
+    socket.on("table:merged", triggerRefresh);
+    socket.on("table:merge_resolved", triggerRefresh);
+    socket.on("table:group_seating_changed", triggerRefresh);
+    socket.on("order_updated", triggerRefresh);
+    socket.on("kds_updated", triggerRefresh);
+    socket.on("payment:request", triggerRefresh);
+    socket.on("invoice_refunded", triggerRefresh);
+    socket.on("payment:success", handleBankTransferSuccess);
+
+    return () => {
+      socket.off("connect");
+      socket.off("table:status_changed");
+      socket.off("table:transferred");
+      socket.off("table:merged");
+      socket.off("table:merge_resolved");
+      socket.off("table:group_seating_changed");
+      socket.off("order_updated");
+      socket.off("kds_updated");
+      socket.off("payment:request");
+      socket.off("invoice_refunded");
+      socket.off("payment:success", handleBankTransferSuccess);
+      if (paymentSocketRef.current === socket) paymentSocketRef.current = null;
+      socket.disconnect();
+      console.log("🔌 Disconnected Socket.io Client for Cashier Payment Page");
+    };
   }, [dispatch]);
 
   useEffect(() => {
@@ -118,22 +181,24 @@ export const CashierPaymentPage: React.FC = () => {
         const pA = a.status === "pending_payment" ? 1 : 2;
         const pB = b.status === "pending_payment" ? 1 : 2;
         if (pA !== pB) return pA - pB;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        // Đến trước thanh toán trước (createdAt nhỏ hơn lên trước)
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       });
   }, [invoices]);
 
   const filteredInvoices = useMemo(() => {
     let result = [...invoices];
-    if (statusFilter === "pending") {
-      result = result.filter((inv) => inv.status === "pending_payment");
+    if (statusFilter === "unpaid") {
+      result = result.filter(
+        (inv) =>
+          (inv.invoiceStatus === "unpaid" || inv.invoiceStatus === "pending") &&
+          inv.totalAmount > 0
+      );
+    } else if (statusFilter === "paid") {
+      result = result.filter((inv) => inv.invoiceStatus === "paid");
     } else if (statusFilter !== "all") {
       result = result.filter((inv) => inv.invoiceStatus === statusFilter);
     }
-    if (statusFilter === "unpaid") {
-      result = result.filter((inv) => inv.totalAmount > 0);
-    }
-    // Lọc bỏ hóa đơn đã thanh toán khỏi màn hình Active
-    result = result.filter((inv) => inv.invoiceStatus !== "paid");
     // Loại bỏ "Mang về" theo yêu cầu người dùng
     result = result.filter((inv) => inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName));
     if (searchQuery) {
@@ -162,6 +227,12 @@ export const CashierPaymentPage: React.FC = () => {
       const pA = getPriority(a);
       const pB = getPriority(b);
       if (pA !== pB) return pA - pB;
+      
+      // Chưa thanh toán/Chờ thanh toán thì đến trước được thanh toán trước (createdAt tăng dần)
+      // Đã thanh toán/Đã hủy thì hiển thị hóa đơn mới nhất lên đầu (createdAt giảm dần)
+      if (pA === 1 || pA === 2) {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
@@ -180,7 +251,18 @@ export const CashierPaymentPage: React.FC = () => {
     () => invoices.find((inv) => inv.id === selectedInvoiceId) || null,
     [invoices, selectedInvoiceId],
   );
+  useEffect(() => {
+    selectedInvoiceRef.current = selectedInvoice;
+  }, [selectedInvoice]);
 
+  useEffect(() => {
+    restaurantInfoRef.current = restaurantInfo;
+  }, [restaurantInfo]);
+
+  const showSuccess = useCallback((msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3000);
+  }, []);
   const handleSelectInvoice = useCallback(
     (id: string) => {
       dispatch(selectInvoice(id));
@@ -202,8 +284,27 @@ export const CashierPaymentPage: React.FC = () => {
         ).unwrap();
         setPaymentOpen(false);
         showSuccess("Thanh toán thành công!");
+        
+        const subtotal = selectedInvoice.subtotal !== undefined ? selectedInvoice.subtotal : selectedInvoice.totalAmount;
+        const vat = Math.round(subtotal * ((data.vatRate || 10) / 100));
+        const depositAmount = selectedInvoice.depositAmount || 0;
+        const voucherDiscount = data.voucherAmount || 0;
+        const pointsDiscount = data.pointsUsed ? data.pointsUsed * 100 : 0;
+        const finalDiscount = voucherDiscount + pointsDiscount;
+        const tipAmount = data.tipAmount || 0;
+        const finalAmount = Math.max(0, subtotal + vat + tipAmount - depositAmount - finalDiscount);
+
         printCashierInvoice(
-          { ...selectedInvoice, paymentMethod: data.paymentMethod },
+          { 
+            ...selectedInvoice, 
+            paymentMethod: data.paymentMethod,
+            discount: finalDiscount,
+            voucherDiscount: voucherDiscount,
+            pointsDiscount: pointsDiscount,
+            tax: vat,
+            vatRate: data.vatRate || 10,
+            totalAmount: finalAmount
+          },
           restaurantInfo?.name,
           restaurantInfo
         );
@@ -302,13 +403,22 @@ export const CashierPaymentPage: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              dispatch(fetchInvoices());
-              dispatch(fetchTables());
-              dispatch(fetchOrders());
+            onClick={async () => {
+              try {
+                await Promise.all([
+                  dispatch(fetchInvoices()).unwrap(),
+                  dispatch(fetchTables()).unwrap(),
+                  dispatch(fetchOrders()).unwrap(),
+                ]);
+                toast.success("Đã làm mới dữ liệu mới nhất!");
+              } catch {
+                toast.error("Không thể làm mới dữ liệu!");
+              }
             }}
-            className="px-3 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white hover:bg-slate-50 cursor-pointer transition-all"
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold border border-slate-200 rounded-xl bg-white hover:bg-slate-50 cursor-pointer transition-all text-slate-700 shadow-2xs hover:shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             Làm mới
           </button>
         </div>
@@ -400,6 +510,7 @@ export const CashierPaymentPage: React.FC = () => {
           onMerge={() => setMergeOpen(true)}
           onCancel={handleCancel}
           onPrint={handlePrint}
+          onRefund={() => setRefundOpen(true)}
           loading={actionLoading}
         />
       </div>
@@ -411,6 +522,16 @@ export const CashierPaymentPage: React.FC = () => {
           onClose={() => setPaymentOpen(false)}
           invoice={selectedInvoice}
           onConfirm={handleConfirmPayment}
+          onBankTransferStarted={(session: BankTransferPaymentSession) => {
+            paymentSocketRef.current?.emit("payment:subscribe", session.invoiceId);
+          }}
+          onBankTransferDemoCompleted={() => {
+            setPaymentOpen(false);
+            dispatch(fetchInvoices());
+            dispatch(fetchTables());
+            dispatch(fetchOrders());
+            showSuccess("Đã mô phỏng tiền về và chốt hóa đơn thành công!");
+          }}
           loading={actionLoading}
         />
       )}
@@ -433,6 +554,20 @@ export const CashierPaymentPage: React.FC = () => {
           invoices={invoices}
           onMerge={handleMerge}
           loading={actionLoading}
+        />
+      )}
+
+      {refundOpen && selectedInvoice && (
+        <RefundModal
+          isOpen={refundOpen}
+          onClose={() => setRefundOpen(false)}
+          invoice={selectedInvoice}
+          onSuccess={() => {
+            dispatch(fetchInvoices());
+            dispatch(fetchTables());
+            dispatch(fetchOrders());
+            showSuccess("Đã tạo phiếu hoàn tiền thành công!");
+          }}
         />
       )}
     </div>

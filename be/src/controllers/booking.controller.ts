@@ -2,8 +2,71 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import { getPhoneNumberValidationError } from "../utils/validation";
-import { sendBookingConfirmationEmail } from "../utils/email";
+import { BOOKING_EMAIL_NOTIFICATION, sendBookingConfirmationEmail } from "../utils/email";
 import { notifyWaitersAboutBooking } from "../utils/telegram";
+import {
+  BOOKING_CHANNEL,
+  BOOKING_DURATION_MINUTES,
+  BOOKING_STATUS,
+  MAX_BOOKING_PARTY_SIZE,
+  type BookingChannel,
+} from "../constants/booking";
+import { getBookingTimeValidationError } from "../utils/bookingTime";
+import { io } from "../server";
+
+/** Builds a Vietnam-local booking datetime string from a date and time query. */
+const buildBookingDateTime = (date: string, time: string): string => `${date} ${time}:00`;
+
+/** Adds the configured booking duration to a local booking start time. */
+const calculateBookingEndTime = (startTime: string): string => {
+  const start = new Date(`${startTime.replace(" ", "T")}+07:00`);
+  const end = new Date(start.getTime() + BOOKING_DURATION_MINUTES * 60 * 1000);
+  const vietnamTime = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(end);
+  return vietnamTime.replace("T", " ");
+};
+
+/** Returns tables available for a requested booking interval. */
+export const getAvailableTablesHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const date = typeof req.query.date === "string" ? req.query.date : "";
+    const time = typeof req.query.time === "string" ? req.query.time : "";
+    const guests = Number(req.query.guests);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+      sendError(res, "date phải là YYYY-MM-DD và time phải là HH:mm", 400);
+      return;
+    }
+    if (!Number.isInteger(guests) || guests < 1 || guests > MAX_BOOKING_PARTY_SIZE) {
+      sendError(res, `guests phải từ 1 đến ${MAX_BOOKING_PARTY_SIZE}`, 400);
+      return;
+    }
+
+    const bookingTimeError = getBookingTimeValidationError(
+      buildBookingDateTime(date, time),
+      BOOKING_CHANNEL.ONLINE,
+    );
+    if (bookingTimeError) {
+      sendError(res, bookingTimeError, 400);
+      return;
+    }
+
+    const startTime = buildBookingDateTime(date, time);
+    const endTime = calculateBookingEndTime(startTime);
+    const tables = await db.getAvailableBookingTables(guests, startTime, endTime);
+    sendSuccess(res, { start_time: startTime, end_time: endTime, tables }, "Lấy bàn trống thành công");
+  } catch (error) {
+    console.error("Error fetching available booking tables:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
 
 export const getAllBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -32,10 +95,13 @@ export const getBookingByIdHandler = async (req: Request, res: Response): Promis
 
 export const createBookingHandler = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { table_id, customer_id, promotion_id, guest_name, guest_phone, guest_email, email, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
+    const { table_id, table_ids, booking_channel, customer_id, promotion_id, guest_name, guest_phone, guest_email, email, party_size, start_time, end_time, guest_note, note, pre_ordered_items, items } =
       req.body;
 
-    if (!table_id || !guest_name || !guest_phone || !party_size || !start_time || !end_time) {
+    const channel: BookingChannel = booking_channel === BOOKING_CHANNEL.DIRECT && req.user
+      ? BOOKING_CHANNEL.DIRECT
+      : BOOKING_CHANNEL.ONLINE;
+    if (!guest_name || !guest_phone || !party_size || !start_time || (channel === BOOKING_CHANNEL.DIRECT && !table_id)) {
       sendError(res, "Thiếu thông tin bắt buộc", 400);
       return;
     }
@@ -47,27 +113,26 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     }
 
     const partySizeNum = Number(party_size);
-    if (isNaN(partySizeNum) || partySizeNum < 1 || partySizeNum > 30) {
-      sendError(res, "Số lượng khách phải từ 1 đến 30 người", 400);
+    if (isNaN(partySizeNum) || partySizeNum < 1 || partySizeNum > MAX_BOOKING_PARTY_SIZE) {
+      sendError(res, `Số lượng khách phải từ 1 đến ${MAX_BOOKING_PARTY_SIZE} người`, 400);
       return;
     }
 
     // Parse start_time theo múi giờ Việt Nam (+07:00) để tránh lỗi UTC
-    const normalizedStart = start_time.trim().replace(' ', 'T');
-    const bookingStart = new Date(normalizedStart.includes('+') || normalizedStart.endsWith('Z')
-      ? normalizedStart
-      : normalizedStart + '+07:00'
-    );
-    const now = new Date();
-    if (bookingStart.getTime() < now.getTime() - 60 * 60 * 1000) {
-      sendError(res, "Thời gian đặt bàn không được ở quá khứ", 400);
+    const bookingTimeError = getBookingTimeValidationError(start_time, channel);
+    if (bookingTimeError) {
+      sendError(res, bookingTimeError, 400);
       return;
     }
+
+    const calculatedEndTime = calculateBookingEndTime(start_time);
 
     const targetEmail = (guest_email || email || "").trim();
 
     const booking = await db.createBooking({
-      table_id: Number(table_id),
+      table_id: table_id ? Number(table_id) : undefined,
+      table_ids,
+      booking_channel: channel,
       customer_id: customer_id ? Number(customer_id) : null,
       promotion_id: promotion_id ? Number(promotion_id) : null,
       guest_name,
@@ -75,17 +140,24 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
       guest_email: targetEmail || null,
       party_size: Number(party_size),
       start_time,
-      end_time,
+      end_time: calculatedEndTime,
       guest_note,
       note,
       pre_ordered_items: pre_ordered_items || items,
     });
+
+    // Giữ lại đầy đủ cụm bàn đã được phân bổ để trả về cho khách và đồng bộ các màn hình.
+    let bookingWithTableAssignments = booking;
 
     // Send Confirmation Email to Customer & generate local preview URL
     let emailPreviewUrl = null;
     try {
       const fullBooking = await db.getBookingById(booking.id);
       if (fullBooking) {
+        bookingWithTableAssignments = fullBooking;
+        // Đồng bộ booking đã giữ cụm cho màn hình phục vụ và quản lý, không đổi trạng thái vật lý của bàn.
+        io.emit("booking:created", { booking: fullBooking });
+
         // Gửi thông báo Telegram tới nhóm Waiter
         notifyWaitersAboutBooking(fullBooking).catch((tgErr) => {
           console.error("⚠️ Lỗi khi gửi Telegram cho nhóm Waiter:", (tgErr as Error).message);
@@ -94,17 +166,60 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
         emailPreviewUrl = await sendBookingConfirmationEmail({
           ...fullBooking,
           guest_email: targetEmail || fullBooking.guest_email || undefined,
+          notification_type: BOOKING_EMAIL_NOTIFICATION.RECEIVED,
         });
       }
     } catch (emailErr) {
       console.error("Lỗi khi gửi email xác nhận đặt bàn:", emailErr);
     }
 
-    sendSuccess(res, { ...booking, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
+    sendSuccess(res, { ...bookingWithTableAssignments, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
   } catch (error) {
+    console.error("Lỗi khi tạo đơn đặt bàn (createBookingHandler):", error);
     const msg = (error as Error).message;
-    sendError(res, msg, msg.includes("trùng") ? 400 : 500);
+    sendError(res, msg, 400);
   }
+};
+
+/** Returns the staff calendar for all tables or one selected table over a controlled date range. */
+export const getBookingScheduleHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const startDate = typeof req.query.start_date === "string" ? req.query.start_date : undefined;
+    const endDate = typeof req.query.end_date === "string" ? req.query.end_date : undefined;
+    const tableIdValue = typeof req.query.table_id === "string" ? Number(req.query.table_id) : undefined;
+    const includeCancelled = req.query.include_cancelled === "true";
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if ((startDate && !datePattern.test(startDate)) || (endDate && !datePattern.test(endDate))) {
+      sendError(res, "Ngày lọc phải theo định dạng YYYY-MM-DD.", 400);
+      return;
+    }
+    if (tableIdValue !== undefined && (!Number.isInteger(tableIdValue) || tableIdValue <= 0)) {
+      sendError(res, "table_id không hợp lệ.", 400);
+      return;
+    }
+    if (startDate && endDate && startDate > endDate) {
+      sendError(res, "Khoảng ngày lọc không hợp lệ.", 400);
+      return;
+    }
+
+    const schedule = await db.getBookingSchedule({
+      tableId: tableIdValue,
+      startDate,
+      endDate,
+      includeCancelled,
+    });
+    sendSuccess(res, schedule, "Lấy lịch đặt bàn thành công");
+  } catch (error) {
+    console.error("Error fetching booking schedule:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+/** Creates a staff-only direct booking while keeping the public endpoint online-only. */
+export const createDirectBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  req.body = { ...req.body, booking_channel: BOOKING_CHANNEL.DIRECT };
+  await createBookingHandler(req, res);
 };
 
 export const updateBookingStatusHandler = async (req: Request, res: Response): Promise<void> => {
@@ -112,7 +227,7 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     const { id } = req.params;
     const { status, cancel_reason } = req.body;
 
-    const validStatuses = ["pending", "confirmed", "cancelled", "completed"];
+    const validStatuses = ["pending", "confirmed", "arrived", "cancelled", "completed"];
     if (!status || !validStatuses.includes(status)) {
       sendError(res, `Trạng thái phải là: ${validStatuses.join(", ")}`, 400);
       return;
@@ -125,7 +240,32 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
       return;
     }
 
-    sendSuccess(res, { id, status }, "Cập nhật trạng thái đặt bàn thành công");
+    const bId = Number(id);
+    let emailPreviewUrl: string | null = null;
+    if (status === BOOKING_STATUS.CONFIRMED) {
+      const fullBooking = await db.getBookingById(bId);
+      if (fullBooking) {
+        emailPreviewUrl = await sendBookingConfirmationEmail({
+          ...fullBooking,
+          notification_type: BOOKING_EMAIL_NOTIFICATION.CONFIRMED,
+        });
+      }
+    }
+    const ioApp = req.app.get("io");
+    if (ioApp && bId) {
+      ioApp.emit("booking:claimed", {
+        bookingId: bId,
+        id: bId,
+        status,
+      });
+      ioApp.emit("table:booking_checked_in", {
+        bookingId: bId,
+        id: bId,
+        status,
+      });
+    }
+
+    sendSuccess(res, { id, status, email_preview_url: emailPreviewUrl }, "Cập nhật trạng thái đặt bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
@@ -154,6 +294,36 @@ export const payBookingDepositHandler = async (req: Request, res: Response): Pro
       return;
     }
     sendSuccess(res, { id }, "Thanh toán tiền cọc thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const assignBookingHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { assignedArea, assignedWaiterName, assignedWaiterId, guestName, guestPhone, partySize, startTime } = req.body;
+
+    const payload = {
+      id: `ASSIGN-${Date.now()}`,
+      bookingId: Number(id),
+      assignedArea: assignedArea || "Tầng 2",
+      assignedWaiterName: assignedWaiterName || "Tất cả nhân viên ca trực Tầng 2",
+      assignedWaiterId: assignedWaiterId ? Number(assignedWaiterId) : null,
+      guestName,
+      guestPhone,
+      partySize,
+      startTime,
+      assignedAt: new Date().toLocaleString("vi-VN"),
+      assignedTimestamp: Date.now(),
+    };
+
+    const ioApp = req.app.get("io") || io;
+    if (ioApp) {
+      ioApp.emit("booking:assigned", payload);
+    }
+
+    sendSuccess(res, payload, "Phân công đặt bàn thành công");
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   Plus,
@@ -15,6 +16,7 @@ import {
   Table2,
   ChevronDown,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
@@ -22,19 +24,60 @@ import { Badge } from "../../../components/Badge";
 import {
   getBookings,
   updateBookingStatus,
-  createBooking,
+  createDirectBooking,
   deleteBooking,
+  assignBookingApi,
   Booking,
 } from "../../../services/bookingService";
-import { getEmptyTables, ResmanagerTable } from "../../../services/tableService";
+import { getEmptyTables, getTablesV1, ResmanagerTable } from "../../../services/tableService";
+import { userService } from "../../../services/userService";
+import { getBookingValidationStatus } from "../../../services/systemService";
 import { useAppSelector } from "../../../store/hooks";
 import { CancelledBookings } from "./components/CancelledBookings";
+import { BOOKING_DURATION_MINUTES, BOOKING_MAX_ADVANCE_DAYS, MAX_BOOKING_PARTY_SIZE } from "../../../constants/booking";
+
+/** Calculates the fixed booking slot end time from a datetime-local input. */
+const calculateScheduledEndTime = (startTime: string): string => {
+  const start = new Date(`${startTime}:00+07:00`);
+  const end = new Date(start.getTime() + BOOKING_DURATION_MINUTES * 60 * 1000);
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(end).replace("T", " ");
+};
+
+/** Returns the latest datetime permitted in the advance-booking form. */
+const getMaximumBookingDateTime = (): string => {
+  const maximum = new Date();
+  maximum.setDate(maximum.getDate() + BOOKING_MAX_ADVANCE_DAYS);
+  maximum.setMinutes(maximum.getMinutes() - maximum.getTimezoneOffset());
+  return maximum.toISOString().slice(0, 16);
+};
+
+/** Checks whether a booking belongs to the restaurant's current calendar day. */
+const isBookingScheduledToday = (startTime: string): boolean => {
+  const normalized = startTime.replace(" ", "T");
+  const bookingDate = new Date(normalized.endsWith("Z") || normalized.includes("+") ? normalized : `${normalized}+07:00`);
+  const formatter = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(bookingDate) === formatter.format(new Date());
+};
 
 /**
  * BookingListPage — Quản lý đặt bàn
  * Redesigned: light modal, 2-column form, chỉ lấy bàn trống
  */
 export const BookingListPage: React.FC = () => {
+  const navigate = useNavigate();
   const { user } = useAppSelector((state: any) => state.auth);
   console.log("LOGGED IN USER PROFILE:", user);
   const [activeMainTab, setActiveMainTab] = useState<"active" | "cancelled">("active");
@@ -46,7 +89,123 @@ export const BookingListPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState(true);
 
+  // Assignment Modal States
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assigningBooking, setAssigningBooking] = useState<Booking | null>(null);
+  const [assignArea, setAssignArea] = useState("Tầng 2");
+  const [selectedWaiters, setSelectedWaiters] = useState<string[]>([]);
+  const [staffWaiters, setStaffWaiters] = useState<{ id: number; name: string; phone: string; email: string }[]>([]);
+  const [allTables, setAllTables] = useState<any[]>([]);
+
+  useEffect(() => {
+    getTablesV1().then((data) => setAllTables(data || [])).catch(() => {});
+  }, [isAssignModalOpen]);
+
+  const linkedTables = useMemo(() => {
+    if (!assigningBooking || !allTables || allTables.length === 0) return [];
+    const directMatches = allTables.filter((t: any) =>
+      (t.booking_id && Number(t.booking_id) === Number(assigningBooking.id)) ||
+      (assigningBooking.confirmation_code && t.booking_code === assigningBooking.confirmation_code)
+    );
+
+    const tableSet = new Map<number, any>();
+    directMatches.forEach((t) => {
+      tableSet.set(t.id, t);
+      if (t.group_seating_tables && Array.isArray(t.group_seating_tables)) {
+        t.group_seating_tables.forEach((gt: any) => tableSet.set(gt.id, gt));
+      }
+      if (t.merged_children && Array.isArray(t.merged_children)) {
+        t.merged_children.forEach((mc: any) => tableSet.set(mc.id, mc));
+      }
+    });
+
+    return Array.from(tableSet.values());
+  }, [assigningBooking, allTables]);
+
+  useEffect(() => {
+    getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
+    userService.getUsers().then((res) => {
+      if (res.data && Array.isArray(res.data)) {
+        const waiterOnly = res.data.filter((u: any) => {
+          const rName = (u.role_name || u.role?.name || "").toLowerCase();
+          if (rName) return rName === "waiter" || rName.includes("phục vụ") || rName.includes("waiter");
+          const fName = (u.full_name || u.name || "").toLowerCase();
+          return fName.includes("waiter") || fName.includes("phục vụ");
+        });
+        const list = waiterOnly.map((u: any) => ({
+          id: u.id,
+          name: u.full_name || u.name || u.email || `Nhân viên #${u.id}`,
+          phone: u.phone || "",
+          email: u.email || "",
+        }));
+        setStaffWaiters(list);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleConfirmAssign = async () => {
+    if (!assigningBooking) return;
+    if (selectedWaiters.length === 0) {
+      toast.error("Vui lòng chọn ít nhất 1 nhân viên phục vụ phụ trách!");
+      return;
+    }
+    const waiterNames = selectedWaiters.join(", ");
+
+    const existingAssign = assignmentMap[assigningBooking.id];
+    if (existingAssign && existingAssign.assignedArea === assignArea && existingAssign.assignedWaiterName === waiterNames) {
+      toast("Thông tin phân công không có thay đổi.", { icon: "ℹ️" });
+      setIsAssignModalOpen(false);
+      return;
+    }
+
+    const selectedWaiterObjs = staffWaiters.filter((w) => selectedWaiters.includes(w.name));
+    const selectedWaiterIds = selectedWaiterObjs.map((w) => w.id);
+
+    const assignmentPayload = {
+      id: `ASSIGN-${Date.now()}`,
+      bookingId: assigningBooking.id,
+      confirmationCode: assigningBooking.confirmation_code || `BK-${assigningBooking.id}`,
+      guestName: assigningBooking.guest_name,
+      guestPhone: assigningBooking.guest_phone,
+      partySize: assigningBooking.party_size,
+      startTime: assigningBooking.start_time,
+      assignedArea: assignArea || "Tầng 2",
+      assignedWaiterName: waiterNames,
+      assignedWaiterId: selectedWaiterObjs.length === 1 ? selectedWaiterObjs[0].id : null,
+      assignedWaiterIds: selectedWaiterIds,
+      assignedAt: new Date().toLocaleString("vi-VN"),
+      assignedTimestamp: Date.now(),
+    };
+
+    try {
+      await assignBookingApi(assigningBooking.id, assignmentPayload);
+    } catch (e) {
+      console.warn("Lỗi gửi phân công qua API:", e);
+    }
+
+    const existing = JSON.parse(localStorage.getItem("booking_assignments_list") || "[]");
+    const updated = [assignmentPayload, ...existing.filter((a: any) => a.bookingId !== assigningBooking.id)];
+    localStorage.setItem("booking_assignments_list", JSON.stringify(updated));
+
+    const assignMap = JSON.parse(localStorage.getItem("booking_assignments_map") || "{}");
+    assignMap[assigningBooking.id] = assignmentPayload;
+    localStorage.setItem("booking_assignments_map", JSON.stringify(assignMap));
+    setAssignmentMap(assignMap);
+
+    window.dispatchEvent(new CustomEvent("booking_assigned_event", { detail: assignmentPayload }));
+    try {
+      const channel = new BroadcastChannel("booking_notifications");
+      channel.postMessage({ type: "NEW_ASSIGNMENT", payload: assignmentPayload });
+      channel.close();
+    } catch (e) {}
+
+    toast.success(`Đã phân công ${assignArea} cho ${waiterNames}!`);
+    setIsAssignModalOpen(false);
+  };
+
+  /** Formats the current local instant for a datetime-local input. */
   const getLocalNowString = () => {
     const now = new Date();
     // Adjust to local timezone offset for input[type="datetime-local"]
@@ -70,7 +229,7 @@ export const BookingListPage: React.FC = () => {
     try {
       const [bookingsData, tablesData] = await Promise.all([
         getBookings(),
-        getEmptyTables(formData.start_time), // Truyền start_time để lọc bàn trống thực sự
+        getEmptyTables(formData.start_time, calculateScheduledEndTime(formData.start_time)),
       ]);
       setBookings(bookingsData);
       setEmptyTables(tablesData);
@@ -89,12 +248,36 @@ export const BookingListPage: React.FC = () => {
     setCurrentPage(1);
   }, [searchTerm, filterStatus]);
 
+  const [assignmentMap, setAssignmentMap] = useState<Record<number, any>>({});
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("booking_assignments_map") || "{}");
+      setAssignmentMap(stored);
+    } catch (e) {}
+  }, []);
+
+  const statusCount = useMemo(() => {
+    return {
+      all: bookings.length,
+      large: bookings.filter((b) => b.party_size >= 10).length,
+      pending: bookings.filter((b) => b.status === "pending").length,
+      confirmed: bookings.filter((b) => b.status === "confirmed").length,
+      completed: bookings.filter((b) => b.status === "completed").length,
+      cancelled: bookings.filter((b) => b.status === "cancelled").length,
+    };
+  }, [bookings]);
+
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
       b.guest_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       b.guest_phone.includes(searchTerm) ||
       b.confirmation_code.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === "all" || b.status === filterStatus;
+    
+    let matchesStatus = filterStatus === "all" || b.status === filterStatus;
+    if (filterStatus === "large") {
+      matchesStatus = b.party_size >= 10;
+    }
     return matchesSearch && matchesStatus;
   });
 
@@ -146,16 +329,13 @@ export const BookingListPage: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const startDate = new Date(formData.start_time);
-      const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000); // +2h
-
-      await createBooking({
+      await createDirectBooking({
         table_id: Number(formData.table_id),
         guest_name: formData.guest_name,
         guest_phone: formData.guest_phone,
         party_size: Number(formData.party_size),
-        start_time: startDate.toISOString(),
-        end_time: endDate.toISOString(),
+        start_time: formData.start_time,
+        end_time: calculateScheduledEndTime(formData.start_time),
         guest_note: formData.guest_note,
       });
 
@@ -183,54 +363,50 @@ export const BookingListPage: React.FC = () => {
     }
   };
 
-  const statusCount = {
-    all: bookings.length,
-    pending: bookings.filter((b) => b.status === "pending").length,
-    confirmed: bookings.filter((b) => b.status === "confirmed").length,
-    completed: bookings.filter((b) => b.status === "completed").length,
-    cancelled: bookings.filter((b) => b.status === "cancelled").length,
-  };
-
   return (
-    <div className="p-8 space-y-6 animate-fade-in">
+    <div className="space-y-4 font-sans text-[#1A1A1A]">
       {/* ── Header ── */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-[#FFFFFF] p-5 rounded-3xl border border-slate-200/70 shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-admin-text-main font-display">Đặt bàn</h1>
-          <p className="text-sm text-admin-text-sub mt-0.5">Quản lý lịch đặt bàn hệ thống</p>
+          <h1 className="text-2xl font-black text-[#1A1A1A] tracking-tight">
+            Quản lý đặt bàn
+          </h1>
+          <p className="text-xs font-semibold text-[#8A8A8A] mt-0.5">
+            Theo dõi danh sách đặt chỗ, gán bàn và xử lý booking khách hàng
+          </p>
         </div>
         <button
+          type="button"
           onClick={() => setIsAddModalOpen(true)}
-          className="px-5 py-2.5 bg-admin-primary text-white rounded-xl font-bold text-sm hover:bg-admin-primary-hover transition-all flex items-center gap-2 shadow-sm"
+          className="px-5 py-2.5 bg-[#3E2016] hover:bg-[#5C2E17] text-[#FFFFFF] text-xs font-black rounded-full transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
         >
-          <Plus size={16} /> Tạo booking
+          <Plus size={18} /> Tạo booking mới
         </button>
       </div>
 
-      {/* ── Role-based Main Tabs (Manager/Admin Only) ── */}
       {/* ── Main Tabs (Hiện tại vs Đã hủy) ── */}
-      <div className="flex border-b border-admin-border gap-6 mb-2">
+      <div className="bg-[#FFFFFF] p-3 rounded-3xl border border-slate-200/70 shadow-xs flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setActiveMainTab("active")}
-          className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-            activeMainTab === "active" ? "text-admin-primary" : "text-admin-text-sub hover:text-admin-text-main"
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+            activeMainTab === "active"
+              ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
           }`}
         >
           Lịch đặt hiện tại
-          {activeMainTab === "active" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-admin-primary rounded-full" />
-          )}
         </button>
         <button
+          type="button"
           onClick={() => setActiveMainTab("cancelled")}
-          className={`flex items-center gap-1.5 pb-3 text-sm font-bold transition-all relative cursor-pointer ${
-            activeMainTab === "cancelled" ? "text-[#FF5A5F]" : "text-admin-text-sub hover:text-[#FF5A5F]"
+          className={`flex-1 sm:flex-initial px-5 py-2 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+            activeMainTab === "cancelled"
+              ? "bg-rose-600 text-[#FFFFFF] shadow-xs"
+              : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
           }`}
         >
           Lịch sử khách hủy bàn
-          {activeMainTab === "cancelled" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FF5A5F] rounded-full" />
-          )}
         </button>
       </div>
 
@@ -239,59 +415,61 @@ export const BookingListPage: React.FC = () => {
       ) : (
         <>
           {/* ── Toolbar ── */}
-          <div className="bg-admin-card rounded-2xl border border-admin-border p-4 flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-text-sub" size={15} />
-          <input
-            placeholder="Tìm mã, tên, SĐT..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-lg text-sm outline-none border border-admin-border focus:ring-2 focus:ring-admin-primary/20"
-          />
-        </div>
-        {/* Status filter tabs */}
-        <div className="flex gap-1 flex-wrap">
-          {[
-            { key: "all", label: "Tất cả" },
-            { key: "pending", label: "Chờ xác nhận" },
-            { key: "confirmed", label: "Đã xác nhận" },
-            { key: "completed", label: "Hoàn thành" },
-            { key: "cancelled", label: "Đã hủy" },
-          ].map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setFilterStatus(s.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterStatus === s.key
-                ? "bg-admin-primary text-white"
-                : "bg-gray-100 text-admin-text-sub hover:bg-gray-200"
-                }`}
-            >
-              {s.label}
-              <span className="ml-1 opacity-70">({statusCount[s.key as keyof typeof statusCount]})</span>
-            </button>
-          ))}
-        </div>
-      </div>
+          <div className="bg-[#FFFFFF] p-3.5 rounded-3xl border border-slate-200/70 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8A8A8A]" size={17} />
+              <input
+                placeholder="Tìm mã, tên, SĐT..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-11 pr-4 py-2 bg-[#F8F6F2] rounded-full text-xs font-bold text-[#1A1A1A] placeholder-[#8A8A8A] focus:outline-none focus:ring-2 focus:ring-[#3E2016]/30 transition-all border-0"
+              />
+            </div>
+            {/* Status filter tabs */}
+            <div className="flex gap-1 flex-wrap shrink-0">
+              {[
+                { key: "all", label: "Tất cả" },
+                { key: "large", label: "🔥 Đặt bàn lớn (≥ 10 người)" },
+                { key: "pending", label: "Chờ xác nhận" },
+                { key: "confirmed", label: "Đã xác nhận" },
+                { key: "completed", label: "Hoàn thành" },
+                { key: "cancelled", label: "Đã hủy" },
+              ].map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setFilterStatus(s.key)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+                    filterStatus === s.key
+                      ? "bg-[#3E2016] text-[#FFFFFF] shadow-xs"
+                      : "bg-slate-100 text-[#8A8A8A] hover:text-[#1A1A1A]"
+                  }`}
+                >
+                  {s.label}
+                  <span className="ml-1 opacity-70">({statusCount[s.key as keyof typeof statusCount] || 0})</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
       {/* ── Table ── */}
       <div className="bg-admin-card rounded-2xl border border-admin-border shadow-sm overflow-hidden">
         <table className="w-full text-left text-base">
-          <thead className="bg-gray-50 text-admin-text-sub font-semibold uppercase text-sm">
+          <thead className="bg-gray-50 text-slate-500 font-bold uppercase text-xs tracking-wider border-b border-slate-200">
             <tr>
               <th className="px-6 py-4">Mã</th>
-              <th className="px-6 py-4">Khách</th>
-              <th className="px-6 py-4">SĐT</th>
-              <th className="px-6 py-4">Ngày giờ</th>
-              <th className="px-6 py-4">Bàn</th>
-              <th className="px-6 py-4">Người</th>
+              <th className="px-6 py-4">Khách hàng</th>
+              <th className="px-6 py-4">Số điện thoại</th>
+              <th className="px-6 py-4">Ngày giờ đến</th>
+              <th className="px-6 py-4">Số khách</th>
               <th className="px-6 py-4">Trạng thái</th>
               <th className="px-6 py-4 text-right">Thao tác</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-admin-border">
+          <tbody className="divide-y divide-slate-100">
             {paginatedBookings.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-6 py-12 text-center text-admin-text-sub">
+                <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
                   <CalendarDays className="mx-auto mb-2 opacity-30" size={32} />
                   Không có dữ liệu đặt bàn nào
                 </td>
@@ -299,26 +477,62 @@ export const BookingListPage: React.FC = () => {
             ) : (
               paginatedBookings.map((b) => {
                 const dt = formatDateTime(b.start_time);
+                const assignment = assignmentMap[b.id];
                 return (
                   <tr
                     key={b.id}
-                    className="hover:bg-admin-primary-light/30 cursor-pointer transition-colors"
+                    className="hover:bg-slate-50/80 cursor-pointer transition-colors"
                     onClick={() => setSelectedBooking(b)}
                   >
-                    <td className="px-6 py-4 font-bold text-admin-primary">#{b.confirmation_code}</td>
-                    <td className="px-6 py-4 font-medium text-admin-text-main">{b.guest_name}</td>
-                    <td className="px-6 py-4 text-admin-text-sub">{b.guest_phone}</td>
-                    <td className="px-6 py-4 text-admin-text-sub">
-                      <span className="font-medium text-admin-text-main">{dt.date}</span>
-                      <span className="text-xs ml-1">{dt.time}</span>
+                    <td className="px-6 py-4 font-black text-indigo-600">#{b.confirmation_code}</td>
+                    <td className="px-6 py-4 font-bold text-slate-800">{b.guest_name}</td>
+                    <td className="px-6 py-4 font-semibold text-slate-600">{b.guest_phone}</td>
+                    <td className="px-6 py-4 text-slate-600">
+                      <span className="font-bold text-slate-800">{dt.date}</span>
+                      <span className="text-xs ml-1 font-semibold text-indigo-600">{dt.time}</span>
                     </td>
-                    <td className="px-6 py-4 font-medium">{b.table_name || "—"}</td>
-                    <td className="px-6 py-4">{b.party_size} người</td>
+                    <td className="px-6 py-4 font-bold text-slate-800">
+                      {b.party_size >= 10 ? (
+                        <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 font-black text-xs border border-rose-200">
+                          🔥 {b.party_size} người
+                        </span>
+                      ) : (
+                        <span>{b.party_size} người</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <Badge status={b.status as any} type="booking" theme="light" />
                     </td>
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-2">
+                        {b.party_size >= 10 && (
+                          <button
+                            onClick={() => {
+                              setAssigningBooking(b);
+                              const existingAssign = assignmentMap[b.id];
+                              setAssignArea(existingAssign?.assignedArea || "Tầng 2");
+                              if (existingAssign?.assignedWaiterName) {
+                                const names = existingAssign.assignedWaiterName
+                                  .split(",")
+                                  .map((s: string) => s.trim())
+                                  .filter((s: string) => s && !s.toLowerCase().startsWith("tất cả"));
+                                setSelectedWaiters(names);
+                              } else {
+                                setSelectedWaiters([]);
+                              }
+                              setIsAssignModalOpen(true);
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-xs transition-all ${
+                              assignment
+                                ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
+                                : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
+                            }`}
+                            title="Phân công khu vực & Nhân viên"
+                          >
+                            <Users size={14} />
+                            <span>{assignment ? "Sửa phân công" : "Phân công"}</span>
+                          </button>
+                        )}
                         {b.status === "pending" && (
                           <>
                             <button
@@ -465,7 +679,7 @@ export const BookingListPage: React.FC = () => {
                   label: "Thời gian",
                   value: `${formatDateTime(selectedBooking.start_time).date} lúc ${formatDateTime(selectedBooking.start_time).time}`,
                 },
-                { icon: <MapPin size={15} className="text-admin-primary" />, label: "Bàn", value: selectedBooking.table_name || "Chưa gán bàn" },
+                { icon: <MapPin size={15} className="text-admin-primary" />, label: "Bàn", value: selectedBooking.table_names || selectedBooking.table_name || "Chưa gán bàn" },
                 { icon: <Users size={15} className="text-admin-primary" />, label: "Số người", value: `${selectedBooking.party_size} người` },
               ].map((item, i) => (
                 <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
@@ -488,6 +702,18 @@ export const BookingListPage: React.FC = () => {
             </div>
 
             <div className="flex gap-3 pt-2">
+              {isBookingScheduledToday(selectedBooking.start_time) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBooking(null);
+                    navigate(`/waiter/orders/${selectedBooking.table_id}`);
+                  }}
+                  className="flex-1 py-2.5 bg-blue-50 text-blue-700 rounded-xl font-bold text-sm hover:bg-blue-100"
+                >
+                  Mở order hôm nay
+                </button>
+              )}
               {selectedBooking.status === "pending" && (
                 <button
                   onClick={() => { handleStatusChange(selectedBooking.id, "confirmed"); setSelectedBooking(null); }}
@@ -561,7 +787,7 @@ export const BookingListPage: React.FC = () => {
                   <input
                     type="number"
                     min="1"
-                    max="50"
+                    max={MAX_BOOKING_PARTY_SIZE}
                     required
                     placeholder="2"
                     value={formData.party_size}
@@ -592,12 +818,14 @@ export const BookingListPage: React.FC = () => {
                   <input
                     type="datetime-local"
                     required
+                    min={bookingValidationEnabled ? getLocalNowString() : undefined}
+                    max={bookingValidationEnabled ? getMaximumBookingDateTime() : undefined}
                     value={formData.start_time}
                     onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                     className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-gray-800"
                   />
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1 ml-1">Vui lòng chọn ngày giờ TRƯỚC khi chọn bàn</p>
+                <p className="text-[10px] text-gray-400 mt-1 ml-1">Đặt trước tối đa 30 ngày, nhận khách từ 10:00 đến 19:00; mỗi lịch kéo dài 3 giờ.</p>
               </div>
 
               {/* Chọn bàn - chỉ bàn trống */}
@@ -681,6 +909,209 @@ export const BookingListPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Modal Phân công khu vực & Nhân viên (Thiết kế sáng, sang trọng) */}
+      {isAssignModalOpen && assigningBooking && (
+        <Modal
+          isOpen={isAssignModalOpen}
+          onClose={() => setIsAssignModalOpen(false)}
+          title={`📍 Phân công khu vực & Phục vụ cho Đơn #${assigningBooking.confirmation_code || assigningBooking.id}`}
+          size="md"
+          theme="light"
+        >
+          <div className="space-y-5 font-sans bg-white p-1">
+            {/* Card thông tin khách đặt bàn */}
+            <div className="bg-gradient-to-br from-indigo-50/80 via-sky-50/50 to-white p-4.5 rounded-2xl border border-indigo-100/90 shadow-2xs space-y-2 text-slate-700">
+              <div className="flex justify-between items-center pb-2 border-b border-indigo-100/80">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Thông tin khách tiệc</span>
+                <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 font-black text-xs">
+                  🔥 {assigningBooking.party_size} người (Đoàn đông)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                <div>
+                  <p className="text-slate-400 font-semibold text-[11px]">Họ và tên khách:</p>
+                  <p className="font-extrabold text-slate-900 text-sm mt-0.5">{assigningBooking.guest_name}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 font-semibold text-[11px]">Số điện thoại:</p>
+                  <p className="font-extrabold text-slate-900 text-sm mt-0.5">{assigningBooking.guest_phone}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-slate-400 font-semibold text-[11px]">Thời gian dự kiến đến:</p>
+                  <p className="font-extrabold text-indigo-700 text-sm mt-0.5">{assigningBooking.start_time}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card thông tin bàn đã gộp nếu nhân viên đã gộp bàn */}
+            {linkedTables.length > 0 && (
+              <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs text-emerald-950 space-y-1.5 shadow-2xs">
+                <div className="flex items-center justify-between font-black text-emerald-900 border-b border-emerald-200/80 pb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <span className="p-1 bg-emerald-200 text-emerald-900 rounded-lg text-xs">🔗</span>
+                    <span>✓ ĐÃ GỘP BÀN PHỤC VỤ ĐOÀN</span>
+                  </span>
+                  <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 text-[10px] rounded-md font-extrabold">
+                    {linkedTables.reduce((acc, t) => acc + (t.capacity || 4), 0)} / {assigningBooking.party_size} chỗ
+                  </span>
+                </div>
+                <p className="font-extrabold text-emerald-900 text-xs">
+                  Bàn đang ghép: <span className="text-indigo-800 font-black">{linkedTables.map((t) => t.name).join(", ")}</span>
+                </p>
+              </div>
+            )}
+
+            {/* Trạng thái phân công & Khóa phân công */}
+            {(() => {
+              const existing = assignmentMap[assigningBooking.id];
+              const isCheckedIn = (assigningBooking.status as string) === "completed" ||
+                                  (assigningBooking.status as string) === "checked_in" ||
+                                  assigningBooking.status === "arrived";
+
+              if (isCheckedIn) {
+                return (
+                  <div className="p-4 bg-sky-50 border border-sky-200/90 rounded-2xl text-xs text-sky-950 space-y-2">
+                    <div className="flex items-center gap-2 font-black text-sky-900 border-b border-sky-200/60 pb-2">
+                      <span className="p-1.5 bg-sky-200 text-sky-900 rounded-lg text-xs">✅</span>
+                      <span className="uppercase tracking-wider">ĐÃ MỞ BÀN PHỤC VỤ TẠI NHÀ HÀNG</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                      <div>
+                        <span className="text-slate-500 font-semibold text-[11px]">Khu vực:</span>
+                        <p className="font-extrabold text-slate-900 mt-0.5">{existing?.assignedArea || "Tầng 2"}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 font-semibold text-[11px]">Nhân viên đã nhận:</span>
+                        <p className="font-extrabold text-slate-900 mt-0.5">{existing?.assignedWaiterName || "Tất cả nhân viên"}</p>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-sky-800 font-medium pt-1 italic">
+                      * Đơn đặt bàn này đã được nhân viên mở bàn phục vụ. Không thể chỉnh sửa phân công nữa.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4 pt-1">
+                  {/* 1. Chọn Khu vực */}
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                      1. Chọn Khu vực / Tầng phục vụ {existing && <span className="text-amber-700 font-bold">(Đã cố định khu vực 🔒)</span>} *
+                    </label>
+                    {existing ? (
+                      <div className="w-full px-4 py-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs font-black text-amber-950 flex items-center justify-between">
+                        <span>📍 {existing.assignedArea}</span>
+                        <span className="text-[10px] text-amber-700 font-bold bg-amber-200/60 px-2 py-0.5 rounded-md">Khóa khu vực 🔒</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={assignArea}
+                        onChange={(e) => setAssignArea(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                      >
+                        <option value="Tầng 2">Tầng 2</option>
+                        <option value="Sân vườn">Sân vườn</option>
+                      </select>
+                    )}
+                  </div>
+
+                  {/* 2. Chọn/Thêm Nhân viên */}
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                      2. {existing ? "Thêm / Điều chỉnh Nhân viên Phục vụ" : "Chọn Nhân viên Phục vụ nhận bàn"} (Có thể chọn nhiều nhân viên) *
+                    </label>
+
+                    {/* Danh sách nhãn/thẻ nhân viên đã chọn hiển thị phía trên */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2.5 min-h-[38px] p-2 bg-slate-100/70 border border-slate-200/80 rounded-xl">
+                      {selectedWaiters.length === 0 ? (
+                        <span className="text-[11px] font-semibold text-rose-600 italic px-1 flex items-center gap-1">
+                          ⚠️ Chưa chọn nhân viên. Vui lòng tích chọn nhân viên phụ trách bên dưới.
+                        </span>
+                      ) : (
+                        selectedWaiters.map((name) => (
+                          <span
+                            key={name}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-lg shadow-2xs animate-in zoom-in-95 duration-150"
+                          >
+                            <span>👤 {name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedWaiters((prev) => prev.filter((n) => n !== name))}
+                              className="hover:bg-indigo-700 p-0.5 rounded-full text-indigo-100 hover:text-white cursor-pointer transition-colors"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-3">
+                      {staffWaiters.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic p-1">Không tìm thấy nhân viên phục vụ nào.</p>
+                      ) : (
+                        staffWaiters.map((w) => {
+                          const isChecked = selectedWaiters.includes(w.name);
+                          return (
+                            <label key={w.id} className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer select-none hover:text-slate-900">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedWaiters((prev) => [...prev, w.name]);
+                                  } else {
+                                    setSelectedWaiters((prev) => prev.filter((name) => name !== w.name));
+                                  }
+                                }}
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600"
+                              />
+                              <span>{w.name}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Action buttons */}
+            <div className="flex gap-3 pt-3 border-t border-slate-100">
+              {((assigningBooking.status as string) === "completed" || (assigningBooking.status as string) === "checked_in" || assigningBooking.status === "arrived") ? (
+                <button
+                  type="button"
+                  onClick={() => setIsAssignModalOpen(false)}
+                  className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-2xl text-xs transition-colors cursor-pointer"
+                >
+                  Đóng
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsAssignModalOpen(false)}
+                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-2xl text-xs transition-colors cursor-pointer"
+                  >
+                    Hủy thao tác
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAssign}
+                    className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl text-xs shadow-lg shadow-indigo-200 transition-all cursor-pointer active:scale-95"
+                  >
+                    🚀 {assignmentMap[assigningBooking.id] ? "Cập nhật & Bắn thông báo bổ sung" : "Xác nhận & Bắn thông báo thời gian thực"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

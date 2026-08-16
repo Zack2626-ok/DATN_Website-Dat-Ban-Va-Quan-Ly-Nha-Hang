@@ -21,8 +21,9 @@ export const getAttendanceStatus = async (): Promise<{ checkedIn: boolean; atten
   return response.data.data;
 };
 
-export const clockInApi = async (): Promise<AttendanceRecord> => {
-  const response = await api.post("/attendance/clock-in");
+/** Records a clock-in and optionally carries the required late-arrival explanation. */
+export const clockInApi = async (payload?: { late_reason?: string }): Promise<AttendanceRecord> => {
+  const response = await api.post("/attendance/clock-in", payload);
   return response.data.data;
 };
 

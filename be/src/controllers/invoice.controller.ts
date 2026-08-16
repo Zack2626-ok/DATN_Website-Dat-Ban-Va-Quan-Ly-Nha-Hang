@@ -2,15 +2,112 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 import { addLoyaltyPoints } from "./crm.controller";
+import { io } from "../server";
+
+export const formatDateToYYYYMMDD = (dateVal: any): string => {
+  if (!dateVal) return "";
+  try {
+    let dateObj: Date;
+    if (dateVal instanceof Date) {
+      dateObj = dateVal;
+    } else {
+      const str = String(dateVal);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return str;
+      }
+      
+      if (str.includes("Z") || str.includes("+") || str.includes("T")) {
+        dateObj = new Date(str);
+      } else {
+        const formattedStr = str.trim().replace(" ", "T");
+        if (formattedStr.includes("T")) {
+          dateObj = new Date(formattedStr + "+07:00");
+        } else {
+          dateObj = new Date(str);
+        }
+      }
+    }
+
+    if (isNaN(dateObj.getTime())) {
+      return "";
+    }
+
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+    
+    const parts = formatter.formatToParts(dateObj);
+    const yyyy = parts.find(p => p.type === 'year')?.value;
+    const mm = parts.find(p => p.type === 'month')?.value;
+    const dd = parts.find(p => p.type === 'day')?.value;
+    
+    if (yyyy && mm && dd) {
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  } catch (e) {
+    console.error("Error formatting date to YYYYMMDD:", e);
+  }
+  return "";
+};
+
+export const assignOrderCodes = (orders: any[]) => {
+  // Sort orders by created_at chronological order to assign sequence numbers correctly
+  const sorted = [...orders].sort((a, b) => new Date(a.created_at || a.createdAt || 0).getTime() - new Date(b.created_at || b.createdAt || 0).getTime());
+  
+  // Group by date string (YYYYMMDD)
+  const dateGroups: Record<string, any[]> = {};
+  sorted.forEach(o => {
+    const dateStr = formatDateToYYYYMMDD(o.created_at || o.createdAt);
+    const key = dateStr.replace(/-/g, ""); // e.g. 20260808
+    if (key.length === 8) {
+      if (!dateGroups[key]) {
+        dateGroups[key] = [];
+      }
+      dateGroups[key].push(o);
+    } else {
+      // Fallback for orders without proper date format
+      const fallbackKey = "20260808";
+      if (!dateGroups[fallbackKey]) {
+        dateGroups[fallbackKey] = [];
+      }
+      dateGroups[fallbackKey].push(o);
+    }
+  });
+  
+  // Assign order_code
+  const codesMap: Record<string, string> = {};
+  Object.keys(dateGroups).forEach(dateKey => {
+    const group = dateGroups[dateKey];
+    group.forEach((o, index) => {
+      const yy = dateKey.slice(2, 4); // "26"
+      const mm = dateKey.slice(4, 6); // "08"
+      const dd = dateKey.slice(6, 8); // "08"
+      const seq = String(index + 1).padStart(3, "0"); // "001"
+      const code = `HD${yy}${mm}${dd}-${seq}`;
+      codesMap[String(o.id)] = code;
+    });
+  });
+  
+  // Map back to original orders
+  return orders.map(o => ({
+    ...o,
+    order_code: codesMap[String(o.id)] || `HD-${o.id}`
+  }));
+};
 
 export const getAllInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status, search, dateFrom, dateTo } = req.query;
 
-    const orders = await db.getAllResmanagerOrders();
+    let orders = await db.getAllResmanagerOrders();
+    orders = assignOrderCodes(orders);
 
     let invoices = orders.map((o: any) => ({
       id: String(o.id),
+      order_code: o.order_code,
       tableId: o.table_id ? String(o.table_id) : undefined,
       tableName: o.table_name || undefined,
       customerName: o.guest_name || o.customer_name || undefined,
@@ -24,6 +121,123 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
         price: Number(item.unit_price),
         quantity: item.quantity,
         status: item.status,
+      })),
+              totalAmount: o.totalAmount || 0,
+        depositAmount: Number(o.deposit_amount) || 0,
+      subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
+      tax: o.tax || 0,
+      discount: o.discount || 0,
+      vatRate: o.vatRate || 0,
+      status: o.table_status === "pending_payment" || o.status === "pending_payment" ? "pending_payment" : o.status,
+      invoiceStatus:
+        o.status === "completed" || o.status === "paid"
+          ? "paid"
+          : o.status === "cancelled"
+            ? "cancelled"
+            : o.status === "pending_payment"
+              ? "pending"
+              : "unpaid",
+      createdAt: o.created_at,
+      orderType: o.order_type,
+      paymentMethod: o.paymentMethod || undefined,
+      is_early_payment: o.is_early_payment,
+    }));
+
+    // Nếu không có món nào (0 món) thì không đưa vào thu ngân
+    invoices = invoices.filter((inv: any) => inv.items && inv.items.length > 0);
+
+    if (status && status !== "all") {
+      const statusMap: Record<string, string[]> = {
+        unpaid: ["open", "serving"],
+        pending: ["pending_payment"],
+        paid: ["completed", "paid"],
+        cancelled: ["cancelled"],
+      };
+      const validStatuses = statusMap[status as string] || [status as string];
+      invoices = invoices.filter((inv: any) => validStatuses.includes(inv.status));
+    }
+
+    if (search) {
+      let q = (search as string).toLowerCase();
+      if (q.startsWith("#")) {
+        q = q.slice(1);
+      }
+      invoices = invoices.filter(
+        (inv: any) =>
+          inv.id.toLowerCase().includes(q) ||
+          (inv.tableName || "").toLowerCase().includes(q) ||
+          (inv.customerName || "").toLowerCase().includes(q),
+      );
+    }
+    if (dateFrom) {
+      invoices = invoices.filter((inv: any) => {
+        const itemDate = formatDateToYYYYMMDD(inv.createdAt);
+        return itemDate >= (dateFrom as string);
+      });
+    }
+    if (dateTo) {
+      invoices = invoices.filter((inv: any) => {
+        const itemDate = formatDateToYYYYMMDD(inv.createdAt);
+        return itemDate <= (dateTo as string);
+      });
+    }
+
+    invoices.sort((a: any, b: any) => {
+      const getPriority = (inv: any) => {
+        if (inv.status === "pending_payment") return 1;
+        if (inv.invoiceStatus === "unpaid") return 2;
+        if (inv.invoiceStatus === "paid") return 3;
+        return 4;
+      };
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+
+      // Chưa thanh toán/Chờ thanh toán thì đến trước được thanh toán trước (createdAt tăng dần)
+      // Đã thanh toán/Đã hủy thì hiển thị hóa đơn mới nhất lên đầu (createdAt giảm dần)
+      if (pA === 1 || pA === 2) {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    sendSuccess(res, invoices, "Lấy danh sách hóa đơn thành công");
+  } catch (error) {
+    console.error("Error fetching invoices:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const getInvoiceById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    let orders = await db.getAllResmanagerOrders();
+    orders = assignOrderCodes(orders);
+    const o = orders.find((order: any) => String(order.id) === id);
+    if (!o) {
+      sendError(res, "Không tìm thấy hóa đơn", 404);
+      return;
+    }
+
+    // Map to normalized Invoice structure matching getAllInvoices
+    const invoice = {
+      id: String(o.id),
+      order_code: o.order_code,
+      tableId: o.table_id ? String(o.table_id) : undefined,
+      tableName: o.table_name || undefined,
+      customerName: o.guest_name || o.customer_name || undefined,
+      customerPhone: o.guest_phone || o.customer_phone || undefined,
+      customerEmail: o.customer_email || undefined,
+      guestCount: o.guest_count || o.items?.length || 0,
+      staffName: o.staff_name || undefined,
+      items: (o.items || []).map((item: any) => ({
+        id: String(item.id),
+        menuItemId: String(item.menu_item_id),
+        name: item.item_name || `Món #${item.menu_item_id}`,
+        price: Number(item.unit_price),
+        quantity: item.quantity,
+        status: item.status,
+        is_refunded: item.is_refunded,
       })),
       depositAmount: o.depositAmount || 0,
       totalAmount: o.totalAmount || 0,
@@ -44,57 +258,10 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
       arrivedAt: o.arrivedAt || o.created_at || o.createdAt,
       orderType: o.order_type,
       paymentMethod: o.paymentMethod || undefined,
-    }));
+      is_early_payment: o.is_early_payment,
+    };
 
-    // Nếu không có món nào (0 món) thì không đưa vào thu ngân
-    invoices = invoices.filter((inv: any) => inv.items && inv.items.length > 0);
-
-    if (status && status !== "all") {
-      const statusMap: Record<string, string[]> = {
-        unpaid: ["open", "serving"],
-        pending: ["pending_payment"],
-        paid: ["completed", "paid"],
-        cancelled: ["cancelled"],
-      };
-      const validStatuses = statusMap[status as string] || [status as string];
-      invoices = invoices.filter((inv: any) => validStatuses.includes(inv.status));
-    }
-
-    if (search) {
-      const q = (search as string).toLowerCase();
-      invoices = invoices.filter(
-        (inv: any) =>
-          inv.id.toLowerCase().includes(q) ||
-          (inv.tableName || "").toLowerCase().includes(q) ||
-          (inv.customerName || "").toLowerCase().includes(q),
-      );
-    }
-    if (dateFrom) {
-      invoices = invoices.filter((inv: any) => inv.createdAt >= (dateFrom as string));
-    }
-    if (dateTo) {
-      invoices = invoices.filter((inv: any) => inv.createdAt <= (dateTo as string));
-    }
-
-    invoices.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    sendSuccess(res, invoices, "Lấy danh sách hóa đơn thành công");
-  } catch (error) {
-    console.error("Error fetching invoices:", error);
-    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
-  }
-};
-
-export const getInvoiceById = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const orders = await db.getAllResmanagerOrders();
-    const order = orders.find((o: any) => String(o.id) === id);
-    if (!order) {
-      sendError(res, "Không tìm thấy hóa đơn", 404);
-      return;
-    }
-    sendSuccess(res, order, "Lấy chi tiết hóa đơn thành công");
+    sendSuccess(res, invoice, "Lấy chi tiết hóa đơn thành công");
   } catch (error) {
     console.error("Error fetching invoice:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
@@ -104,7 +271,7 @@ export const getInvoiceById = async (req: Request, res: Response): Promise<void>
 export const processPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed } = req.body;
+    const { paymentMethod, vatRate, voucherCode, voucherAmount, tipAmount, notes, pointsUsed, serviceFeeRate } = req.body;
 
     if (!paymentMethod) {
       sendError(res, "Phương thức thanh toán là bắt buộc", 400);
@@ -132,29 +299,75 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Kiểm tra cọc tiền đặt bàn
-    let depositAmount = Number(order.depositAmount || 0);
+    // Lấy depositAmount từ Quoc_dev (DB)
+    let depositAmount = Number(order.deposit_amount) || 0;
     let linkedBookingId: number | null = null;
-    if (order.tableId || order.table_id) {
-      const activeBookings = await db.query(
-        `SELECT id, deposit_amount FROM bookings WHERE table_id = ? AND deposit_status IN ('paid', 'completed') ORDER BY created_at DESC LIMIT 1`,
-        [Number(order.tableId || order.table_id)]
-      );
-      if (activeBookings.length > 0) {
-        depositAmount = Number(activeBookings[0].deposit_amount || depositAmount);
-        linkedBookingId = activeBookings[0].id;
-      }
-    }
 
     const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
     const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
-    const voucher = voucherAmount || 0;
+    
+    // Validate and calculate voucher discount dynamically
+    let calculatedVoucherAmount = Number(voucherAmount || 0);
+    let dbVoucherId: number | null = null;
+    let customerVoucherRecordId: number | null = null;
+
+    if (voucherCode) {
+      const vRows = await db.query(
+        "SELECT * FROM vouchers WHERE code = ? AND is_active = 1 AND (expired_at IS NULL OR expired_at > NOW())",
+        [voucherCode]
+      );
+      if (!vRows || vRows.length === 0) {
+        sendError(res, "Mã voucher không hợp lệ hoặc đã hết hạn.", 400);
+        return;
+      }
+      const voucherRecord = vRows[0];
+      dbVoucherId = voucherRecord.id;
+
+      // Check max uses
+      if (voucherRecord.max_uses !== null && voucherRecord.used_count >= voucherRecord.max_uses) {
+        sendError(res, "Mã voucher đã hết lượt sử dụng.", 400);
+        return;
+      }
+
+      // Check min order subtotal
+      if (subtotal < Number(voucherRecord.min_order)) {
+        sendError(res, `Đơn hàng chưa đạt giá trị tối thiểu để áp dụng voucher này (Tối thiểu: ${Number(voucherRecord.min_order).toLocaleString("vi-VN")}đ).`, 400);
+        return;
+      }
+
+      // Check points cost ownership
+      if (Number(voucherRecord.points_cost || 0) > 0) {
+        if (!order.customer_id) {
+          sendError(res, "Voucher này yêu cầu thông tin thành viên đã đổi điểm.", 400);
+          return;
+        }
+        const cvRows = await db.query(
+          "SELECT id FROM customer_vouchers WHERE customer_id = ? AND voucher_id = ? AND is_used = 0 LIMIT 1",
+          [order.customer_id, voucherRecord.id]
+        );
+        if (!cvRows || cvRows.length === 0) {
+          sendError(res, "Mã voucher này chưa được đổi bằng điểm hoặc đã được sử dụng.", 400);
+          return;
+        }
+        customerVoucherRecordId = cvRows[0].id;
+      }
+
+      // Re-calculate / verify voucher amount based on voucher type
+      if (voucherRecord.type === "percent") {
+        calculatedVoucherAmount = Math.round(subtotal * (Number(voucherRecord.value) / 100));
+      } else {
+        calculatedVoucherAmount = Number(voucherRecord.value);
+      }
+    }
+
+    const voucher = calculatedVoucherAmount;
     const tip = tipAmount || 0;
     const pointsToUse = pointsUsed || 0;
     const pointsDiscount = pointsToUse * 100; // 1 point = 100 VND
     
-    // Khấu trừ tiền cọc và điểm từ tổng số tiền cần thanh toán
-    const finalAmount = Math.max(0, subtotal + vat - voucher - depositAmount + tip - pointsDiscount);
+    // Khấu trừ tiền cọc và điểm từ tổng số tiền cần thanh toán (kết hợp cả serviceFee nếu có)
+    const serviceFee = serviceFeeRate !== undefined ? Math.round(subtotal * (serviceFeeRate / 100)) : 0;
+    const finalAmount = Math.max(0, subtotal + vat + serviceFee - voucher - depositAmount + tip - pointsDiscount);
 
     const payment = await db.createPayment({
       orderId: id,
@@ -168,8 +381,8 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         vat,
         voucher,
         voucherCode,
-        tip,
         depositAmount,
+          tip,
         pointsUsed: pointsToUse,
         pointsDiscount,
         finalAmount,
@@ -181,17 +394,33 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
 
     await db.updateOrderStatus(id, "completed");
 
-    // Cập nhật trạng thái cọc tiền đặt bàn đã hoàn thành
-    if (linkedBookingId) {
+    if (dbVoucherId) {
       await db.query(
-        `UPDATE bookings SET deposit_status = 'completed' WHERE id = ?`,
-        [linkedBookingId]
+        "UPDATE vouchers SET used_count = used_count + 1 WHERE id = ?",
+        [dbVoucherId],
       );
-      console.log(`✅ Marked booking ${linkedBookingId} deposit status as completed`);
     }
-
     if (order.table_id) {
-      await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+      if (order.is_early_payment) {
+        await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
+        req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
+        req.app.get("io")?.emit("table:status_changed", { tableId: Number(order.table_id), status: "serving" });
+      } else {
+        const subResult = await db.completeSubOrderPayment(Number(id));
+        if (subResult.sessionCompleted || !subResult.isSplitOrder) {
+          // Nếu không thuộc phiên tách bàn hoặc phiên tách bàn đã hoàn tất các nhóm
+          // tiến hành giải phóng cụm bàn (gộp bàn nếu có) và đưa bàn về trạng thái cleaning/empty
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+          req.app.get("io")?.emit("table:released", { tableId: Number(order.table_id) });
+          releasedTableIds.forEach((tId) => {
+            req.app.get("io")?.emit("table:status_changed", { tableId: tId, status: "cleaning" });
+          });
+        } else {
+          // Vẫn còn sub-order active trong phiên split, bàn vật lý giữ nguyên SERVING
+          req.app.get("io")?.emit("table:split-updated", { tableId: Number(order.table_id), completedSubOrderId: Number(id) });
+        }
+      }
     }
 
     // Tích điểm loyalty nếu có khách hàng thành viên liên kết
@@ -212,6 +441,13 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
             await db.query(
               "INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note) VALUES (?, ?, 'redeem', ?, ?)",
               [order.customer_id, pointsToUse, invoiceId, `Quy đổi ${pointsToUse} điểm để giảm ${pointsDiscount}đ cho đơn #${invoiceId}`]
+            );
+          }
+          // Đánh dấu voucher đã sử dụng nếu có
+          if (customerVoucherRecordId) {
+            await db.query(
+              "UPDATE customer_vouchers SET is_used = 1, used_at = NOW() WHERE id = ?",
+              [customerVoucherRecordId]
             );
           }
           // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)
@@ -538,7 +774,13 @@ export const payPartial = async (req: Request, res: Response): Promise<void> => 
     if (totalPaid >= order.totalAmount) {
       await db.updateOrderStatus(id, "completed");
       if (order.table_id) {
-        await db.updateResmanagerTableStatus(Number(order.table_id), "cleaning");
+        if (order.is_early_payment) {
+          await db.query("UPDATE orders SET is_early_paid = 1 WHERE id = ?", [id]);
+          req.app.get("io")?.emit("table:updated", { tableId: order.table_id });
+        } else {
+          const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+          req.app.get("io")?.emit("table:merge_resolved", { releasedTableIds });
+        }
       }
     }
 
@@ -565,28 +807,85 @@ export const getPaymentHistory = async (req: Request, res: Response): Promise<vo
     const { search, dateFrom, dateTo, paymentMethod } = req.query;
     let payments = await db.getResmanagerPayments();
 
+    // Map order_code from orders onto payment records first
+    let ordersList = await db.getAllResmanagerOrders();
+    ordersList = assignOrderCodes(ordersList);
+    const orderCodesMap: Record<string, string> = {};
+    ordersList.forEach((o: any) => {
+      orderCodesMap[String(o.id)] = o.order_code;
+    });
+
+    let enrichedPayments = payments.map((p: any) => ({
+      ...p,
+      order_code: orderCodesMap[String(p.orderId)] || `HD-${p.orderId}`
+    }));
+
     if (search) {
-      const q = (search as string).toLowerCase();
-      payments = payments.filter(
+      let q = (search as string).toLowerCase();
+      if (q.startsWith("#")) {
+        q = q.slice(1);
+      }
+      enrichedPayments = enrichedPayments.filter(
         (p: any) =>
           String(p.orderId).toLowerCase().includes(q) ||
+          (p.order_code || "").toLowerCase().includes(q) ||
           (p.table_name || "").toLowerCase().includes(q) ||
-          (p.guest_name || "").toLowerCase().includes(q),
+          (p.guest_name || "").toLowerCase().includes(q)
       );
     }
     if (dateFrom) {
-      payments = payments.filter((p: any) => p.createdAt >= (dateFrom as string));
+      enrichedPayments = enrichedPayments.filter((p: any) => {
+        const itemDate = formatDateToYYYYMMDD(p.createdAt);
+        return itemDate >= (dateFrom as string);
+      });
     }
     if (dateTo) {
-      payments = payments.filter((p: any) => p.createdAt <= (dateTo as string));
+      enrichedPayments = enrichedPayments.filter((p: any) => {
+        const itemDate = formatDateToYYYYMMDD(p.createdAt);
+        return itemDate <= (dateTo as string);
+      });
     }
     if (paymentMethod && paymentMethod !== "all") {
-      payments = payments.filter((p: any) => p.paymentMethod === paymentMethod);
+      enrichedPayments = enrichedPayments.filter((p: any) => p.paymentMethod === paymentMethod);
     }
 
-    sendSuccess(res, payments, "Lấy lịch sử thanh toán thành công");
+    sendSuccess(res, enrichedPayments, "Lấy lịch sử thanh toán thành công");
   } catch (error) {
     console.error("Error fetching payment history:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+/**
+ * POST /api/v1/invoices/:id/refund
+ * Request refund for specific items of an invoice/order after payment
+ */
+export const refundInvoiceItemsHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { itemIds, reason, refundMethod } = req.body;
+
+    if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+      sendError(res, "Vui lòng chọn ít nhất một món ăn để hoàn tiền", 400);
+      return;
+    }
+
+    const refundResult = await db.processOrderItemRefund({
+      orderId: Number(id),
+      itemIds: itemIds.map(Number),
+      reason,
+      refundMethod,
+    });
+
+    // Emit real-time WebSocket events
+    io.emit("order_updated");
+    io.emit("kds_updated");
+    io.emit("table_updated");
+    io.emit("invoice_refunded", refundResult);
+
+    sendSuccess(res, refundResult, "Tạo phiếu hoàn tiền thành công!");
+  } catch (error) {
+    console.error("Error in refundInvoiceItemsHandler:", error);
+    sendError(res, `Lỗi tạo phiếu hoàn tiền: ${(error as Error).message}`, 500);
   }
 };

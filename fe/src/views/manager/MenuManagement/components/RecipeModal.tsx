@@ -170,9 +170,10 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({ isOpen, onClose, item 
             Hủy bỏ
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={loading}
-            className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-sky-500 rounded-lg hover:bg-sky-600 transition-colors shadow-sm disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 text-xs font-black text-white bg-[#3E2016] rounded-full hover:bg-[#5C2E17] transition-all shadow-xs cursor-pointer disabled:opacity-50"
           >
             <Save size={16} /> Lưu định lượng
           </button>

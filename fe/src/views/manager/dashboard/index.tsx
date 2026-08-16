@@ -1,8 +1,10 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAppSelector } from "../../../store/hooks";
 import { ORDER_STATUS } from "../../../constants/orderStatus";
 import { TABLE_STATUS } from "../../../constants/tableStatus";
 import { DollarSign, Users, ShoppingCart, AlertTriangle } from "lucide-react";
+import { managerDashboardService, type ManagerReportSummary } from "../../../services/managerDashboardService";
+import type { RestaurantInfo } from "../../../services/restaurantInfoService";
 
 /**
  * ManagerDashboard - Provides restaurant performance indicators and analytics
@@ -10,8 +12,36 @@ import { DollarSign, Users, ShoppingCart, AlertTriangle } from "lucide-react";
 export const ManagerDashboard: React.FC = () => {
   const tables = useAppSelector((state) => state.tables.tables);
   const orders = useAppSelector((state) => state.orders.orders);
+  const [report, setReport] = useState<ManagerReportSummary | null>(null);
+  const [settings, setSettings] = useState<RestaurantInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
-  // Compute metrics
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setLoading(true);
+      try {
+        const [reportData, settingsData] = await Promise.all([
+          managerDashboardService.getDetailedReport(),
+          managerDashboardService.getSystemSettings(),
+        ]);
+        setReport(reportData);
+        setSettings(settingsData);
+      } catch (error) {
+        console.error("Failed to load manager dashboard data:", error);
+        setReportError("Không tải được dữ liệu báo cáo. Vui lòng thử lại sau.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboard();
+  }, []);
+
+  // Compute fallback metrics locally while report loads
   const stats = useMemo(() => {
     const activeOrders = orders.filter(
       (o) =>
@@ -31,12 +61,83 @@ export const ManagerDashboard: React.FC = () => {
     };
   }, [orders, tables]);
 
+  const bookingStats = Array.isArray(report?.bookingStats)
+  ? report.bookingStats
+  : [];
+
+const displayStats = {
+  totalRevenue: report?.totalRevenue ?? stats.totalRevenue,
+  occupiedTables: report?.occupiedTables ?? stats.occupiedTables,
+  totalCompletedOrders: report?.totalCompletedOrders ?? 0,
+  activeOrdersCount: report?.activeOrdersCount ?? stats.activeOrdersCount,
+
+  pendingBookings:
+    bookingStats.find((item) => item.status === "pending")?.count ?? 0,
+};
+
+  const revenueData = report?.revenueByDate ?? [];
+  const chartPoints = useMemo(() => {
+    if (!revenueData.length) return [];
+
+    const width = 520;
+    const height = 160;
+    const maxValue = Math.max(...revenueData.map((item) => item.totalRevenue), 1);
+    const step = width / Math.max(1, revenueData.length - 1);
+
+    return revenueData.map((item, index) => ({
+      x: 10 + index * step,
+      y: height - Math.round((item.totalRevenue / maxValue) * height),
+      label: item.date,
+    }));
+  }, [revenueData]);
+
+  const revenuePath = chartPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x},${point.y}`)
+    .join(" ");
+
+  const handleSettingsChange = (field: keyof RestaurantInfo, value: string | number) => {
+    if (!settings) return;
+    setSettings({ ...settings, [field]: value });
+  };
+
+  const handleSaveSettings = async () => {
+    if (!settings) return;
+    setSavingSettings(true);
+    setSettingsError(null);
+    setSettingsSaved(false);
+
+    try {
+      const updated = await managerDashboardService.updateSystemSettings(settings);
+      setSettings(updated);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch (error) {
+      console.error("Failed to save system settings:", error);
+      setSettingsError("Lưu cấu hình thất bại. Vui lòng kiểm tra lại.");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="text-slate-500">Đang tải dữ liệu dashboard...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8 animate-fade-in">
       <div className="border-b border-sky-100 pb-4">
         <h1 className="text-2xl font-bold text-slate-600">Tổng quan ca làm việc</h1>
         <p className="mt-1 text-sm text-slate-400">Theo dõi doanh thu, bàn phục vụ và hoạt động trong ca</p>
       </div>
+      {reportError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          {reportError}
+        </div>
+      ) : null}
       {/* KPIs Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* KPI 1 */}
@@ -51,7 +152,7 @@ export const ManagerDashboard: React.FC = () => {
           </div>
           <div className="flex flex-col gap-0.5 mt-1">
             <span className="text-2xl font-black">
-              {Number(stats.totalRevenue || 0).toLocaleString("vi-VN")} vnđ
+              {Number(displayStats.totalRevenue || 0).toLocaleString("vi-VN")} vnđ
             </span>
             <span className="text-emerald-500 text-[10px] font-bold">
               +12.5%
@@ -71,11 +172,10 @@ export const ManagerDashboard: React.FC = () => {
           </div>
           <div className="flex flex-col gap-0.5 mt-1">
             <span className="text-2xl font-black">
-              {stats.occupiedTables + 20}/40
+              {displayStats.occupiedTables}/40
             </span>
             <span className="text-slate-500 text-[10px] font-bold">
-              {Math.round(((stats.occupiedTables + 20) / 40) * 100)}% đang sử
-              dụng
+              {Math.round((displayStats.occupiedTables / 40) * 100)}% đang sử dụng
             </span>
           </div>
         </div>
@@ -91,7 +191,9 @@ export const ManagerDashboard: React.FC = () => {
             </div>
           </div>
           <div className="flex flex-col gap-0.5 mt-1">
-            <span className="text-2xl font-black">186</span>
+            <span className="text-2xl font-black">
+              {displayStats.totalCompletedOrders}
+            </span>
             <span className="text-emerald-500 text-[10px] font-bold">
               +8.2%
             </span>
@@ -102,16 +204,18 @@ export const ManagerDashboard: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-admin-border flex flex-col justify-between gap-4 shadow-2xs">
           <div className="flex justify-between items-start">
             <span className="text-slate-500 text-xs font-semibold">
-              Cảnh báo tồn kho
+              Đặt bàn chờ xử lý
             </span>
             <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-500">
               <AlertTriangle size={14} />
             </div>
           </div>
           <div className="flex flex-col gap-0.5 mt-1">
-            <span className="text-2xl font-black text-rose-500">7</span>
+            <span className="text-2xl font-black text-rose-500">
+              {displayStats.pendingBookings}
+            </span>
             <span className="text-rose-500 text-[10px] font-bold">
-              Cần chú ý
+              Đang chờ xác nhận
             </span>
           </div>
         </div>
@@ -181,82 +285,43 @@ export const ManagerDashboard: React.FC = () => {
                   strokeWidth="1"
                 />
 
-                {/* Smooth Curve path */}
-                <path
-                  d="M 10,130 C 50,115 50,110 98,110 C 146,110 146,112 186,112 C 226,112 226,90 274,90 C 322,90 322,50 362,50 C 402,50 402,40 450,40 C 498,40 498,75 530,75"
-                  fill="none"
-                  stroke="#0f62fe"
-                  strokeWidth="2.5"
-                />
+                {revenuePath ? (
+                  <path
+                    d={revenuePath}
+                    fill="none"
+                    stroke="#0f62fe"
+                    strokeWidth="2.5"
+                  />
+                ) : null}
 
-                {/* Data Points circles */}
-                <circle
-                  cx="10"
-                  cy="130"
-                  r="4"
-                  fill="#0f62fe"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
-                <circle
-                  cx="98"
-                  cy="110"
-                  r="4"
-                  fill="#0f62fe"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
-                <circle
-                  cx="186"
-                  cy="112"
-                  r="4"
-                  fill="#0f62fe"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
-                <circle
-                  cx="274"
-                  cy="90"
-                  r="4"
-                  fill="#0f62fe"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
-                <circle
-                  cx="362"
-                  cy="50"
-                  r="4"
-                  fill="#0f62fe"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
-                <circle
-                  cx="450"
-                  cy="40"
-                  r="4"
-                  fill="#0f62fe"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
-                <circle
-                  cx="530"
-                  cy="75"
-                  r="4"
-                  fill="#0f62fe"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
-                />
+                {chartPoints.map((point, index) => (
+                  <circle
+                    key={`${point.label}-${index}`}
+                    cx={point.x}
+                    cy={point.y}
+                    r={4}
+                    fill="#0f62fe"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
+                ))}
               </svg>
 
               {/* X axis labels */}
               <div className="absolute -bottom-6 left-0 w-full flex justify-between text-[10px] font-bold text-slate-500 px-1.5">
-                <span>Thứ 2</span>
-                <span>Thứ 3</span>
-                <span>Thứ 4</span>
-                <span>Thứ 5</span>
-                <span>Thứ 6</span>
-                <span>Thứ 7</span>
-                <span>Chủ nhật</span>
+                {revenueData.length > 0 ? (
+                  revenueData.map((item) => <span key={item.date}>{item.date}</span>)
+                ) : (
+                  <>
+                    <span>Thứ 2</span>
+                    <span>Thứ 3</span>
+                    <span>Thứ 4</span>
+                    <span>Thứ 5</span>
+                    <span>Thứ 6</span>
+                    <span>Thứ 7</span>
+                    <span>Chủ nhật</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -340,27 +405,121 @@ export const ManagerDashboard: React.FC = () => {
 
           {/* Legend list */}
           <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 text-xs font-semibold">
-            <div className="flex justify-between items-center">
-              <span className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#0f62fe]" /> Gỏi
-                hải sản
-              </span>
-              <span className="font-extrabold text-slate-800">245</span>
+            {report?.topItems && report.topItems.length > 0 ? (
+              report.topItems.slice(0, 5).map((item, index) => (
+                <div key={item.id} className="flex justify-between items-center">
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${index === 0
+                        ? "bg-admin-primary"
+                        : index === 1
+                          ? "bg-[#a855f7]"
+                          : index === 2
+                            ? "bg-[#06b6d4]"
+                            : index === 3
+                              ? "bg-[#f97316]"
+                              : "bg-[#10b981]"
+                        }`}
+                    />
+                    {item.name}
+                  </span>
+                  <span className="font-extrabold text-slate-800">{item.totalQty}</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-slate-400">Không có dữ liệu món bán chạy.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-admin-border shadow-2xs">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-lg font-extrabold text-slate-800">Cấu hình hệ thống</h3>
+              <p className="mt-1 text-sm text-slate-500">Chỉnh sửa thông tin nhà hàng và cài đặt thuế/phí.</p>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#a855f7]" /> Bò
-                lúc lắc
-              </span>
-              <span className="font-extrabold text-slate-800">198</span>
+            <button
+              type="button"
+              onClick={handleSaveSettings}
+              disabled={savingSettings || !settings}
+              className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {savingSettings ? "Đang lưu..." : "Lưu cấu hình"}
+            </button>
+          </div>
+
+          {(settingsError || settingsSaved) && (
+            <div className="mt-4 space-y-2">
+              {settingsSaved && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+                  Cập nhật cấu hình hệ thống thành công.
+                </div>
+              )}
+              {settingsError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  {settingsError}
+                </div>
+              )}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#06b6d4]" /> Lẩu
-                Thái chua cay
-              </span>
-              <span className="font-extrabold text-slate-800">167</span>
-            </div>
+          )}
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-semibold">Tên nhà hàng</span>
+              <input
+                type="text"
+                value={settings?.name ?? ""}
+                onChange={(e) => handleSettingsChange("name", e.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 focus:border-slate-400 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-semibold">Địa chỉ</span>
+              <input
+                type="text"
+                value={settings?.address ?? ""}
+                onChange={(e) => handleSettingsChange("address", e.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 focus:border-slate-400 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-semibold">Hotline</span>
+              <input
+                type="text"
+                value={settings?.hotline ?? ""}
+                onChange={(e) => handleSettingsChange("hotline", e.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 focus:border-slate-400 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-semibold">Giờ mở cửa</span>
+              <input
+                type="text"
+                value={settings?.opening_hours ?? ""}
+                onChange={(e) => handleSettingsChange("opening_hours", e.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 focus:border-slate-400 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-semibold">VAT (%)</span>
+              <input
+                type="number"
+                value={settings?.tax_rate ?? 0}
+                onChange={(e) => handleSettingsChange("tax_rate", Number(e.target.value))}
+                className="rounded-lg border border-slate-200 px-3 py-2 focus:border-slate-400 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-semibold">Phí dịch vụ (%)</span>
+              <input
+                type="number"
+                value={settings?.service_fee_rate ?? 0}
+                onChange={(e) => handleSettingsChange("service_fee_rate", Number(e.target.value))}
+                className="rounded-lg border border-slate-200 px-3 py-2 focus:border-slate-400 focus:outline-none"
+              />
+            </label>
           </div>
         </div>
       </div>

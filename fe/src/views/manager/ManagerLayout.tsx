@@ -1,6 +1,9 @@
-import React from "react";
-import { Outlet } from "react-router-dom";
-import { Bell, LogOut, Search, User } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Bell, LogOut, Search, Timer, User, Clock } from "lucide-react";
+import { io } from "socket.io-client";
+import { toast } from "react-hot-toast";
+import { getBookingValidationStatus, updateBookingValidationStatus } from "../../services/systemService";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import { setSearchQuery, clearSearchQuery } from "../../store/uiSlice";
@@ -13,67 +16,157 @@ import { ManagerSidebar } from "./components/ManagerSidebar";
  */
 export const ManagerLayout: React.FC = () => {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || "manager";
   const defaultName = displayRole === "manager" ? "Restaurant Manager" : "Demo User";
 
+  const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
+  const [togglingValidation, setTogglingValidation] = useState<boolean>(false);
+
+  useEffect(() => {
+    getBookingValidationStatus()
+      .then(setBookingValidationEnabled)
+      .catch(() => {});
+
+    const socket = io(import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000");
+    socket.on("system:booking_validation_changed", (data: { enabled: boolean }) => {
+      setBookingValidationEnabled(data.enabled);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  const handleToggleBookingValidation = async () => {
+    try {
+      setTogglingValidation(true);
+      const nextState = !bookingValidationEnabled;
+      const updated = await updateBookingValidationStatus(nextState);
+      setBookingValidationEnabled(updated);
+      toast.success(
+        updated
+          ? "🔔 ĐÃ BẬT giới hạn giờ 21:00 (Không nhận đặt bàn sau 21:00)"
+          : "🔓 ĐÃ TẮT giới hạn giờ 21:00 (Tự do test đặt bàn bất kỳ lúc nào)"
+      );
+    } catch {
+      toast.error("Không thể thay đổi trạng thái giới hạn giờ");
+    } finally {
+      setTogglingValidation(false);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen flex-col bg-sky-50/50 text-slate-600 md:flex-row">
-      {/* Sidebar */}
+    <div className="min-h-screen w-full bg-[#E4E4E4] text-[#1A1A1A] flex flex-col md:flex-row font-sans p-2 md:p-3.5 gap-2 md:gap-3.5">
+      {/* Floating Sidebar */}
       <ManagerSidebar />
 
-      {/* Main Content */}
+      {/* Main Content Workspace */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-sky-100 bg-white px-6 py-4">
+        {/* Top Floating Header */}
+        <header className="flex items-center justify-between px-4 py-3 md:px-6">
           <div className="relative hidden max-w-sm flex-1 sm:block">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm..."
-              value={searchQuery}
-              onChange={(e) => dispatch(setSearchQuery(e.target.value))}
-              className="w-full rounded-lg border border-sky-100 bg-sky-50/50 py-2 pl-9 pr-8 text-sm focus:border-sky-500 focus:outline-none"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => dispatch(clearSearchQuery())}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-slate-500 cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            )}
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-white/80 rounded-full px-4 py-2 shadow-xs">
+              <Search size={16} className="text-[#8B8B8B]" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm thông tin..."
+                value={searchQuery}
+                onChange={(e) => dispatch(setSearchQuery(e.target.value))}
+                className="w-full bg-transparent text-sm text-[#1A1A1A] placeholder-[#8B8B8B] focus:outline-none font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => dispatch(clearSearchQuery())}
+                  className="text-[#8B8B8B] hover:text-[#1A1A1A] cursor-pointer"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="ml-auto flex items-center gap-4">
-            <button type="button" className="relative rounded-lg p-2 text-slate-400 hover:bg-sky-100">
+
+          <div className="ml-auto flex items-center gap-3">
+            {/* Search Circle Icon Button (Mobile/Tablet) */}
+            <button
+              type="button"
+              className="sm:hidden flex h-10 w-10 items-center justify-center rounded-full bg-white/90 border border-white/80 text-[#1A1A1A] shadow-xs hover:bg-white cursor-pointer"
+            >
+              <Search size={18} />
+            </button>
+
+            {/* Notification Circle Icon Button */}
+            <button
+              type="button"
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white/90 border border-white/80 text-[#1A1A1A] shadow-xs hover:bg-white transition-colors cursor-pointer"
+              title="Thông báo"
+            >
               <Bell size={18} />
-              <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white">
+              <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#F5C344] text-[9px] font-black text-[#1A1A1A] shadow-xs">
                 3
               </span>
             </button>
-            <div className="flex items-center gap-2">
-              <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-slate-600">{user?.full_name || defaultName}</p>
-                <p className="text-xs text-gray-400">{ROLE_LABELS[displayRole]}</p>
+
+            {/* Nút Khóa / Nhận đặt bàn 21:00 */}
+            <button
+              type="button"
+              onClick={handleToggleBookingValidation}
+              disabled={togglingValidation}
+              title={
+                bookingValidationEnabled
+                  ? "Đang BẬT giới hạn 21:00 (SÁNG) — Ngưng nhận đặt bàn sau 21:00. Click để TẮT để test tự do."
+                  : "Đang TẮT giới hạn 21:00 (TỐI) — Cho phép test đặt bàn thoải mái bất kỳ lúc nào. Click để BẬT lại."
+              }
+              className={`hidden sm:flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[11px] font-extrabold transition-all border cursor-pointer ${
+                bookingValidationEnabled
+                  ? "border-amber-300 bg-amber-100 text-amber-900 shadow-xs hover:bg-amber-200 ring-2 ring-amber-300/50"
+                  : "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 opacity-60"
+              }`}
+            >
+              <Clock size={14} className={bookingValidationEnabled ? "text-amber-600 animate-pulse" : "text-slate-400"} />
+              <span>{bookingValidationEnabled ? "Giới hạn giờ: BẬT" : "Giới hạn giờ: TẮT"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/checkin")}
+              title="Chấm công vào hoặc ra"
+              className="hidden sm:flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              <Timer size={14} />
+              Chấm công
+            </button>
+
+            {/* User Profile Card */}
+            <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md border border-white/80 rounded-full pl-3 pr-1.5 py-1.5 shadow-xs">
+              <div className="hidden text-right sm:block pl-1">
+                <p className="text-xs font-extrabold text-[#1A1A1A] leading-tight">{user?.full_name || defaultName}</p>
+                <p className="text-[10px] font-bold text-[#8B8B8B] leading-tight">
+                  {ROLE_LABELS[displayRole]}
+                </p>
               </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 text-slate-400">
-                <User size={16} />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F5C344] text-[#1A1A1A] font-black text-xs shadow-xs">
+                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : <User size={15} />}
               </div>
+
+              {/* Logout button */}
               <button
                 type="button"
                 onClick={() => dispatch(logoutAction())}
                 title="Đăng xuất"
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
               >
-                <LogOut size={16} />
-                <span className="hidden sm:inline">Đăng xuất</span>
+                <LogOut size={14} />
               </button>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        {/* Main View Area */}
+        <main className="flex-1 overflow-y-auto px-3 py-2 md:px-5 md:py-3 scrollbar-none">
           <Outlet />
         </main>
       </div>

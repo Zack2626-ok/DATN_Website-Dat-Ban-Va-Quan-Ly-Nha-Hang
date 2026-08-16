@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 import { isValidPhoneNumber } from "../utils/validation";
+import { MEMBER_LEVEL_RANK, normalizeMemberLevel } from "../constants/loyalty";
 
 const getCustomerSecret = (): string => {
   return process.env.JWT_CUSTOMER_SECRET || (process.env.JWT_SECRET ? process.env.JWT_SECRET + "_customer" : "customer_default_secret_key");
@@ -211,13 +212,76 @@ export const getCustomerLoyalty = async (req: Request, res: Response): Promise<v
 
 export const getVouchers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const vouchers = await db.getCustomerVouchers();
-    sendSuccess(res, vouchers, "Lấy danh sách vouchers thành công.");
+    if (!req.customer) {
+      sendError(res, "Bạn cần đăng nhập.", 401);
+      return;
+    }
+    const customer = await db.findCustomerById(req.customer.id);
+    if (!customer) {
+      sendError(res, "Không tìm thấy thông tin khách hàng.", 404);
+      return;
+    }
+    const customerLevel = normalizeMemberLevel(customer.member_level);
+    const vouchers = await db.getTierRewardVouchersForCustomer(req.customer.id);
+    const rewards = vouchers
+      .map((voucher) => ({
+        ...voucher,
+        is_unlocked: MEMBER_LEVEL_RANK[customerLevel] >= MEMBER_LEVEL_RANK[normalizeMemberLevel(voucher.required_member_level)],
+        is_redeemed: Boolean(voucher.is_redeemed),
+      }))
+      .sort((left, right) => MEMBER_LEVEL_RANK[normalizeMemberLevel(left.required_member_level)] - MEMBER_LEVEL_RANK[normalizeMemberLevel(right.required_member_level)]);
+    sendSuccess(res, rewards, "Lấy danh sách voucher quà tặng theo hạng thành công.");
   } catch (error) {
     console.error("Error in getVouchers:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+export const redeemCustomerVoucher = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.customer) {
+      sendError(res, "Bạn cần đăng nhập.", 401);
+      return;
+    }
+    const voucherId = Number(req.body.voucherId || req.body.voucher_id);
+    if (!Number.isInteger(voucherId) || voucherId <= 0) {
+      sendError(res, "Thiếu ID voucher hợp lệ.", 400);
+      return;
+    }
+
+    const redemption = await db.redeemTierRewardVoucher(req.customer.id, voucherId);
+    sendSuccess(res, { loyalty_points: redemption.loyaltyPoints, member_level: redemption.memberLevel }, "Đổi voucher thành công.");
+  } catch (error) {
+    console.error("Error in redeemCustomerVoucher:", error);
+    if (error instanceof db.LoyaltyVoucherRedemptionError) {
+      sendError(res, error.message, error.statusCode);
+      return;
+    }
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const getMyUnusedVouchers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.customer) {
+      sendError(res, "Bạn cần đăng nhập.", 401);
+      return;
+    }
+    const vouchers = await db.query(
+      `SELECT cv.id as customer_voucher_id, v.*, cv.redeemed_at, cv.is_used 
+       FROM customer_vouchers cv
+       JOIN vouchers v ON cv.voucher_id = v.id
+       WHERE cv.customer_id = ? AND cv.is_used = 0 AND v.is_active = 1 AND (v.expired_at IS NULL OR v.expired_at > NOW())`,
+      [req.customer.id]
+    );
+    sendSuccess(res, vouchers, "Lấy danh sách vouchers đã đổi thành công.");
+  } catch (error) {
+    console.error("Error in getMyUnusedVouchers:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const redeemVoucher = redeemCustomerVoucher;
 
 export const getMyBookings = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -230,6 +294,29 @@ export const getMyBookings = async (req: Request, res: Response): Promise<void> 
   } catch (error) {
     console.error("Error in getMyBookings:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const createBookingReviewHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { rating, comment } = req.body;
+    if (!id) {
+      sendError(res, "Thiếu ID đơn đặt bàn", 400);
+      return;
+    }
+
+    const result = await db.createBookingReview({
+      booking_id: Number(id),
+      customer_id: req.customer ? Number(req.customer.id) : null,
+      rating: Number(rating || 5),
+      comment: comment ? String(comment).trim() : undefined,
+    });
+
+    sendSuccess(res, result, `Gửi đánh giá thành công! Bạn được cộng +${result.points_awarded} PTS thưởng.`, 201);
+  } catch (error) {
+    console.error("Error in createBookingReviewHandler:", error);
+    sendError(res, (error as Error).message, 400);
   }
 };
 

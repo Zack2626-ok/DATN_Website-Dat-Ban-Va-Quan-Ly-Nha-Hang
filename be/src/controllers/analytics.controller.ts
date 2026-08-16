@@ -12,7 +12,7 @@ const formatMySQLDateTime = (d: Date): string => {
 const resolveDateRange = (type: string, start?: string, end?: string) => {
   const endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
-  
+
   let startDate = new Date();
   startDate.setHours(0, 0, 0, 0);
 
@@ -30,7 +30,7 @@ const resolveDateRange = (type: string, start?: string, end?: string) => {
       endDate.setHours(23, 59, 59, 999);
     }
   }
-  
+
   return {
     startStr: formatMySQLDateTime(startDate),
     endStr: formatMySQLDateTime(endDate),
@@ -104,13 +104,13 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
          ORDER BY hr ASC`,
         [startStr, endStr]
       );
-      
+
       // Initialize hours map
       const hrMap: Record<string, { revenue: number; orderCount: number }> = {};
       for (let h = 8; h <= 22; h += 2) {
         hrMap[`${h}h`] = { revenue: 0, orderCount: 0 };
       }
-      
+
       hoursRows.forEach((row: any) => {
         const hour = Number(row.hr);
         const groupHour = hour - (hour % 2);
@@ -120,7 +120,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
           hrMap[label].orderCount += Number(row.count);
         }
       });
-      
+
       timelineData = Object.keys(hrMap).map((label) => ({
         label,
         revenue: hrMap[label].revenue,
@@ -136,7 +136,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
          ORDER BY dt ASC`,
         [startStr, endStr]
       );
-      
+
       // Initialize all dates in the range to avoid empty gaps
       const dateMap: Record<string, { revenue: number; orderCount: number }> = {};
       const tempDate = new Date(startDate);
@@ -145,7 +145,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
         dateMap[key] = { revenue: 0, orderCount: 0 };
         tempDate.setDate(tempDate.getDate() + 1);
       }
-      
+
       dateRows.forEach((row: any) => {
         const dObj = new Date(row.dt);
         const key = `${dObj.getDate().toString().padStart(2, "0")}/${(dObj.getMonth() + 1).toString().padStart(2, "0")}`;
@@ -154,7 +154,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
           dateMap[key].orderCount = Number(row.count);
         }
       });
-      
+
       timelineData = Object.keys(dateMap).map((label) => ({
         label,
         revenue: dateMap[label].revenue,
@@ -170,7 +170,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
        GROUP BY HOUR(created_at)`,
       [startStr, endStr]
     );
-    
+
     const peakMap: Record<number, number> = {};
     for (let h = 8; h <= 22; h++) {
       peakMap[h] = 0;
@@ -181,7 +181,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
         peakMap[hr] = Number(row.count);
       }
     });
-    
+
     const totalPeakOrders = Object.values(peakMap).reduce((s, c) => s + c, 0) || 1;
     const peakHourData = Object.keys(peakMap).map((hrStr) => {
       const hour = Number(hrStr);
@@ -241,7 +241,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     // Event contracts removed
 
     const paymentGrandTotal = Object.values(payStatsMap).reduce((sum, s) => sum + s.total, 0) || 1;
-    
+
     const paymentNames: Record<string, string> = {
       cash: "Tiền mặt",
       bank_transfer: "Chuyển khoản",
@@ -262,6 +262,7 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     });
 
     // 6) Cash Flow Summary
+    // a) Material Expenses
     const expenseRows = await db.query(
       `SELECT 
          CASE 
@@ -283,6 +284,26 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
       category: r.category,
       amount: Number(r.amount),
     }));
+
+    // b) Payroll Expenses
+    const payrollRow = await db.query(
+      `SELECT COALESCE(SUM(total_salary), 0) AS val FROM payrolls WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const salaryCost = Number(payrollRow[0].val);
+    if (salaryCost > 0) {
+      expenseItems.push({ category: 'Trả lương nhân viên', amount: salaryCost });
+    }
+
+    // c) Operational Expenses
+    const opsExpenseRow = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const operationalCost = Number(opsExpenseRow[0].val);
+    if (operationalCost > 0) {
+      expenseItems.push({ category: 'Chi phí vận hành', amount: operationalCost });
+    }
 
     const totalIncome = totalRevenue + eventRevenue;
     const totalExpenses = expenseItems.reduce((s: number, e: any) => s + e.amount, 0);
@@ -315,14 +336,14 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
 export const getFinanceReport = async (req: Request, res: Response): Promise<void> => {
   try {
     const { startDate, endDate } = req.query;
-    
+
     // Resolve dates (default to this month if not provided)
     const end = new Date();
     end.setHours(23, 59, 59, 999);
     const start = new Date();
     start.setDate(1); // First day of current month
     start.setHours(0, 0, 0, 0);
-    
+
     const startStr = formatMySQLDateTime(startDate ? new Date(startDate as string) : start);
     const endStr = formatMySQLDateTime(endDate ? new Date(endDate as string) : end);
 
@@ -333,11 +354,25 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     );
     const totalIncome = Number(incomeRow[0].val);
 
-    const expenseRow = await db.query(
+    const stockInRow = await db.query(
       `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val FROM stock_in WHERE created_at BETWEEN ? AND ?`,
       [startStr, endStr]
     );
-    const totalExpenses = Number(expenseRow[0].val);
+    const materialCost = Number(stockInRow[0].val);
+
+    const payrollRow = await db.query(
+      `SELECT COALESCE(SUM(total_salary), 0) AS val FROM payrolls WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const salaryCost = Number(payrollRow[0].val);
+
+    const opsExpenseRow = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const operationalCost = Number(opsExpenseRow[0].val);
+
+    const totalExpenses = materialCost + salaryCost + operationalCost;
     const netProfit = totalIncome - totalExpenses;
 
     // 2) Recent Transactions
@@ -357,7 +392,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
       UNION ALL
       (
         SELECT 
-          CONCAT('EXP-', id) as id,
+          CONCAT('EXP-MAT-', id) as id,
           'expense' as type,
           COALESCE(note, 'Nhập nguyên liệu') as description,
           (quantity * unit_cost) as amount,
@@ -366,16 +401,41 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         FROM stock_in 
         WHERE created_at BETWEEN ? AND ?
       )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('EXP-SAL-', p.id) as id,
+          'expense' as type,
+          CONCAT('Trả lương nhân viên ', u.full_name, ' tháng ', p.month, '/', p.year) as description,
+          p.total_salary as amount,
+          p.paid_at as date,
+          'completed' as status
+        FROM payrolls p
+        JOIN users u ON p.user_id = u.id
+        WHERE p.status = 'paid' AND p.paid_at BETWEEN ? AND ?
+      )
+      UNION ALL
+      (
+        SELECT 
+          CONCAT('EXP-OPS-', id) as id,
+          'expense' as type,
+          CONCAT('Chi phí: ', title) as description,
+          amount as amount,
+          expense_date as date,
+          'completed' as status
+        FROM operational_expenses 
+        WHERE expense_date BETWEEN ? AND ?
+      )
       ORDER BY date DESC
       LIMIT 100
       `,
-      [startStr, endStr, startStr, endStr]
+      [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr]
     );
 
     sendSuccess(
       res,
       {
-        summary: { totalIncome, totalExpenses, netProfit },
+        summary: { totalIncome, totalExpenses, netProfit, materialCost, salaryCost, operationalCost },
         recentTransactions: txRows,
       },
       "Tải báo cáo tài chính thành công"
@@ -386,58 +446,107 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
   }
 };
 
+// ================================================================
+// getLossDebtReport — ĐÃ CẬP NHẬT theo TASK 2
+//  - system_stock lấy realtime từ ingredients.current_stock
+//  - chỉ lấy bản ghi kiểm kê MỚI NHẤT của mỗi nguyên liệu
+//  - hạn thanh toán dựa trên suppliers.payment_terms (không hardcode +7 ngày)
+//  - trả thêm "summary" (tổng nợ, nợ quá hạn, số NCC...) cho FE dùng ở KPI cards
+// ================================================================
 export const getLossDebtReport = async (_req: Request, res: Response): Promise<void> => {
   try {
-    // 1) Variances (Hao hụt)
+    // 1) Hao hụt: JOIN stock_inventory với ingredients để lấy current_stock realtime
+    //    Chỉ lấy bản ghi kiểm kê mới nhất của mỗi nguyên liệu
     const varianceRows = await db.query(`
       SELECT 
         si.id,
         si.ingredient_id,
         i.name AS ingredientName,
-        si.actual_stock AS actualStock,
-        si.system_stock AS systemStock,
-        si.variance,
-        si.noted_at AS notedAt
+        i.unit,
+        si.actual_stock   AS actual,
+        i.current_stock   AS expected,
+        (si.actual_stock - i.current_stock) AS variance,
+        si.noted_at
       FROM stock_inventory si
       JOIN ingredients i ON si.ingredient_id = i.id
-      ORDER BY si.noted_at DESC
-      LIMIT 100
+      WHERE si.id IN (
+        SELECT MAX(id) FROM stock_inventory GROUP BY ingredient_id
+      )
+      ORDER BY variance ASC
     `);
 
-    // 2) Supplier Debts (Công nợ)
+    // 2) Công nợ NCC: lấy tất cả NCC đang nợ (total_debt > 0) HOẶC đã từng nợ
+    //    và đã tất toán (có lịch sử trong debt_payments) để hiển thị "Đã thanh toán"
     const debtRows = await db.query(`
       SELECT 
-        id,
-        name AS supplierName,
-        total_debt AS amount
-      FROM suppliers
-      WHERE total_debt > 0
+        s.id,
+        s.name       AS supplierName,
+        s.phone,
+        s.total_debt AS amount,
+        s.payment_terms
+      FROM suppliers s
+      WHERE s.total_debt > 0
+         OR EXISTS (SELECT 1 FROM debt_payments dp WHERE dp.supplier_id = s.id)
+      ORDER BY s.total_debt DESC
     `);
-    
+
+    const now = new Date();
     const supplierDebts = debtRows.map((r: any) => {
-       const due = new Date();
-       due.setDate(due.getDate() + 7);
-       return {
-         id: `SUP-${r.id}`,
-         supplierName: r.supplierName,
-         amount: Number(r.amount),
-         due: due.toISOString().split("T")[0],
-         status: "Chưa thanh toán"
-       };
+      const amount = Number(r.amount);
+      const due = new Date(now);
+      due.setDate(due.getDate() + (Number(r.payment_terms) || 30));
+      const daysLeft = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Nợ đã về 0 → tất toán xong, không cần tính hạn/quá hạn nữa
+      let status: string;
+      if (amount === 0) {
+        status = "Đã thanh toán";
+      } else if (daysLeft < 0) {
+        status = "Quá hạn";
+      } else if (daysLeft <= 3) {
+        status = "Sắp đến hạn";
+      } else {
+        status = "Chưa thanh toán";
+      }
+
+      return {
+        id: `SUP-${r.id}`,
+        rawId: r.id,
+        supplierName: r.supplierName,
+        phone: r.phone,
+        amount,
+        due: due.toISOString().split("T")[0],
+        daysLeft,
+        status,
+      };
     });
+
+    // 3) Tổng hợp summary — chỉ tính trên các NCC ĐANG còn nợ (amount > 0)
+    const owingSuppliers = supplierDebts.filter((d: any) => d.amount > 0);
+    const totalDebt = owingSuppliers.reduce((s: number, d: any) => s + d.amount, 0);
+    const overdueDebt = owingSuppliers
+      .filter((d: any) => d.status === "Quá hạn")
+      .reduce((s: number, d: any) => s + d.amount, 0);
 
     sendSuccess(
       res,
       {
         variances: varianceRows.map((r: any) => ({
-           id: r.id,
-           ingredientName: r.ingredientName,
-           expected: Number(r.systemStock),
-           actual: Number(r.actualStock),
-           variance: Number(r.variance),
-           date: r.notedAt,
+          id: r.id,
+          ingredientName: r.ingredientName,
+          unit: r.unit,
+          expected: Number(r.expected),
+          actual: Number(r.actual),
+          variance: Number(r.variance),
+          date: r.noted_at,
         })),
         supplierDebts,
+        summary: {
+          totalDebt,
+          overdueDebt,
+          supplierCount: owingSuppliers.length,
+          overdueCount: owingSuppliers.filter((d: any) => d.status === "Quá hạn").length,
+        },
       },
       "Tải báo cáo hao hụt công nợ thành công"
     );
