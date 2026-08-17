@@ -9,6 +9,7 @@ import { ChefRoutes } from "./chef.routes";
 import { SalesRoutes } from "./sales.routes";
 import { AccessDeniedPage } from "../views/auth/AccessDeniedPage";
 import CheckInPage from "../views/auth/CheckInPage";
+import { SystemSettingsPage } from "../views/manager/settings";
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -31,6 +32,7 @@ export const AppRoutes: React.FC = () => {
       <Route path="/403" element={<AccessDeniedPage />} />
 
       {/* Route Fallback (Non-existent routes redirect back to client landing) */}
+      <Route path="/settings" element={<SystemSettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
