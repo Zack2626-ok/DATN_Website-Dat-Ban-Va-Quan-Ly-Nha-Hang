@@ -3478,6 +3478,17 @@ export const InventoryControl: React.FC = () => {
                                 {isDraft && (
                                   <>
                                     <button
+                                      onClick={() => {
+                                        setSelectedDraft(item);
+                                        setCurrentView("inventoryCheck");
+                                      }}
+                                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                                      title="Chỉnh sửa / Tiếp tục kiểm đếm"
+                                    >
+                                      <Pencil size={12} /> Chỉnh sửa
+                                    </button>
+
+                                    <button
                                       onClick={async () => {
                                          if (!window.confirm("Số lượng của phiếu kiểm kê sẽ đồng bộ vào trong dữ liệu kho với số lượng kiểm đếm thực tế, tiền thừa hoặc hụt sẽ được cộng hoặc trừ với giá nhập gần nhất. Bạn chắc chứ?")) {
                                            return;
