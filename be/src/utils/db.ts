@@ -1127,6 +1127,49 @@ const runSchemaMigrations = async (): Promise<void> => {
     await query(`ALTER TABLE debt_payments ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
     await query(`ALTER TABLE debt_payments MODIFY COLUMN paid_by INT NULL`).catch(() => {});
 
+    // Migration: Ensure payrolls table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS payrolls (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        month INT NOT NULL,
+        year INT NOT NULL,
+        total_hours DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        hourly_rate DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        total_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        status ENUM('pending', 'paid') NOT NULL DEFAULT 'pending',
+        paid_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_user_month_year (user_id, month, year)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    // Migration: Ensure operational_expenses table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS operational_expenses (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        is_recurring TINYINT(1) NOT NULL DEFAULT 0,
+        expense_date DATE NOT NULL,
+        created_by INT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    // Migration: Add hourly_rate to users
+    const hourlyCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'hourly_rate'`
+    ).catch(() => []);
+    if (hourlyCols.length === 0) {
+      await query(`ALTER TABLE users ADD COLUMN hourly_rate DECIMAL(15, 2) NOT NULL DEFAULT 25000`).catch(() => {});
+      console.log("✅ Migration: added users.hourly_rate");
+    }
+
     // Dynamic bank-transfer reconciliation fields. Each statement is intentionally
     // idempotent because existing demo databases may already contain payments.
     await query(`ALTER TABLE payments ADD COLUMN received_amount DECIMAL(14,2) NULL`).catch(() => {});

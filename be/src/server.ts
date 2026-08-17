@@ -171,7 +171,9 @@ app.use("/api/events", eventConfigRoutes);
 app.use("/api/banquets", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/payrolls", payrollRoutes);
+app.use("/api/v1/payrolls", payrollRoutes);
 app.use("/api/expenses", expenseRoutes);
+app.use("/api/v1/expenses", expenseRoutes);
 // Must stay before the legacy /api table fallback below.
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/v1/attendance", attendanceRoutes);
