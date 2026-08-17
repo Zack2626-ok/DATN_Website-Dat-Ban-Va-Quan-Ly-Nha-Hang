@@ -369,7 +369,7 @@ export const InventoryCheck: React.FC<InventoryCheckProps> = ({ onBack, draftDat
                 <UploadCloud size={16} /> Nhập từ Excel
               </button>
               <button onClick={handleSaveDraft} className="px-4 py-2 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 text-sm flex items-center gap-2 cursor-pointer shadow-sm">
-                <Save size={16} /> Lưu (Đang kiểm)
+                <Save size={16} /> Lưu tạm (Đang kiểm)
               </button>
             </>
           )}
