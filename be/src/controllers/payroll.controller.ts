@@ -13,14 +13,14 @@ export const payrollController = {
       }
 
       // 1. Lấy danh sách nhân viên
-      const users = await db.query(`SELECT id, hourly_rate FROM users WHERE is_deleted = 0`);
+      const users = await db.query(`SELECT id, COALESCE(hourly_rate, 25000) AS hourly_rate FROM users WHERE is_deleted = 0`);
 
       for (const user of users) {
         // 2. Tính tổng số phút làm việc trong tháng cho nhân viên này
         const attendanceRecords = await db.query(`
           SELECT clock_in, clock_out 
           FROM attendance 
-          WHERE user_id = ? 
+          WHERE employee_id = ? 
             AND MONTH(clock_in) = ? 
             AND YEAR(clock_in) = ? 
             AND clock_out IS NOT NULL
@@ -35,7 +35,7 @@ export const payrollController = {
         }
 
         const totalHours = totalMinutes / 60;
-        const hourlyRate = Number(user.hourly_rate) || 0;
+        const hourlyRate = Number(user.hourly_rate) || 25000;
         const totalSalary = totalHours * hourlyRate;
 
         // 3. UPSERT vào bảng payrolls
@@ -75,9 +75,10 @@ export const payrollController = {
     try {
       const { month, year } = req.query;
       let sql = `
-        SELECT p.*, u.full_name, u.role_name, u.employee_code 
+        SELECT p.*, u.full_name, COALESCE(r.name, 'waiter') AS role_name, u.employee_code 
         FROM payrolls p 
         JOIN users u ON p.user_id = u.id 
+        LEFT JOIN roles r ON u.role_id = r.id
         WHERE 1=1
       `;
       const params: any[] = [];

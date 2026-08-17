@@ -34,7 +34,8 @@ export const expenseController = {
   createExpense: async (req: Request, res: Response): Promise<void> => {
     try {
       const { title, category, amount, is_recurring, expense_date } = req.body;
-      const created_by = (req as any).user?.id || 'admin'; // fallback if no user auth middleware provides it
+      const rawUserId = (req as any).user?.id;
+      const created_by = rawUserId && !isNaN(Number(rawUserId)) ? Number(rawUserId) : null;
       
       if (!title || !category || !amount || !expense_date) {
         res.status(400).json({ error: "Missing required fields" });
