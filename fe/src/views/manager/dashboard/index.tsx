@@ -16,6 +16,38 @@ export const ManagerDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [reportError, setReportError] = useState<string | null>(null);
 
+  const fallbackReport: ManagerReportSummary = useMemo(
+    () => ({
+      totalRevenue: 132450000,
+      totalCompletedOrders: 384,
+      activeOrdersCount: 17,
+      occupiedTables: 24,
+      revenueByDate: [
+        { date: "T2", totalRevenue: 12000000, totalOrders: 18 },
+        { date: "T3", totalRevenue: 15800000, totalOrders: 22 },
+        { date: "T4", totalRevenue: 17200000, totalOrders: 26 },
+        { date: "T5", totalRevenue: 18900000, totalOrders: 30 },
+        { date: "T6", totalRevenue: 21600000, totalOrders: 34 },
+        { date: "T7", totalRevenue: 25400000, totalOrders: 39 },
+        { date: "CN", totalRevenue: 23900000, totalOrders: 37 },
+      ],
+      bookingStats: [
+        { status: "pending", count: 9 },
+        { status: "confirmed", count: 17 },
+        { status: "completed", count: 21 },
+        { status: "cancelled", count: 3 },
+      ],
+      topItems: [
+        { id: 1, name: "Bún chả đặc biệt", totalQty: 86, totalRevenue: 21400000 },
+        { id: 2, name: "Sườn nướng BBQ", totalQty: 69, totalRevenue: 18200000 },
+        { id: 3, name: "Lẩu thái", totalQty: 54, totalRevenue: 24100000 },
+        { id: 4, name: "Gà rán mật ong", totalQty: 41, totalRevenue: 12900000 },
+        { id: 5, name: "Cơm tấm sườn", totalQty: 37, totalRevenue: 11400000 },
+      ],
+    }),
+    [],
+  );
+
   useEffect(() => {
     const loadDashboard = async () => {
       setLoading(true);
@@ -53,21 +85,21 @@ export const ManagerDashboard: React.FC = () => {
     };
   }, [orders, tables]);
 
-  const bookingStats = Array.isArray(report?.bookingStats)
-  ? report.bookingStats
-  : [];
+  const dashboardReport = report ?? fallbackReport;
+  const bookingStats = Array.isArray(dashboardReport.bookingStats)
+    ? dashboardReport.bookingStats
+    : [];
 
-const displayStats = {
-  totalRevenue: report?.totalRevenue ?? stats.totalRevenue,
-  occupiedTables: report?.occupiedTables ?? stats.occupiedTables,
-  totalCompletedOrders: report?.totalCompletedOrders ?? 0,
-  activeOrdersCount: report?.activeOrdersCount ?? stats.activeOrdersCount,
+  const displayStats = {
+    totalRevenue: dashboardReport.totalRevenue ?? stats.totalRevenue,
+    occupiedTables: dashboardReport.occupiedTables ?? stats.occupiedTables,
+    totalCompletedOrders: dashboardReport.totalCompletedOrders ?? 0,
+    activeOrdersCount: dashboardReport.activeOrdersCount ?? stats.activeOrdersCount,
+    pendingBookings:
+      bookingStats.find((item) => item.status === "pending")?.count ?? 0,
+  };
 
-  pendingBookings:
-    bookingStats.find((item) => item.status === "pending")?.count ?? 0,
-};
-
-  const revenueData = report?.revenueByDate ?? [];
+  const revenueData = dashboardReport.revenueByDate ?? [];
   const chartPoints = useMemo(() => {
     if (!revenueData.length) return [];
 
@@ -102,8 +134,8 @@ const displayStats = {
         <p className="mt-1 text-sm text-slate-400">Theo dõi doanh thu, bàn phục vụ và hoạt động trong ca</p>
       </div>
       {reportError ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {reportError}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          {reportError} Dữ liệu hiển thị đang là dữ liệu mẫu để bạn kiểm tra giao diện.
         </div>
       ) : null}
       {/* KPIs Grid */}
@@ -373,8 +405,8 @@ const displayStats = {
 
           {/* Legend list */}
           <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 text-xs font-semibold">
-            {report?.topItems && report.topItems.length > 0 ? (
-              report.topItems.slice(0, 5).map((item, index) => (
+            {dashboardReport.topItems && dashboardReport.topItems.length > 0 ? (
+              dashboardReport.topItems.slice(0, 5).map((item, index) => (
                 <div key={item.id} className="flex justify-between items-center">
                   <span className="flex items-center gap-2">
                     <span
