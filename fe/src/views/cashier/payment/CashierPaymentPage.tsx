@@ -50,6 +50,11 @@ export const CashierPaymentPage: React.FC = () => {
   const selectedInvoiceRef = useRef<Invoice | null>(null);
   const restaurantInfoRef = useRef<RestaurantInfo | null>(null);
 
+  const showSuccess = useCallback((msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3000);
+  }, []);
+
   useEffect(() => {
     dispatch(fetchInvoices());
     dispatch(fetchTables());
@@ -80,13 +85,20 @@ export const CashierPaymentPage: React.FC = () => {
       if (!activeInvoice || Number(activeInvoice.id) !== payload.invoiceId) return;
 
       setPaymentOpen(false);
-      setSuccessMsg("Đã nhận chuyển khoản ngân hàng thành công!");
-      window.setTimeout(() => setSuccessMsg(null), 3000);
+      showSuccess("Đã nhận chuyển khoản ngân hàng thành công!");
       printCashierInvoice(
         { ...activeInvoice, paymentMethod: "transfer", totalAmount: payload.amount },
         restaurantInfoRef.current?.name,
         restaurantInfoRef.current,
       );
+    };
+
+    const handlePaymentRequest = (data?: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string }) => {
+      triggerRefresh();
+      if (data) {
+        const label = data.tableName || (data.tableId ? `bàn ${data.tableId}` : `đơn #${data.orderId || ""}`);
+        showSuccess(`Có yêu cầu thanh toán mới cho ${label}`);
+      }
     };
 
     socket.on("table:status_changed", triggerRefresh);
@@ -96,7 +108,9 @@ export const CashierPaymentPage: React.FC = () => {
     socket.on("table:group_seating_changed", triggerRefresh);
     socket.on("order_updated", triggerRefresh);
     socket.on("kds_updated", triggerRefresh);
-    socket.on("payment:request", triggerRefresh);
+    socket.on("payment:request", handlePaymentRequest);
+    socket.on("payment:updated", triggerRefresh);
+    socket.on("invoice:updated", triggerRefresh);
     socket.on("invoice_refunded", triggerRefresh);
     socket.on("payment:success", handleBankTransferSuccess);
 
@@ -109,63 +123,22 @@ export const CashierPaymentPage: React.FC = () => {
       socket.off("table:group_seating_changed");
       socket.off("order_updated");
       socket.off("kds_updated");
-      socket.off("payment:request");
-      socket.off("invoice_refunded");
+      socket.off("payment:request", handlePaymentRequest);
+      socket.off("payment:updated", triggerRefresh);
+      socket.off("invoice:updated", triggerRefresh);
+      socket.off("invoice_refunded", triggerRefresh);
       socket.off("payment:success", handleBankTransferSuccess);
       if (paymentSocketRef.current === socket) paymentSocketRef.current = null;
       socket.disconnect();
       console.log("🔌 Disconnected Socket.io Client for Cashier Payment Page");
     };
-  }, [dispatch]);
+  }, [dispatch, showSuccess]);
 
   useEffect(() => {
     getRestaurantInfo()
       .then(setRestaurantInfo)
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
-    const socket = io(socketUrl, {
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log("⚡ Cashier connected to payment socket");
-    });
-
-    socket.on("payment:request", (data: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string }) => {
-      const label = data.tableName || (data.tableId ? `bàn ${data.tableId}` : `đơn #${data.orderId || ""}`);
-      showSuccess(`Có yêu cầu thanh toán mới cho ${label}`);
-      dispatch(fetchInvoices());
-      dispatch(fetchTables());
-      dispatch(fetchOrders());
-    });
-
-    socket.on("payment:updated", () => {
-      dispatch(fetchInvoices());
-      dispatch(fetchTables());
-      dispatch(fetchOrders());
-    });
-
-    socket.on("invoice:updated", () => {
-      dispatch(fetchInvoices());
-      dispatch(fetchTables());
-      dispatch(fetchOrders());
-    });
-
-    return () => {
-      socket.off("connect");
-      socket.off("payment:request");
-      socket.off("payment:updated");
-      socket.off("invoice:updated");
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [dispatch, showSuccess]);
 
   useEffect(() => {
     if (error) {
@@ -259,10 +232,6 @@ export const CashierPaymentPage: React.FC = () => {
     restaurantInfoRef.current = restaurantInfo;
   }, [restaurantInfo]);
 
-  const showSuccess = useCallback((msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 3000);
-  }, []);
   const handleSelectInvoice = useCallback(
     (id: string) => {
       dispatch(selectInvoice(id));
