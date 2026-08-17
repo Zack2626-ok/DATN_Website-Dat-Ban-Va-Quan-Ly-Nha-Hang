@@ -32,7 +32,7 @@ export const AppRoutes: React.FC = () => {
       <Route path="/403" element={<AccessDeniedPage />} />
 
       {/* Route Fallback (Non-existent routes redirect back to client landing) */}
-      <Route path="settings" element={<SystemSettingsPage />} />
+      <Route path="/settings" element={<SystemSettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
