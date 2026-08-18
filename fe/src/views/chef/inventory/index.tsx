@@ -232,6 +232,77 @@ export const InventoryControl: React.FC = () => {
   const [auditRefreshTrigger, setAuditRefreshTrigger] = useState<number>(0);
   const [selectedDeletedIds, setSelectedDeletedIds] = useState<string[]>([]);
 
+  // Reports Tab Date Range Filter State (Tuần này, Tháng này, Tháng trước, Năm nay, Tùy chỉnh)
+  const [reportTimeFilter, setReportTimeFilter] = useState<"this_week" | "this_month" | "last_month" | "this_year" | "custom" | "all">("this_month");
+  const [reportStartDate, setReportStartDate] = useState<string>("");
+  const [reportEndDate, setReportEndDate] = useState<string>("");
+
+  const isDateInReportRange = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const itemDate = new Date(dateStr);
+    if (isNaN(itemDate.getTime())) return false;
+
+    const now = new Date();
+
+    if (reportTimeFilter === "all") return true;
+
+    if (reportTimeFilter === "this_week") {
+      const day = now.getDay();
+      const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(now.getFullYear(), now.getMonth(), diffToMonday, 0, 0, 0);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+      return itemDate >= monday && itemDate <= sunday;
+    }
+
+    if (reportTimeFilter === "this_month") {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return itemDate >= firstDay && itemDate <= lastDay;
+    }
+
+    if (reportTimeFilter === "last_month") {
+      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+      return itemDate >= firstDay && itemDate <= lastDay;
+    }
+
+    if (reportTimeFilter === "this_year") {
+      const firstDay = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+      const lastDay = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      return itemDate >= firstDay && itemDate <= lastDay;
+    }
+
+    if (reportTimeFilter === "custom") {
+      if (reportStartDate && itemDate < new Date(`${reportStartDate}T00:00:00`)) return false;
+      if (reportEndDate && itemDate > new Date(`${reportEndDate}T23:59:59`)) return false;
+      return true;
+    }
+
+    return true;
+  };
+
+  const reportTimeLabel = useMemo(() => {
+    const now = new Date();
+    if (reportTimeFilter === "this_week") return "Tuần này";
+    if (reportTimeFilter === "this_month") return `Tháng này (${now.getMonth() + 1}/${now.getFullYear()})`;
+    if (reportTimeFilter === "last_month") {
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return `Tháng trước (${prev.getMonth() + 1}/${prev.getFullYear()})`;
+    }
+    if (reportTimeFilter === "this_year") return `Năm ${now.getFullYear()}`;
+    if (reportTimeFilter === "custom") {
+      if (reportStartDate && reportEndDate) {
+        return `Từ ${new Date(reportStartDate).toLocaleDateString("vi-VN")} đến ${new Date(reportEndDate).toLocaleDateString("vi-VN")}`;
+      }
+      if (reportStartDate) return `Từ ${new Date(reportStartDate).toLocaleDateString("vi-VN")}`;
+      if (reportEndDate) return `Đến ${new Date(reportEndDate).toLocaleDateString("vi-VN")}`;
+      return "Tùy chỉnh thời gian";
+    }
+    return "Toàn bộ thời gian";
+  }, [reportTimeFilter, reportStartDate, reportEndDate]);
+
   // Unit conversion helper for mass (kg/g) and volume (lit/ml)
   const getUnitConversion = (baseUnit: string, selectedUnit?: string) => {
     const norm = (baseUnit || "kg").trim().toLowerCase();
@@ -277,7 +348,7 @@ export const InventoryControl: React.FC = () => {
     ingredientId: string;
     batchNo: string;
     batchStock?: number;
-    quantity: number;
+    quantity: string | number;
     wasteUnit?: string;
     reason: string;
     note: string;
@@ -285,7 +356,7 @@ export const InventoryControl: React.FC = () => {
     ingredientId: "",
     batchNo: "",
     batchStock: 0,
-    quantity: 1,
+    quantity: "",
     wasteUnit: "",
     reason: "Ôi thiu / Mốc",
     note: ""
@@ -328,9 +399,11 @@ export const InventoryControl: React.FC = () => {
     const selectedIng = reduxIngredients.find((i: any) => Number(i.id) === ingId);
     const baseUnit = selectedIng?.unit || "kg";
     const conv = getUnitConversion(baseUnit, wasteForm.wasteUnit);
-    const baseQuantity = Number(wasteForm.quantity || 0) * conv.factor;
+    const parsedQty = parseFloat(String(wasteForm.quantity || "").replace(/,/g, "."));
+    const numQty = isNaN(parsedQty) ? 0 : parsedQty;
+    const baseQuantity = numQty * conv.factor;
 
-    if (!wasteForm.ingredientId || baseQuantity <= 0) {
+    if (!wasteForm.ingredientId || numQty <= 0) {
       toast.error("Vui lòng chọn nguyên liệu và nhập số lượng xuất hủy hợp lệ.");
       return;
     }
@@ -345,7 +418,6 @@ export const InventoryControl: React.FC = () => {
     const currentBatchStock = wasteForm.batchNo
       ? (batchObj ? Number(batchObj.quantity) : (wasteForm.batchStock || 0))
       : (selectedIng ? Number(selectedIng.stock) : 0);
-
     if (currentBatchStock > 0 && baseQuantity > currentBatchStock) {
       const displayInput = conv.activeUnit !== conv.baseUnitName 
         ? `${wasteForm.quantity} ${conv.activeUnit} (${baseQuantity} ${conv.baseUnitName})`
@@ -356,22 +428,24 @@ export const InventoryControl: React.FC = () => {
       return;
     }
 
-    const confirmMsg = "Nếu bạn tiêu hủy hệ thống sẽ trừ vào nguyên liệu chính và giá trừ sẽ lấy số tiền nhập gần nhất để trừ, bạn chắc chứ?";
-    if (!window.confirm(confirmMsg)) {
-      return;
-    }
-    
-    // Determine unit cost: prioritize specific batch unit_cost if batchNo is specified
-    let batchUnitCost = Number(batchObj?.unitCost || 0);
-    if (!batchUnitCost && wasteForm.batchNo) {
-      const batchTx = transactions.find(
-        (t: any) =>
-          t.type === "import" &&
-          (t.batchNo === wasteForm.batchNo || (t.reasonOrSupplier && t.reasonOrSupplier.includes(wasteForm.batchNo))) &&
-          Number(t.unit_cost || (t as any).unitCost || 0) > 0
-      );
-      if (batchTx) {
-        batchUnitCost = Number(batchTx.unit_cost || (batchTx as any).unitCost || 0);
+    // Determine unit cost:
+    // 1. If specific batch is selected: ALWAYS use the batch's actual unit_cost
+    // 2. If general disposal (no batch): Use Weighted Average Cost (avgCost) of remaining batches in stock
+    let batchUnitCost = 0;
+    if (wasteForm.batchNo) {
+      const batchInList = (batchData[ingId] || []).find((b: any) => (b.batch_code || b.batchNo) === wasteForm.batchNo);
+      batchUnitCost = Number(batchInList?.unit_cost || batchInList?.unitCost || batchObj?.unitCost || 0);
+
+      if (!batchUnitCost) {
+        const batchTx = transactions.find(
+          (t: any) =>
+            t.type === "import" &&
+            (t.batchNo === wasteForm.batchNo || (t.reasonOrSupplier && t.reasonOrSupplier.includes(wasteForm.batchNo))) &&
+            Number(t.unit_cost || (t as any).unitCost || 0) > 0
+        );
+        if (batchTx) {
+          batchUnitCost = Number(batchTx.unit_cost || (batchTx as any).unitCost || 0);
+        }
       }
     }
 
@@ -381,10 +455,24 @@ export const InventoryControl: React.FC = () => {
         t.type === "import" &&
         Number(t.unit_cost || (t as any).unitCost || 0) > 0
     );
-    const latestUnitCost = batchUnitCost > 0
-      ? batchUnitCost
-      : Number(recentImport?.unit_cost || (recentImport as any)?.unitCost || selectedIng?.unitCost || selectedIng?.cost || 0);
 
+    const latestUnitCost = wasteForm.batchNo
+      ? (batchUnitCost > 0 ? batchUnitCost : Number(selectedIng?.avgCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || selectedIng?.unitCost || 0))
+      : (Number(selectedIng?.avgCost || 0) > 0 ? Number(selectedIng?.avgCost) : Number(recentImport?.unit_cost || (recentImport as any)?.unitCost || selectedIng?.unitCost || 0));
+
+    const displayQtyText = conv.activeUnit !== conv.baseUnitName
+      ? `${wasteForm.quantity} ${conv.activeUnit} (${baseQuantity} ${conv.baseUnitName})`
+      : `${wasteForm.quantity} ${conv.baseUnitName}`;
+
+    const roundedUnitCost = Math.round(latestUnitCost);
+    const confirmMsg = wasteForm.batchNo
+      ? `Bạn có chắc chắn muốn xuất hủy ${displayQtyText} từ lô ${wasteForm.batchNo} không?\n\nSố tiền thiệt hại sẽ được tính theo đúng đơn giá nhập của lô này (${roundedUnitCost.toLocaleString("vi-VN")} đ/${baseUnit}).`
+      : `Bạn có chắc chắn muốn xuất hủy ${displayQtyText} không?\n\nSố tiền thiệt hại sẽ được tính theo đơn giá bình quân gia quyền của các lô còn tồn (${roundedUnitCost.toLocaleString("vi-VN")} đ/${baseUnit}).`;
+
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+    
     try {
       const loadingToast = toast.loading("Đang ghi nhận xuất hủy kho...");
       const slipCode = `EX${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}-${Date.now().toString().slice(-4)}`;
@@ -392,39 +480,46 @@ export const InventoryControl: React.FC = () => {
         ? wasteForm.note.trim()
         : (wasteForm.note.trim() ? `${wasteForm.reason}: ${wasteForm.note.trim()}` : wasteForm.reason);
 
-      const displayQtyText = conv.activeUnit !== conv.baseUnitName
-        ? `${wasteForm.quantity} ${conv.activeUnit} (${baseQuantity} ${conv.baseUnitName})`
-        : `${wasteForm.quantity} ${conv.baseUnitName}`;
-
+      const costTag = `[COST:${Math.round(latestUnitCost)}]`;
       await updateInventoryQuantityApi(ingId, {
         quantity: baseQuantity,
         type: "export",
         reasonType: "waste",
         batchNo: wasteForm.batchNo || undefined,
         unitCost: latestUnitCost,
-        reasonOrSupplier: `[SLIP:${slipCode}] Xuất hủy ${wasteForm.batchNo ? `lô ${wasteForm.batchNo}` : "hàng hỏng"} (${displayQtyText}): ${reasonText}`,
-        note: `[XUẤT HỦY HỎNG] [${displayQtyText}] ${reasonText}`
+        reasonOrSupplier: `[SLIP:${slipCode}]${costTag} Xuất hủy ${wasteForm.batchNo ? `lô ${wasteForm.batchNo}` : "hàng hỏng"} (${displayQtyText}): ${reasonText}`,
+        note: `[XUẤT HỦY HỎNG]${costTag} [${displayQtyText}] ${reasonText}`
       });
 
       toast.success(`Đã xuất hủy ${displayQtyText} ${selectedIng?.name || ""} thành công!`, { id: loadingToast });
       setShowWasteModal(false);
-      setWasteForm({ ingredientId: "", batchNo: "", quantity: 1, wasteUnit: "", reason: "Ôi thiu / Mốc", note: "" });
+      setWasteForm({ ingredientId: "", batchNo: "", batchStock: 0, quantity: "", wasteUnit: "", reason: "Ôi thiu / Mốc", note: "" });
 
-      // Refresh inventory & transactions & batches
+      // Refresh inventory & transactions & batches & expanded batch lists
       const [ingRes, txRes] = await Promise.all([
         getIngredientsApi(),
         getInventoryTransactionsApi()
       ]);
       setReduxIngredients(ingRes);
       setTransactions(txRes);
-      fetchAllBatchesData();
+      await fetchAllBatchesData();
+
+      // Refresh batchData for this ingredient if currently loaded/expanded
+      if (ingId) {
+        try {
+          const updatedBatches = await getIngredientBatchesApi(ingId);
+          setBatchData(prev => ({ ...prev, [ingId]: updatedBatches }));
+        } catch (e) {
+          console.error("Failed to refresh batchData", e);
+        }
+      }
     } catch (err: any) {
       console.error("Lỗi xuất hủy hàng hỏng:", err);
       toast.error("Xuất hủy thất bại: " + (err?.response?.data?.message || err?.message || "Có lỗi xảy ra"));
     }
   };
 
-  const handleDeleteWasteTransaction = async (txId: string) => {
+  const handleDeleteWasteTransaction = async (txId: string, ingId?: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa bản ghi lịch sử tiêu hủy này không?")) {
       return;
     }
@@ -439,7 +534,14 @@ export const InventoryControl: React.FC = () => {
       ]);
       setReduxIngredients(ingRes);
       setTransactions(txRes);
-      fetchAllBatchesData();
+      await fetchAllBatchesData();
+
+      if (ingId) {
+        try {
+          const bData = await getIngredientBatchesApi(ingId);
+          setBatchData(prev => ({ ...prev, [ingId]: bData }));
+        } catch (e) {}
+      }
     } catch (err: any) {
       console.error("Lỗi xóa bản ghi tiêu hủy:", err);
       toast.error(err?.response?.data?.message || "Không thể xóa bản ghi tiêu hủy.");
@@ -1027,6 +1129,79 @@ export const InventoryControl: React.FC = () => {
     return { totalIngredients, lowStockCount, expiredCount, nearExpiryCount };
   }, [reduxIngredients, expiryBatches]);
 
+  // Waste Loss Stats for reports (Filtered by date range)
+  const wasteStats = useMemo(() => {
+    let totalWasteLoss = 0;
+    let totalWasteCount = 0;
+    const wasteByIngredient: Record<string, { name: string; qty: number; unit: string; totalLoss: number; count: number }> = {};
+
+    transactions.forEach((t: any) => {
+      const isWaste = t.type === "export" && (
+        t.reasonType === "waste" ||
+        t.reasonType === "waste_spoiled" ||
+        t.reasonType === "expired" ||
+        (t.reasonOrSupplier && (
+          t.reasonOrSupplier.toLowerCase().includes("tiêu hủy") ||
+          t.reasonOrSupplier.toLowerCase().includes("xuất hủy") ||
+          t.reasonOrSupplier.toLowerCase().includes("hỏng") ||
+          t.reasonOrSupplier.toLowerCase().includes("thiu")
+        ))
+      );
+
+      const inRange = isDateInReportRange(t.timestamp || (t as any).created_at || (t as any).createdAt);
+
+      if (isWaste && inRange) {
+        const qty = Math.abs(Number(t.quantity) || 0);
+        const costMatch = (t.reasonOrSupplier || t.note || "").match(/\[COST:(\d+)\]/);
+        const taggedCost = costMatch ? Number(costMatch[1]) : 0;
+        
+        const ingObj = reduxIngredients.find(
+          (i: any) => Number(i.id) === Number(t.ingredientId) || i.name === t.ingredientName
+        );
+        const recentImport = transactions.find(
+          (it: any) =>
+            (Number(it.ingredientId) === Number(t.ingredientId) ||
+              (it.ingredientName && t.ingredientName && it.ingredientName.trim().toLowerCase() === t.ingredientName.trim().toLowerCase())) &&
+            it.type === "import" &&
+            Number(it.unit_cost || (it as any).unitCost || 0) > 0
+        );
+
+        const isGeneralWaste = !t.batchNo && !String(t.reasonOrSupplier || "").includes("lô LOT-");
+        const unitPrice = taggedCost > 0 
+          ? taggedCost 
+          : (isGeneralWaste 
+            ? (Number(ingObj?.avgCost || 0) > 0 ? Number(ingObj.avgCost) : Number(t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || 0))
+            : Number(t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || 0));
+
+        const loss = Math.round(qty * unitPrice);
+        totalWasteLoss += loss;
+        totalWasteCount++;
+
+        const ingName = t.ingredientName || "Nguyên liệu";
+        if (!wasteByIngredient[ingName]) {
+          wasteByIngredient[ingName] = {
+            name: ingName,
+            qty: 0,
+            unit: t.unit || ingObj?.unit || "kg",
+            totalLoss: 0,
+            count: 0
+          };
+        }
+        wasteByIngredient[ingName].qty += qty;
+        wasteByIngredient[ingName].totalLoss += loss;
+        wasteByIngredient[ingName].count++;
+      }
+    });
+
+    const topWastedList = Object.values(wasteByIngredient).sort((a, b) => b.totalLoss - a.totalLoss);
+
+    return {
+      totalWasteLoss,
+      totalWasteCount,
+      topWastedList
+    };
+  }, [transactions, reduxIngredients, reportTimeFilter, reportStartDate, reportEndDate]);
+
   // Dynamic Category distribution (by count of items)
   const categoryDistribution = useMemo(() => {
     const counts: Record<string, number> = {
@@ -1071,19 +1246,22 @@ export const InventoryControl: React.FC = () => {
     });
   }, [reduxIngredients]);
 
-  // Dynamic Movement Statistics (Waste, Processing, Expiry)
+  // Dynamic Movement Statistics (Waste, Processing, Expiry) - Filtered by date range
   const dynamicMovementStats = useMemo(() => {
     let totalImportedG = 0;
     let totalProcessedG = 0;
     let totalDestroyedG = 0;
     let totalAdjustedG = 0;
 
-    transactions.forEach((tx) => {
-      const qtyG = tx.unit.toLowerCase() === "g" ? tx.quantity : tx.quantity * 1000;
+    transactions.forEach((tx: any) => {
+      const inRange = isDateInReportRange(tx.timestamp || tx.created_at || tx.createdAt);
+      if (!inRange) return;
+
+      const qtyG = tx.unit && tx.unit.toLowerCase() === "g" ? tx.quantity : tx.quantity * 1000;
       if (tx.type === "import") {
         totalImportedG += qtyG;
       } else if (tx.type === "export") {
-        if (tx.reasonOrSupplier.toLowerCase().includes("tiêu hủy")) {
+        if (tx.reasonOrSupplier && tx.reasonOrSupplier.toLowerCase().includes("tiêu hủy")) {
           totalDestroyedG += qtyG;
         } else {
           totalProcessedG += qtyG;
@@ -1105,7 +1283,7 @@ export const InventoryControl: React.FC = () => {
       destroyedPercent: Number(destroyedPercent.toFixed(1)),
       adjustedPercent: Number(adjustedPercent.toFixed(1)),
     };
-  }, [transactions]);
+  }, [transactions, reportTimeFilter, reportStartDate, reportEndDate]);
 
   const filteredImportTransactions = useMemo(() => {
     let result = transactions.filter(t => t.type === "import");
@@ -2131,7 +2309,18 @@ export const InventoryControl: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => setShowWasteModal(true)}
+                  onClick={() => {
+                    setWasteForm({
+                      ingredientId: "",
+                      batchNo: "",
+                      batchStock: 0,
+                      quantity: "",
+                      wasteUnit: "",
+                      reason: "Ôi thiu / Mốc",
+                      note: ""
+                    });
+                    setShowWasteModal(true);
+                  }}
                   className="px-3.5 py-2 bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
                   title="Ghi nhận tiêu hủy nguyên liệu/lô hàng bị hỏng, mốc, ôi thiu"
                 >
@@ -2340,10 +2529,12 @@ export const InventoryControl: React.FC = () => {
                                                         e.stopPropagation();
                                                         setWasteForm({
                                                           ingredientId: String(ing.id),
-                                                          batchNo: b.batch_code,
-                                                          quantity: Number(b.remaining_quantity),
+                                                          batchNo: b.batch_code || b.batchNo,
+                                                          batchStock: Number(b.remaining_quantity ?? b.quantity ?? 0),
+                                                          quantity: "",
+                                                          wasteUnit: ing.unit || "kg",
                                                           reason: "Ôi thiu / Mốc",
-                                                          note: `Xuất hủy lô ${b.batch_code}`
+                                                          note: `Xuất hủy lô ${b.batch_code || b.batchNo}`
                                                         });
                                                         setShowWasteModal(true);
                                                       }}
@@ -4034,20 +4225,17 @@ export const InventoryControl: React.FC = () => {
                         );
                         const qty = Math.abs(Number(t.quantity) || 0);
 
-                        // Find most recent unit_cost for this ingredient
-                        const recentImport = transactions.find(
-                          (it: any) =>
-                            (Number(it.ingredientId) === Number(t.ingredientId) ||
-                              (it.ingredientName &&
-                                t.ingredientName &&
-                                it.ingredientName.trim().toLowerCase() === t.ingredientName.trim().toLowerCase())) &&
-                            it.type === "import" &&
-                            Number(it.unit_cost || (it as any).unitCost || 0) > 0
-                        );
-                        const unitPrice = Number(
-                          t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || ingObj?.cost || 0
-                        );
-                        const totalLoss = qty * unitPrice;
+                        const costMatch = (t.reasonOrSupplier || t.note || "").match(/\[COST:(\d+)\]/);
+                        const taggedCost = costMatch ? Number(costMatch[1]) : 0;
+                        const isGeneralWaste = !t.batchNo && !String(t.reasonOrSupplier || "").includes("lô LOT-");
+
+                        const unitPrice = taggedCost > 0 
+                          ? taggedCost 
+                          : (isGeneralWaste 
+                            ? (Number(ingObj?.avgCost || 0) > 0 ? Number(ingObj.avgCost) : Number(t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || 0))
+                            : Number(t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || 0));
+
+                        const totalLoss = Math.round(qty * unitPrice);
                         const slipCode =
                           (t.reasonOrSupplier || t.note || "").match(/\[SLIP:([^\]]+)\]/)?.[1] ||
                           t.batchNo ||
@@ -4055,6 +4243,7 @@ export const InventoryControl: React.FC = () => {
 
                         let cleanReason = (t.reasonOrSupplier || t.note || "Xuất hủy kho")
                           .replace(/\[SLIP:[^\]]+\]\s*/g, "")
+                          .replace(/\[COST:\d+\]\s*/g, "")
                           .replace("[XUẤT HỦY HỎNG] ", "")
                           .replace("Xuất hủy: ", "")
                           .trim();
@@ -4230,21 +4419,110 @@ export const InventoryControl: React.FC = () => {
                 <p className="text-[10px] text-slate-600 mt-0.5">Ngày lập báo cáo: {new Date().toLocaleDateString("vi-VN")} | Thời gian: {new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</p>
               </div>
 
-              <div className="pb-2 border-b border-slate-100 flex justify-between items-center print-hide">
+              <div className="pb-3 border-b border-slate-100 flex flex-col md:flex-row gap-3 justify-between items-start md:items-center print-hide">
                 <div>
-                  <span className="text-xs font-black uppercase text-slate-600 tracking-wider">Báo cáo phân tích tồn kho nhanh</span>
-                  <p className="text-[10px] text-slate-600 font-semibold mt-1">Tổng quan về số lượng nguyên liệu, tỷ lệ cảnh báo và cơ cấu chủng loại.</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase text-slate-700 tracking-wider">Báo cáo phân tích tồn kho nhanh</span>
+                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px] border border-blue-200">
+                      {reportTimeLabel}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tổng quan về số lượng nguyên liệu, tỷ lệ cảnh báo, hao hụt và thiệt hại tiêu hủy.</p>
                 </div>
-                <button
-                  onClick={() => window.print()}
-                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-lg text-[10px] font-extrabold tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer print-hide"
-                >
-                  <FileSpreadsheet size={12} /> Xuất Báo cáo (Print)
-                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setReportTimeFilter("this_week")}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${reportTimeFilter === "this_week" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Tuần này
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReportTimeFilter("this_month")}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${reportTimeFilter === "this_month" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Tháng này
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReportTimeFilter("last_month")}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${reportTimeFilter === "last_month" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Tháng trước
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReportTimeFilter("this_year")}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${reportTimeFilter === "this_year" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Năm nay
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReportTimeFilter("custom")}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${reportTimeFilter === "custom" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Tùy chọn
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReportTimeFilter("all")}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${reportTimeFilter === "all" ? "bg-white text-blue-700 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                    >
+                      Tất cả
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => window.print()}
+                    className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-lg text-[10px] font-extrabold tracking-wide flex items-center gap-1 shadow-2xs cursor-pointer print-hide"
+                  >
+                    <FileSpreadsheet size={12} /> Xuất Báo cáo (Print)
+                  </button>
+                </div>
               </div>
 
+              {/* Custom Date Inputs if reportTimeFilter === "custom" */}
+              {reportTimeFilter === "custom" && (
+                <div className="flex flex-wrap items-center gap-3 p-3 bg-blue-50/50 border border-blue-200 rounded-xl text-xs print-hide animate-in fade-in duration-150">
+                  <span className="font-bold text-blue-900 flex items-center gap-1">
+                    <Calendar size={14} className="text-blue-600" /> Chọn khoảng thời gian cụ thể:
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 font-medium text-[11px]">Từ ngày:</span>
+                    <input
+                      type="date"
+                      value={reportStartDate}
+                      onChange={(e) => setReportStartDate(e.target.value)}
+                      className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-medium text-slate-700 focus:outline-none focus:border-blue-500 text-xs"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 font-medium text-[11px]">Đến ngày:</span>
+                    <input
+                      type="date"
+                      value={reportEndDate}
+                      onChange={(e) => setReportEndDate(e.target.value)}
+                      className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-medium text-slate-700 focus:outline-none focus:border-blue-500 text-xs"
+                    />
+                  </div>
+                  {(reportStartDate || reportEndDate) && (
+                    <button
+                      type="button"
+                      onClick={() => { setReportStartDate(""); setReportEndDate(""); }}
+                      className="px-2 py-1 text-slate-500 hover:text-rose-600 text-[11px] font-bold underline cursor-pointer"
+                    >
+                      Xóa lọc ngày
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Quick stats grids */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print-avoid-break">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 print-avoid-break">
                 <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
                   <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">Tổng số mặt hàng</span>
                   <span className="text-2xl font-black text-slate-800 block mt-1">{reportsStats.totalIngredients}</span>
@@ -4264,6 +4542,11 @@ export const InventoryControl: React.FC = () => {
                   <span className="text-[9px] font-black text-rose-650 uppercase tracking-wider block">Lô hàng hết hạn</span>
                   <span className="text-2xl font-black text-rose-700 block mt-1">{reportsStats.expiredCount}</span>
                   <span className="text-[10px] text-rose-400 font-semibold mt-0.5 block">Cần tiêu hủy gấp</span>
+                </div>
+                <div className="bg-rose-100/60 border border-rose-300 p-4 rounded-2xl col-span-2 sm:col-span-1">
+                  <span className="text-[9px] font-black text-rose-700 uppercase tracking-wider block">Tổn thất tiêu hủy</span>
+                  <span className="text-xl font-black text-rose-700 block mt-1">{wasteStats.totalWasteLoss.toLocaleString("vi-VN")} đ</span>
+                  <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{wasteStats.totalWasteCount} lượt xuất hủy hỏng/hạn</span>
                 </div>
               </div>
 
@@ -4342,6 +4625,73 @@ export const InventoryControl: React.FC = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Chi tiết tổn thất & tiêu hủy hàng hỏng */}
+              <div className="border border-rose-200/80 bg-white rounded-2xl p-5 shadow-xs print-avoid-break mt-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-rose-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                      <Trash2 size={16} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">Chi tiết tổn thất do hàng hỏng & hết hạn</h4>
+                      <p className="text-[10px] text-slate-500 font-medium">Thống kê tích lũy số lượng và giá trị thiệt hại đã xuất hủy khỏi kho</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200/60">
+                    <span className="text-[11px] font-bold text-rose-700">Tổng thiệt hại tích lũy:</span>
+                    <span className="text-sm font-black text-rose-700">{wasteStats.totalWasteLoss.toLocaleString("vi-VN")} đ</span>
+                  </div>
+                </div>
+
+                {wasteStats.topWastedList.length === 0 ? (
+                  <div className="py-8 text-center text-slate-450 text-xs font-semibold">
+                    🎉 Chưa ghi nhận tổn thất xuất hủy hàng hỏng nào trong hệ thống!
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto mt-3">
+                    <table className="min-w-full divide-y divide-slate-100 text-xs">
+                      <thead>
+                        <tr className="bg-slate-50/80 text-[10px] font-black uppercase text-slate-600 tracking-wider">
+                          <th className="px-4 py-2.5 text-left">#</th>
+                          <th className="px-4 py-2.5 text-left">Nguyên liệu</th>
+                          <th className="px-4 py-2.5 text-center">Tổng lượng tiêu hủy</th>
+                          <th className="px-4 py-2.5 text-center">Số đợt hủy</th>
+                          <th className="px-4 py-2.5 text-right">Tổng thiệt hại (VND)</th>
+                          <th className="px-4 py-2.5 text-right">Tỷ trọng thiệt hại</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {wasteStats.topWastedList.map((item, idx) => {
+                          const percent = wasteStats.totalWasteLoss > 0
+                            ? Math.round((item.totalLoss / wasteStats.totalWasteLoss) * 100)
+                            : 0;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                              <td className="px-4 py-2.5 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                              <td className="px-4 py-2.5 font-bold text-slate-800">{item.name}</td>
+                              <td className="px-4 py-2.5 text-center font-bold text-rose-600">
+                                {item.qty} {item.unit}
+                              </td>
+                              <td className="px-4 py-2.5 text-center font-medium text-slate-600">
+                                {item.count} lần
+                              </td>
+                              <td className="px-4 py-2.5 text-right font-black text-rose-700">
+                                {item.totalLoss.toLocaleString("vi-VN")} đ
+                              </td>
+                              <td className="px-4 py-2.5 text-right">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
+                                  {percent}%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -4628,7 +4978,9 @@ export const InventoryControl: React.FC = () => {
                     ? (batchObjInModal ? Number(batchObjInModal.quantity) : (wasteForm.batchStock || 0))
                     : (currentSelectedIng ? Number(currentSelectedIng.stock) : 0);
 
-                  const baseQuantity = Number(wasteForm.quantity || 0) * conv.factor;
+                  const parsedModalQty = parseFloat(String(wasteForm.quantity || "").replace(/,/g, "."));
+                  const numericModalQty = isNaN(parsedModalQty) ? 0 : parsedModalQty;
+                  const baseQuantity = numericModalQty * conv.factor;
                   const isInvalidOverQty = currentBatchStock > 0 && baseQuantity > currentBatchStock;
 
                   const displayBatchStock = conv.factor !== 1 && conv.factor > 0
@@ -4649,18 +5001,23 @@ export const InventoryControl: React.FC = () => {
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             required
-                            min={conv.activeUnit === "g" || conv.activeUnit === "ml" ? "1" : "0.001"}
-                            step="any"
                             value={wasteForm.quantity}
-                            onChange={(e) => setWasteForm({ ...wasteForm, quantity: Number(e.target.value) })}
+                            onChange={(e) => {
+                              let val = e.target.value;
+                              val = val.replace(/,/g, ".");
+                              if (val === "" || /^[0-9]*\.?[0-9]*$/.test(val)) {
+                                setWasteForm({ ...wasteForm, quantity: val });
+                              }
+                            }}
                             className={`w-full px-3 py-2 border rounded-xl focus:outline-none font-bold text-rose-600 transition-all ${
                               isInvalidOverQty
                                 ? "border-rose-500 bg-rose-50/60 focus:border-rose-600 focus:ring-2 focus:ring-rose-200"
                                 : "border-slate-300 focus:border-rose-500"
                             }`}
-                            placeholder="Nhập số lượng..."
+                            placeholder="Nhập số lượng (ví dụ: 0.5)..."
                           />
                         </div>
 
@@ -4669,17 +5026,20 @@ export const InventoryControl: React.FC = () => {
                             value={conv.activeUnit}
                             onChange={(e) => {
                               const newUnit = e.target.value;
-                              let newQty = wasteForm.quantity;
-                              if (newUnit === "g" && conv.activeUnit === "kg") {
-                                newQty = Math.round(wasteForm.quantity * 1000);
-                              } else if (newUnit === "kg" && conv.activeUnit === "g") {
-                                newQty = Number((wasteForm.quantity / 1000).toFixed(3));
-                              } else if (newUnit === "ml" && conv.activeUnit === "lit") {
-                                newQty = Math.round(wasteForm.quantity * 1000);
-                              } else if (newUnit === "lit" && conv.activeUnit === "ml") {
-                                newQty = Number((wasteForm.quantity / 1000).toFixed(3));
+                              const currVal = parseFloat(String(wasteForm.quantity || "").replace(/,/g, "."));
+                              let newQtyStr: string | number = wasteForm.quantity;
+                              if (!isNaN(currVal) && currVal > 0) {
+                                if (newUnit === "g" && conv.activeUnit === "kg") {
+                                  newQtyStr = String(Math.round(currVal * 1000));
+                                } else if (newUnit === "kg" && conv.activeUnit === "g") {
+                                  newQtyStr = String(Number((currVal / 1000).toFixed(3)));
+                                } else if (newUnit === "ml" && conv.activeUnit === "lit") {
+                                  newQtyStr = String(Math.round(currVal * 1000));
+                                } else if (newUnit === "lit" && conv.activeUnit === "ml") {
+                                  newQtyStr = String(Number((currVal / 1000).toFixed(3)));
+                                }
                               }
-                              setWasteForm({ ...wasteForm, wasteUnit: newUnit, quantity: newQty });
+                              setWasteForm({ ...wasteForm, wasteUnit: newUnit, quantity: newQtyStr });
                             }}
                             className="px-3 py-2 border border-slate-300 rounded-xl font-black text-slate-700 bg-slate-50 focus:outline-none focus:border-rose-500 cursor-pointer text-xs shrink-0 hover:bg-slate-100 transition-colors"
                           >

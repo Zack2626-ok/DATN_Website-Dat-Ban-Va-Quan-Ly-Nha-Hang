@@ -19,6 +19,9 @@ import {
   updateSupplier,
   deleteSupplier,
   deleteInventoryTransaction,
+  updateDebtDueDate,
+  getDebtDueHistory,
+  deleteDebtPayment,
 } from "../controllers/inventory.controller";
 
 import {
@@ -42,6 +45,9 @@ router.put("/suppliers/:id", updateSupplier);
 router.delete("/suppliers/:id", deleteSupplier);
 router.patch("/suppliers/:id/pay", paySupplierDebt);
 router.get("/suppliers/:id/debt-history", getDebtHistory);
+router.patch("/debts/:ticketCode/due-date", updateDebtDueDate);
+router.get("/debts/:ticketCode/history", getDebtDueHistory);
+router.delete("/debt-payments/:id", deleteDebtPayment);
 router.post("/upload-excel", upload.single("file") as any, uploadExcel);
 router.get("/low-stock", getLowStockItems);
 router.post("/", createInventoryItem);

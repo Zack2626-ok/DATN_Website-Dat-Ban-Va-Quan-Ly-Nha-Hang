@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ArrowDownCircle, ArrowUpCircle, DollarSign, RefreshCw, Inbox, Loader2, ChevronDown, ChevronUp, Printer, CheckCircle2, Clock, RotateCcw } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, DollarSign, RefreshCw, Inbox, Loader2, ChevronDown, ChevronUp, Printer, CheckCircle2, Clock, RotateCcw, Image, X } from "lucide-react";
 import { formatCurrency } from "../../../utils/formatCurrency";
 import api from "../../../services/axiosInstance";
 import { toast } from "react-hot-toast";
@@ -17,6 +17,7 @@ export const FinanceReport: React.FC = () => {
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
+  const [previewProofImage, setPreviewProofImage] = useState<string | null>(null);
 
   const [timeRange, setTimeRange] = useState<"today" | "7days" | "30days" | "custom">("30days");
 
@@ -906,19 +907,21 @@ export const FinanceReport: React.FC = () => {
                                           <span className="text-slate-500 font-semibold">Tổng tiền gốc:</span>
                                           <span className={`font-black ${row.isReturned ? "line-through text-slate-400" : "text-slate-900"}`}>{formatCurrency(row.originalAmount || row.amount)}</span>
                                         </div>
-                                        <div className="flex justify-between text-xs pt-1 border-t border-slate-100">
-                                           <span className="text-slate-500 font-bold">Chi phí ghi nhận (Hàng giữ lại):</span>
-                                           <span className="font-black text-emerald-700">{formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))}</span>
-                                         </div>
-                                         <div className="flex justify-between text-xs">
-                                           <span className="text-slate-500 font-semibold">Đã trả tiền/nợ thực tế:</span>
-                                           <span className={`font-bold ${row.isReturned ? "text-purple-700" : row.isCredit ? "text-red-600" : "text-emerald-600"}`}>
-                                             {row.isReturned ? "0 đ (Đã xuất trả toàn bộ)" : row.isCredit ? `${formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))} (Ghi nợ NCC)` : formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))}
-                                           </span>
-                                         </div>
+                                        <div className="flex justify-between text-xs">
+                                          <span className="text-slate-500 font-semibold">Đã trả tiền / nợ thực tế:</span>
+                                          <span className={`font-bold ${row.isReturned ? "text-purple-700" : row.isCredit ? "text-amber-700" : "text-emerald-600"}`}>
+                                            {row.isReturned
+                                              ? "0 đ (Đã xuất trả toàn bộ)"
+                                              : row.isCredit && Number(row.paidAmount) > 0 && Math.max(0, (row.originalAmount || row.amount) - Number(row.paidAmount)) > 0
+                                              ? `Đã trả: ${formatCurrency(row.paidAmount)} | Còn nợ: ${formatCurrency(Math.max(0, (row.originalAmount || row.amount) - Number(row.paidAmount)))}`
+                                              : row.isCredit && (!row.paidAmount || Number(row.paidAmount) === 0)
+                                              ? `${formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))} (Ghi nợ NCC)`
+                                              : formatCurrency(Math.max(0, (row.originalAmount || row.amount) - (row.returnedAmount || 0)))}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
-                                    <div className="space-y-1">
+                                    <div className="space-y-2">
                                       <div className="flex items-center gap-2">
                                         <span className="text-slate-500 font-medium">Trạng thái nợ:</span>
                                         {row.isReturned ? (
@@ -940,9 +943,21 @@ export const FinanceReport: React.FC = () => {
                                         )}
                                       </div>
                                       {row.isCredit && !row.isReturned && row.dueDate && (
-                                        <div className="flex items-center gap-1 text-[10px] text-amber-600 font-bold mt-1 bg-amber-50/50 p-1.5 rounded-lg border border-amber-100 w-fit">
+                                        <div className="flex items-center gap-1 text-[10px] text-amber-600 font-bold bg-amber-50/50 p-1.5 rounded-lg border border-amber-100 w-fit">
                                           <Clock size={10} />
                                           <span>Hạn trả nợ: {new Date(row.dueDate).toLocaleDateString("vi-VN")}</span>
+                                        </div>
+                                      )}
+                                      {row.proofImage && (
+                                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                                          <span className="text-slate-500 font-medium text-[11px]">Chứng từ thanh toán:</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPreviewProofImage(row.proofImage)}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-lg border border-sky-200 text-[10px] transition-colors cursor-pointer shadow-3xs"
+                                          >
+                                            <Image size={11} /> Xem ảnh minh chứng
+                                          </button>
                                         </div>
                                       )}
                                     </div>
@@ -1003,6 +1018,29 @@ export const FinanceReport: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Lightbox Modal for Proof Image */}
+      {previewProofImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="relative max-w-3xl w-full bg-white rounded-2xl p-4 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b pb-3 mb-3">
+              <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                <Image size={16} className="text-sky-600" /> Chứng từ thanh toán phiếu nhập
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPreviewProofImage(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="max-h-[75vh] overflow-auto flex items-center justify-center p-2 bg-slate-100 rounded-xl">
+              <img src={previewProofImage} alt="Minh chứng thanh toán" className="max-h-[70vh] object-contain rounded-lg shadow-sm" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

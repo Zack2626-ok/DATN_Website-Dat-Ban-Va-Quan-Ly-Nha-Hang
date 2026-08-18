@@ -5,7 +5,7 @@ import { formatCurrency } from "../../../utils/formatCurrency";
 import { X, Wallet, Building2, CheckCircle, ReceiptText, Upload, AlertTriangle } from "lucide-react";
 
 interface Props {
-  supplier: { rawId: number; supplierName: string; amount: number };
+  supplier: { rawId?: number; supplierId?: number; supplierName: string; amount: number; ticketCode?: string };
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -37,10 +37,12 @@ export const PayDebtModal: React.FC<Props> = ({ supplier, onClose, onSuccess }) 
 
     setLoading(true);
     try {
-      const res = await api.patch(`/inventory/suppliers/${supplier.rawId}/pay`, {
+      const targetSupplierId = supplier.supplierId || supplier.rawId;
+      const res = await api.patch(`/inventory/suppliers/${targetSupplierId}/pay`, {
         amount: numericAmount,
         method,
-        note,
+        note: note || (supplier.ticketCode ? `Thanh toán công nợ phiếu [${supplier.ticketCode}]` : undefined),
+        ticketCode: supplier.ticketCode,
         proofImage: proofImage || undefined
       });
       toast.success("Thanh toán thành công!");
