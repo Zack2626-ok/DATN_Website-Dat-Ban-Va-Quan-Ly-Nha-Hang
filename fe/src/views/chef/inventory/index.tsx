@@ -1474,7 +1474,55 @@ export const InventoryControl: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => {
+                  const printContent = document.getElementById("printable-stocktake");
+                  if (!printContent) return;
+
+                  const printWindow = window.open("", "_blank", "width=850,height=900");
+                  if (!printWindow) return;
+
+                  const clone = printContent.cloneNode(true) as HTMLElement;
+                  const hideEls = clone.querySelectorAll('.print\\:hidden, button');
+                  hideEls.forEach(el => el.remove());
+
+                  printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                      <title>PHIẾU KIỂM KÊ - ${d.ticketCode || "PKK"}</title>
+                      <meta charset="utf-8" />
+                      <style>
+                        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+                        body { padding: 30px; color: #0f172a; background: #fff; font-size: 12px; }
+                        table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 11px; }
+                        th, td { border: 1px solid #0f172a; padding: 6px 8px; }
+                        th { background-color: #f1f5f9; font-weight: bold; }
+                        .text-center { text-align: center; }
+                        .text-right { text-align: right; }
+                        .font-bold { font-weight: bold; }
+                        .font-black { font-weight: 900; }
+                        .text-rose-600 { color: #e11d48; }
+                        .text-emerald-700 { color: #047857; }
+                        .text-blue-600 { color: #2563eb; }
+                        @media print {
+                          @page { margin: 10mm; }
+                          body { padding: 0; }
+                        }
+                      </style>
+                    </head>
+                    <body>
+                      ${clone.innerHTML}
+                      <script>
+                        window.onload = function() {
+                          window.print();
+                          setTimeout(() => window.close(), 500);
+                        };
+                      </script>
+                    </body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                }}
                 className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 cursor-pointer flex items-center gap-1.5 shadow-md shadow-blue-600/20"
               >
                 <Printer size={14} /> In phiếu
@@ -1635,6 +1683,13 @@ export const InventoryControl: React.FC = () => {
       const ingredientId = tx.ingredientId || (tx as any).ingredient_id || (matchIng ? matchIng.id : tx.id);
       const ingredientCode = matchIng ? (matchIng.code || matchIng.itemCode) : `SP${String(ingredientId).padStart(6, '0')}`;
 
+      const txPaidAmount = tx.paidAmount !== undefined && tx.paidAmount !== null 
+        ? Number(tx.paidAmount) 
+        : ((tx as any).paid_amount !== undefined && (tx as any).paid_amount !== null 
+          ? Number((tx as any).paid_amount) 
+          : (isCreditTx ? 0 : total));
+      const txDebtAmount = isCreditTx ? Math.max(0, total - txPaidAmount) : 0;
+
       groups[groupKey].rawTxList.push(tx);
       groups[groupKey].items.push({
         draftTxId: tx.id,
@@ -1645,13 +1700,15 @@ export const InventoryControl: React.FC = () => {
         quantity: qty,
         unitCost: price,
         total: total,
+        paidAmount: txPaidAmount,
+        debtAmount: txDebtAmount,
         batchNo: tx.batchNo || "-",
         expiryDate: tx.expiryDate ? new Date(tx.expiryDate).toLocaleDateString("vi-VN") : "-"
       });
 
       groups[groupKey].totalAmount += total;
-      groups[groupKey].paidAmount += isCreditTx ? 0 : total;
-      groups[groupKey].debtAmount += isCreditTx ? total : 0;
+      groups[groupKey].paidAmount += txPaidAmount;
+      groups[groupKey].debtAmount += txDebtAmount;
     });
 
     return Object.values(groups);
@@ -1743,7 +1800,7 @@ export const InventoryControl: React.FC = () => {
   }, [showPrintModal, printReceiptData]);
 
   const renderPrintModal = () => {
-    if (!printReceiptData) return null;
+    if (!showPrintModal || !printReceiptData) return null;
     const d = printReceiptData;
     const totalItemsQty = d.items ? d.items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 0), 0) : 0;
     const isReturn = d.title === "PHIẾU XUẤT TRẢ";
@@ -2875,8 +2932,8 @@ export const InventoryControl: React.FC = () => {
                                     </div>
                                     <div className="flex justify-between items-center text-slate-600 font-semibold">
                                       <span className="flex items-center gap-1.5"><CreditCard size={14} className="text-slate-500" /> Đã trả:</span>
-                                      <span className={`font-extrabold text-sm ${slip.isCredit ? 'text-rose-600' : 'text-emerald-700'}`}>
-                                        {slip.paidAmount.toLocaleString("vi-VN")} đ {slip.isCredit && "(Ghi nợ NCC)"}
+                                      <span className={`font-extrabold text-sm ${slip.debtAmount > 0 ? (slip.paidAmount > 0 ? 'text-amber-600' : 'text-rose-600') : 'text-emerald-700'}`}>
+                                        {slip.paidAmount.toLocaleString("vi-VN")} đ {slip.debtAmount > 0 ? (slip.paidAmount > 0 ? `(Còn nợ: ${slip.debtAmount.toLocaleString("vi-VN")} đ)` : "(Ghi nợ NCC)") : ""}
                                       </span>
                                     </div>
                                     {slip.isDraft && (

@@ -49,6 +49,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           si.batch_code as batchNo,
           si.expiry_date as expiryDate,
           COALESCE(si.is_credit, 0) as isCredit,
+          0 as paidAmount,
+          0 as paid_amount,
           COALESCE(si.supplier_id, 0) as supplierId,
           so.reason as reasonType
         FROM stock_out so
@@ -71,6 +73,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           si.batch_code as batchNo,
           si.expiry_date as expiryDate,
           si.is_credit as isCredit,
+          si.paid_amount as paidAmount,
+          si.paid_amount as paid_amount,
           si.supplier_id as supplierId,
           'import' as reasonType
         FROM stock_in si
