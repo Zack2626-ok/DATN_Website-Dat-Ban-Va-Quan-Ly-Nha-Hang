@@ -441,13 +441,18 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         si.quantity,
         si.unit_cost as unitCost,
         si.note,
+        si.proof_image as proofImage,
         i.name as ingredientName,
         i.unit as ingredientUnit,
         COALESCE(s.name, 'Nhà cung cấp') as supplierName,
         si.is_credit as isCredit,
         si.due_date as dueDate,
         COALESCE(
-          (SELECT SUM(so.quantity) FROM stock_out so WHERE so.stock_in_id = si.id AND so.reason = 'return_to_supplier'),
+          (SELECT SUM(so.quantity) FROM stock_out so 
+           WHERE so.stock_in_id = si.id 
+             AND so.reason = 'return_to_supplier'
+             AND (so.note IS NULL OR (so.note NOT LIKE '%[LƯU TẠM]%' AND so.note NOT LIKE '%[HOÀN THÀNH]%'))
+          ),
           0
         ) as returnedQuantity
       FROM stock_in si
@@ -586,53 +591,110 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
       ORDER BY variance ASC
     `);
 
-    // 2) Công nợ NCC: lấy tất cả NCC đang nợ (total_debt > 0) HOẶC đã từng nợ
-    //    và đã tất toán (có lịch sử trong debt_payments) để hiển thị "Đã thanh toán"
-    const debtRows = await db.query(`
+    // 2) Công nợ NCC theo từng Phiếu Nhập / Khoản Nợ riêng biệt
+    const creditSlips = await db.query<any[]>(`
       SELECT 
-        s.id,
-        s.name       AS supplierName,
+        si.id,
+        si.supplier_id as supplierId,
+        COALESCE(s.name, 'Nhà cung cấp') as supplierName,
         s.phone,
-        s.total_debt AS amount,
-        s.payment_terms
-      FROM suppliers s
-      WHERE s.total_debt > 0
-         OR EXISTS (SELECT 1 FROM debt_payments dp WHERE dp.supplier_id = s.id)
-      ORDER BY s.total_debt DESC
+        si.created_at as importDate,
+        si.due_date as dueDate,
+        (si.quantity * si.unit_cost) as itemTotal,
+        COALESCE(si.paid_amount, 0) as itemPaid,
+        si.note,
+        si.batch_code as batchCode,
+        si.proof_image as proofImage,
+        i.name as ingredientName,
+        i.unit as ingredientUnit,
+        si.quantity,
+        si.unit_cost as unitCost
+      FROM stock_in si
+      LEFT JOIN suppliers s ON si.supplier_id = s.id
+      LEFT JOIN ingredients i ON si.ingredient_id = i.id
+      WHERE (si.is_credit = 1 OR si.paid_amount > 0)
+        AND (si.note IS NULL OR (si.note NOT LIKE '%[LƯU TẠM]%' AND si.note NOT LIKE '%[HOÀN THÀNH]%'))
+      ORDER BY si.created_at DESC
     `);
 
-    const now = new Date();
-    const supplierDebts = debtRows.map((r: any) => {
-      const amount = Number(r.amount);
-      const due = new Date(now);
-      due.setDate(due.getDate() + (Number(r.payment_terms) || 30));
-      const daysLeft = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // Group items into Slips
+    const slipMap: Record<string, any> = {};
+    creditSlips.forEach((row: any) => {
+      const ticketMatch = (row.note || "").match(/\[SLIP:([^\]]+)\]/);
+      const ticketCode = ticketMatch ? ticketMatch[1] : (row.batchCode ? `PN-${row.batchCode}` : `PN-${row.id}`);
 
-      // Nợ đã về 0 → tất toán xong, không cần tính hạn/quá hạn nữa
-      let status: string;
-      if (amount === 0) {
+      if (!slipMap[ticketCode]) {
+        slipMap[ticketCode] = {
+          id: ticketCode,
+          ticketCode: ticketCode,
+          supplierId: row.supplierId,
+          supplierName: row.supplierName,
+          phone: row.phone,
+          importDate: row.importDate,
+          dueDate: row.dueDate ? new Date(row.dueDate).toISOString().split("T")[0] : null,
+          totalAmount: 0,
+          paidAmount: 0,
+          remainingDebt: 0,
+          proofImage: row.proofImage,
+          items: [],
+        };
+      }
+
+      slipMap[ticketCode].totalAmount += Number(row.itemTotal || 0);
+      slipMap[ticketCode].paidAmount += Number(row.itemPaid || 0);
+      if (!slipMap[ticketCode].proofImage && row.proofImage) {
+        slipMap[ticketCode].proofImage = row.proofImage;
+      }
+      slipMap[ticketCode].items.push({
+        ingredientName: row.ingredientName,
+        quantity: row.quantity,
+        unit: row.ingredientUnit,
+        unitCost: row.unitCost,
+        amount: row.itemTotal
+      });
+    });
+
+    const now = new Date();
+    const supplierDebts = Object.values(slipMap).map((slip: any) => {
+      const remainingDebt = Math.max(0, slip.totalAmount - slip.paidAmount);
+      let daysLeft: number | null = null;
+      let status = "Chưa chốt hạn";
+
+      if (remainingDebt === 0) {
         status = "Đã thanh toán";
-      } else if (daysLeft < 0) {
-        status = "Quá hạn";
-      } else if (daysLeft <= 3) {
-        status = "Sắp đến hạn";
-      } else {
-        status = "Chưa thanh toán";
+      } else if (slip.dueDate) {
+        const due = new Date(slip.dueDate);
+        daysLeft = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysLeft < 0) {
+          status = "Quá hạn";
+        } else if (daysLeft <= 3) {
+          status = "Sắp đến hạn";
+        } else {
+          status = "Chưa thanh toán";
+        }
       }
 
       return {
-        id: `SUP-${r.id}`,
-        rawId: r.id,
-        supplierName: r.supplierName,
-        phone: r.phone,
-        amount,
-        due: due.toISOString().split("T")[0],
+        id: slip.ticketCode,
+        rawId: slip.supplierId,
+        ticketCode: slip.ticketCode,
+        supplierName: slip.supplierName,
+        supplierId: slip.supplierId,
+        phone: slip.phone,
+        amount: remainingDebt,
+        totalAmount: slip.totalAmount,
+        paidAmount: slip.paidAmount,
+        importDate: slip.importDate,
+        dueDate: slip.dueDate,
+        due: slip.dueDate,
         daysLeft,
         status,
+        proofImage: slip.proofImage,
+        items: slip.items
       };
-    });
+    }).filter((slip: any) => slip.amount > 0);
 
-    // 3) Lịch sử thanh toán nợ & Trả hàng NCC
+    // 3) Lịch sử thanh toán nợ & Trả hàng NCC & Thanh toán trước lúc nhập kho
     const paymentRows = await db.query(`
       SELECT 
         CONCAT('PC-NCC-', dp.id) AS id,
@@ -648,9 +710,30 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
         'payment' AS category
       FROM debt_payments dp
       JOIN suppliers s ON dp.supplier_id = s.id
+      WHERE COALESCE(dp.is_deleted, 0) = 0
       ORDER BY dp.paid_at DESC
-      LIMIT 50
+      LIMIT 100
     `);
+
+    // Giao dịch thanh toán trước lúc nhập hàng (tổng hợp theo từng phiếu nhập để tránh lặp dòng nguyên liệu)
+    const upfrontPayments: any[] = [];
+    Object.values(slipMap).forEach((slip: any) => {
+      if (slip.paidAmount > 0) {
+        upfrontPayments.push({
+          id: `PN-TT-${slip.ticketCode}`,
+          rawId: slip.supplierId,
+          supplierId: slip.supplierId,
+          supplierName: slip.supplierName,
+          currentSupplierDebt: Math.max(0, slip.totalAmount - slip.paidAmount),
+          amount: slip.paidAmount,
+          method: "bank_transfer",
+          note: `Thanh toán trả trước lúc tạo phiếu nhập [${slip.ticketCode}]`,
+          paidAt: slip.importDate,
+          proofImage: slip.proofImage,
+          category: "payment"
+        });
+      }
+    });
 
     const returnRows = await db.query(`
       SELECT 
@@ -669,20 +752,26 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
       JOIN stock_in si ON so.stock_in_id = si.id
       LEFT JOIN suppliers s ON si.supplier_id = s.id
       WHERE so.reason = 'return_to_supplier'
+        AND (so.note IS NULL OR so.note NOT LIKE '%[DELETED]%')
       ORDER BY so.created_at DESC
-      LIMIT 50
+      LIMIT 100
     `);
 
-    const recentPayments = [...paymentRows, ...returnRows]
+    const recentPayments = [...paymentRows, ...upfrontPayments, ...returnRows]
       .sort((a: any, b: any) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
       .slice(0, 50);
 
-    // 4) Tổng hợp summary — chỉ tính trên các NCC ĐANG còn nợ (amount > 0)
-    const owingSuppliers = supplierDebts.filter((d: any) => d.amount > 0);
-    const totalDebt = owingSuppliers.reduce((s: number, d: any) => s + d.amount, 0);
-    const overdueDebt = owingSuppliers
+    // 4) Tổng hợp summary — tính trên các khoản nợ thực tế
+    const owingSlips = supplierDebts.filter((d: any) => d.amount > 0);
+    const totalDebt = owingSlips.reduce((s: number, d: any) => s + d.amount, 0);
+    const overdueDebt = owingSlips
       .filter((d: any) => d.status === "Quá hạn")
       .reduce((s: number, d: any) => s + d.amount, 0);
+
+    const uniqueOwingSuppliers = new Set(owingSlips.map((d: any) => d.supplierId || d.supplierName));
+    const uniqueOverdueSuppliers = new Set(
+      owingSlips.filter((d: any) => d.status === "Quá hạn").map((d: any) => d.supplierId || d.supplierName)
+    );
 
     sendSuccess(
       res,
@@ -701,8 +790,9 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
         summary: {
           totalDebt,
           overdueDebt,
-          supplierCount: owingSuppliers.length,
-          overdueCount: owingSuppliers.filter((d: any) => d.status === "Quá hạn").length,
+          supplierCount: uniqueOwingSuppliers.size,
+          overdueCount: uniqueOverdueSuppliers.size,
+          slipCount: owingSlips.length,
         },
       },
       "Tải báo cáo hao hụt công nợ thành công"

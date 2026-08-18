@@ -1126,10 +1126,28 @@ const runSchemaMigrations = async (): Promise<void> => {
 
     await query(`ALTER TABLE debt_payments ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
     await query(`ALTER TABLE debt_payments ADD COLUMN remaining_debt DECIMAL(14,2) NULL`).catch(() => {});
+    await query(`ALTER TABLE debt_payments ADD COLUMN is_deleted TINYINT(1) DEFAULT 0`).catch(() => {});
     await query(`ALTER TABLE debt_payments MODIFY COLUMN paid_by INT NULL`).catch(() => {});
     await query(`ALTER TABLE stock_in ADD COLUMN is_credit TINYINT(1) DEFAULT 0`).catch(() => {});
     await query(`ALTER TABLE stock_in ADD COLUMN due_date DATE NULL`).catch(() => {});
     await query(`ALTER TABLE stock_in ADD COLUMN paid_amount DECIMAL(14,2) NULL`).catch(() => {});
+    await query(`ALTER TABLE stock_in ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
+
+    // Migration: Ensure supplier_debt_due_history table exists for rescheduling logs
+    await query(`
+      CREATE TABLE IF NOT EXISTS supplier_debt_due_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ticket_code VARCHAR(100) NOT NULL,
+        supplier_id INT NOT NULL,
+        old_due_date DATE NULL,
+        new_due_date DATE NOT NULL,
+        reason TEXT NULL,
+        updated_by INT NULL,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_due_history_ticket (ticket_code),
+        INDEX idx_due_history_supplier (supplier_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
 
     // Migration: Ensure payrolls table exists
     await query(`

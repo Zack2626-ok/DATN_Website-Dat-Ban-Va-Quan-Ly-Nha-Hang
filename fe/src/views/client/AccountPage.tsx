@@ -3,18 +3,17 @@ import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { 
-  User, Calendar, Award, ClipboardList, Sparkles, LogOut, Loader2, Phone, Mail, Edit3, Key, Plus, Star, X
+  User, Calendar, Award, ClipboardList, Sparkles, LogOut, Loader2, Phone, Mail, Edit3, Key, Star, X
 } from "lucide-react";
 import { 
   getCustomerProfile, updateCustomerProfile, changeCustomerPassword, 
   getMyBookings, cancelBooking, getCustomerLoyalty, getCustomerVouchers, 
-  getPublicHalls, getPublicEventPackages, createEventContract, getMyEventContracts,
   redeemVoucher, getMyUnusedVouchers, submitBookingReview
 } from "../../services/customerService";
 
 export const AccountPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"profile" | "bookings" | "loyalty" | "events">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "bookings" | "loyalty">("profile");
 
   // Authentication check
   const token = localStorage.getItem("customer_token");
@@ -55,24 +54,6 @@ export const AccountPage: React.FC = () => {
     queryFn: getMyUnusedVouchers,
     enabled: !!token && activeTab === "loyalty",
     refetchInterval: 15000,
-  });
-
-  const { data: halls = [] } = useQuery({
-    queryKey: ["public-halls"],
-    queryFn: getPublicHalls,
-    enabled: !!token && activeTab === "events",
-  });
-
-  const { data: packages = [] } = useQuery({
-    queryKey: ["public-packages"],
-    queryFn: getPublicEventPackages,
-    enabled: !!token && activeTab === "events",
-  });
-
-  const { data: eventContracts = [], isLoading: loadingContracts } = useQuery({
-    queryKey: ["customer-contracts"],
-    queryFn: getMyEventContracts,
-    enabled: !!token && activeTab === "events",
   });
 
   // Mutators
@@ -121,31 +102,6 @@ export const AccountPage: React.FC = () => {
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Đổi voucher thất bại.");
-    }
-  });
-
-  const [eventForm, setEventForm] = useState({
-    hall_id: "",
-    package_id: "",
-    event_date: "",
-    guest_count: 50,
-    table_count: 5,
-    note: "",
-  });
-
-  const createContractMutation = useMutation({
-    mutationFn: createEventContract,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customer-contracts"] });
-      toast.success("Gửi yêu cầu đặt tiệc sự kiện thành công!");
-      setEventForm({
-        hall_id: "",
-        package_id: "",
-        event_date: "",
-        guest_count: 50,
-        table_count: 5,
-        note: "",
-      });
     }
   });
 
@@ -225,33 +181,6 @@ export const AccountPage: React.FC = () => {
     changePasswordMutation.mutate({
       oldPassword: passwordForm.oldPassword,
       newPassword: passwordForm.newPassword
-    });
-  };
-
-  // Estimate cost for event package
-  const selectedPackage = packages.find((p: any) => String(p.id) === eventForm.package_id);
-  const estimatedCost = selectedPackage 
-    ? Number(selectedPackage.price_per_person) * eventForm.guest_count 
-    : 0;
-
-  const handleCreateEvent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!profile) return;
-    if (!eventForm.hall_id || !eventForm.event_date) {
-      toast.error("Vui lòng nhập đầy đủ thông tin bắt buộc!");
-      return;
-    }
-
-    createContractMutation.mutate({
-      hall_id: Number(eventForm.hall_id),
-      package_id: eventForm.package_id ? Number(eventForm.package_id) : null,
-      contact_name: profile.name,
-      contact_phone: profile.phone || "0900000000",
-      event_date: eventForm.event_date,
-      guest_count: Number(eventForm.guest_count),
-      table_count: Number(eventForm.table_count),
-      total_amount: estimatedCost,
-      note: eventForm.note,
     });
   };
 
@@ -379,16 +308,6 @@ export const AccountPage: React.FC = () => {
               }`}
             >
               <Award size={18} /> Thẻ VIP & Tích điểm
-            </button>
-            <button
-              onClick={() => setActiveTab("events")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all text-left cursor-pointer ${
-                activeTab === "events" 
-                  ? "bg-client-primary text-white shadow-md animate-slide-in" 
-                  : "bg-white hover:bg-client-accent border border-client-accent text-client-text"
-              }`}
-            >
-              <Plus size={18} /> Đặt tiệc sự kiện
             </button>
           </div>
 
@@ -897,165 +816,6 @@ export const AccountPage: React.FC = () => {
                   </div>
 
                 </div>
-              </div>
-            )}
-
-            {/* Tab 4: Event contract submissions */}
-            {activeTab === "events" && (
-              <div className="space-y-6 animate-fade-in">
-                
-                {/* Event Creation Form */}
-                <div className="bg-white rounded-3xl border border-client-accent p-8 shadow-sm">
-                  <h2 className="text-lg font-bold text-client-text font-display mb-6 border-b border-[#f0eae1] pb-4 flex items-center gap-2">
-                    <Plus size={18} className="text-client-primary" /> Yêu cầu đặt tiệc sự kiện (Hội nghị, Cưới hỏi, Sinh nhật)
-                  </h2>
-                  <form onSubmit={handleCreateEvent} className="space-y-6">
-                    <div className="grid gap-6 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Chọn sảnh tiệc *</label>
-                        <select
-                          required
-                          value={eventForm.hall_id}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, hall_id: e.target.value }))}
-                          className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white"
-                        >
-                          <option value="">Chọn sảnh tiệc</option>
-                          {halls.map((h: any) => (
-                            <option key={h.id} value={h.id}>{h.name} (Sức chứa tối đa: {h.capacity} người)</option>
-                          ))}
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Chọn Gói Set Menu Tiệc</label>
-                        <select
-                          value={eventForm.package_id}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, package_id: e.target.value }))}
-                          className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white"
-                        >
-                          <option value="">Không chọn (Tự thiết kế / Báo giá sau)</option>
-                          {packages.map((p: any) => (
-                            <option key={p.id} value={p.id}>{p.name} ({Number(p.price_per_person).toLocaleString("vi-VN")}đ/khách)</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Ngày diễn ra sự kiện *</label>
-                        <input
-                          required
-                          type="date"
-                          value={eventForm.event_date}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, event_date: e.target.value }))}
-                          min={new Date().toISOString().split("T")[0]}
-                          className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số khách dự kiến *</label>
-                          <input
-                            required
-                            type="number"
-                            value={eventForm.guest_count}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, guest_count: Math.max(1, Number(e.target.value)) }))}
-                            className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số bàn dự kiến *</label>
-                          <input
-                            required
-                            type="number"
-                            value={eventForm.table_count}
-                            onChange={(e) => setEventForm((prev) => ({ ...prev, table_count: Math.max(1, Number(e.target.value)) }))}
-                            className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Ghi chú yêu cầu sự kiện</label>
-                        <textarea
-                          value={eventForm.note}
-                          onChange={(e) => setEventForm((prev) => ({ ...prev, note: e.target.value }))}
-                          rows={3}
-                          placeholder="Yêu cầu riêng về trang trí, thiết bị âm thanh, ánh sáng, hoặc các món ăn ngoài set menu..."
-                          className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none resize-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Estimate panel */}
-                    <div className="bg-client-primary/10 border border-client-accent rounded-2xl p-5 flex justify-between items-center text-sm font-semibold">
-                      <span className="text-client-text">Chi phí dự kiến tạm tính:</span>
-                      <span className="text-xl font-black text-client-primary">
-                        {estimatedCost > 0 ? `${estimatedCost.toLocaleString("vi-VN")}đ` : "Báo giá cụ thể sau"}
-                      </span>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={createContractMutation.isPending}
-                      className="px-6 py-3.5 bg-client-primary hover:bg-client-primary-hover text-white rounded-xl text-sm font-bold shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
-                    >
-                      {createContractMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                      Gửi yêu cầu đặt tiệc
-                    </button>
-                  </form>
-                </div>
-
-                {/* Event Contracts History */}
-                <div className="bg-white rounded-3xl border border-client-accent p-8 shadow-sm">
-                  <h2 className="text-lg font-bold text-client-text font-display mb-6 border-b border-[#f0eae1] pb-4">
-                    Lịch sử yêu cầu & Hợp đồng đặt tiệc
-                  </h2>
-                  
-                  {loadingContracts ? (
-                    <div className="flex justify-center py-10">
-                      <Loader2 size={24} className="animate-spin text-client-primary" />
-                    </div>
-                  ) : eventContracts.length === 0 ? (
-                    <p className="text-xs text-client-muted text-center py-8">Bạn chưa gửi yêu cầu đặt tiệc sự kiện nào.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {eventContracts.map((c: any) => (
-                        <div key={c.id} className="border border-client-accent rounded-2xl p-5 hover:shadow-xs transition-shadow">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h4 className="font-bold text-client-text text-sm flex items-center gap-2">
-                                {c.hall_name || `Sảnh ID: ${c.hall_id}`}
-                                <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full ${
-                                  c.status === "confirmed" ? "bg-client-primary/10 text-client-primary" :
-                                  c.status === "completed" ? "bg-emerald-50 text-emerald-700" :
-                                  c.status === "cancelled" ? "bg-red-50 text-red-700" : "bg-client-accent text-client-muted"
-                                }`}>
-                                  {c.status === "draft" ? "Yêu cầu nháp" :
-                                   c.status === "confirmed" ? "Đã xác nhận" :
-                                   c.status === "completed" ? "Hoàn thành" : "Đã hủy"}
-                                </span>
-                              </h4>
-                              <p className="text-xs text-client-muted mt-1">
-                                Gói phục vụ: <span className="font-bold text-[#7b6f65]">{c.package_name || "Báo giá sau"}</span> · Số khách: <span className="font-bold text-[#7b6f65]">{c.guest_count} người</span>
-                              </p>
-                              <p className="text-xs text-client-muted">
-                                Ngày tổ chức: <span className="font-bold text-[#7b6f65]">{new Date(c.event_date).toLocaleDateString("vi-VN")}</span>
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-xs text-client-muted block">Tổng chi phí</span>
-                              <span className="font-black text-sm text-client-primary">
-                                {Number(c.total_amount) > 0 ? `${Number(c.total_amount).toLocaleString("vi-VN")}đ` : "Báo giá sau"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
               </div>
             )}
 

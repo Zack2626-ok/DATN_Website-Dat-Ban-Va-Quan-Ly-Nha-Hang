@@ -226,7 +226,13 @@ export const BookingPage: React.FC = () => {
       setStep(4);
       toast.success("Yêu cầu đặt bàn đã được ghi nhận và giữ cụm bàn.");
     } catch (err: any) {
-      const errMsg: string = err.response?.data?.message || "";
+      const errMsg: string =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (err.message === "Network Error" || err.code === "ERR_NETWORK"
+          ? "Không thể kết nối tới Server Backend. Vui lòng bật server Backend (npm run dev trong thư mục be)."
+          : err.message) ||
+        "";
       toast.error(errMsg || "Đặt bàn thất bại. Vui lòng thử lại.");
     } finally {
       setSubmitting(false);
