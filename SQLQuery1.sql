@@ -49,6 +49,7 @@ CREATE TABLE users (
     phone         VARCHAR(20)  DEFAULT NULL,
     avatar_url    VARCHAR(255) DEFAULT NULL,
     status        ENUM('active','inactive') NOT NULL DEFAULT 'active',
+    hourly_rate   DECIMAL(15, 2) NOT NULL DEFAULT 25000.00,
     is_deleted    TINYINT(1)   NOT NULL DEFAULT 0,
     deleted_at    DATETIME     DEFAULT NULL,
     last_login    DATETIME     DEFAULT NULL,
@@ -61,13 +62,13 @@ CREATE TABLE users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- password thật: "123456", hash bcrypt cost 10
-INSERT INTO users (role_id, employee_code, full_name, email, password_hash, phone) VALUES
- (1, 'NV001', 'System Admin',       'admin@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000001'),
- (2, 'NV002', 'Restaurant Manager', 'manager@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000002'),
- (4, 'NV003', 'Cashier 1',          'cashier@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000003'),
- (3, 'NV004', 'Waiter 1',           'waiter1@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000004'),
- (3, 'NV005', 'Waiter 2',           'waiter2@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000005'),
- (5, 'NV006', 'Chef 1',             'chef1@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000006');
+INSERT INTO users (role_id, employee_code, full_name, email, password_hash, phone, hourly_rate) VALUES
+ (1, 'NV001', 'System Admin',       'admin@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000001', 25000.00),
+ (2, 'NV002', 'Restaurant Manager', 'manager@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000002', 25000.00),
+ (4, 'NV003', 'Cashier 1',          'cashier@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000003', 25000.00),
+ (3, 'NV004', 'Waiter 1',           'waiter1@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000004', 25000.00),
+ (3, 'NV005', 'Waiter 2',           'waiter2@gmail.com', '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000005', 25000.00),
+ (5, 'NV006', 'Chef 1',             'chef1@gmail.com',   '$2b$10$xJ8/8bmzTml4vxWVLA23B.eTLy0x/PeP2XN.ofc7ypgjwZfk2H9Om', '0900000006', 25000.00);
 
 CREATE TABLE customers (
     id              INT          NOT NULL AUTO_INCREMENT,
@@ -180,7 +181,88 @@ INSERT INTO attendance (employee_id, clock_in, clock_out) VALUES
  (3, '2026-07-30 09:58:00', NULL),
  (4, '2026-07-30 06:58:00', '2026-07-30 15:02:00'),
  (5, '2026-07-30 14:57:00', NULL),
- (6, '2026-07-30 08:02:00', NULL);
+ (6, '2026-07-30 08:02:00', NULL),
+ -- Chấm công hoàn thành tháng 8/2026 để khớp ca làm việc và tổng số giờ làm việc
+ -- NV002 (Restaurant Manager) - 10 ngày x ca 10 giờ = 100 giờ
+ (2, '2026-08-01 07:55:00', '2026-08-01 18:05:00'),
+ (2, '2026-08-02 08:00:00', '2026-08-02 18:00:00'),
+ (2, '2026-08-03 07:58:00', '2026-08-03 18:02:00'),
+ (2, '2026-08-04 07:57:00', '2026-08-04 18:03:00'),
+ (2, '2026-08-05 08:00:00', '2026-08-05 18:00:00'),
+ (2, '2026-08-08 07:55:00', '2026-08-08 18:05:00'),
+ (2, '2026-08-09 07:59:00', '2026-08-09 18:01:00'),
+ (2, '2026-08-10 08:00:00', '2026-08-10 18:00:00'),
+ (2, '2026-08-11 07:56:00', '2026-08-11 18:04:00'),
+ (2, '2026-08-12 08:02:00', '2026-08-12 18:02:00'),
+ -- NV003 (Cashier 1) - 10 ngày x ca 8 giờ = 80 giờ
+ (3, '2026-08-01 09:58:00', '2026-08-01 18:02:00'),
+ (3, '2026-08-02 10:00:00', '2026-08-02 18:00:00'),
+ (3, '2026-08-03 09:55:00', '2026-08-03 18:05:00'),
+ (3, '2026-08-04 09:57:00', '2026-08-04 18:03:00'),
+ (3, '2026-08-05 10:02:00', '2026-08-05 17:58:00'),
+ (3, '2026-08-08 09:58:00', '2026-08-08 18:02:00'),
+ (3, '2026-08-09 10:00:00', '2026-08-09 18:00:00'),
+ (3, '2026-08-10 09:56:00', '2026-08-10 18:04:00'),
+ (3, '2026-08-11 10:01:00', '2026-08-11 18:01:00'),
+ (3, '2026-08-12 09:59:00', '2026-08-12 18:00:00'),
+ -- NV004 (Waiter 1) - 10 ngày x ca 8 giờ = 80 giờ
+ (4, '2026-08-01 06:58:00', '2026-08-01 15:02:00'),
+ (4, '2026-08-02 07:00:00', '2026-08-02 15:00:00'),
+ (4, '2026-08-03 06:55:00', '2026-08-03 15:05:00'),
+ (4, '2026-08-04 06:57:00', '2026-08-04 15:03:00'),
+ (4, '2026-08-05 07:02:00', '2026-08-05 14:58:00'),
+ (4, '2026-08-08 06:58:00', '2026-08-08 15:02:00'),
+ (4, '2026-08-09 07:00:00', '2026-08-09 15:00:00'),
+ (4, '2026-08-10 06:56:00', '2026-08-10 15:04:00'),
+ (4, '2026-08-11 07:01:00', '2026-08-11 14:59:00'),
+ (4, '2026-08-12 06:59:00', '2026-08-12 15:00:00'),
+ -- NV005 (Waiter 2) - 10 ngày x ca 8 giờ = 80 giờ
+ (5, '2026-08-01 14:57:00', '2026-08-01 23:03:00'),
+ (5, '2026-08-02 15:00:00', '2026-08-02 23:00:00'),
+ (5, '2026-08-03 14:55:00', '2026-08-03 23:05:00'),
+ (5, '2026-08-04 14:58:00', '2026-08-04 23:02:00'),
+ (5, '2026-08-05 15:01:00', '2026-08-05 22:59:00'),
+ (5, '2026-08-08 14:57:00', '2026-08-08 23:03:00'),
+ (5, '2026-08-09 15:00:00', '2026-08-09 23:00:00'),
+ (5, '2026-08-10 14:56:00', '2026-08-10 23:04:00'),
+ (5, '2026-08-11 15:02:00', '2026-08-11 22:58:00'),
+ (5, '2026-08-12 14:59:00', '2026-08-12 23:00:00'),
+ -- NV006 (Chef 1) - 10 ngày x ca 8 giờ = 80 giờ
+ (6, '2026-08-01 08:00:00', '2026-08-01 16:00:00'),
+ (6, '2026-08-02 08:02:00', '2026-08-02 16:02:00'),
+ (6, '2026-08-03 07:58:00', '2026-08-03 15:58:00'),
+ (6, '2026-08-04 07:55:00', '2026-08-04 15:55:00'),
+ (6, '2026-08-05 08:01:00', '2026-08-05 16:01:00'),
+ (6, '2026-08-08 08:00:00', '2026-08-08 16:00:00'),
+ (6, '2026-08-09 08:05:00', '2026-08-09 16:05:00'),
+ (6, '2026-08-10 07:57:00', '2026-08-10 15:57:00'),
+ (6, '2026-08-11 08:00:00', '2026-08-11 16:00:00'),
+ (6, '2026-08-12 07:59:00', '2026-08-12 15:59:00');
+
+-- Bảng lương nhân viên
+CREATE TABLE IF NOT EXISTS payrolls (
+    id            INT          NOT NULL AUTO_INCREMENT,
+    user_id       INT          NOT NULL,
+    month         INT          NOT NULL,
+    year          INT          NOT NULL,
+    total_hours   DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    hourly_rate   DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    total_salary  DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    status        ENUM('pending','paid') NOT NULL DEFAULT 'pending',
+    paid_at       DATETIME     DEFAULT NULL,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY unique_user_month_year (user_id, month, year)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Gieo dữ liệu bảng lương mẫu Tháng 8/2026 khớp với chấm công trên
+INSERT INTO payrolls (user_id, month, year, total_hours, hourly_rate, total_salary, status) VALUES
+ (2, 8, 2026, 100.00, 25000.00, 2500000.00, 'pending'),
+ (3, 8, 2026, 80.00,  25000.00, 2000000.00, 'pending'),
+ (4, 8, 2026, 80.00,  25000.00, 2000000.00, 'pending'),
+ (5, 8, 2026, 80.00,  25000.00, 2000000.00, 'pending'),
+ (6, 8, 2026, 80.00,  25000.00, 2000000.00, 'pending');
 
 
 -- ============================================================================
