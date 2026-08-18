@@ -447,7 +447,11 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         si.is_credit as isCredit,
         si.due_date as dueDate,
         COALESCE(
-          (SELECT SUM(so.quantity) FROM stock_out so WHERE so.stock_in_id = si.id AND so.reason = 'return_to_supplier'),
+          (SELECT SUM(so.quantity) FROM stock_out so 
+           WHERE so.stock_in_id = si.id 
+             AND so.reason = 'return_to_supplier'
+             AND (so.note IS NULL OR (so.note NOT LIKE '%[LƯU TẠM]%' AND so.note NOT LIKE '%[HOÀN THÀNH]%'))
+          ),
           0
         ) as returnedQuantity
       FROM stock_in si
