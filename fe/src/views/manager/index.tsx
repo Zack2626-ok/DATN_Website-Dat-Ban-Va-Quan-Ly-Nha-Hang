@@ -10,7 +10,3 @@ export { CRMManagement } from "./CRMManagement/index";
 export { InvoiceManagement } from "./InvoiceManagement/index";
 export { InventoryControl } from "../chef/inventory/index";
 export { QRCodeSettings } from "./QRCodeSettings/index";
-
-export { QRCodeSettings } from "./QRCodeSettings/index";
-
-
