@@ -100,7 +100,7 @@ export const DebtHistoryModal: React.FC<Props> = ({ supplier, onClose }) => {
                           {new Date(row.paid_at || row.paidAt).toLocaleString("vi-VN")}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right font-black text-emerald-600 text-sm tabular-nums">
+                      <td className="px-4 py-3 text-right font-black text-slate-800 text-sm tabular-nums">
                         {formatCurrency(Number(row.amount))}
                       </td>
                       <td className="px-4 py-3">

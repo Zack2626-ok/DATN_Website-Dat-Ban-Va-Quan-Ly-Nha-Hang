@@ -1125,7 +1125,11 @@ const runSchemaMigrations = async (): Promise<void> => {
     `).catch(() => {});
 
     await query(`ALTER TABLE debt_payments ADD COLUMN proof_image LONGTEXT NULL`).catch(() => {});
+    await query(`ALTER TABLE debt_payments ADD COLUMN remaining_debt DECIMAL(14,2) NULL`).catch(() => {});
     await query(`ALTER TABLE debt_payments MODIFY COLUMN paid_by INT NULL`).catch(() => {});
+    await query(`ALTER TABLE stock_in ADD COLUMN is_credit TINYINT(1) DEFAULT 0`).catch(() => {});
+    await query(`ALTER TABLE stock_in ADD COLUMN due_date DATE NULL`).catch(() => {});
+    await query(`ALTER TABLE stock_in ADD COLUMN paid_amount DECIMAL(14,2) NULL`).catch(() => {});
 
     // Migration: Ensure payrolls table exists
     await query(`

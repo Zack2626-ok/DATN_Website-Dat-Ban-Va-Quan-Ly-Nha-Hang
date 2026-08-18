@@ -241,8 +241,8 @@ export const LossDebtReport: React.FC = () => {
                       )}
                     </td>
 
-                    <td className="px-5 py-3 text-right font-black text-emerald-600 text-sm tabular-nums">
-                      + {formatCurrency(p.amount)}
+                    <td className="px-5 py-3 text-right font-black text-slate-800 text-sm tabular-nums">
+                      {formatCurrency(p.amount)}
                     </td>
 
                     <td className="px-5 py-3">
