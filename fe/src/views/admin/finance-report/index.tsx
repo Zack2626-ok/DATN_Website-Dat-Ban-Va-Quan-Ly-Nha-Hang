@@ -200,8 +200,13 @@ export const FinanceReport: React.FC = () => {
         refundedTotal: Number(tx.refundedTotal || 0)
       }));
     
-    // Gom nhóm trả hàng NCC theo SLIP code & theo vết mã phiếu nhập (e.g. PN...)
-    const returnList = rawList.filter((tx: any) => tx.type === "income" && tx.txSubType === "return_supplier");
+    // Gom nhóm trả hàng NCC theo SLIP code & theo vết mã phiếu nhập (e.g. PN...) (chỉ tính phiếu ĐÃ TRẢ HÀNG)
+    const returnList = rawList.filter((tx: any) => 
+      tx.type === "income" && 
+      tx.txSubType === "return_supplier" &&
+      !String(tx.note || "").includes("[LƯU TẠM]") &&
+      !String(tx.note || "").includes("[HOÀN THÀNH]")
+    );
     const returnGroups: { [key: string]: any } = {};
     const returnedSlipMap: { [importTicketCode: string]: number } = {};
 

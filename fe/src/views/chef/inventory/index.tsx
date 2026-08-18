@@ -3025,7 +3025,7 @@ export const InventoryControl: React.FC = () => {
                           : firstItem.ingredientName;
 
                         const handleOpenReturnSlip = () => {
-                          if (slip.isDraft) {
+                          if (slip.isDraft || slip.isCompleted) {
                             setReturnBatchData({
                               ticketCode: slip.ticketCode,
                               draftTxId: firstItem.draftTxId,
@@ -3159,17 +3159,40 @@ export const InventoryControl: React.FC = () => {
                                       <Check size={14} /> Đã trả hàng
                                     </button>
                                   )}
-                                  {slip.isDraft && (
-                                    <button
-                                      className="p-1 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
-                                      title="Chỉnh sửa phiếu lưu tạm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenReturnSlip();
-                                      }}
-                                    >
-                                      <Pencil size={15} />
-                                    </button>
+                                  {(slip.isDraft || slip.isCompleted) && (
+                                    <>
+                                      <button
+                                        className="p-1 hover:bg-amber-100 rounded-lg text-amber-700 transition-colors cursor-pointer"
+                                        title="Chỉnh sửa phiếu xuất trả"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenReturnSlip();
+                                        }}
+                                      >
+                                        <Pencil size={15} />
+                                      </button>
+                                      <button
+                                        className="p-1 hover:bg-rose-100 rounded-lg text-rose-600 transition-colors cursor-pointer"
+                                        title="Xóa phiếu xuất trả"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          if (!window.confirm(`Bạn có chắc chắn muốn xóa phiếu xuất trả "${slip.ticketCode}" không?\n\nHành động này không thể hoàn tác.`)) return;
+                                          try {
+                                            await Promise.all(
+                                              slip.items.map((it: any) =>
+                                                it.draftTxId ? deleteInventoryTransactionApi(it.draftTxId) : Promise.resolve()
+                                              )
+                                            );
+                                            toast.success(`Đã xóa phiếu xuất trả "${slip.ticketCode}" thành công!`, { id: "inventory-toast" });
+                                            getInventoryTransactionsApi().then(setTransactions);
+                                          } catch (err: any) {
+                                            toast.error(err?.response?.data?.message || "Lỗi khi xóa phiếu xuất trả", { id: "inventory-toast" });
+                                          }
+                                        }}
+                                      >
+                                        <Trash2 size={15} />
+                                      </button>
+                                    </>
                                   )}
                                   <button
                                     className="p-1 hover:bg-blue-100 rounded-lg text-blue-700 transition-colors cursor-pointer"
