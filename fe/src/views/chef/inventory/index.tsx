@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setIngredientStockDirect } from "../../../store/inventorySlice";
 import { syncMenuWithIngredients } from "../../../store/menuSlice";
@@ -80,15 +81,37 @@ export const InventoryControl: React.FC = () => {
       .catch((err) => console.error("Failed to load ingredients", err));
   }, []);
 
+  const [searchParams] = useSearchParams();
+  const initialTabParam = searchParams.get("tab");
+  const initialViewParam = searchParams.get("view");
+
+  const validTabs = ["ingredients", "categories_suppliers", "import_history", "return_history", "stocktake", "expiry", "reports"];
+  const validViews = ["main", "importGoods", "returnGoods", "inventoryCheck"];
+
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"ingredients" | "categories_suppliers" | "import_history" | "return_history" | "stocktake" | "expiry" | "reports">("ingredients");
+  const [activeTab, setActiveTab] = useState<"ingredients" | "categories_suppliers" | "import_history" | "return_history" | "stocktake" | "expiry" | "reports">(
+    initialTabParam && validTabs.includes(initialTabParam) ? (initialTabParam as any) : "ingredients"
+  );
   const [importSearch, setImportSearch] = useState("");
   const [importDateFilter, setImportDateFilter] = useState("30days");
   const [returnSearch, setReturnSearch] = useState("");
   const [returnDateFilter, setReturnDateFilter] = useState("30days");
-  const [currentView, setCurrentView] = useState<"main" | "importGoods" | "returnGoods" | "inventoryCheck">("main");
+  const [currentView, setCurrentView] = useState<"main" | "importGoods" | "returnGoods" | "inventoryCheck">(
+    initialViewParam && validViews.includes(initialViewParam) ? (initialViewParam as any) : "main"
+  );
   const [selectedDraft, setSelectedDraft] = useState<any>(null);
   const [initialImportData, setInitialImportData] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam as any);
+    }
+    const viewParam = searchParams.get("view");
+    if (viewParam && validViews.includes(viewParam)) {
+      setCurrentView(viewParam as any);
+    }
+  }, [searchParams]);
 
   // Local Search & Category filters for Ingredient Tab
   const [ingSearch, setIngSearch] = useState("");
@@ -2570,6 +2593,15 @@ export const InventoryControl: React.FC = () => {
                         : firstItem.ingredientName;
                       const displayExpiry = firstItem.expiryDate || "-";
 
+                      const isSlipReturned = Boolean(
+                        slip.isReturned || 
+                        transactions.some(t => 
+                          t.type === "export" && 
+                          (t.reasonType === "return_supplier" || t.reasonType === "return_to_supplier" || t.reasonOrSupplier?.toLowerCase().includes("trả")) && 
+                          (t.reasonOrSupplier?.includes(slip.ticketCode) || t.note?.includes(slip.ticketCode))
+                        )
+                      );
+
                       const handleOpenSlip = () => {
                         if (slip.isDraft) {
                           setInitialImportData(slip.items.map((it: any) => {
@@ -2644,7 +2676,7 @@ export const InventoryControl: React.FC = () => {
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-amber-50 text-amber-800 border border-amber-200">
                                   LƯU TẠM
                                 </span>
-                              ) : (slip.isReturned || transactions.some(t => t.type === "export" && (t.reasonType === "return_supplier" || t.reasonType === "return_to_supplier" || t.reasonOrSupplier?.toLowerCase().includes("trả")) && (t.reasonOrSupplier?.includes(slip.ticketCode) || t.note?.includes(slip.ticketCode)))) ? (
+                              ) : isSlipReturned ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-purple-50 text-purple-800 border border-purple-200">
                                   XUẤT TRẢ NCC
                                 </span>
@@ -2666,21 +2698,27 @@ export const InventoryControl: React.FC = () => {
                                       e.stopPropagation();
                                       if (!window.confirm("Tất cả nguyên liệu sẽ được cộng vào bên trong kho, bạn chắc chứ?")) return;
                                       try {
-                                        await Promise.all(slip.items.map((item: any) => 
-                                          updateInventoryQuantityApi(item.ingredientId, {
+                                        await Promise.all(slip.items.map((item: any) => {
+                                          const itemTotal = (item.quantity || 0) * (item.unitCost || 0);
+                                          const itemPaid = item.paidAmount !== undefined && item.paidAmount !== null
+                                            ? item.paidAmount 
+                                            : (slip.paidAmount && slip.totalAmount ? (itemTotal / slip.totalAmount) * slip.paidAmount : (slip.isCredit ? 0 : itemTotal));
+                                          
+                                          return updateInventoryQuantityApi(item.ingredientId, {
                                             type: "import",
                                             status: "imported",
                                             quantity: item.quantity,
                                             unitCost: item.unitCost,
                                             supplierId: suppliers.find(s => s.name === slip.supplierName)?.id || undefined,
                                             isCredit: slip.isCredit,
+                                            paidAmount: itemPaid,
                                             expiryDate: item.expiryDate && item.expiryDate !== "-" ? new Date(item.expiryDate.split('/').reverse().join('-')) : undefined,
                                             batchNo: item.batchNo,
                                             reasonOrSupplier: `[SLIP:${slip.ticketCode}] Nhập hàng từ ${slip.supplierName}` + (slip.note ? ` - Ghi chú: ${slip.note}` : ''),
                                             ingredientName: item.ingredientName,
                                             draftTxId: item.draftTxId
-                                          })
-                                        ));
+                                          });
+                                        }));
                                          toast.success("Đã xác nhận nhập kho thành công!");
                                          getIngredientsApi().then(setReduxIngredients);
                                          getSuppliersApi().then(setSuppliers);
@@ -2729,31 +2767,33 @@ export const InventoryControl: React.FC = () => {
                                     </button>
                                   </>
                                 )}
-                                <button
-                                  className="p-1 hover:bg-rose-100 rounded-lg text-rose-600 transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px]"
-                                  title="Xuất trả nhà cung cấp"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const suppObj = suppliers.find((s: any) => s.name === slip.supplierName);
-                                    setReturnBatchData({
-                                      supplierId: suppObj ? suppObj.id : undefined,
-                                      supplierName: slip.supplierName,
-                                      note: `Trả hàng cho phiếu ${slip.ticketCode}`,
-                                      items: slip.items.map((it: any) => ({
-                                        ingredientId: it.ingredientId,
-                                        ingredientName: it.ingredientName,
-                                        code: it.code,
-                                        quantity: it.quantity,
-                                        unitCost: it.unitCost,
-                                        batchNo: it.batchNo,
-                                        unit: it.unit
-                                      }))
-                                    });
-                                    setCurrentView("returnGoods");
-                                  }}
-                                >
-                                  <Truck size={14} /> Trả hàng
-                                </button>
+                                {!slip.isDraft && !slip.isCompleted && !isSlipReturned && (
+                                  <button
+                                    className="p-1 hover:bg-rose-100 rounded-lg text-rose-600 transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px]"
+                                    title="Xuất trả nhà cung cấp"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const suppObj = suppliers.find((s: any) => s.name === slip.supplierName);
+                                      setReturnBatchData({
+                                        supplierId: suppObj ? suppObj.id : undefined,
+                                        supplierName: slip.supplierName,
+                                        note: `Trả hàng cho phiếu ${slip.ticketCode}`,
+                                        items: slip.items.map((it: any) => ({
+                                          ingredientId: it.ingredientId,
+                                          ingredientName: it.ingredientName,
+                                          code: it.code,
+                                          quantity: it.quantity,
+                                          unitCost: it.unitCost,
+                                          batchNo: it.batchNo,
+                                          unit: it.unit
+                                        }))
+                                      });
+                                      setCurrentView("returnGoods");
+                                    }}
+                                  >
+                                    <Truck size={14} /> Trả hàng
+                                  </button>
+                                )}
                                 <button
                                   className="p-1 hover:bg-blue-100 rounded-lg text-blue-700 transition-colors cursor-pointer"
                                   title="In phiếu"
@@ -3088,7 +3128,7 @@ export const InventoryControl: React.FC = () => {
                                     <button
                                       onClick={async (e) => {
                                         e.stopPropagation();
-                                        if (!window.confirm("Nguyên liệu sẽ bị trừ khỏi kho, bạn chắc chứ?")) return;
+                                        if (!window.confirm("Số tiền sẽ trừ vào hệ thống, bạn chắc chắn đã trả hàng chứ?")) return;
                                         try {
                                           await Promise.all(slip.items.map((item: any) => 
                                             updateInventoryQuantityApi(item.ingredientId, {
@@ -3107,6 +3147,7 @@ export const InventoryControl: React.FC = () => {
                                           ));
                                           toast.success("Đã xác nhận trả hàng thành công!");
                                           getIngredientsApi().then(setReduxIngredients);
+                                          getSuppliersApi().then(setSuppliers);
                                           getInventoryTransactionsApi().then(setTransactions);
                                         } catch (error: any) {
                                           toast.error(error?.response?.data?.message || "Lỗi khi xác nhận trả hàng");
@@ -4361,8 +4402,8 @@ export const InventoryControl: React.FC = () => {
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        step="0.1"
-                        min="0.1"
+                        step="any"
+                        min="0.001"
                         required
                         value={newExpiryForm.quantity}
                         onChange={(e) => setNewExpiryForm({ ...newExpiryForm, quantity: Number(e.target.value) })}
@@ -4531,7 +4572,7 @@ export const InventoryControl: React.FC = () => {
                             type="number"
                             required
                             min={conv.activeUnit === "g" || conv.activeUnit === "ml" ? "1" : "0.001"}
-                            step={conv.activeUnit === "g" || conv.activeUnit === "ml" ? "1" : "0.01"}
+                            step="any"
                             value={wasteForm.quantity}
                             onChange={(e) => setWasteForm({ ...wasteForm, quantity: Number(e.target.value) })}
                             className={`w-full px-3 py-2 border rounded-xl focus:outline-none font-bold text-rose-600 transition-all ${
@@ -4690,8 +4731,8 @@ export const InventoryControl: React.FC = () => {
                   <input
                     type="number"
                     required
-                    min="0.1"
-                    step="0.1"
+                    min="0.001"
+                    step="any"
                     max={returnBatchData.maxQty}
                     value={returnQty}
                     onChange={(e) => setReturnQty(e.target.value ? Number(e.target.value) : "")}
@@ -4798,7 +4839,7 @@ export const InventoryControl: React.FC = () => {
                     <label className="font-extrabold text-slate-700">Tồn kho ban đầu</label>
                     <input
                       type="number"
-                      step="0.1"
+                      step="any"
                       min="0"
                       required
                       value={newIngForm.stock}
@@ -4810,7 +4851,7 @@ export const InventoryControl: React.FC = () => {
                     <label className="font-extrabold text-slate-700">Tồn kho tối thiểu</label>
                     <input
                       type="number"
-                      step="0.1"
+                      step="any"
                       min="0"
                       required
                       value={newIngForm.threshold}
@@ -4925,8 +4966,8 @@ export const InventoryControl: React.FC = () => {
                     <label className="font-extrabold text-slate-700">Số lượng</label>
                     <input
                       type="number"
-                      step="0.1"
-                      min="0.1"
+                      step="any"
+                      min="0.001"
                       required
                       value={transactionForm.quantity}
                       onChange={(e) => setTransactionForm({ ...transactionForm, quantity: Number(e.target.value) })}

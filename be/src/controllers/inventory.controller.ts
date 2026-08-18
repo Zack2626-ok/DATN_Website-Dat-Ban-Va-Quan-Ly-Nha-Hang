@@ -221,7 +221,7 @@ export const wasteExpiredBatches = async (req: Request, res: Response): Promise<
 export const updateInventoryQuantity = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate, batchNo, reasonType, status, draftTxId, ingredientName, unit } = req.body; // type: import | export | adjust
+    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate, batchNo, reasonType, status, draftTxId, ingredientName, unit, paidAmount, dueDate } = req.body; // type: import | export | adjust
 
     // Resolve non-numeric/TEMP IDs safely
     let ingredientIdNum = Number(id);
@@ -393,20 +393,21 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       }
       const finalBatchCode = batchNo ? batchNo : `LOT-${ingredientIdNum}-${Date.now()}`;
 
+      const itemCost = qty * (Number(unitCost) || 0);
+      const itemPaid = paidAmount !== undefined && paidAmount !== null && Number(paidAmount) >= 0 ? Number(paidAmount) : (isCredit ? 0 : itemCost);
+      const remainingDebt = isCredit ? Math.max(0, itemCost - itemPaid) : 0;
+
       await db.query(
-        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [ingredientIdNum, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, noteWithPrefix || 'Nhập kho thủ công', 1, isCredit ? 1 : 0]
+        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit, paid_amount, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [ingredientIdNum, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, noteWithPrefix || 'Nhập kho thủ công', 1, isCredit ? 1 : 0, itemPaid, req.body.dueDate || null]
       );
 
-      // TASK 5: Nhập hàng CHỊU (mua chịu) + có chọn NCC → cộng nợ cho NCC đó (CHỈ KHI KÍCH HOẠT LƯU THẬT)
-      if (isCredit && supplierId && (!isDraft && !isCompleted)) {
-        const cost = qty * (Number(unitCost) || 0);
-        if (cost > 0) {
-          await db.query(
-            `UPDATE suppliers SET total_debt = total_debt + ? WHERE id = ?`,
-            [cost, supplierId]
-          );
-        }
+      // TASK 5: Nhập hàng CHỊU + có chọn NCC → cộng số nợ THỰC TẾ CÒN LẠI cho NCC đó (CHỈ KHI KÍCH HOẠT LƯU THẬT)
+      if (isCredit && supplierId && (!isDraft && !isCompleted) && remainingDebt > 0) {
+        await db.query(
+          `UPDATE suppliers SET total_debt = total_debt + ? WHERE id = ?`,
+          [remainingDebt, supplierId]
+        );
       }
 
       // Auto-update supplier's main_ingredients with newly imported ingredient name
@@ -656,18 +657,19 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
     }
 
     const payAmount = Number(amount);
+    const remainingDebt = Math.max(0, currentDebt - payAmount);
 
     // Trừ nợ
     await db.query(
-      `UPDATE suppliers SET total_debt = GREATEST(0, total_debt - ?) WHERE id = ?`,
-      [payAmount, id]
+      `UPDATE suppliers SET total_debt = ? WHERE id = ?`,
+      [remainingDebt, id]
     );
 
     // Ghi lịch sử thanh toán nợ
     const payRes = await db.query(
-      `INSERT INTO debt_payments (supplier_id, amount, method, note, paid_by, proof_image)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, payAmount, method, note || null, userId, proofImage || null]
+      `INSERT INTO debt_payments (supplier_id, amount, remaining_debt, method, note, paid_by, proof_image)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, payAmount, remainingDebt, method, note || null, userId, proofImage || null]
     );
 
     // Lấy nợ còn lại
@@ -698,7 +700,7 @@ export const getDebtHistory = async (req: Request, res: Response): Promise<void>
     const { id } = req.params;
     const rows = await db.query(
       `
-      SELECT dp.id, dp.amount, dp.method, dp.note, dp.paid_at,
+      SELECT dp.id, dp.amount, dp.remaining_debt, dp.method, dp.note, dp.paid_at,
              COALESCE(u.full_name, 'Hệ thống') AS paid_by_name
       FROM debt_payments dp
       LEFT JOIN users u ON dp.paid_by = u.id

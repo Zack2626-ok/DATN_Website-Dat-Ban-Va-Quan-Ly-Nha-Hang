@@ -470,23 +470,28 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
       const reasonOrSupplier = note ? `${baseReason} - Ghi chú: ${note}` : baseReason;
 
       await Promise.all(
-        importItems.map(item =>
-          updateInventoryQuantityApi(item.ingredientId, {
+        importItems.map(item => {
+          const itemQty = getActualQty(item);
+          const itemCost = itemQty * item.unitCost;
+          const itemPaid = totalAmount > 0 ? (itemCost / totalAmount) * numericPaidAmount : 0;
+
+          return updateInventoryQuantityApi(item.ingredientId, {
             type: "import",
             reasonType: "import",
             status: mode === "draft" ? "draft" : "completed",
-            quantity: getActualQty(item),  // converted to baseUnit
+            quantity: itemQty,  // converted to baseUnit
             unit: item.baseUnit,
             unitCost: item.unitCost,
             supplierId: selectedSupplier || undefined,
             isCredit: isCreditForItems,
+            paidAmount: itemPaid,
             expiryDate: item.expiryDate || undefined,
             batchNo: item.batchNo,
             reasonOrSupplier,
             ingredientName: item.ingredientName,
             draftTxId: item.draftTxId,
-          })
-        )
+          });
+        })
       );
 
       if (mode === "draft") {
