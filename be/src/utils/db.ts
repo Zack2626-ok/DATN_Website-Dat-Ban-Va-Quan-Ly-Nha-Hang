@@ -1221,7 +1221,7 @@ export const findUserByEmail = async (email: string): Promise<User | null> => {
     return MOCK_USERS.find((u) => u.email === email) || null;
   }
   const rows = await query<any[]>(
-    `SELECT u.id, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.created_at AS createdAt
+    `SELECT u.id, u.role_id, u.employee_code, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.hourly_rate, u.created_at AS createdAt
      FROM users u
      JOIN roles r ON u.role_id = r.id
      WHERE u.email = ? AND u.is_deleted = 0`,
@@ -1235,7 +1235,7 @@ export const findUserById = async (id: string): Promise<User | null> => {
     return MOCK_USERS.find((u) => u.id === id) || null;
   }
   const rows = await query<any[]>(
-    `SELECT u.id, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.created_at AS createdAt
+    `SELECT u.id, u.role_id, u.employee_code, u.full_name, u.email, u.password_hash AS password, r.name AS role_name, u.phone, u.hourly_rate, u.created_at AS createdAt
      FROM users u
      JOIN roles r ON u.role_id = r.id
      WHERE u.id = ? AND u.is_deleted = 0`,
@@ -6221,7 +6221,7 @@ export const getRoles = async (): Promise<any[]> => {
 
 export const getUsers = async (): Promise<any[]> => {
   return query(`
-    SELECT u.id, u.role_id, u.full_name, u.email, u.phone, u.avatar_url, u.status, u.is_deleted, u.created_at, r.name AS role_name
+    SELECT u.id, u.role_id, u.employee_code, u.full_name, u.email, u.phone, u.avatar_url, u.status, u.hourly_rate, u.is_deleted, u.created_at, r.name AS role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
     WHERE u.is_deleted = 0
@@ -6230,11 +6230,17 @@ export const getUsers = async (): Promise<any[]> => {
 };
 
 export const createResmanagerUser = async (data: any): Promise<any> => {
+  const hourlyRate = data.hourly_rate !== undefined ? Number(data.hourly_rate) : 25000;
   const result = await query(`
-    INSERT INTO users (role_id, full_name, email, password_hash, phone, status, is_deleted)
-    VALUES (?, ?, ?, ?, ?, ?, 0)
-  `, [data.role_id, data.full_name, data.email, data.password, data.phone || null, data.status || 'active']);
-  return { id: result.insertId, ...data, is_deleted: 0 };
+    INSERT INTO users (role_id, full_name, email, password_hash, phone, status, is_deleted, hourly_rate)
+    VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+  `, [data.role_id, data.full_name, data.email, data.password, data.phone || null, data.status || 'active', hourlyRate]);
+  
+  const insertId = result.insertId;
+  const empCode = data.employee_code || `NV${String(insertId).padStart(3, '0')}`;
+  await query("UPDATE users SET employee_code = ? WHERE id = ?", [empCode, insertId]);
+  
+  return { id: insertId, employee_code: empCode, hourly_rate: hourlyRate, ...data, is_deleted: 0 };
 };
 
 export const updateResmanagerUser = async (id: number | string, data: any): Promise<boolean> => {
