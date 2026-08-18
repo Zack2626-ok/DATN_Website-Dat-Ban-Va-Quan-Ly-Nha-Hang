@@ -396,6 +396,8 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
                         <td className="px-4 py-3">
                           <input 
                             type="number" 
+                            step="any"
+                            min="0.001"
                             disabled={isBatchEmpty}
                             readOnly={isBatchEmpty}
                             value={isBatchEmpty ? 0 : item.quantity} 
@@ -410,6 +412,8 @@ export const ReturnGoods: React.FC<ReturnGoodsProps> = ({ onBack, initialReturnD
                         <td className="px-4 py-3">
                           <input 
                             type="number" 
+                            step="any"
+                            min="0"
                             disabled={isBatchEmpty}
                             readOnly={isBatchEmpty}
                             value={item.unitCost} 

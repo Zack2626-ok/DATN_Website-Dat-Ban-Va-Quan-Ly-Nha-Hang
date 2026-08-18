@@ -141,11 +141,12 @@ app.use(
   }),
 );
 app.use(express.json({
+  limit: "50mb",
   verify: (request, _response, buffer) => {
     (request as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
   },
 }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/upload", uploadRoutes);
 app.use("/api/auth", authRoutes);

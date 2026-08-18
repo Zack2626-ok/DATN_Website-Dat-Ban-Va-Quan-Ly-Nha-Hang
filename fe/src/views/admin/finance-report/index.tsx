@@ -254,10 +254,15 @@ export const FinanceReport: React.FC = () => {
 
 
 
-    const expenseList = rawList.filter((tx: any) => tx.type === "expense" && !String(tx.batchNo || "").startsWith("LOT-ADJ-"));
+    // Tách riêng các loại chi phí:
+    // 1) Chi phí nhập nguyên liệu / hàng hóa (stock_in có batchNo hoặc ingredientName hoặc txSubType === "stock_in")
+    const stockInList = rawList.filter((tx: any) => tx.type === "expense" && (tx.txSubType === "stock_in" || tx.ingredientName) && !String(tx.batchNo || "").startsWith("LOT-ADJ-"));
+    
+    // 2) Các khoản chi trực tiếp khác (Thanh toán công nợ NCC, trả lương, chi phí vận hành)
+    const directExpenseList = rawList.filter((tx: any) => tx.type === "expense" && tx.txSubType !== "stock_in" && !tx.ingredientName);
     const expenseGroups: { [key: string]: any } = {};
 
-    expenseList.forEach((tx: any) => {
+    stockInList.forEach((tx: any) => {
       const noteStr = tx.note || "";
       const slipMatch = noteStr.match(/\[SLIP:([^\]]+)\]/);
       
@@ -280,6 +285,7 @@ export const FinanceReport: React.FC = () => {
       const returnedQty = Math.abs(Number(tx.returnedQuantity) || 0);
       const price = Number(tx.unitCost) || 0;
       const total = qty * price;
+      const paid = Number(tx.paidAmount !== undefined && tx.paidAmount !== null ? tx.paidAmount : (tx.isCredit ? 0 : total));
       const returnedTotal = returnedQty * price;
 
       if (!expenseGroups[groupKey]) {
@@ -296,6 +302,7 @@ export const FinanceReport: React.FC = () => {
           items: [],
           originalAmount: 0,
           returnedAmount: 0,
+          paidAmount: 0,
           amount: 0
         };
       }
@@ -308,10 +315,12 @@ export const FinanceReport: React.FC = () => {
         ingredientUnit: tx.ingredientUnit || "kg",
         batchCode: tx.batchCode || "-",
         amount: total,
+        paidAmount: paid,
         returnedAmount: returnedTotal
       });
 
       expenseGroups[groupKey].originalAmount += total;
+      expenseGroups[groupKey].paidAmount += paid;
       expenseGroups[groupKey].returnedAmount += returnedTotal;
     });
 
@@ -326,20 +335,25 @@ export const FinanceReport: React.FC = () => {
       const totalItems = group.items.length;
       const firstItem = group.items[0];
       let description = totalItems > 1 
-        ? `Nhập kho: ${firstItem.ingredientName} (+${totalItems - 1} mặt hàng khác)`
-        : `Nhập kho: ${firstItem.ingredientName}`;
+        ? `Nhập kho: ${firstItem?.ingredientName || 'Nguyên liệu'} (+${totalItems - 1} mặt hàng khác)`
+        : `Nhập kho: ${firstItem?.ingredientName || 'Nguyên liệu'}`;
 
       if (isReturned) {
-        description = `Nhập kho (Đã xuất trả NCC): ${firstItem.ingredientName}` + (totalItems > 1 ? ` (+${totalItems - 1} mặt hàng khác)` : "");
+        description = `Nhập kho (Đã xuất trả NCC): ${firstItem?.ingredientName || 'Nguyên liệu'}` + (totalItems > 1 ? ` (+${totalItems - 1} mặt hàng khác)` : "");
       }
 
-      const netAmount = isReturned ? 0 : Math.max(0, originalAmount - returnedAmount);
+      const netAmount = isReturned 
+        ? 0 
+        : group.isCredit 
+          ? group.paidAmount 
+          : Math.max(0, originalAmount - returnedAmount);
 
       return {
         ...group,
         amount: netAmount,
         originalAmount,
         returnedAmount,
+        paidAmount: group.paidAmount,
         isReturned,
         isPartiallyReturned,
         description
@@ -351,8 +365,8 @@ export const FinanceReport: React.FC = () => {
         const totalItems = group.items.length;
         const firstItem = group.items[0];
         const description = totalItems > 1
-          ? `Trả hàng NCC: ${firstItem.ingredientName} (+${totalItems - 1} mặt hàng khác)`
-          : `Trả hàng NCC: ${firstItem.ingredientName}`;
+          ? `Trả hàng NCC: ${firstItem?.ingredientName || 'Nguyên liệu'} (+${totalItems - 1} mặt hàng khác)`
+          : `Trả hàng NCC: ${firstItem?.ingredientName || 'Nguyên liệu'}`;
         return { ...group, description };
       })
       .filter((retGroup: any) => {
@@ -363,7 +377,14 @@ export const FinanceReport: React.FC = () => {
         return !hasMatchingExpense;
       });
 
-    const combined = [...invoiceIncomeList, ...processedReturns, ...processedExpenses];
+    const processedDirectExpenses = directExpenseList.map((tx: any) => ({
+      ...tx,
+      amount: Number(tx.amount || 0),
+      isDirectExpense: true,
+      items: []
+    }));
+
+    const combined = [...invoiceIncomeList, ...processedReturns, ...processedExpenses, ...processedDirectExpenses];
     combined.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return combined;
   }, [data.recentTransactions]);
@@ -617,11 +638,30 @@ export const FinanceReport: React.FC = () => {
                             <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
                               Xuất trả 1 phần NCC
                             </span>
-                          ) : row.type === "expense" && row.isCredit === 1 ? (
+                          ) : row.type === "expense" && row.isCredit && Number(row.amount) === 0 ? (
                             <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                              Nợ
+                              Mua nợ NCC (0 đ chi)
+                            </span>
+                          ) : row.type === "expense" && row.isCredit && Number(row.amount) > 0 ? (
+                            <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                              Trả 1 phần (Còn nợ NCC)
                             </span>
                           ) : null}
+                          {row.txSubType === "debt_payment" && (
+                            <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">
+                              Trả nợ NCC
+                            </span>
+                          )}
+                          {row.txSubType === "payroll" && (
+                            <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                              Lương NV
+                            </span>
+                          )}
+                          {row.txSubType === "operational" && (
+                            <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                              Vận hành
+                            </span>
+                          )}
                           {row.type === "income" && row.hasRefund && (
                             <span className="ml-2 inline-flex items-center gap-0.5 text-[9px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">
                               Hoàn tiền
@@ -636,8 +676,24 @@ export const FinanceReport: React.FC = () => {
                         <td
                           className={`px-5 py-4 text-right tabular-nums`}
                         >
-                          <div className={`font-black text-xs ${row.isReturned ? "text-purple-700" : row.isPartiallyReturned ? "text-purple-700 font-black" : row.type === "income" ? "text-emerald-700" : "text-rose-700"}`}>
-                            {row.isReturned ? `-${formatCurrency(Number(row.returnedAmount || row.amount))}` : row.isPartiallyReturned ? `-${formatCurrency(Number(row.returnedAmount))}` : `${row.type === "income" ? "+" : "-"}${formatCurrency(Number(row.amount))}`}
+                          <div className={`font-black text-xs ${
+                            row.isReturned 
+                              ? "text-purple-700" 
+                              : row.isPartiallyReturned 
+                              ? "text-purple-700 font-black" 
+                              : row.type === "income" 
+                              ? "text-emerald-700" 
+                              : Number(row.amount) === 0 
+                              ? "text-slate-500 font-bold" 
+                              : "text-rose-700"
+                          }`}>
+                            {row.isReturned 
+                              ? `-${formatCurrency(Number(row.returnedAmount || row.amount))}` 
+                              : row.isPartiallyReturned 
+                              ? `-${formatCurrency(Number(row.returnedAmount))}` 
+                              : Number(row.amount) === 0 
+                              ? "0 đ" 
+                              : `${row.type === "income" ? "+" : "-"}${formatCurrency(Number(row.amount))}`}
                           </div>
                           {row.isReturned && (
                             <div className="text-[9px] text-purple-600 font-bold mt-0.5">
@@ -647,6 +703,16 @@ export const FinanceReport: React.FC = () => {
                           {!row.isReturned && row.isPartiallyReturned && (
                             <div className="text-[9px] text-purple-600 font-bold mt-0.5">
                               Đã xuất trả 1 phần NCC: -{formatCurrency(row.returnedAmount)} (Tổng gốc: {formatCurrency(row.originalAmount)}, Hàng giữ lại: {formatCurrency(Math.max(0, row.originalAmount - row.returnedAmount))})
+                            </div>
+                          )}
+                          {row.type === "expense" && row.isCredit && Number(row.amount) === 0 && (
+                            <div className="text-[9px] text-amber-600 font-bold mt-0.5">
+                              (Mua nợ NCC: {formatCurrency(row.originalAmount || 0)} - Chi thực tế: 0 đ)
+                            </div>
+                          )}
+                          {row.type === "expense" && row.isCredit && Number(row.amount) > 0 && (
+                            <div className="text-[9px] text-amber-700 font-bold mt-0.5">
+                              (Đã trả: -{formatCurrency(row.amount)}, Ghi nợ: {formatCurrency(Math.max(0, (row.originalAmount || 0) - row.amount))})
                             </div>
                           )}
                           {row.type === "income" && row.hasRefund && row.refundedTotal > 0 && (
@@ -729,6 +795,50 @@ export const FinanceReport: React.FC = () => {
                                       ✅ NCC đã hoàn trả tiền mặt / chuyển khoản cho nhà hàng
                                     </div>
                                   </div>
+                                </div>
+                              </div>
+                            ) : row.txSubType === "debt_payment" ? (
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-sky-50/50 p-4 rounded-2xl border border-sky-100 animate-fade-in text-xs">
+                                <div className="space-y-1.5">
+                                  <h4 className="font-bold text-sky-900 text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    💳 Phiếu chi thanh toán công nợ NCC
+                                  </h4>
+                                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-700">
+                                    <span>Nhà cung cấp: <strong className="text-slate-900">{row.supplierName}</strong></span>
+                                    <span>Hình thức: <strong className="text-slate-900">{row.method === "cash" ? "Tiền mặt" : "Chuyển khoản"}</strong></span>
+                                    {row.note && <span>Ghi chú: <strong className="text-slate-900">{row.note}</strong></span>}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-xs text-slate-500 font-semibold block">Số tiền đã chi trả</span>
+                                  <span className="text-base font-black text-rose-600">-{formatCurrency(row.amount)}</span>
+                                </div>
+                              </div>
+                            ) : row.txSubType === "payroll" ? (
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-purple-50/50 p-4 rounded-2xl border border-purple-100 animate-fade-in text-xs">
+                                <div className="space-y-1">
+                                  <h4 className="font-bold text-purple-900 text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    👥 Chi trả lương nhân viên
+                                  </h4>
+                                  <p className="text-slate-700 font-medium">{row.description}</p>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-xs text-slate-500 font-semibold block">Tiền lương</span>
+                                  <span className="text-base font-black text-rose-600">-{formatCurrency(row.amount)}</span>
+                                </div>
+                              </div>
+                            ) : row.txSubType === "operational" ? (
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200 animate-fade-in text-xs">
+                                <div className="space-y-1">
+                                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    ⚙️ Chi phí vận hành
+                                  </h4>
+                                  <p className="text-slate-700 font-medium">{row.description}</p>
+                                  {row.category && <p className="text-slate-500 text-[11px]">Danh mục: <strong>{row.category}</strong></p>}
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-xs text-slate-500 font-semibold block">Số tiền</span>
+                                  <span className="text-base font-black text-rose-600">-{formatCurrency(row.amount)}</span>
                                 </div>
                               </div>
                             ) : row.type === "expense" ? (

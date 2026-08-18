@@ -338,14 +338,24 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const { startDate, endDate } = req.query;
 
     // Resolve dates (default to this month if not provided)
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    const start = new Date();
+    let start = new Date();
     start.setDate(1); // First day of current month
     start.setHours(0, 0, 0, 0);
 
-    const startStr = formatMySQLDateTime(startDate ? new Date(startDate as string) : start);
-    const endStr = formatMySQLDateTime(endDate ? new Date(endDate as string) : end);
+    let end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    if (startDate) {
+      start = new Date(startDate as string);
+      start.setHours(0, 0, 0, 0);
+    }
+    if (endDate) {
+      end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    const startStr = formatMySQLDateTime(start);
+    const endStr = formatMySQLDateTime(end);
 
     // 1) Summary
     const incomeRow = await db.query(
@@ -355,10 +365,27 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const totalIncome = Number(incomeRow[0].val);
 
     const stockInRow = await db.query(
-      `SELECT COALESCE(SUM(quantity * unit_cost), 0) AS val FROM stock_in WHERE created_at BETWEEN ? AND ?`,
+      `SELECT COALESCE(SUM(
+        CASE 
+          WHEN is_credit = 1 AND (paid_amount IS NULL OR paid_amount = 0) THEN 0
+          WHEN paid_amount IS NOT NULL AND paid_amount > 0 THEN paid_amount
+          WHEN is_credit = 0 THEN (quantity * unit_cost)
+          ELSE 0
+        END
+      ), 0) AS val FROM stock_in 
+      WHERE (note IS NULL OR (note NOT LIKE '%[LƯU TẠM]%' AND note NOT LIKE '%[HOÀN THÀNH]%')) 
+        AND created_at BETWEEN ? AND ?`,
       [startStr, endStr]
     );
-    const materialCost = Number(stockInRow[0].val);
+    const directMaterialCost = Number(stockInRow[0].val);
+
+    const debtPaymentSummaryRow = await db.query(
+      `SELECT COALESCE(SUM(amount), 0) AS val FROM debt_payments WHERE paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+    const debtCost = Number(debtPaymentSummaryRow[0].val);
+
+    const materialCost = directMaterialCost + debtCost;
 
     const payrollRow = await db.query(
       `SELECT COALESCE(SUM(total_salary), 0) AS val FROM payrolls WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
@@ -376,61 +403,149 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const netProfit = totalIncome - totalExpenses;
 
     // 2) Recent Transactions
-    const txRows = await db.query(
-      `
-      (
-        SELECT 
-          CONCAT('INV-', id) as id,
-          'income' as type,
-          CONCAT('Thanh toán hóa đơn #', id) as description,
-          total as amount,
-          paid_at as date,
-          'completed' as status
-        FROM invoices 
-        WHERE status = 'paid' AND paid_at BETWEEN ? AND ?
-      )
-      UNION ALL
-      (
-        SELECT 
-          CONCAT('EXP-MAT-', id) as id,
-          'expense' as type,
-          COALESCE(note, 'Nhập nguyên liệu') as description,
-          (quantity * unit_cost) as amount,
-          created_at as date,
-          'completed' as status
-        FROM stock_in 
-        WHERE created_at BETWEEN ? AND ?
-      )
-      UNION ALL
-      (
-        SELECT 
-          CONCAT('EXP-SAL-', p.id) as id,
-          'expense' as type,
-          CONCAT('Trả lương nhân viên ', u.full_name, ' tháng ', p.month, '/', p.year) as description,
-          p.total_salary as amount,
-          p.paid_at as date,
-          'completed' as status
-        FROM payrolls p
-        JOIN users u ON p.user_id = u.id
-        WHERE p.status = 'paid' AND p.paid_at BETWEEN ? AND ?
-      )
-      UNION ALL
-      (
-        SELECT 
-          CONCAT('EXP-OPS-', id) as id,
-          'expense' as type,
-          CONCAT('Chi phí: ', title) as description,
-          amount as amount,
-          expense_date as date,
-          'completed' as status
-        FROM operational_expenses 
-        WHERE expense_date BETWEEN ? AND ?
-      )
-      ORDER BY date DESC
-      LIMIT 100
-      `,
-      [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr]
+    // Invoices (Thu từ bán hàng)
+    const invoiceRows = await db.query(
+      `SELECT 
+        CONCAT('INV-', id) as id,
+        id as orderId,
+        'income' as type,
+        'invoice' as txSubType,
+        CONCAT('Thanh toán hóa đơn #', id) as description,
+        total as amount,
+        paid_at as date,
+        'completed' as status
+      FROM invoices 
+      WHERE status = 'paid' AND paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
     );
+
+    // Stock In (Chi phí nhập nguyên liệu / hàng hóa thực tế đã chi)
+    const stockInTxRows = await db.query(
+      `SELECT 
+        CONCAT('EXP-MAT-', si.id) as id,
+        'expense' as type,
+        'stock_in' as txSubType,
+        COALESCE(si.note, 'Nhập nguyên liệu') as description,
+        (CASE 
+          WHEN si.is_credit = 1 AND (si.paid_amount IS NULL OR si.paid_amount = 0) THEN 0
+          WHEN si.paid_amount IS NOT NULL AND si.paid_amount > 0 THEN si.paid_amount
+          WHEN si.is_credit = 0 THEN (si.quantity * si.unit_cost)
+          ELSE 0
+        END) as amount,
+        (si.quantity * si.unit_cost) as totalImportCost,
+        COALESCE(si.paid_amount, (CASE WHEN si.is_credit = 0 THEN (si.quantity * si.unit_cost) ELSE 0 END)) as paidAmount,
+        si.created_at as date,
+        'completed' as status,
+        si.batch_code as batchCode,
+        si.batch_code as batchNo,
+        si.quantity,
+        si.unit_cost as unitCost,
+        si.note,
+        i.name as ingredientName,
+        i.unit as ingredientUnit,
+        COALESCE(s.name, 'Nhà cung cấp') as supplierName,
+        si.is_credit as isCredit,
+        si.due_date as dueDate,
+        COALESCE(
+          (SELECT SUM(so.quantity) FROM stock_out so WHERE so.stock_in_id = si.id AND so.reason = 'return_to_supplier'),
+          0
+        ) as returnedQuantity
+      FROM stock_in si
+      LEFT JOIN ingredients i ON si.ingredient_id = i.id
+      LEFT JOIN suppliers s ON si.supplier_id = s.id
+      WHERE si.created_at BETWEEN ? AND ?
+        AND (si.note IS NULL OR (si.note NOT LIKE '%[LƯU TẠM]%' AND si.note NOT LIKE '%[HOÀN THÀNH]%'))`,
+      [startStr, endStr]
+    );
+
+    // Debt Payments (Chi trả nợ NCC)
+    const debtPaymentRows = await db.query(
+      `SELECT 
+        CONCAT('EXP-DEBT-', dp.id) as id,
+        'expense' as type,
+        'debt_payment' as txSubType,
+        CONCAT('Thanh toán công nợ NCC: ', s.name) as description,
+        dp.amount as amount,
+        dp.paid_at as date,
+        'completed' as status,
+        dp.note as note,
+        s.name as supplierName,
+        dp.method as method,
+        dp.proof_image as proofImage
+      FROM debt_payments dp
+      JOIN suppliers s ON dp.supplier_id = s.id
+      WHERE dp.paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+
+    // Payrolls (Chi lương)
+    const payrollRows = await db.query(
+      `SELECT 
+        CONCAT('EXP-SAL-', p.id) as id,
+        'expense' as type,
+        'payroll' as txSubType,
+        CONCAT('Trả lương nhân viên ', u.full_name, ' tháng ', p.month, '/', p.year) as description,
+        p.total_salary as amount,
+        p.paid_at as date,
+        'completed' as status,
+        u.full_name as employeeName
+      FROM payrolls p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.status = 'paid' AND p.paid_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+
+    // Operational expenses (Chi phí vận hành)
+    const opsRows = await db.query(
+      `SELECT 
+        CONCAT('EXP-OPS-', id) as id,
+        'expense' as type,
+        'operational' as txSubType,
+        CONCAT('Chi phí: ', title) as description,
+        amount as amount,
+        expense_date as date,
+        'completed' as status,
+        category
+      FROM operational_expenses 
+      WHERE expense_date BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+
+    // Stock Out - Trả hàng NCC (Thu hoàn tiền) - chỉ tính các phiếu ĐÃ XÁC NHẬN TRẢ HÀNG
+    const returnStockOutRows = await db.query(
+      `SELECT 
+        CONCAT('RET-', so.id) as id,
+        'income' as type,
+        'return_supplier' as txSubType,
+        COALESCE(so.note, 'Xuất trả hàng NCC') as description,
+        (so.quantity * COALESCE(si.unit_cost, 0)) as amount,
+        so.created_at as date,
+        'completed' as status,
+        so.quantity,
+        COALESCE(si.unit_cost, 0) as unitCost,
+        i.name as ingredientName,
+        i.unit as ingredientUnit,
+        si.batch_code as batchCode,
+        COALESCE(s.name, 'Nhà cung cấp') as supplierName,
+        so.note
+      FROM stock_out so
+      JOIN stock_in si ON so.stock_in_id = si.id
+      JOIN ingredients i ON so.ingredient_id = i.id
+      LEFT JOIN suppliers s ON si.supplier_id = s.id
+      WHERE so.reason = 'return_to_supplier'
+        AND (so.note IS NULL OR (so.note NOT LIKE '%[LƯU TẠM]%' AND so.note NOT LIKE '%[HOÀN THÀNH]%'))
+        AND so.created_at BETWEEN ? AND ?`,
+      [startStr, endStr]
+    );
+
+    const txRows = [
+      ...invoiceRows,
+      ...stockInTxRows,
+      ...debtPaymentRows,
+      ...payrollRows,
+      ...opsRows,
+      ...returnStockOutRows,
+    ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     sendSuccess(
       res,
@@ -447,11 +562,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
 };
 
 // ================================================================
-// getLossDebtReport — ĐÃ CẬP NHẬT theo TASK 2
-//  - system_stock lấy realtime từ ingredients.current_stock
-//  - chỉ lấy bản ghi kiểm kê MỚI NHẤT của mỗi nguyên liệu
-//  - hạn thanh toán dựa trên suppliers.payment_terms (không hardcode +7 ngày)
-//  - trả thêm "summary" (tổng nợ, nợ quá hạn, số NCC...) cho FE dùng ở KPI cards
+// getLossDebtReport — Báo cáo hao hụt & công nợ nhà cung cấp
 // ================================================================
 export const getLossDebtReport = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -521,7 +632,52 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
       };
     });
 
-    // 3) Tổng hợp summary — chỉ tính trên các NCC ĐANG còn nợ (amount > 0)
+    // 3) Lịch sử thanh toán nợ & Trả hàng NCC
+    const paymentRows = await db.query(`
+      SELECT 
+        CONCAT('PC-NCC-', dp.id) AS id,
+        dp.id AS rawId,
+        dp.supplier_id AS supplierId,
+        s.name AS supplierName,
+        COALESCE(dp.remaining_debt, s.total_debt) AS currentSupplierDebt,
+        dp.amount,
+        dp.method,
+        dp.note,
+        dp.paid_at AS paidAt,
+        dp.proof_image AS proofImage,
+        'payment' AS category
+      FROM debt_payments dp
+      JOIN suppliers s ON dp.supplier_id = s.id
+      ORDER BY dp.paid_at DESC
+      LIMIT 50
+    `);
+
+    const returnRows = await db.query(`
+      SELECT 
+        CONCAT('TH-NCC-', so.id) AS id,
+        so.id AS rawId,
+        si.supplier_id AS supplierId,
+        COALESCE(s.name, 'Nhà cung cấp') AS supplierName,
+        COALESCE(s.total_debt, 0) AS currentSupplierDebt,
+        (so.quantity * COALESCE(si.unit_cost, 0)) AS amount,
+        'return' AS method,
+        so.note,
+        so.created_at AS paidAt,
+        NULL AS proofImage,
+        'return' AS category
+      FROM stock_out so
+      JOIN stock_in si ON so.stock_in_id = si.id
+      LEFT JOIN suppliers s ON si.supplier_id = s.id
+      WHERE so.reason = 'return_to_supplier'
+      ORDER BY so.created_at DESC
+      LIMIT 50
+    `);
+
+    const recentPayments = [...paymentRows, ...returnRows]
+      .sort((a: any, b: any) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime())
+      .slice(0, 50);
+
+    // 4) Tổng hợp summary — chỉ tính trên các NCC ĐANG còn nợ (amount > 0)
     const owingSuppliers = supplierDebts.filter((d: any) => d.amount > 0);
     const totalDebt = owingSuppliers.reduce((s: number, d: any) => s + d.amount, 0);
     const overdueDebt = owingSuppliers
@@ -541,6 +697,7 @@ export const getLossDebtReport = async (_req: Request, res: Response): Promise<v
           date: r.noted_at,
         })),
         supplierDebts,
+        recentPayments,
         summary: {
           totalDebt,
           overdueDebt,
