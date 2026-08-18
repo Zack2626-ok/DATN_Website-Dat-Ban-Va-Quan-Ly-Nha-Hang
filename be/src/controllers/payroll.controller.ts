@@ -3,8 +3,12 @@ import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 
 async function calculatePayrollInternal(month: number, year: number): Promise<void> {
-  // 1. Lấy danh sách nhân viên
-  const users = await db.query(`SELECT id, COALESCE(hourly_rate, 25000) AS hourly_rate FROM users WHERE is_deleted = 0`);
+  const users = await db.query(`
+    SELECT u.id, COALESCE(u.hourly_rate, 25000) AS hourly_rate 
+    FROM users u
+    JOIN roles r ON u.role_id = r.id
+    WHERE u.is_deleted = 0 AND r.name NOT IN ('admin', 'manager')
+  `);
 
   for (const user of users) {
     // 2. Tính tổng số phút làm việc trong tháng cho nhân viên này
@@ -25,7 +29,7 @@ async function calculatePayrollInternal(month: number, year: number): Promise<vo
       if (diffMin > 0) totalMinutes += diffMin;
     }
 
-    const totalHours = totalMinutes / 60;
+    const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
     const hourlyRate = Number(user.hourly_rate) || 25000;
     const totalSalary = Math.round(totalHours * hourlyRate);
 
@@ -87,7 +91,7 @@ export const payrollController = {
         FROM payrolls p 
         JOIN users u ON p.user_id = u.id 
         LEFT JOIN roles r ON u.role_id = r.id
-        WHERE p.month = ? AND p.year = ?
+        WHERE p.month = ? AND p.year = ? AND r.name NOT IN ('admin', 'manager')
         ORDER BY u.full_name ASC
       `;
 
