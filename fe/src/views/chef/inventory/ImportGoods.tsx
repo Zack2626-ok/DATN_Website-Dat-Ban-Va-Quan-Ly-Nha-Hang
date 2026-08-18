@@ -198,6 +198,7 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
   const [paidAmount, setPaidAmount] = useState<number | string>(0);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank_transfer">("cash");
   const [paymentProofImage, setPaymentProofImage] = useState<string>("");
+  const [dueDate, setDueDate] = useState<string>("");
   const [isPaidAmountFocused, setIsPaidAmountFocused] = useState(false);
 
   const [showExcelModal, setShowExcelModal] = useState(false);
@@ -434,11 +435,6 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
         toast.error(`Đơn vị tính "${item.displayUnit}" của mặt hàng "${item.ingredientName}" không hợp lệ! Vui lòng chọn (kg, g, lít, ml, bao, hộp...)`, { id: "unit-val-err" });
         return;
       }
-      const dupSlipCode = checkDuplicateToday(currentSupName, item.ingredientName, currentTicket);
-      if (dupSlipCode) {
-        toast.error(`Phiếu nhập hiện tại (chứa mặt hàng "${item.ingredientName}") bị trùng lặp dữ liệu với phiếu nhập [${dupSlipCode}] đã khởi tạo hôm nay! Hệ thống từ chối lưu trùng lặp.`, { id: "dup-save-err", duration: 6500 });
-        return;
-      }
     }
 
     for (const item of importItems) {
@@ -490,6 +486,9 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
             reasonOrSupplier,
             ingredientName: item.ingredientName,
             draftTxId: item.draftTxId,
+            paymentProofImage: paymentProofImage || undefined,
+            proofImage: paymentProofImage || undefined,
+            dueDate: dueDate || undefined,
           });
         })
       );
@@ -1098,6 +1097,24 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                     </div>
                   </div>
                 </>
+              )}
+
+              {(paymentStatus === "credit" || (paymentStatus === "paid" && totalAmount - numericPaidAmount > 0)) && (
+                <div className="pt-2 border-t border-dashed border-slate-200">
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Hạn thanh toán công nợ (Tùy chọn)
+                  </label>
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split("T")[0]}
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full p-2 border border-slate-300 rounded-xl font-bold text-xs bg-white text-slate-700 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    * Nếu chưa chốt hạn với NCC, có thể để trống và chốt hạn sau trong Báo cáo công nợ.
+                  </p>
+                </div>
               )}
             </div>
           </div>

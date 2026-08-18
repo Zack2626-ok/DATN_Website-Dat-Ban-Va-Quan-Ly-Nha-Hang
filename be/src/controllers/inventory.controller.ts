@@ -49,6 +49,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           si.batch_code as batchNo,
           si.expiry_date as expiryDate,
           COALESCE(si.is_credit, 0) as isCredit,
+          0 as paidAmount,
+          0 as paid_amount,
           COALESCE(si.supplier_id, 0) as supplierId,
           so.reason as reasonType
         FROM stock_out so
@@ -71,6 +73,8 @@ export const getTransactionsList = async (_req: Request, res: Response): Promise
           si.batch_code as batchNo,
           si.expiry_date as expiryDate,
           si.is_credit as isCredit,
+          si.paid_amount as paidAmount,
+          si.paid_amount as paid_amount,
           si.supplier_id as supplierId,
           'import' as reasonType
         FROM stock_in si
@@ -221,7 +225,8 @@ export const wasteExpiredBatches = async (req: Request, res: Response): Promise<
 export const updateInventoryQuantity = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate, batchNo, reasonType, status, draftTxId, ingredientName, unit, paidAmount, dueDate } = req.body; // type: import | export | adjust
+    const { quantity, type, reasonOrSupplier, supplierId, isCredit, unitCost, expiryDate, batchNo, reasonType, status, draftTxId, ingredientName, unit, paidAmount, dueDate, paymentProofImage, proofImage } = req.body; // type: import | export | adjust
+    const finalProofImage = proofImage || paymentProofImage || req.body.paymentProofImage || null;
 
     // Resolve non-numeric/TEMP IDs safely
     let ingredientIdNum = Number(id);
@@ -334,29 +339,6 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
         }
       }
 
-      // Check duplicate import today (same ingredient & supplier within today)
-      // Bỏ qua [HOÀN THÀNH] vì đó là phiếu chờ nhập kho
-      if (ingredientIdNum && supplierId && !isDraft) {
-        const currentTicketCode = (reasonOrSupplier || "").match(/\[SLIP:([^\]]+)\]/)?.[1];
-        const todayDup = await db.query<any[]>(
-          `SELECT id, note, created_at FROM stock_in 
-           WHERE ingredient_id = ? AND supplier_id = ? AND created_at >= CURDATE()
-             AND note NOT LIKE '%[HOÀN THÀNH]%'`,
-          [ingredientIdNum, supplierId]
-        );
-
-        if (todayDup && todayDup.length > 0) {
-          for (const dup of todayDup) {
-            const dupSlip = (dup.note || "").match(/\[SLIP:([^\]]+)\]/)?.[1];
-            if (dupSlip && currentTicketCode && dupSlip === currentTicketCode) continue;
-            
-            const foundCode = dupSlip || `PN${new Date().getFullYear()}-${dup.id}`;
-            sendError(res, `Phiếu nhập kho này bị trùng lặp dữ liệu với phiếu [${foundCode}] đã khởi tạo trong ngày hôm nay!`, 400);
-            return;
-          }
-        }
-      }
-
       // ONLY update current_stock in ingredients if it is NOT a draft and NOT completed
       if (!isDraft && !isCompleted) {
         await db.query(`UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`, [qty, ingredientIdNum]);
@@ -398,8 +380,8 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
       const remainingDebt = isCredit ? Math.max(0, itemCost - itemPaid) : 0;
 
       await db.query(
-        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit, paid_amount, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [ingredientIdNum, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, noteWithPrefix || 'Nhập kho thủ công', 1, isCredit ? 1 : 0, itemPaid, req.body.dueDate || null]
+        `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by, is_credit, paid_amount, due_date, proof_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [ingredientIdNum, finalBatchCode, qty, qty, Number(unitCost) || 0, supplierId || null, parsedExpiryDate, noteWithPrefix || 'Nhập kho thủ công', 1, isCredit ? 1 : 0, itemPaid, req.body.dueDate || null, finalProofImage]
       );
 
       // TASK 5: Nhập hàng CHỊU + có chọn NCC → cộng số nợ THỰC TẾ CÒN LẠI cho NCC đó (CHỈ KHI KÍCH HOẠT LƯU THẬT)
@@ -630,7 +612,7 @@ export const getTodayCheckList = async (_req: Request, res: Response): Promise<v
 export const paySupplierDebt = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { amount, method, note, proofImage } = req.body;
+    const { amount, method, note, proofImage, ticketCode } = req.body;
     const userId = (req as any).user?.id || null;
 
     if (!amount || Number(amount) <= 0) {
@@ -649,31 +631,80 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
     }
 
     const supplier = suppliers[0];
-    const currentDebt = Number(supplier.total_debt || 0);
+    const payAmount = Number(amount);
 
-    if (Number(amount) > currentDebt) {
-      sendError(res, `Số tiền thanh toán (${Number(amount).toLocaleString('vi-VN')} đ) không được lớn hơn tổng số nợ hiện tại (${currentDebt.toLocaleString('vi-VN')} đ)`, 400);
-      return;
+    // 1. Nếu có ticketCode, cập nhật paid_amount cho các bản ghi stock_in của phiếu đó
+    if (ticketCode) {
+      const slipStockInRows = await db.query<any[]>(
+        `SELECT id, quantity, unit_cost, COALESCE(paid_amount, 0) as paid_amount 
+         FROM stock_in 
+         WHERE note LIKE ? OR batch_code = ?`,
+        [`%[SLIP:${ticketCode}]%`, ticketCode]
+      );
+
+      let remainingPay = payAmount;
+      for (const si of slipStockInRows) {
+        if (remainingPay <= 0) break;
+        const itemTotal = Number(si.quantity) * Number(si.unit_cost);
+        const itemPaid = Number(si.paid_amount);
+        const itemDebt = Math.max(0, itemTotal - itemPaid);
+        const payForItem = Math.min(itemDebt, remainingPay);
+        if (payForItem > 0) {
+          await db.query(`UPDATE stock_in SET paid_amount = COALESCE(paid_amount, 0) + ? WHERE id = ?`, [payForItem, si.id]);
+          remainingPay -= payForItem;
+        }
+      }
+
+      if (proofImage) {
+        await db.query(
+          `UPDATE stock_in SET proof_image = ? 
+           WHERE (note LIKE ? OR batch_code = ?) AND (proof_image IS NULL OR proof_image = '')`,
+          [proofImage, `%[SLIP:${ticketCode}]%`, ticketCode]
+        );
+      }
+    } else {
+      // Nếu không truyền ticketCode, phân bổ thanh toán cho các phiếu nợ cũ nhất của NCC này
+      const openSlips = await db.query<any[]>(
+        `SELECT id, quantity, unit_cost, COALESCE(paid_amount, 0) as paid_amount
+         FROM stock_in
+         WHERE supplier_id = ? AND is_credit = 1 AND (quantity * unit_cost) > COALESCE(paid_amount, 0)
+         ORDER BY created_at ASC`,
+        [id]
+      );
+
+      let remainingPay = payAmount;
+      for (const si of openSlips) {
+        if (remainingPay <= 0) break;
+        const itemTotal = Number(si.quantity) * Number(si.unit_cost);
+        const itemPaid = Number(si.paid_amount);
+        const itemDebt = Math.max(0, itemTotal - itemPaid);
+        const payForItem = Math.min(itemDebt, remainingPay);
+        if (payForItem > 0) {
+          await db.query(`UPDATE stock_in SET paid_amount = COALESCE(paid_amount, 0) + ? WHERE id = ?`, [payForItem, si.id]);
+          remainingPay -= payForItem;
+        }
+      }
     }
 
-    const payAmount = Number(amount);
-    const remainingDebt = Math.max(0, currentDebt - payAmount);
-
-    // Trừ nợ
-    await db.query(
-      `UPDATE suppliers SET total_debt = ? WHERE id = ?`,
-      [remainingDebt, id]
+    // 2. Đồng bộ lại total_debt thực tế của NCC từ stock_in
+    const realDebtRows = await db.query<any[]>(
+      `SELECT SUM(GREATEST(0, (si.quantity * si.unit_cost) - COALESCE(si.paid_amount, 0))) as totalRealDebt
+       FROM stock_in si
+       WHERE si.supplier_id = ? AND si.is_credit = 1
+         AND (si.note IS NULL OR (si.note NOT LIKE '%[LƯU TẠM]%' AND si.note NOT LIKE '%[HOÀN THÀNH]%'))`,
+      [id]
     );
+    const newSupplierDebt = Math.max(0, Number(realDebtRows[0]?.totalRealDebt || 0));
+    await db.query(`UPDATE suppliers SET total_debt = ? WHERE id = ?`, [newSupplierDebt, id]);
 
-    // Ghi lịch sử thanh toán nợ
+    const finalNote = note ? note : (ticketCode ? `Thanh toán công nợ phiếu [${ticketCode}]` : `Thanh toán công nợ NCC ${supplier.name}`);
+
+    // 3. Ghi lịch sử thanh toán nợ
     const payRes = await db.query(
       `INSERT INTO debt_payments (supplier_id, amount, remaining_debt, method, note, paid_by, proof_image)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, payAmount, remainingDebt, method, note || null, userId, proofImage || null]
+      [id, payAmount, newSupplierDebt, method, finalNote, userId, proofImage || null]
     );
-
-    // Lấy nợ còn lại
-    const updated = await db.query(`SELECT total_debt FROM suppliers WHERE id = ?`, [id]);
 
     sendSuccess(
       res,
@@ -681,11 +712,13 @@ export const paySupplierDebt = async (req: Request, res: Response): Promise<void
         paymentId: payRes.insertId,
         supplierId: Number(id),
         supplierName: supplier.name,
+        ticketCode: ticketCode || null,
         paid: payAmount,
-        remaining: Number(updated[0].total_debt),
+        remaining: newSupplierDebt,
         method,
-        note: note || "",
+        note: finalNote,
         paidAt: new Date().toISOString(),
+        proofImage: proofImage || null,
       },
       "Thanh toán công nợ thành công"
     );
@@ -896,6 +929,115 @@ export const getAllBatches = async (req: Request, res: Response): Promise<void> 
     );
     sendSuccess(res, batches, "Lấy tất cả lô hàng thành công");
   } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// PATCH /v1/inventory/debts/:ticketCode/due-date
+export const updateDebtDueDate = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ticketCode } = req.params;
+    const { newDueDate, reason, supplierId } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    if (!newDueDate) {
+      sendError(res, "Vui lòng chọn hạn thanh toán mới", 400);
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (newDueDate < todayStr) {
+      sendError(res, "Hạn thanh toán mới không được ở trong quá khứ (phải từ hôm nay trở đi)!", 400);
+      return;
+    }
+
+    // 1. Find existing stock_in records for this ticketCode
+    const existing = await db.query<any[]>(
+      `SELECT id, supplier_id, due_date FROM stock_in 
+       WHERE note LIKE ? OR batch_code = ?`,
+      [`%[SLIP:${ticketCode}]%`, ticketCode]
+    );
+
+    if (existing.length === 0) {
+      sendError(res, "Không tìm thấy phiếu nhập có mã này", 404);
+      return;
+    }
+
+    const oldDueDate = existing[0].due_date ? new Date(existing[0].due_date).toISOString().split("T")[0] : null;
+    const resolvedSupplierId = supplierId || existing[0].supplier_id;
+
+    // 2. Update stock_in due_date
+    await db.query(
+      `UPDATE stock_in SET due_date = ? 
+       WHERE note LIKE ? OR batch_code = ?`,
+      [newDueDate, `%[SLIP:${ticketCode}]%`, ticketCode]
+    );
+
+    // 3. Insert history record
+    await db.query(
+      `INSERT INTO supplier_debt_due_history (ticket_code, supplier_id, old_due_date, new_due_date, reason, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [ticketCode, resolvedSupplierId, oldDueDate, newDueDate, reason || "Cập nhật / chốt hạn thanh toán", userId]
+    );
+
+    sendSuccess(res, { ticketCode, oldDueDate, newDueDate }, "Cập nhật hạn thanh toán thành công");
+  } catch (error) {
+    console.error("Error updating debt due date:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// GET /v1/inventory/debts/:ticketCode/history
+export const getDebtDueHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ticketCode } = req.params;
+    const history = await db.query<any[]>(
+      `SELECT h.id, h.ticket_code, h.supplier_id, h.old_due_date, h.new_due_date, h.reason, h.updated_at,
+              COALESCE(u.full_name, 'Quản lý') as updated_by_name
+       FROM supplier_debt_due_history h
+       LEFT JOIN users u ON h.updated_by = u.id
+       WHERE h.ticket_code = ?
+       ORDER BY h.updated_at DESC`,
+      [ticketCode]
+    );
+    sendSuccess(res, history, "Lấy lịch sử đổi hạn thành công");
+  } catch (error) {
+    console.error("Error fetching debt due history:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// DELETE /v1/inventory/debt-payments/:id — Xóa mềm lịch sử giao dịch thanh toán / trả nợ
+export const deleteDebtPayment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      sendError(res, "ID giao dịch không hợp lệ", 400);
+      return;
+    }
+
+    const numericId = parseInt(id.replace(/\D/g, ""), 10);
+
+    if (id.startsWith("TH-NCC-") || id.startsWith("RET-")) {
+      // Soft delete return record
+      await db.query(`UPDATE stock_out SET note = CONCAT('[DELETED] ', COALESCE(note, '')) WHERE id = ?`, [numericId]);
+    } else if (id.startsWith("PN-TT-")) {
+      // Hide upfront payment row
+      const ticketCode = id.replace("PN-TT-", "");
+      await db.query(
+        `UPDATE stock_in SET note = CONCAT(COALESCE(note, ''), ' [HIDE_PAYMENT]') 
+         WHERE note LIKE ? OR batch_code = ?`,
+        [`%[SLIP:${ticketCode}]%`, ticketCode]
+      );
+    } else {
+      // Regular debt_payments
+      await db.query(`UPDATE debt_payments SET is_deleted = 1 WHERE id = ?`, [numericId]);
+    }
+
+    sendSuccess(res, { id }, "Đã xóa bản ghi lịch sử giao dịch");
+  } catch (error) {
+    console.error("Error deleting debt payment:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
