@@ -9,7 +9,6 @@ import { AttendanceHistoryTab } from "./components/AttendanceHistoryTab";
 import { TimePolicyCard } from "./components/TimePolicyCard";
 import { ScheduleAssignmentPanel } from "./components/ScheduleAssignmentPanel";
 import { ShiftPolicySettings } from "./components/ShiftPolicySettings";
-import { LeaveAndSwapReviewPanel } from "./components/LeaveAndSwapReviewPanel";
 
 export const ShiftManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"shifts" | "attendance" | "attendance-history">("shifts");
@@ -163,7 +162,6 @@ export const ShiftManagement: React.FC = () => {
           <TimePolicyCard />
           <ShiftPolicySettings />
           <ScheduleAssignmentPanel employees={employees} />
-          <LeaveAndSwapReviewPanel />
         </>
       )}
 
