@@ -21,6 +21,7 @@ import {
 import { toast } from "react-hot-toast";
 import { Modal } from "../../../components/Modal";
 import { Badge } from "../../../components/Badge";
+import { io } from "socket.io-client";
 import {
   getBookings,
   updateBookingStatus,
@@ -116,6 +117,9 @@ export const BookingListPage: React.FC = () => {
       if (t.group_seating_tables && Array.isArray(t.group_seating_tables)) {
         t.group_seating_tables.forEach((gt: any) => tableSet.set(gt.id, gt));
       }
+      if (t.merged_tables && Array.isArray(t.merged_tables)) {
+        t.merged_tables.forEach((mc: any) => tableSet.set(mc.id, mc));
+      }
       if (t.merged_children && Array.isArray(t.merged_children)) {
         t.merged_children.forEach((mc: any) => tableSet.set(mc.id, mc));
       }
@@ -123,6 +127,31 @@ export const BookingListPage: React.FC = () => {
 
     return Array.from(tableSet.values());
   }, [assigningBooking, allTables]);
+
+  const bookingClusterMap = useMemo(() => {
+    const map = new Map<number, { tables: any[]; totalCapacity: number; isReady: boolean }>();
+    bookings.forEach((b) => {
+      const directMatches = allTables.filter((t: any) =>
+        (t.booking_id && Number(t.booking_id) === Number(b.id)) ||
+        (b.confirmation_code && t.booking_code === b.confirmation_code)
+      );
+      const tableSet = new Map<number, any>();
+      directMatches.forEach((t) => {
+        tableSet.set(t.id, t);
+        if (t.group_seating_tables && Array.isArray(t.group_seating_tables)) {
+          t.group_seating_tables.forEach((gt: any) => tableSet.set(gt.id, gt));
+        }
+        if (t.merged_tables && Array.isArray(t.merged_tables)) {
+          t.merged_tables.forEach((mc: any) => tableSet.set(mc.id, mc));
+        }
+      });
+      const list = Array.from(tableSet.values());
+      const totalCapacity = list.reduce((sum, t) => sum + Number(t.capacity || 4), 0);
+      const isReady = list.length > 0 && totalCapacity >= Number(b.party_size || 1);
+      map.set(Number(b.id), { tables: list, totalCapacity, isReady });
+    });
+    return map;
+  }, [bookings, allTables]);
 
   useEffect(() => {
     getBookingValidationStatus().then(setBookingValidationEnabled).catch(() => {});
@@ -190,6 +219,9 @@ export const BookingListPage: React.FC = () => {
     localStorage.setItem("booking_assignments_list", JSON.stringify(updated));
 
     const assignMap = JSON.parse(localStorage.getItem("booking_assignments_map") || "{}");
+    if (assigningBooking.confirmation_code) {
+      assignMap[assigningBooking.confirmation_code] = assignmentPayload;
+    }
     assignMap[assigningBooking.id] = assignmentPayload;
     localStorage.setItem("booking_assignments_map", JSON.stringify(assignMap));
     setAssignmentMap(assignMap);
@@ -255,6 +287,48 @@ export const BookingListPage: React.FC = () => {
       const stored = JSON.parse(localStorage.getItem("booking_assignments_map") || "{}");
       setAssignmentMap(stored);
     } catch (e) {}
+  }, []);
+
+  // Real-time socket updates for Manager
+  useEffect(() => {
+    const socketUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace("/api", "");
+    const socket = io(socketUrl, {
+      transports: ["polling", "websocket"],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
+
+    const handleRealtimeUpdate = (data: any) => {
+      fetchData();
+      if ((data?.status === "arrived" || data?.status === "completed" || data?.claimed) && (data?.bookingId || data?.id)) {
+        const bId = data?.bookingId || data?.id;
+        const waiterName = data?.waiterName || "Nhân viên";
+        const tableName = data?.tableName || "bàn chính";
+        const guestName = data?.guestName ? `đoàn khách ${data.guestName}` : `đơn đặt bàn #${bId}`;
+        toast.success(`🛎 ${waiterName} đã mở ${tableName} cho ${guestName}!`, { duration: 6000 });
+      }
+    };
+
+    socket.on("booking:claimed", handleRealtimeUpdate);
+    socket.on("table:booking_checked_in", handleRealtimeUpdate);
+    socket.on("booking:assigned", () => {
+      fetchData();
+      getTablesV1().then((t) => setAllTables(t || [])).catch(() => {});
+    });
+    socket.on("table:merged", (data: any) => {
+      fetchData();
+      getTablesV1().then((t) => setAllTables(t || [])).catch(() => {});
+      const primaryName = data?.primaryTable?.name || (data?.primaryTableId ? `Bàn ${data.primaryTableId}` : "bàn");
+      toast.success(`🎉 Nhân viên đã gộp bàn thành công (${primaryName})!`, { duration: 6000 });
+    });
+    socket.on("table:status_changed", () => {
+      fetchData();
+      getTablesV1().then((t) => setAllTables(t || [])).catch(() => {});
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   const statusCount = useMemo(() => {
@@ -477,7 +551,11 @@ export const BookingListPage: React.FC = () => {
             ) : (
               paginatedBookings.map((b) => {
                 const dt = formatDateTime(b.start_time);
-                const assignment = assignmentMap[b.id];
+                const rawAssignment = assignmentMap[b.confirmation_code] || assignmentMap[b.id];
+                const assignment = (rawAssignment && (
+                  (rawAssignment.confirmationCode && rawAssignment.confirmationCode === b.confirmation_code) ||
+                  (rawAssignment.bookingId === b.id && rawAssignment.guestPhone === b.guest_phone)
+                )) ? rawAssignment : null;
                 return (
                   <tr
                     key={b.id}
@@ -506,32 +584,47 @@ export const BookingListPage: React.FC = () => {
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-2">
                         {b.party_size >= 10 && (
-                          <button
-                            onClick={() => {
-                              setAssigningBooking(b);
-                              const existingAssign = assignmentMap[b.id];
-                              setAssignArea(existingAssign?.assignedArea || "Tầng 2");
-                              if (existingAssign?.assignedWaiterName) {
-                                const names = existingAssign.assignedWaiterName
-                                  .split(",")
-                                  .map((s: string) => s.trim())
-                                  .filter((s: string) => s && !s.toLowerCase().startsWith("tất cả"));
-                                setSelectedWaiters(names);
-                              } else {
-                                setSelectedWaiters([]);
-                              }
-                              setIsAssignModalOpen(true);
-                            }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-xs transition-all ${
-                              assignment
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
-                                : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
-                            }`}
-                            title="Phân công khu vực & Nhân viên"
-                          >
-                            <Users size={14} />
-                            <span>{assignment ? "Sửa phân công" : "Phân công"}</span>
-                          </button>
+                          b.status === "completed" || b.status === "arrived" ? (
+                            <span className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+                              <CheckCircle size={14} className="text-emerald-600" />
+                              <span>{b.table_names || b.table_name ? `Đã mở ${b.table_names || b.table_name}` : "Đã nhận khách"}</span>
+                            </span>
+                          ) : (
+                            (() => {
+                              const cluster = bookingClusterMap.get(Number(b.id));
+                              const isClusterReady = cluster && cluster.isReady;
+                              return (
+                                <button
+                                  onClick={() => {
+                                    setAssigningBooking(b);
+                                    const existingAssign = assignment;
+                                    setAssignArea(existingAssign?.assignedArea || "Tầng 2");
+                                    if (existingAssign?.assignedWaiterName) {
+                                      const names = existingAssign.assignedWaiterName
+                                        .split(",")
+                                        .map((s: string) => s.trim())
+                                        .filter((s: string) => s && !s.toLowerCase().startsWith("tất cả"));
+                                      setSelectedWaiters(names);
+                                    } else {
+                                      setSelectedWaiters([]);
+                                    }
+                                    setIsAssignModalOpen(true);
+                                  }}
+                                  className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-xs transition-all ${
+                                    isClusterReady
+                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
+                                      : assignment
+                                        ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
+                                        : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
+                                  }`}
+                                  title="Phân công khu vực & Nhân viên"
+                                >
+                                  {isClusterReady ? <CheckCircle size={14} /> : <Users size={14} />}
+                                  <span>{isClusterReady ? "Đã xếp bàn" : assignment ? "Sửa phân công" : "Phân công"}</span>
+                                </button>
+                              );
+                            })()
+                          )
                         )}
                         {b.status === "pending" && (
                           <>
@@ -945,20 +1038,17 @@ export const BookingListPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Card thông tin bàn đã gộp nếu nhân viên đã gộp bàn */}
+            {/* Card thông tin trạng thái xếp bàn */}
             {linkedTables.length > 0 && (
-              <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs text-emerald-950 space-y-1.5 shadow-2xs">
-                <div className="flex items-center justify-between font-black text-emerald-900 border-b border-emerald-200/80 pb-1.5">
-                  <span className="flex items-center gap-1.5">
-                    <span className="p-1 bg-emerald-200 text-emerald-900 rounded-lg text-xs">🔗</span>
-                    <span>✓ ĐÃ GỘP BÀN PHỤC VỤ ĐOÀN</span>
+              <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl text-xs space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-1.5 font-black text-emerald-900 border-b border-emerald-200/80 pb-1.5">
+                  <span className="p-1 bg-emerald-200 text-emerald-900 rounded-lg text-xs">
+                    ✅
                   </span>
-                  <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 text-[10px] rounded-md font-extrabold">
-                    {linkedTables.reduce((acc, t) => acc + (t.capacity || 4), 0)} / {assigningBooking.party_size} chỗ
-                  </span>
+                  <span>ĐÃ XẾP BÀN</span>
                 </div>
-                <p className="font-extrabold text-emerald-900 text-xs">
-                  Bàn đang ghép: <span className="text-indigo-800 font-black">{linkedTables.map((t) => t.name).join(", ")}</span>
+                <p className="font-extrabold text-xs text-emerald-900">
+                  Bàn đã xếp: <span className="text-indigo-800 font-black">{linkedTables.map((t) => t.name).join(", ")}</span>
                 </p>
               </div>
             )}
@@ -969,13 +1059,14 @@ export const BookingListPage: React.FC = () => {
               const isCheckedIn = (assigningBooking.status as string) === "completed" ||
                                   (assigningBooking.status as string) === "checked_in" ||
                                   assigningBooking.status === "arrived";
+              const isSeated = isCheckedIn || linkedTables.length > 0;
 
-              if (isCheckedIn) {
+              if (isSeated) {
                 return (
                   <div className="p-4 bg-sky-50 border border-sky-200/90 rounded-2xl text-xs text-sky-950 space-y-2">
                     <div className="flex items-center gap-2 font-black text-sky-900 border-b border-sky-200/60 pb-2">
                       <span className="p-1.5 bg-sky-200 text-sky-900 rounded-lg text-xs">✅</span>
-                      <span className="uppercase tracking-wider">ĐÃ MỞ BÀN PHỤC VỤ TẠI NHÀ HÀNG</span>
+                      <span className="uppercase tracking-wider">ĐÃ XẾP BÀN PHỤC VỤ TẠI NHÀ HÀNG</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs pt-1">
                       <div>
@@ -983,12 +1074,12 @@ export const BookingListPage: React.FC = () => {
                         <p className="font-extrabold text-slate-900 mt-0.5">{existing?.assignedArea || "Tầng 2"}</p>
                       </div>
                       <div>
-                        <span className="text-slate-500 font-semibold text-[11px]">Nhân viên đã nhận:</span>
+                        <span className="text-slate-500 font-semibold text-[11px]">Nhân viên phụ trách:</span>
                         <p className="font-extrabold text-slate-900 mt-0.5">{existing?.assignedWaiterName || "Tất cả nhân viên"}</p>
                       </div>
                     </div>
                     <p className="text-[11px] text-sky-800 font-medium pt-1 italic">
-                      * Đơn đặt bàn này đã được nhân viên mở bàn phục vụ. Không thể chỉnh sửa phân công nữa.
+                      * Đơn đặt bàn này đã được nhân viên hoàn tất xếp bàn tại sơ đồ bàn.
                     </p>
                   </div>
                 );
@@ -1082,7 +1173,10 @@ export const BookingListPage: React.FC = () => {
 
             {/* Action buttons */}
             <div className="flex gap-3 pt-3 border-t border-slate-100">
-              {((assigningBooking.status as string) === "completed" || (assigningBooking.status as string) === "checked_in" || assigningBooking.status === "arrived") ? (
+              {((assigningBooking.status as string) === "completed" ||
+                (assigningBooking.status as string) === "checked_in" ||
+                assigningBooking.status === "arrived" ||
+                linkedTables.length > 0) ? (
                 <button
                   type="button"
                   onClick={() => setIsAssignModalOpen(false)}

@@ -15,6 +15,7 @@ import {
 import { toast } from "react-hot-toast";
 import { Modal } from "../Modal";
 import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
+import { isBookingScheduledToday } from "../../constants/booking";
 
 const formatTime = (timeStr: string) => {
   try {
@@ -814,72 +815,82 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       </Modal>
 
       {/* Real-Time Pop-Up Notification Modal for Waiter (Chỉ hiển thị với Phục vụ) */}
-      {displayRole === "waiter" && assignedNotification && (
-        <div className="fixed top-6 right-6 z-[9999] max-w-md w-full bg-white rounded-3xl shadow-2xl border-2 border-indigo-500 p-6 animate-in slide-in-from-top duration-300 font-sans">
-          <div className="flex items-start justify-between border-b border-indigo-100 pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl font-bold animate-bounce text-base">📌</span>
-              <div>
-                <h4 className="font-extrabold text-indigo-950 text-xs font-display uppercase tracking-wider">THÔNG BÁO PHÂN CÔNG ĐẶT BÀN LỚN</h4>
-                <span className="text-[10px] text-slate-400 font-semibold">Bởi Quản lý nhà hàng</span>
+      {displayRole === "waiter" && assignedNotification && (() => {
+        const isScheduledToday = isBookingScheduledToday(assignedNotification.startTime);
+        return (
+          <div className="fixed top-6 right-6 z-[9999] max-w-md w-full bg-white rounded-3xl shadow-2xl border-2 border-indigo-500 p-6 animate-in slide-in-from-top duration-300 font-sans">
+            <div className="flex items-start justify-between border-b border-indigo-100 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl font-bold animate-bounce text-base">📌</span>
+                <div>
+                  <h4 className="font-extrabold text-indigo-950 text-xs font-display uppercase tracking-wider">THÔNG BÁO PHÂN CÔNG ĐẶT BÀN LỚN</h4>
+                  <span className="text-[10px] text-slate-400 font-semibold">Bởi Quản lý nhà hàng</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const handledKey = "handled_assign_" + (assignedNotification.id || assignedNotification.bookingId);
+                  sessionStorage.setItem(handledKey, "true");
+                  setAssignedNotification(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 space-y-2.5 text-xs text-slate-700 font-sans mb-5">
+              <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
+                <span className="font-extrabold text-indigo-800">Khu vực / Tầng:</span>
+                <span className="font-black text-indigo-950 text-sm bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">{assignedNotification.assignedArea}</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="font-bold text-slate-500">Thông tin khách:</span>
+                <span className="font-bold text-slate-900">{assignedNotification.guestName} ({assignedNotification.guestPhone})</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="font-bold text-slate-500">Số lượng khách:</span>
+                <span className="font-black text-rose-700 text-sm">{assignedNotification.partySize} người</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="font-bold text-slate-500">Thời gian đến:</span>
+                <span className="font-extrabold text-emerald-800">{assignedNotification.startTime}</span>
+              </div>
+
+              <div className="flex justify-between text-[11px] pt-1 border-t border-indigo-100">
+                <span className="text-slate-400">Thời gian phân công:</span>
+                <span className="font-semibold text-slate-600">{assignedNotification.assignedAt}</span>
               </div>
             </div>
+
+            {!isScheduledToday ? (
+              <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-2xl text-xs text-indigo-900 font-semibold flex items-center gap-2">
+                <span>📌</span>
+                <span>Lịch hẹn ngày {assignedNotification.startTime}. Bạn có thể chọn bàn chính và gộp bàn trước ngay bây giờ. Gọi món sẽ mở khi khách đến!</span>
+              </div>
+            ) : null}
+
             <button
               type="button"
               onClick={() => {
+                const targetArea = assignedNotification.assignedArea;
+                const notificationData = assignedNotification;
                 const handledKey = "handled_assign_" + (assignedNotification.id || assignedNotification.bookingId);
                 sessionStorage.setItem(handledKey, "true");
                 setAssignedNotification(null);
+                navigate("/waiter/tables", { state: { autoOpenAssignedBooking: notificationData, targetArea } });
               }}
-              className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
-              <X size={18} />
+              🔘 Bấm vào đây để chọn Bàn chính & Xếp bàn cho đoàn
             </button>
           </div>
-
-          <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 space-y-2.5 text-xs text-slate-700 font-sans mb-5">
-            <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
-              <span className="font-extrabold text-indigo-800">Khu vực / Tầng:</span>
-              <span className="font-black text-indigo-950 text-sm bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">{assignedNotification.assignedArea}</span>
-            </div>
-
-            <div className="flex justify-between">
-              <span className="font-bold text-slate-500">Thông tin khách:</span>
-              <span className="font-bold text-slate-900">{assignedNotification.guestName} ({assignedNotification.guestPhone})</span>
-            </div>
-
-            <div className="flex justify-between">
-              <span className="font-bold text-slate-500">Số lượng khách:</span>
-              <span className="font-black text-rose-700 text-sm">{assignedNotification.partySize} người</span>
-            </div>
-
-            <div className="flex justify-between">
-              <span className="font-bold text-slate-500">Thời gian đến:</span>
-              <span className="font-extrabold text-emerald-800">{assignedNotification.startTime}</span>
-            </div>
-
-            <div className="flex justify-between text-[11px] pt-1 border-t border-indigo-100">
-              <span className="text-slate-400">Thời gian phân công:</span>
-              <span className="font-semibold text-slate-600">{assignedNotification.assignedAt}</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              const targetArea = assignedNotification.assignedArea;
-              const notificationData = assignedNotification;
-              const handledKey = "handled_assign_" + (assignedNotification.id || assignedNotification.bookingId);
-              sessionStorage.setItem(handledKey, "true");
-              setAssignedNotification(null);
-              navigate("/waiter/tables", { state: { autoOpenAssignedBooking: notificationData, targetArea } });
-            }}
-            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-          >
-            🔘 Bấm vào đây để chọn Bàn chính & Mở bàn
-          </button>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
