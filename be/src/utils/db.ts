@@ -1177,10 +1177,28 @@ const runSchemaMigrations = async (): Promise<void> => {
         is_recurring TINYINT(1) NOT NULL DEFAULT 0,
         expense_date DATE NOT NULL,
         created_by INT NULL,
+        deleted_at DATETIME NULL,
+        deleted_by INT NULL,
+        deleted_reason VARCHAR(255) NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
+
+    // Migration: Add soft delete columns to operational_expenses if missing
+    const expenseCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'operational_expenses' AND COLUMN_NAME IN ('deleted_at', 'deleted_by', 'deleted_reason')`
+    ).catch(() => []);
+    
+    if (expenseCols.length < 3) {
+      await query(`
+        ALTER TABLE operational_expenses 
+        ADD COLUMN deleted_at DATETIME NULL,
+        ADD COLUMN deleted_by INT NULL,
+        ADD COLUMN deleted_reason VARCHAR(255) NULL
+      `).catch(e => console.error("Error migrating operational_expenses:", e));
+    }
 
     // Migration: Add hourly_rate to users
     const hourlyCols = await query<any[]>(
