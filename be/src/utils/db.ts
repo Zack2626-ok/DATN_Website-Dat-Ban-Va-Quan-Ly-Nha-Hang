@@ -857,24 +857,24 @@ const runSchemaMigrations = async (): Promise<void> => {
 
     const bookingCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
     );
-    if (bookingCols.length === 0) {
-      await query(`
-        ALTER TABLE bookings 
-        ADD COLUMN pre_order_total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-        ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-        ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'
-      `);
-      console.log("✅ Migration: added bookings deposit columns");
-    }
+    const existingBookingCols = new Set(bookingCols.map((c) => String(c.COLUMN_NAME).toLowerCase()));
 
-    const bookingEmailCols = await query<any[]>(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'guest_email'`,
-    );
-    if (bookingEmailCols.length === 0) {
-      await query(`ALTER TABLE bookings ADD COLUMN guest_email VARCHAR(255) DEFAULT NULL AFTER guest_phone`);
+    if (!existingBookingCols.has('pre_order_total')) {
+      await query(`ALTER TABLE bookings ADD COLUMN pre_order_total DECIMAL(12,2) NOT NULL DEFAULT 0.00`).catch(() => {});
+      console.log("✅ Migration: added bookings.pre_order_total");
+    }
+    if (!existingBookingCols.has('deposit_amount')) {
+      await query(`ALTER TABLE bookings ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00`).catch(() => {});
+      console.log("✅ Migration: added bookings.deposit_amount");
+    }
+    if (!existingBookingCols.has('deposit_status')) {
+      await query(`ALTER TABLE bookings ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'`).catch(() => {});
+      console.log("✅ Migration: added bookings.deposit_status");
+    }
+    if (!existingBookingCols.has('guest_email')) {
+      await query(`ALTER TABLE bookings ADD COLUMN guest_email VARCHAR(255) DEFAULT NULL AFTER guest_phone`).catch(() => {});
       console.log("✅ Migration: added bookings.guest_email");
     }
     const bookingMenuItemsTable = await query<any[]>(
@@ -3896,15 +3896,22 @@ export const ensureResmanagerTablesSchema = async (): Promise<void> => {
     // 4. Ensure bookings deposit columns
     const bCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'deposit_amount'`,
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
     ).catch(() => []);
-    if (!bCols || bCols.length === 0) {
-      await query(`
-        ALTER TABLE bookings 
-        ADD COLUMN pre_order_total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-        ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-        ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'
-      `).catch(() => {});
+    if (bCols && bCols.length > 0) {
+      const bSet = new Set(bCols.map((c) => String(c.COLUMN_NAME).toLowerCase()));
+      if (!bSet.has("pre_order_total")) {
+        await query(`ALTER TABLE bookings ADD COLUMN pre_order_total DECIMAL(12,2) NOT NULL DEFAULT 0.00`).catch(() => {});
+      }
+      if (!bSet.has("deposit_amount")) {
+        await query(`ALTER TABLE bookings ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00`).catch(() => {});
+      }
+      if (!bSet.has("deposit_status")) {
+        await query(`ALTER TABLE bookings ADD COLUMN deposit_status ENUM('none', 'unpaid', 'paid', 'refunded', 'completed') NOT NULL DEFAULT 'none'`).catch(() => {});
+      }
+      if (!bSet.has("guest_email")) {
+        await query(`ALTER TABLE bookings ADD COLUMN guest_email VARCHAR(255) DEFAULT NULL`).catch(() => {});
+      }
     }
 
     // 5. Ensure table_splits.status and extra columns
