@@ -64,31 +64,46 @@ export const BookingPage: React.FC = () => {
     }
   };
 
-  const [form, setForm] = useState({
-    date: "",
-    time: "",
-    guests: "2",
-    name: "",
-    phone: "",
-    email: "",
-    note: "",
-  });
-
-  // Auto fill profile if logged in
-  useEffect(() => {
+  const getCustomerProfile = (): { name: string; phone: string; email: string } => {
     const infoStr = localStorage.getItem("customer_info");
     if (infoStr) {
       try {
         const customer = JSON.parse(infoStr) as Customer;
-        setForm((prev) => ({
-          ...prev,
-          name: prev.name || customer.name || "",
-          email: prev.email || customer.email || "",
-          phone: prev.phone || customer.phone || "",
-        }));
+        return {
+          name: customer.name || "",
+          phone: customer.phone || "",
+          email: customer.email || "",
+        };
       } catch (e) {
         console.error("Error parsing customer_info", e);
       }
+    }
+    return { name: "", phone: "", email: "" };
+  };
+
+  const [form, setForm] = useState(() => {
+    const profile = getCustomerProfile();
+    return {
+      date: "",
+      time: "",
+      guests: "2",
+      name: profile.name,
+      phone: profile.phone,
+      email: profile.email,
+      note: "",
+    };
+  });
+
+  // Auto fill profile if logged in
+  useEffect(() => {
+    const profile = getCustomerProfile();
+    if (profile.name || profile.phone || profile.email) {
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || profile.name,
+        email: prev.email || profile.email,
+        phone: prev.phone || profile.phone,
+      }));
     }
   }, []);
 
@@ -327,17 +342,18 @@ export const BookingPage: React.FC = () => {
           )}
           <button
             onClick={() => {
+              const profile = getCustomerProfile();
               setStep(1);
               setCreatedBooking(null);
-              setForm({
+              setForm((prev) => ({
                 date: "",
                 time: "",
                 guests: "2",
-                name: "",
-                phone: "",
-                email: "",
+                name: prev.name || profile.name || "",
+                phone: prev.phone || profile.phone || "",
+                email: prev.email || profile.email || "",
                 note: "",
-              });
+              }));
             }}
             className="flex-[2] py-4 bg-client-primary hover:bg-client-primary-hover text-white rounded-2xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
