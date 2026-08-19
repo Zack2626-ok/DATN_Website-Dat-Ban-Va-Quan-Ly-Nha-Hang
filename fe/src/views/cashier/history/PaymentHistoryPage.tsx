@@ -24,6 +24,7 @@ interface PaymentRecord {
   orderId: string;
   amount: number;
   originalAmount?: number;
+  netAmount?: number;
   paymentMethod: string;
   status: string;
   has_refund?: boolean;
@@ -135,7 +136,9 @@ export const PaymentHistoryPage: React.FC = () => {
   }, [searchQuery, dateFrom, dateTo, methodFilter]);
 
   const totalAmount = useMemo(
-    () => payments.filter((p) => p.status === "completed").reduce((sum, p) => sum + p.amount, 0),
+    () => payments
+      .filter((p) => p.status === "completed" || p.status === "refunded")
+      .reduce((sum, p) => sum + (p.netAmount ?? p.amount), 0),
     [payments],
   );
 
@@ -290,11 +293,16 @@ export const PaymentHistoryPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="font-black text-slate-900">{formatVnd(p.amount)} vnđ</div>
+                          <div className="font-black text-slate-900">{formatVnd(p.originalAmount ?? p.amount)} vnđ</div>
                           {p.has_refund && p.refunded_total ? (
-                            <div className="text-[9px] text-red-500 font-bold mt-0.5">
-                              Hoàn: -{formatVnd(p.refunded_total)}đ
-                            </div>
+                            <>
+                              <div className="text-[9px] text-red-500 font-bold mt-0.5">
+                                Hoàn: -{formatVnd(p.refunded_total)}đ
+                              </div>
+                              <div className="text-[9px] text-slate-500 font-bold mt-0.5">
+                                Còn lại: {formatVnd(p.netAmount ?? Math.max(0, p.amount - p.refunded_total))}đ
+                              </div>
+                            </>
                           ) : null}
                         </td>
                         <td className="px-4 py-3 text-slate-500">{formatTime(p.completedAt || p.createdAt)}</td>
