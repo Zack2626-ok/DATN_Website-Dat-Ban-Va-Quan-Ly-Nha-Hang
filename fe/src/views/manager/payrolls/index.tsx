@@ -3,6 +3,7 @@ import api from "../../../services/axiosInstance";
 import { toast } from "react-hot-toast";
 import { CircleDollarSign, CheckCircle2, RefreshCw, Printer, FileSpreadsheet } from "lucide-react";
 import * as XLSX from "xlsx";
+import { io } from "socket.io-client";
 
 interface Payroll {
   id: number;
@@ -59,6 +60,30 @@ const PayrollPage: React.FC = () => {
 
   useEffect(() => {
     fetchPayrolls();
+
+    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"]
+    });
+
+    socket.on("connect", () => {
+      console.log("Payroll socket connected");
+    });
+
+    socket.on("system:attendance_changed", () => {
+      console.log("Attendance changed, refreshing payrolls in real-time...");
+      fetchPayrolls();
+    });
+
+    const handleCustomRefresh = () => {
+      fetchPayrolls();
+    };
+    window.addEventListener("refresh_staff_data", handleCustomRefresh);
+
+    return () => {
+      socket.disconnect();
+      window.removeEventListener("refresh_staff_data", handleCustomRefresh);
+    };
   }, [month, year]);
 
   const handleMarkAsPaid = async (id: number) => {
@@ -432,6 +457,117 @@ const PayrollPage: React.FC = () => {
     toast.success("Xuất file Excel thành công!");
   };
 
+  const handleExportAllExcel = () => {
+    if (payrolls.length === 0) {
+      toast.error("Không có dữ liệu để xuất Excel!");
+      return;
+    }
+
+    const header = [
+      [""],
+      ["", "RESMANAGER BISTRO", "", "", "", "", "", "", ""],
+      ["", "BẢNG LƯƠNG TỔNG HỢP NHÂN VIÊN", "", "", "", "", "", "", ""],
+      ["", `Kỳ lương: Tháng ${month} / Năm ${year}`, "", "", "", "", "", "", ""],
+      [""],
+      [
+        "",
+        "STT",
+        "Mã nhân viên",
+        "Họ và tên",
+        "Chức vụ",
+        "Số giờ làm (h)",
+        "Lương / Giờ (đ)",
+        "Tổng lương thực nhận (đ)",
+        "Trạng thái",
+        "Ngày thanh toán"
+      ]
+    ];
+
+    const rows = payrolls.map((p, index) => [
+      "",
+      index + 1,
+      p.employee_code,
+      p.full_name,
+      p.role_name.charAt(0).toUpperCase() + p.role_name.slice(1),
+      Number(p.total_hours),
+      Number(p.hourly_rate),
+      Number(p.total_salary),
+      p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán',
+      p.paid_at ? new Date(p.paid_at).toLocaleDateString('vi-VN') : '-'
+    ]);
+
+    const totalHours = payrolls.reduce((sum, p) => sum + Number(p.total_hours), 0);
+    const totalSalary = payrolls.reduce((sum, p) => sum + Number(p.total_salary), 0);
+
+    const totalRow = [
+      "",
+      "",
+      "TỔNG CỘNG",
+      "",
+      "",
+      totalHours,
+      "",
+      totalSalary,
+      "",
+      ""
+    ];
+
+    const footer = [
+      [""],
+      ["", "Người lập biểu", "", "", "Kế toán trưởng", "", "", "Giám đốc duyệt", ""],
+      ["", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", ""],
+      [""],
+      [""],
+      [""],
+      ["", `Ngày lập báo cáo: ${new Date().toLocaleString('vi-VN')}`, "", "", "", "", "", "", ""]
+    ];
+
+    const aoaData = [
+      ...header,
+      ...rows,
+      totalRow,
+      ...footer
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(aoaData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Bang Luong Tong Hop");
+
+    // Apply number formats
+    const startRowIdx = 7;
+    const endRowIdx = startRowIdx + payrolls.length; // 1-indexed
+
+    for (let r = startRowIdx; r <= endRowIdx; r++) {
+      const hoursCell = worksheet[`F${r}`];
+      const rateCell = worksheet[`G${r}`];
+      const salaryCell = worksheet[`H${r}`];
+
+      if (hoursCell) hoursCell.z = "0.00";
+      if (rateCell) rateCell.z = "#,##0\" đ\"";
+      if (salaryCell) salaryCell.z = "#,##0\" đ\"";
+    }
+
+    const totalRowIdx = endRowIdx + 1;
+    if (worksheet[`F${totalRowIdx}`]) worksheet[`F${totalRowIdx}`].z = "0.00";
+    if (worksheet[`H${totalRowIdx}`]) worksheet[`H${totalRowIdx}`].z = "#,##0\" đ\"";
+
+    worksheet["!cols"] = [
+      { wch: 4 },   // Column A (indent spacer)
+      { wch: 6 },   // Column B: STT
+      { wch: 15 },  // Column C: Mã NV
+      { wch: 25 },  // Column D: Tên NV
+      { wch: 15 },  // Column E: Chức vụ
+      { wch: 18 },  // Column F: Số giờ làm
+      { wch: 18 },  // Column G: Lương / Giờ
+      { wch: 25 },  // Column H: Tổng lương
+      { wch: 18 },  // Column I: Trạng thái
+      { wch: 18 }   // Column J: Ngày thanh toán
+    ];
+
+    XLSX.writeFile(workbook, `Bang_Luong_Tong_Hop_T${month}_${year}.xlsx`);
+    toast.success("Xuất bảng lương tổng hợp thành công!");
+  };
+
   const totalPages = Math.ceil(payrolls.length / rowsPerPage);
   const paginatedPayrolls = payrolls.slice(
     (currentPage - 1) * rowsPerPage,
@@ -465,6 +601,14 @@ const PayrollPage: React.FC = () => {
               </option>
             ))}
           </select>
+
+          <button 
+            onClick={handleExportAllExcel}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <FileSpreadsheet size={16} />
+            Xuất Excel Tổng
+          </button>
 
           <button 
             onClick={fetchPayrolls}
