@@ -1182,7 +1182,7 @@ const runSchemaMigrations = async (): Promise<void> => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
 
-    // Migration: Add hourly_rate to users
+    // Migration: Add hourly_rate & date_of_birth to users
     const hourlyCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'hourly_rate'`
@@ -1190,6 +1190,16 @@ const runSchemaMigrations = async (): Promise<void> => {
     if (hourlyCols.length === 0) {
       await query(`ALTER TABLE users ADD COLUMN hourly_rate DECIMAL(15, 2) NOT NULL DEFAULT 25000`).catch(() => {});
       console.log("✅ Migration: added users.hourly_rate");
+    }
+
+    const dobCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'date_of_birth'`
+    ).catch(() => []);
+    if (dobCols.length === 0) {
+      await query(`ALTER TABLE users ADD COLUMN date_of_birth DATE NULL`).catch(() => {});
+      await query(`UPDATE users SET date_of_birth = '1998-08-18' WHERE date_of_birth IS NULL`).catch(() => {});
+      console.log("✅ Migration: added users.date_of_birth");
     }
 
     // Dynamic bank-transfer reconciliation fields. Each statement is intentionally
