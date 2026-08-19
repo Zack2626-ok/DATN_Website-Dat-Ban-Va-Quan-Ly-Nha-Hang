@@ -81,8 +81,13 @@ export const RefundModal: React.FC<RefundModalProps> = ({
     (sum, item) => sum + getItemPrice(item) * getItemQty(item),
     0
   );
-  // Hoàn = giá món gốc, không tính thuế VAT
-  const totalRefundAmount = refundSubtotal;
+  // The backend owns tax allocation; keep this label explicitly provisional.
+  const estimatedInvoiceSubtotal = Number(invoice.subtotal || 0);
+  const estimatedInvoiceTax = Number(invoice.tax || 0);
+  const estimatedRefundVat = estimatedInvoiceSubtotal > 0
+    ? Math.round(refundSubtotal * estimatedInvoiceTax / estimatedInvoiceSubtotal)
+    : 0;
+  const estimatedRefundAmount = refundSubtotal + estimatedRefundVat;
 
   const handlePrintRefundReceipt = (refundData: any) => {
     const printWindow = window.open("", "_blank", "width=380,height=600");
@@ -440,7 +445,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
             className="flex items-center gap-2 rounded-lg bg-sky-500 px-5 py-2 text-xs font-bold text-white hover:bg-sky-600 transition-colors shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Printer size={14} />
-            {loading ? "Đang xử lý..." : `In phiếu hoàn tiền (-${totalRefundAmount.toLocaleString("vi-VN")}đ)`}
+            {loading ? "Đang xử lý..." : `Xác nhận hoàn (ước tính -${estimatedRefundAmount.toLocaleString("vi-VN")}đ)`}
           </button>
         </div>
       </div>

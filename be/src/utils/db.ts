@@ -5718,9 +5718,9 @@ export const getResmanagerPayments = async (): Promise<any[]> => {
   const rows = await query<any[]>(`
     SELECT p.id,
            COALESCE(i.order_id, p.invoice_id) AS orderId,
-           GREATEST(0, p.amount - COALESCE(o.refunded_total, 0)) AS amount,
+           p.amount AS amount,
            p.amount AS originalAmount,
-           COALESCE(o.refunded_total, 0) AS refunded_total,
+           COALESCE(o.refunded_total, 0) AS order_refunded_total,
            CASE 
              WHEN p.method = 'bank_transfer' THEN 'transfer'
              WHEN p.method IN ('momo', 'vnpay') THEN 'wallet'
@@ -5743,15 +5743,27 @@ export const getResmanagerPayments = async (): Promise<any[]> => {
     LEFT JOIN orders o ON i.order_id = o.id
     LEFT JOIN tables t ON o.table_id = t.id
     LEFT JOIN customers c ON o.customer_id = c.id
-    ORDER BY p.paid_at DESC
+    ORDER BY p.paid_at DESC, p.id DESC
   `);
-  return rows.map((row) => ({
-    ...row,
-    amount: Number(row.amount || 0),
-    originalAmount: Number(row.originalAmount || 0),
-    refunded_total: Number(row.refunded_total || 0),
-    has_refund: Boolean(row.has_refund),
-  }));
+  const remainingRefundByOrder = new Map<string, number>();
+  return rows.map((row) => {
+    const orderKey = String(row.orderId);
+    const remainingRefund = remainingRefundByOrder.has(orderKey)
+      ? remainingRefundByOrder.get(orderKey)!
+      : Number(row.order_refunded_total || 0);
+    const amount = Number(row.amount || 0);
+    const allocatedRefund = Math.min(amount, Math.max(0, remainingRefund));
+    remainingRefundByOrder.set(orderKey, Math.max(0, remainingRefund - allocatedRefund));
+
+    return {
+      ...row,
+      amount,
+      originalAmount: Number(row.originalAmount || 0),
+      netAmount: Math.max(0, amount - allocatedRefund),
+      refunded_total: allocatedRefund,
+      has_refund: Boolean(row.has_refund),
+    };
+  });
 };
 
 export const getResmanagerOrderItems = async (orderId: number): Promise<any[]> => {
@@ -7531,51 +7543,100 @@ export const processOrderItemRefund = async (data: {
   if (!itemIds || itemIds.length === 0) {
     throw new Error("Không có món ăn nào được chọn để hoàn tiền");
   }
-
-  // Fetch current order items
-  const allItems = await getResmanagerOrderItems(orderId);
-  const targetItems = allItems.filter((i) => itemIds.includes(Number(i.id)) && !i.is_refunded);
-
-  if (targetItems.length === 0) {
-    throw new Error("Không tìm thấy món ăn phù hợp để hoàn tiền (có thể món đã được hoàn trước đó)");
+  const normalizedItemIds = [...new Set(itemIds.map(Number).filter(Number.isInteger))];
+  if (normalizedItemIds.length === 0) {
+    throw new Error("Danh sách món hoàn tiền không hợp lệ");
   }
 
-  let totalItemRefundAmount = 0;
-  for (const item of targetItems) {
-    const itemAmt = Number(item.unit_price) * item.quantity;
-    totalItemRefundAmount += itemAmt;
-
-    await query(
-      `UPDATE order_items
-       SET status = 'voided', is_refunded = 1, refunded_at = NOW(), refund_reason = ?, refund_amount = ?
-       WHERE id = ?`,
-      [reason, itemAmt, item.id],
+  const refundResult = await withTransaction(async (connection) => {
+    const [orderRows] = await connection.query<any[]>(
+      `SELECT id, refunded_total
+       FROM orders
+       WHERE id = ?
+       FOR UPDATE`,
+      [orderId],
     );
-  }
+    if (orderRows.length === 0) {
+      throw new Error("Không tìm thấy đơn hàng");
+    }
 
-  // Hoàn = giá món + VAT, không trừ discount/điểm tích lũy
-  // (Discount là quyền lợi khách đã được hưởng khi thanh toán, giữ nguyên)
-  const vatRefundAmount = Math.round(totalItemRefundAmount * 0.10);
-  const netRefundAmount = totalItemRefundAmount + vatRefundAmount;
+    const [allItems] = await connection.query<any[]>(
+      `SELECT oi.id, oi.order_id, oi.menu_item_id, oi.quantity, oi.unit_price,
+              oi.status, oi.is_refunded, m.name AS item_name
+       FROM order_items oi
+       LEFT JOIN menu_items m ON m.id = oi.menu_item_id
+       WHERE oi.order_id = ? FOR UPDATE`,
+      [orderId],
+    );
+    const requestedIds = new Set(normalizedItemIds);
+    const targetItems = allItems.filter(
+      (i) => requestedIds.has(Number(i.id)) && !i.is_refunded && i.status !== "voided",
+    );
 
-  // Cập nhật orders.refunded_total
-  await query(
-    `UPDATE orders
-     SET refunded_total = refunded_total + ?, has_refund = 1
-     WHERE id = ?`,
-    [netRefundAmount, orderId],
-  );
+    if (targetItems.length !== requestedIds.size) {
+      throw new Error("Có món không tồn tại hoặc đã được hoàn tiền");
+    }
 
-  // Trừ tiền hoàn vào invoice: cập nhật subtotal, tax và total
-  // để DB nhất quán với số tiền thực tế sau hoàn
-  await query(
-    `UPDATE invoices
-     SET subtotal = GREATEST(0, subtotal - ?),
-         tax      = GREATEST(0, tax - ?),
-         total    = GREATEST(0, total - ?)
-     WHERE order_id = ?`,
-    [totalItemRefundAmount, vatRefundAmount, netRefundAmount, orderId],
-  );
+    const totalItemRefundAmount = targetItems.reduce(
+      (sum, item) => sum + Number(item.unit_price) * Number(item.quantity),
+      0,
+    );
+    const [invoiceRows] = await connection.query<any[]>(
+      `SELECT id, subtotal, tax
+       FROM invoices
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+    if (invoiceRows.length === 0) {
+      throw new Error("Không tìm thấy hóa đơn của đơn hàng");
+    }
+
+    const invoice = invoiceRows[0];
+    const invoiceSubtotal = Number(invoice.subtotal || 0);
+    const invoiceTax = Number(invoice.tax || 0);
+    const vatRefundAmount = invoiceSubtotal > 0
+      ? Math.round(totalItemRefundAmount * invoiceTax / invoiceSubtotal)
+      : 0;
+    const netRefundAmount = totalItemRefundAmount + vatRefundAmount;
+
+    for (const item of targetItems) {
+      const itemAmt = Number(item.unit_price) * Number(item.quantity);
+      await connection.query(
+        `UPDATE order_items
+         SET status = 'voided', is_refunded = 1, refunded_at = NOW(), refund_reason = ?, refund_amount = ?
+         WHERE id = ?`,
+        [reason, itemAmt, item.id],
+      );
+    }
+
+    const [orderUpdate] = await connection.query<mysql.ResultSetHeader>(
+      `UPDATE orders
+       SET refunded_total = COALESCE(refunded_total, 0) + ?, has_refund = 1
+       WHERE id = ?`,
+      [netRefundAmount, orderId],
+    );
+    if (orderUpdate.affectedRows !== 1) {
+      throw new Error("Không thể cập nhật tổng tiền hoàn của đơn hàng");
+    }
+    const [invoiceUpdate] = await connection.query<mysql.ResultSetHeader>(
+      `UPDATE invoices
+       SET subtotal = GREATEST(0, subtotal - ?),
+           tax      = GREATEST(0, tax - ?),
+           total    = GREATEST(0, total - ?)
+       WHERE id = ?`,
+      [totalItemRefundAmount, vatRefundAmount, netRefundAmount, invoice.id],
+    );
+    if (invoiceUpdate.affectedRows !== 1) {
+      throw new Error("Không thể cập nhật hóa đơn hoàn tiền");
+    }
+
+    return { targetItems, totalItemRefundAmount, vatRefundAmount, netRefundAmount };
+  });
+
+  const { targetItems, totalItemRefundAmount, vatRefundAmount, netRefundAmount } = refundResult;
 
   return {
     orderId,
