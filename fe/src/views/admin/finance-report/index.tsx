@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
 import { ArrowDownCircle, ArrowUpCircle, DollarSign, RefreshCw, Inbox, Loader2, ChevronDown, ChevronUp, Printer, CheckCircle2, Clock, RotateCcw, Image, X } from "lucide-react";
 import { formatCurrency } from "../../../utils/formatCurrency";
 import api from "../../../services/axiosInstance";
@@ -516,15 +517,15 @@ export const FinanceReport: React.FC = () => {
             {item.label === "Tổng chi phí" && data.summary.materialCost !== undefined && (
               <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-1.5 text-xs font-medium text-slate-500">
                 <div className="flex justify-between items-center">
-                  <span>Nguyên liệu:</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]"></span>Nguyên liệu:</span>
                   <span className="text-slate-700 font-semibold">{formatCurrency(data.summary.materialCost)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Lương NV:</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#10b981]"></span>Lương NV:</span>
                   <span className="text-slate-700 font-semibold">{formatCurrency(data.summary.salaryCost)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Vận hành:</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]"></span>Vận hành:</span>
                   <span className="text-slate-700 font-semibold">{formatCurrency(data.summary.operationalCost)}</span>
                 </div>
               </div>
@@ -532,6 +533,47 @@ export const FinanceReport: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Expense Pie Chart */}
+      {data.summary.totalExpenses > 0 && (
+        <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] shadow-xs p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="w-full md:w-1/3 space-y-2">
+            <h2 className="font-playfair text-lg font-bold text-sky-900">Phân bổ chi phí</h2>
+            <p className="text-sm text-slate-500">Tỷ trọng các loại chi phí trong tổng chi (không tính các khoản đã xóa)</p>
+          </div>
+          <div className="w-full md:w-2/3 h-[250px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Nguyên vật liệu', value: data.summary.materialCost || 0, color: '#3b82f6' },
+                    { name: 'Lương nhân viên', value: data.summary.salaryCost || 0, color: '#10b981' },
+                    { name: 'Chi phí vận hành', value: data.summary.operationalCost || 0, color: '#f59e0b' },
+                  ].filter(d => d.value > 0)}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {
+                    [
+                      { name: 'Nguyên vật liệu', value: data.summary.materialCost || 0, color: '#3b82f6' },
+                      { name: 'Lương nhân viên', value: data.summary.salaryCost || 0, color: '#10b981' },
+                      { name: 'Chi phí vận hành', value: data.summary.operationalCost || 0, color: '#f59e0b' },
+                    ].filter(d => d.value > 0).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))
+                  }
+                </Pie>
+                <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend verticalAlign="middle" align="right" layout="vertical" />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* Transactions table */}
       <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] shadow-xs">

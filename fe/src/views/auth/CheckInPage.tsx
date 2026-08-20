@@ -3,9 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../../store/hooks";
 import { logoutAction } from "../../store/authSlice";
 import { clockInApi, clockOutApi, getAttendanceStatus } from "../../services/attendanceService";
-import type { AssignedSchedule, ShiftSwapRequest } from "../../services/scheduleService";
-import * as scheduleService from "../../services/scheduleService";
-import { CheckCircle2, Clock, LogOut, Repeat2, Timer, Umbrella } from "lucide-react";
+import { CheckCircle2, Clock, LogOut, Timer } from "lucide-react";
 
 const roleRoutes: Record<string, string> = {
   admin: "/admin",
@@ -28,128 +26,7 @@ const roleLabels: Record<string, string> = {
 /** Returns today's date in the restaurant's business time zone for leave requests. */
 const getVietnamToday = (): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date());
 
-/** Renders self-service leave and shift-exchange controls without requiring Postman. */
-const StaffScheduleRequests: React.FC = () => {
-  const [schedules, setSchedules] = useState<AssignedSchedule[]>([]);
-  const [candidates, setCandidates] = useState<AssignedSchedule[]>([]);
-  const [inbox, setInbox] = useState<ShiftSwapRequest[]>([]);
-  const [leaveDate, setLeaveDate] = useState(getVietnamToday);
-  const [requesterScheduleId, setRequesterScheduleId] = useState("");
-  const [targetScheduleId, setTargetScheduleId] = useState("");
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  /** Refreshes staff schedules, exchange inbox, and resets dependent selections. */
-  const loadRequestData = async (): Promise<void> => {
-    try {
-      const [scheduleData, inboxData] = await Promise.all([
-        scheduleService.getMySchedules(),
-        scheduleService.getShiftSwapInbox(),
-      ]);
-      setSchedules(scheduleData);
-      setInbox(inboxData);
-    } catch {
-      setMessage("Không thể tải dữ liệu ca làm. Vui lòng thử lại.");
-    }
-  };
-
-  useEffect(() => {
-    void loadRequestData();
-  }, []);
-
-  /** Loads only compatible same-day coworker shifts once the staff selects their own shift. */
-  useEffect(() => {
-    const loadCandidates = async (): Promise<void> => {
-      if (!requesterScheduleId) {
-        setCandidates([]);
-        setTargetScheduleId("");
-        return;
-      }
-      try {
-        const candidateData = await scheduleService.getShiftSwapCandidates(Number(requesterScheduleId));
-        setCandidates(candidateData);
-        setTargetScheduleId("");
-      } catch {
-        setCandidates([]);
-        setMessage("Không thể tải ca phù hợp để đổi.");
-      }
-    };
-    void loadCandidates();
-  }, [requesterScheduleId]);
-
-  /** Creates a leave request for the signed-in employee. */
-  const handleLeaveRequest = async (): Promise<void> => {
-    try {
-      setLoading(true);
-      await scheduleService.createLeaveRequest(leaveDate);
-      setMessage("Đã gửi đơn xin nghỉ, đang chờ quản lý duyệt.");
-      await loadRequestData();
-    } catch {
-      setMessage("Không thể gửi đơn xin nghỉ.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /** Sends a three-step shift exchange request to the selected coworker. */
-  const handleSwapRequest = async (): Promise<void> => {
-    const target = candidates.find((candidate) => candidate.id === Number(targetScheduleId));
-    if (!requesterScheduleId || !targetScheduleId || !target) {
-      setMessage("Hãy chọn ca của bạn và ca của đồng nghiệp.");
-      return;
-    }
-    try {
-      setLoading(true);
-      await scheduleService.createShiftSwapRequest({
-        requester_schedule_id: Number(requesterScheduleId),
-        target_schedule_id: target.id,
-        target_employee_id: target.employee_id,
-      });
-      setMessage("Đã gửi yêu cầu đổi ca, chờ đồng nghiệp đồng ý.");
-      setRequesterScheduleId("");
-      await loadRequestData();
-    } catch {
-      setMessage("Không thể gửi yêu cầu đổi ca.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /** Accepts an incoming exchange then passes it to the manager approval queue. */
-  const handleAcceptSwap = async (swapId: number): Promise<void> => {
-    try {
-      setLoading(true);
-      await scheduleService.acceptShiftSwapRequest(swapId);
-      setMessage("Đã đồng ý đổi ca. Yêu cầu đang chờ quản lý duyệt.");
-      await loadRequestData();
-    } catch {
-      setMessage("Không thể xác nhận đổi ca.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="mt-5 border-t border-white/15 pt-4 text-left">
-      <p className="mb-3 text-center text-sm font-bold text-sky-100">Yêu cầu ca làm</p>
-      <div className="grid gap-3 text-xs sm:grid-cols-2">
-        <div className="rounded-xl border border-white/15 bg-black/15 p-3">
-          <p className="mb-2 flex items-center gap-1.5 font-bold text-white"><Umbrella size={14} /> Xin nghỉ</p>
-          <input type="date" min={getVietnamToday()} value={leaveDate} onChange={(event) => setLeaveDate(event.target.value)} className="w-full rounded-lg border border-white/20 bg-white/10 px-2 py-2 text-white outline-none" />
-          <button type="button" onClick={() => void handleLeaveRequest()} disabled={loading} className="mt-2 w-full rounded-lg bg-sky-500 px-2 py-2 font-bold text-white disabled:opacity-60">Gửi đơn nghỉ</button>
-        </div>
-        <div className="rounded-xl border border-white/15 bg-black/15 p-3">
-          <p className="mb-2 flex items-center gap-1.5 font-bold text-white"><Repeat2 size={14} /> Đổi ca</p>
-          <select value={requesterScheduleId} onChange={(event) => setRequesterScheduleId(event.target.value)} className="w-full rounded-lg border border-white/20 bg-slate-900 px-2 py-2 text-white outline-none"><option value="">Chọn ca của bạn</option>{schedules.map((schedule) => <option key={schedule.id} value={schedule.id}>{schedule.work_date} · {schedule.start_time}–{schedule.end_time}</option>)}</select>
-          <select value={targetScheduleId} onChange={(event) => setTargetScheduleId(event.target.value)} disabled={!requesterScheduleId} className="mt-2 w-full rounded-lg border border-white/20 bg-slate-900 px-2 py-2 text-white outline-none disabled:opacity-50"><option value="">Chọn ca đồng nghiệp</option>{candidates.map((schedule) => <option key={schedule.id} value={schedule.id}>{schedule.employee_name} · {schedule.start_time}–{schedule.end_time}</option>)}</select>
-          <button type="button" onClick={() => void handleSwapRequest()} disabled={loading} className="mt-2 w-full rounded-lg bg-violet-600 px-2 py-2 font-bold text-white disabled:opacity-60">Gửi yêu cầu đổi</button>
-        </div>
-      </div>
-      {inbox.length > 0 ? <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-50">{inbox.map((request) => <div key={request.id} className="flex items-center justify-between gap-2"><span>{request.requester_name} xin đổi ca ngày {request.work_date}</span><button type="button" onClick={() => void handleAcceptSwap(request.id)} disabled={loading} className="shrink-0 rounded-lg bg-emerald-600 px-2 py-1 font-bold text-white">Đồng ý</button></div>)}</div> : null}
-      {message ? <p className="mt-3 text-center text-xs text-sky-100">{message}</p> : null}
-    </div>
-  );
-};
 
 export default function CheckInPage() {
   const navigate = useNavigate();
@@ -400,7 +277,7 @@ export default function CheckInPage() {
                       {loading ? "Đang chấm công ra..." : "Chấm công ra"}
                     </button>
                   )}
-                  <StaffScheduleRequests />
+
                 </div>
               )}
             </>

@@ -35,20 +35,6 @@ const getBookingEndTime = (date: string, time: string): string => {
   }).format(end).replace("T", " ");
 };
 
-/** Formats the table group held by the server for an online booking. */
-const getHeldTableSummary = (booking: CreatedBooking | null): string => {
-  const assignments = booking?.table_assignments ?? [];
-  if (assignments.length > 0) {
-    return assignments
-      .map((assignment) => assignment.area_name
-        ? `${assignment.table_name} (${assignment.area_name})`
-        : assignment.table_name)
-      .join(" + ");
-  }
-
-  return booking?.table_names || booking?.table_name || "Đang cập nhật";
-};
-
 export const BookingPage: React.FC = () => {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -224,7 +210,7 @@ export const BookingPage: React.FC = () => {
 
       setCreatedBooking(bookingResult);
       setStep(4);
-      toast.success("Yêu cầu đặt bàn đã được ghi nhận và giữ cụm bàn.");
+      toast.success("Yêu cầu đặt bàn đã được ghi nhận thành công.");
     } catch (err: any) {
       const errMsg: string =
         err.response?.data?.message ||
@@ -252,10 +238,10 @@ export const BookingPage: React.FC = () => {
           {/* Card Upper Section */}
           <div className="flex flex-col items-center">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-extrabold uppercase tracking-wider mb-3">
-              <CheckCircle size={12} /> Đã giữ cụm bàn
+              <CheckCircle size={12} /> Đã tiếp nhận yêu cầu
             </span>
             <h1 className="text-xl font-bold text-client-text font-display">Cảm ơn quý khách!</h1>
-            <p className="text-xs text-client-muted mt-1">Yêu cầu đã được ghi nhận; cụm bàn bên dưới đang được giữ tạm.</p>
+            <p className="text-xs text-client-muted mt-1">Yêu cầu đặt bàn của quý khách đã được ghi nhận.</p>
           </div>
 
           <div className="mt-6 p-4 bg-client-bg border border-dashed border-client-accent rounded-2xl relative">
@@ -295,8 +281,6 @@ export const BookingPage: React.FC = () => {
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Người đặt:</span> <span className="font-semibold text-client-text">{createdBooking?.guest_name || form.name}</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Thời gian đến:</span> <span className="font-semibold text-client-text">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
              <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Số lượng khách:</span> <span className="font-semibold text-client-text">{createdBooking?.party_size || form.guests} người</span></div>
-             <div className="flex justify-between gap-4 text-xs"><span className="shrink-0 text-client-muted font-bold uppercase tracking-wider">Cụm bàn giữ tạm:</span> <span className="text-right font-semibold text-client-text">{getHeldTableSummary(createdBooking)}</span></div>
-             <div className="flex justify-between text-xs"><span className="text-client-muted font-bold uppercase tracking-wider">Sức chứa cụm:</span> <span className="font-semibold text-client-text">{createdBooking?.total_capacity || "-"} người</span></div>
              <div className="flex justify-between text-xs">
                <span className="text-client-muted font-bold uppercase tracking-wider">Trạng thái đặt:</span> 
                <span className="font-bold text-amber-600">Chờ nhà hàng xác nhận</span>
@@ -376,8 +360,6 @@ export const BookingPage: React.FC = () => {
             <div className="flex justify-between"><span>Số điện thoại:</span> <span>{createdBooking?.guest_phone || form.phone}</span></div>
             <div className="flex justify-between"><span>Thời gian đến:</span> <span className="font-bold">{form.time} - {form.date ? new Date(form.date).toLocaleDateString("vi-VN") : ""}</span></div>
             <div className="flex justify-between"><span>Số lượng khách:</span> <span>{createdBooking?.party_size || form.guests} người</span></div>
-            <div className="flex justify-between gap-4"><span>Cụm bàn giữ tạm:</span> <span className="text-right font-bold">{getHeldTableSummary(createdBooking)}</span></div>
-            <div className="flex justify-between"><span>Sức chứa cụm:</span> <span>{createdBooking?.total_capacity || "-"} người</span></div>
             <div className="flex justify-between"><span>Trạng thái:</span> <span className="font-bold uppercase text-xs">Chờ xác nhận</span></div>
           </div>
 

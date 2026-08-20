@@ -8,7 +8,9 @@ router.use(authStaff);
 router.use(checkRole(["admin", "manager"]));
 
 router.get("/", expenseController.getExpenses);
+router.get("/deleted", expenseController.getDeletedExpenses);
 router.post("/", expenseController.createExpense);
+router.post("/import", expenseController.importExpenses);
 router.delete("/:id", expenseController.deleteExpense);
 
 export default router;

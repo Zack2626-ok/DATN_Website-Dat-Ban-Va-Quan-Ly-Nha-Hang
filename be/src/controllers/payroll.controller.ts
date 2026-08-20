@@ -110,7 +110,7 @@ export const payrollController = {
         FROM payrolls p 
         JOIN users u ON p.user_id = u.id 
         LEFT JOIN roles r ON u.role_id = r.id
-        WHERE p.month = ? AND p.year = ?
+        WHERE p.month = ? AND p.year = ? AND r.name NOT IN ('admin', 'manager')
         ORDER BY u.full_name ASC
       `;
 

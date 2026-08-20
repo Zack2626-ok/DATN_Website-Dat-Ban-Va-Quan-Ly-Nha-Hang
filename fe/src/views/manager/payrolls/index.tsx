@@ -22,6 +22,8 @@ interface Payroll {
 const PayrollPage: React.FC = () => {
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
   
   const [month, setMonth] = useState(8);
   const [year, setYear] = useState(2026);
@@ -47,6 +49,7 @@ const PayrollPage: React.FC = () => {
         params: { month, year }
       });
       setPayrolls(res.data.data || []);
+      setCurrentPage(1);
     } catch (error) {
       toast.error("Không thể tải danh sách bảng lương");
     } finally {
@@ -81,63 +84,288 @@ const PayrollPage: React.FC = () => {
         <head>
           <title>Phiếu Lương - ${p.full_name}</title>
           <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; line-height: 1.6; }
-            .receipt-box { max-width: 600px; margin: 0 auto; border: 1px solid #ddd; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 15px; }
-            .header h2 { margin: 0; color: #111; }
-            .header p { margin: 5px 0 0; color: #666; font-size: 14px; }
-            .info-row { display: flex; justify-content: space-between; margin: 15px 0; border-bottom: 1px dashed #eee; padding-bottom: 5px; }
-            .info-label { font-weight: 600; color: #555; }
-            .info-value { color: #111; }
-            .total-salary { font-size: 20px; font-weight: bold; color: #10b981; margin-top: 25px; border-top: 2px solid #eee; padding-top: 15px; }
-            .footer { text-align: center; margin-top: 40px; font-size: 12px; color: #999; }
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+            body { 
+              font-family: 'Inter', sans-serif; 
+              padding: 20px; 
+              color: #1e293b; 
+              background-color: #f8fafc;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .payslip-container { 
+              max-width: 650px; 
+              margin: 0 auto; 
+              background-color: #ffffff;
+              border: 1px solid #e2e8f0; 
+              padding: 40px; 
+              border-radius: 12px; 
+              box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05); 
+            }
+            .header-section { 
+              display: flex; 
+              justify-content: space-between; 
+              align-items: flex-start;
+              border-bottom: 2px solid #e2e8f0; 
+              padding-bottom: 20px;
+              margin-bottom: 24px;
+            }
+            .brand-name {
+              font-size: 20px;
+              font-weight: 700;
+              color: #0f172a;
+              letter-spacing: -0.025em;
+            }
+            .brand-sub {
+              font-size: 12px;
+              color: #64748b;
+              margin-top: 2px;
+            }
+            .document-title {
+              text-align: right;
+            }
+            .document-title h1 {
+              margin: 0;
+              font-size: 22px;
+              font-weight: 800;
+              color: #10b981;
+              letter-spacing: -0.025em;
+            }
+            .document-title p {
+              margin: 4px 0 0 0;
+              font-size: 13px;
+              color: #64748b;
+              font-weight: 500;
+            }
+            .employee-info-grid {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 12px 24px;
+              background-color: #f8fafc;
+              border: 1px solid #f1f5f9;
+              padding: 20px;
+              border-radius: 8px;
+              margin-bottom: 28px;
+            }
+            .info-item {
+              display: flex;
+              flex-direction: column;
+            }
+            .info-label {
+              font-size: 11px;
+              font-weight: 600;
+              color: #94a3b8;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+            }
+            .info-val {
+              font-size: 14px;
+              font-weight: 600;
+              color: #334155;
+              margin-top: 2px;
+            }
+            .details-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 28px;
+            }
+            .details-table th {
+              background-color: #f1f5f9;
+              color: #475569;
+              font-size: 12px;
+              font-weight: 600;
+              text-align: left;
+              padding: 10px 16px;
+              text-transform: uppercase;
+              letter-spacing: 0.025em;
+            }
+            .details-table td {
+              padding: 14px 16px;
+              font-size: 13.5px;
+              border-bottom: 1px solid #e2e8f0;
+              color: #334155;
+            }
+            .details-table tr:last-child td {
+              border-bottom: none;
+            }
+            .grand-total-row {
+              background-color: #f8fafc;
+              font-weight: 700;
+            }
+            .grand-total-label {
+              font-size: 14px;
+              color: #0f172a;
+              font-weight: 700;
+            }
+            .grand-total-val {
+              font-size: 18px;
+              color: #10b981;
+              font-weight: 800;
+              text-align: right;
+            }
+            .payment-badge-container {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border: 1px solid #e2e8f0;
+              padding: 16px 20px;
+              border-radius: 8px;
+              margin-bottom: 32px;
+            }
+            .badge-status {
+              display: inline-flex;
+              align-items: center;
+              padding: 4px 12px;
+              border-radius: 9999px;
+              font-size: 12px;
+              font-weight: 600;
+            }
+            .badge-paid {
+              background-color: #d1fae5;
+              color: #065f46;
+            }
+            .badge-pending {
+              background-color: #fef3c7;
+              color: #92400e;
+            }
+            .signatures-section {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 40px;
+              text-align: center;
+              margin-top: 40px;
+              padding-top: 20px;
+            }
+            .signature-title {
+              font-size: 13px;
+              font-weight: 700;
+              color: #334155;
+              text-transform: uppercase;
+              letter-spacing: 0.025em;
+            }
+            .signature-sub {
+              font-size: 11px;
+              color: #94a3b8;
+              margin-top: 2px;
+            }
+            .signature-space {
+              height: 70px;
+            }
+            .footer-info {
+              text-align: center;
+              margin-top: 48px;
+              font-size: 11px;
+              color: #94a3b8;
+              border-top: 1px solid #f1f5f9;
+              padding-top: 16px;
+            }
+            @media print {
+              body {
+                background-color: #ffffff;
+                padding: 0;
+              }
+              .payslip-container {
+                border: none;
+                box-shadow: none;
+                padding: 0;
+              }
+            }
           </style>
         </head>
         <body>
-          <div class="receipt-box">
-            <div class="header">
-              <h2>PHIẾU LƯƠNG NHÂN VIÊN</h2>
-              <p>Tháng ${p.month} / Năm ${p.year}</p>
+          <div class="payslip-container">
+            <div class="header-section">
+              <div>
+                <div class="brand-name">🍽️ RESMANAGER BISTRO</div>
+                <div class="brand-sub">Hệ thống quản lý nhà hàng thông minh</div>
+              </div>
+              <div class="document-title">
+                <h1>PHIẾU LƯƠNG CHI TIẾT</h1>
+                <p>Tháng ${p.month} / Năm ${p.year}</p>
+              </div>
             </div>
-            <div class="info-row">
-              <span class="info-label">Mã Nhân Viên:</span>
-              <span class="info-value">${p.employee_code}</span>
+
+            <div class="employee-info-grid">
+              <div class="info-item">
+                <span class="info-label">Mã Nhân Viên</span>
+                <span class="info-val">${p.employee_code}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Họ và Tên</span>
+                <span class="info-val">${p.full_name}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Chức Vụ</span>
+                <span class="info-val" style="text-transform: capitalize;">${p.role_name}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Ngày Xuất Phiếu</span>
+                <span class="info-val">${new Date().toLocaleDateString('vi-VN')}</span>
+              </div>
             </div>
-            <div class="info-row">
-              <span class="info-label">Tên Nhân Viên:</span>
-              <span class="info-value">${p.full_name}</span>
+
+            <table class="details-table">
+              <thead>
+                <tr>
+                  <th>Hạng mục lương</th>
+                  <th style="text-align: right;">Chi tiết định mức</th>
+                  <th style="text-align: right;">Thành tiền</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Tổng số giờ làm việc thực tế</td>
+                  <td style="text-align: right; font-weight: 600;">${Number(p.total_hours).toFixed(2)} giờ</td>
+                  <td style="text-align: right; color: #64748b;">-</td>
+                </tr>
+                <tr>
+                  <td>Mức đơn giá lương theo giờ</td>
+                  <td style="text-align: right; font-weight: 600;">${Number(p.hourly_rate).toLocaleString('vi-VN')} đ/giờ</td>
+                  <td style="text-align: right; color: #64748b;">-</td>
+                </tr>
+                <tr class="grand-total-row">
+                  <td class="grand-total-label">Tổng cộng lương thực nhận</td>
+                  <td style="text-align: right; color: #64748b;">-</td>
+                  <td class="grand-total-val">${Number(p.total_salary).toLocaleString('vi-VN')} đ</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="payment-badge-container">
+              <div>
+                <span class="info-label">Trạng thái thanh toán</span>
+                <div style="margin-top: 6px;">
+                  <span class="badge-status ${p.status === 'paid' ? 'badge-paid' : 'badge-pending'}">
+                    ${p.status === 'paid' ? '● Đã thanh toán' : '● Chờ thanh toán'}
+                  </span>
+                </div>
+              </div>
+              ${p.paid_at ? `
+              <div style="text-align: right;">
+                <span class="info-label">Thời gian tất toán</span>
+                <div class="info-val" style="font-size: 13px;">${new Date(p.paid_at).toLocaleString('vi-VN')}</div>
+              </div>
+              ` : ''}
             </div>
-            <div class="info-row">
-              <span class="info-label">Chức Vụ:</span>
-              <span class="info-value" style="text-transform: capitalize;">${p.role_name}</span>
+
+            <div class="signatures-section">
+              <div>
+                <span class="signature-title">Người lập biểu</span>
+                <span class="signature-sub">(Ký, ghi rõ họ tên)</span>
+                <div class="signature-space"></div>
+                <div style="border-bottom: 1px dashed #cbd5e1; width: 150px; margin: 0 auto;"></div>
+              </div>
+              <div>
+                <span class="signature-title">Người nhận lương</span>
+                <span class="signature-sub">(Ký, ghi rõ họ tên)</span>
+                <div class="signature-space"></div>
+                <div style="border-bottom: 1px dashed #cbd5e1; width: 150px; margin: 0 auto;"></div>
+              </div>
             </div>
-            <div class="info-row">
-              <span class="info-label">Số Giờ Làm Việc:</span>
-              <span class="info-value">${Number(p.total_hours).toFixed(1)} giờ</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Lương / Giờ:</span>
-              <span class="info-value">${Number(p.hourly_rate).toLocaleString('vi-VN')} đ/giờ</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Trạng Thái:</span>
-              <span class="info-value" style="font-weight: 600; color: ${p.status === 'paid' ? '#10b981' : '#f59e0b'};">
-                ${p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}
-              </span>
-            </div>
-            ${p.paid_at ? `
-            <div class="info-row">
-              <span class="info-label">Ngày Thanh Toán:</span>
-              <span class="info-value">${new Date(p.paid_at).toLocaleString('vi-VN')}</span>
-            </div>
-            ` : ''}
-            <div class="info-row total-salary">
-              <span class="info-label" style="color: #111;">TỔNG LƯƠNG NHẬN:</span>
-              <span class="info-value">${Number(p.total_salary).toLocaleString('vi-VN')} đ</span>
-            </div>
-            <div class="footer">
-              <p>Bản in tự động từ hệ thống ResManager Bistro</p>
-              <p>Ngày in: ${new Date().toLocaleString('vi-VN')}</p>
+
+            <div class="footer-info">
+              <p>Phiếu thanh toán được trích xuất tự động bởi ResManager Bistro.</p>
+              <p>Mọi thắc mắc vui lòng liên hệ bộ phận Kế toán / Nhân sự để giải quyết.</p>
             </div>
           </div>
           <script>
@@ -203,6 +431,12 @@ const PayrollPage: React.FC = () => {
     XLSX.writeFile(workbook, `Phieu_Luong_${p.employee_code}_T${p.month}_${p.year}.xlsx`);
     toast.success("Xuất file Excel thành công!");
   };
+
+  const totalPages = Math.ceil(payrolls.length / rowsPerPage);
+  const paginatedPayrolls = payrolls.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage
+  );
 
   return (
     <div className="p-6">
@@ -297,6 +531,44 @@ const PayrollPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-3">
+                paginatedPayrolls.map((p) => (
+                  <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                    <td className="px-6 py-4 text-sm">{p.employee_code}</td>
+                    <td className="px-6 py-4 font-medium text-sm text-gray-900">{p.full_name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500 capitalize">{p.role_name}</td>
+                    <td className="px-6 py-4 text-sm text-right">{Number(p.total_hours).toFixed(2)}</td>
+                    <td className="px-6 py-4 text-sm text-right">{Number(p.hourly_rate).toLocaleString('vi-VN')} đ</td>
+                    <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900">
+                      {Number(p.total_salary).toLocaleString('vi-VN')} đ
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
+                        p.status === 'paid' 
+                          ? 'bg-green-100 text-green-700' 
+                          : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-3">
+                        <button 
+                          onClick={() => handlePrint(p)}
+                          className="text-blue-600 hover:text-blue-700 p-1.5 rounded-full hover:bg-blue-50 transition-colors"
+                          title="In phiếu lương"
+                        >
+                          <Printer size={18} />
+                        </button>
+                        
+                        <button 
+                          onClick={() => handleExportExcel(p)}
+                          className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-full hover:bg-emerald-50 transition-colors"
+                          title="Xuất Excel"
+                        >
+                          <FileSpreadsheet size={18} />
+                        </button>
+
+                        {p.status === 'pending' ? (
                           <button 
                             onClick={() => handlePrint(p)}
                             className="text-blue-600 hover:text-blue-700 p-1.5 rounded-full hover:bg-blue-50 transition-colors"
@@ -335,6 +607,55 @@ const PayrollPage: React.FC = () => {
             </tbody>
           </table>
         </div>
+        
+        {/* Pagination Controls */}
+        {payrolls.length > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white px-6 py-4 border-t border-gray-200 text-sm text-gray-500">
+            <div className="flex items-center gap-2">
+              <span>Số hàng mỗi trang:</span>
+              <select
+                value={rowsPerPage}
+                onChange={(e) => {
+                  setRowsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="border border-gray-200 rounded-md px-2 py-1 outline-none bg-white text-gray-700"
+              >
+                {[5, 10, 20, 50].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex items-center gap-1.5">
+              <span>
+                Hiển thị <strong>{(currentPage - 1) * rowsPerPage + 1}</strong> - <strong>{Math.min(currentPage * rowsPerPage, payrolls.length)}</strong> trên <strong>{payrolls.length}</strong>
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors cursor-pointer text-gray-700 text-xs font-semibold"
+              >
+                Trước
+              </button>
+              <span className="px-3 py-1 bg-gray-100 rounded-md text-xs font-bold text-gray-700">
+                {currentPage} / {totalPages || 1}
+              </span>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors cursor-pointer text-gray-700 text-xs font-semibold"
+              >
+                Sau
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
