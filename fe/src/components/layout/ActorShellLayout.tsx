@@ -1,8 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { Bell, Database, LogOut, Search, User, X, CheckCircle, UtensilsCrossed, Phone, Timer, Clock } from "lucide-react";
+import {
+  Bell,
+  Database,
+  LogOut,
+  Search,
+  User,
+  X,
+  CheckCircle,
+  UtensilsCrossed,
+  Phone,
+  Timer,
+  Clock,
+} from "lucide-react";
 import { io } from "socket.io-client";
-import { getBookingValidationStatus, updateBookingValidationStatus } from "../../services/systemService";
+import {
+  getBookingValidationStatus,
+  updateBookingValidationStatus,
+} from "../../services/systemService";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { ROLE_LABELS } from "../../constants/roles";
 import type { UserRole } from "../../interfaces/auth";
@@ -14,8 +29,12 @@ import {
 } from "../../services/api";
 import { toast } from "react-hot-toast";
 import { Modal } from "../Modal";
-import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
+import {
+  getRestaurantInfo,
+  type RestaurantInfo,
+} from "../../services/restaurantInfoService";
 import { isBookingScheduledToday } from "../../constants/booking";
+import api from "../../services/axiosInstance";
 
 const formatTime = (timeStr: string) => {
   try {
@@ -32,7 +51,7 @@ const formatTime = (timeStr: string) => {
 
     return date.toLocaleDateString("vi-VN", {
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
     });
   } catch (e) {
     return "";
@@ -80,7 +99,10 @@ const WaiterNotificationBell: React.FC = () => {
   // Đóng dropdown khi click ra ngoài
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     };
@@ -91,8 +113,10 @@ const WaiterNotificationBell: React.FC = () => {
   const visible = notifications.filter((n) => !dismissed.has(n.item_id));
   const count = visible.length;
 
-  const dismissOne = (id: number) => setDismissed((prev) => new Set(prev).add(id));
-  const dismissAll = () => setDismissed(new Set(notifications.map((n) => n.item_id)));
+  const dismissOne = (id: number) =>
+    setDismissed((prev) => new Set(prev).add(id));
+  const dismissAll = () =>
+    setDismissed(new Set(notifications.map((n) => n.item_id)));
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -100,7 +124,9 @@ const WaiterNotificationBell: React.FC = () => {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`relative rounded-lg p-2 transition-colors cursor-pointer ${
-          open ? "bg-sky-100 text-sky-600" : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
+          open
+            ? "bg-sky-100 text-sky-600"
+            : "text-slate-500 hover:bg-sky-50 hover:text-sky-600"
         }`}
         title="Thông báo"
       >
@@ -118,7 +144,9 @@ const WaiterNotificationBell: React.FC = () => {
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
             <div className="flex items-center gap-2">
               <UtensilsCrossed size={15} className="text-orange-500" />
-              <span className="text-sm font-playfair font-bold text-sky-700 uppercase tracking-wider">Món đã xong — cần mang ra</span>
+              <span className="text-sm font-playfair font-bold text-sky-700 uppercase tracking-wider">
+                Món đã xong — cần mang ra
+              </span>
             </div>
             {count > 0 && (
               <button
@@ -134,7 +162,10 @@ const WaiterNotificationBell: React.FC = () => {
           <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
             {visible.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center text-slate-500">
-                <CheckCircle size={28} className="text-green-500 animate-bounce" />
+                <CheckCircle
+                  size={28}
+                  className="text-green-500 animate-bounce"
+                />
                 <p className="text-xs italic">Không có món nào cần mang ra</p>
               </div>
             ) : (
@@ -145,7 +176,11 @@ const WaiterNotificationBell: React.FC = () => {
                 >
                   {/* Click vào phần text → điều hướng đến trang Order của bàn */}
                   <Link
-                    to={n.table_id ? `/waiter/orders/${n.table_id}` : "/waiter/tables"}
+                    to={
+                      n.table_id
+                        ? `/waiter/orders/${n.table_id}`
+                        : "/waiter/tables"
+                    }
                     onClick={() => setOpen(false)}
                     className="flex flex-1 items-start gap-3 min-w-0"
                   >
@@ -153,12 +188,18 @@ const WaiterNotificationBell: React.FC = () => {
                       <UtensilsCrossed size={13} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-700 truncate">{n.item_name}</p>
+                      <p className="text-sm font-semibold text-slate-700 truncate">
+                        {n.item_name}
+                      </p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {n.table_name ? `Bàn ${n.table_name}` : "Mang về / Tại quầy"}
+                        {n.table_name
+                          ? `Bàn ${n.table_name}`
+                          : "Mang về / Tại quầy"}
                         {" · "}Order #{n.order_id}
                       </p>
-                      <p className="text-[10px] text-orange-600 font-medium mt-0.5">Nhấn để xem bàn →</p>
+                      <p className="text-[10px] text-orange-600 font-medium mt-0.5">
+                        Nhấn để xem bàn →
+                      </p>
                     </div>
                   </Link>
                   <button
@@ -176,7 +217,9 @@ const WaiterNotificationBell: React.FC = () => {
           {/* Footer */}
           {visible.length > 0 && (
             <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-2.5 text-center">
-              <p className="text-[10px] text-slate-400 font-medium">Cập nhật tự động mỗi 20 giây</p>
+              <p className="text-[10px] text-slate-400 font-medium">
+                Cập nhật tự động mỗi 20 giây
+              </p>
             </div>
           )}
         </div>
@@ -207,7 +250,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   };
   const defaultName = defaultNames[displayRole] || "Demo User";
 
-  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+  const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(
+    null,
+  );
 
   useEffect(() => {
     getRestaurantInfo()
@@ -248,7 +293,8 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     }
   }, [showProfileModal, fetchWorkSummary]);
 
-  const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
+  const [bookingValidationEnabled, setBookingValidationEnabled] =
+    useState<boolean>(true);
   const [togglingValidation, setTogglingValidation] = useState<boolean>(false);
 
   // Real-time Booking Assignment Notification
@@ -271,35 +317,55 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       .then(setBookingValidationEnabled)
       .catch(() => {});
 
-    const socket = io(import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000", {
-      transports: ["polling", "websocket"],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-    });
-    socket.on("system:booking_validation_changed", (data: { enabled: boolean }) => {
-      setBookingValidationEnabled(data.enabled);
-    });
+    const socket = io(
+      import.meta.env.VITE_API_URL?.replace("/api", "") ||
+        "http://localhost:5000",
+      {
+        transports: ["polling", "websocket"],
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      },
+    );
+    socket.on(
+      "system:booking_validation_changed",
+      (data: { enabled: boolean }) => {
+        setBookingValidationEnabled(data.enabled);
+      },
+    );
 
     // Helper check: Only show Pop-Up on Waiter role and targeted account
     const isWaiter = displayRole === "waiter";
 
     const isIntendedForCurrentUser = (payload: any): boolean => {
       if (!isWaiter || !payload) return false;
-      const targetWaiter = (payload.assignedWaiterName || "").trim().toLowerCase();
-      if (targetWaiter.startsWith("tất cả") || targetWaiter.includes("tất cả")) return true;
+      const targetWaiter = (payload.assignedWaiterName || "")
+        .trim()
+        .toLowerCase();
+      if (targetWaiter.startsWith("tất cả") || targetWaiter.includes("tất cả"))
+        return true;
 
       const currentUser = getCurrentLoggedUser();
       if (!currentUser) return true;
 
       const myId = currentUser.id ? String(currentUser.id) : "";
-      const targetId = payload.assignedWaiterId ? String(payload.assignedWaiterId) : "";
+      const targetId = payload.assignedWaiterId
+        ? String(payload.assignedWaiterId)
+        : "";
       if (myId && targetId) {
         if (myId === targetId) return true;
       }
 
-      const myName = (currentUser.full_name || currentUser.name || currentUser.username || "").trim().toLowerCase();
+      const myName = (
+        currentUser.full_name ||
+        currentUser.name ||
+        currentUser.username ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
       if (myName && targetWaiter) {
-        if (targetWaiter.includes(myName) || myName.includes(targetWaiter)) return true;
+        if (targetWaiter.includes(myName) || myName.includes(targetWaiter))
+          return true;
         const myNum = myName.replace(/\D/g, "");
         const targetNum = targetWaiter.replace(/\D/g, "");
         if (myNum && targetNum && myNum === targetNum) return true;
@@ -320,24 +386,35 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     const handleBookingCheckedIn = (data: any) => {
       const bId = data?.bookingId || data?.id;
       if (bId) {
-        const storedStr = localStorage.getItem("active_waiter_assigned_booking");
+        const storedStr = localStorage.getItem(
+          "active_waiter_assigned_booking",
+        );
         if (storedStr) {
           try {
             const stored = JSON.parse(storedStr);
-            if (String(stored.bookingId) === String(bId) || String(stored.id) === String(bId)) {
+            if (
+              String(stored.bookingId) === String(bId) ||
+              String(stored.id) === String(bId)
+            ) {
               localStorage.removeItem("active_waiter_assigned_booking");
             }
           } catch {}
         }
 
         setAssignedNotification((prev: any) => {
-          if (prev && (String(prev.bookingId) === String(bId) || String(prev.id) === String(bId))) {
+          if (
+            prev &&
+            (String(prev.bookingId) === String(bId) ||
+              String(prev.id) === String(bId))
+          ) {
             return null;
           }
           return prev;
         });
 
-        window.dispatchEvent(new CustomEvent("booking_claimed_event", { detail: data }));
+        window.dispatchEvent(
+          new CustomEvent("booking_claimed_event", { detail: data }),
+        );
       }
     };
     socket.on("table:booking_checked_in", handleBookingCheckedIn);
@@ -347,7 +424,10 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     const handleAssignedEvent = (e: any) => {
       if (e.detail && isIntendedForCurrentUser(e.detail)) {
         setAssignedNotification(e.detail);
-        localStorage.setItem("active_waiter_assigned_booking", JSON.stringify(e.detail));
+        localStorage.setItem(
+          "active_waiter_assigned_booking",
+          JSON.stringify(e.detail),
+        );
         playBeepSound();
       }
     };
@@ -358,9 +438,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     try {
       channel = new BroadcastChannel("booking_notifications");
       channel.onmessage = (msg) => {
-        if (msg.data?.type === "NEW_ASSIGNMENT" && isIntendedForCurrentUser(msg.data.payload)) {
+        if (
+          msg.data?.type === "NEW_ASSIGNMENT" &&
+          isIntendedForCurrentUser(msg.data.payload)
+        ) {
           setAssignedNotification(msg.data.payload);
-          localStorage.setItem("active_waiter_assigned_booking", JSON.stringify(msg.data.payload));
+          localStorage.setItem(
+            "active_waiter_assigned_booking",
+            JSON.stringify(msg.data.payload),
+          );
           playBeepSound();
         }
       };
@@ -395,24 +481,41 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   useEffect(() => {
     if (displayRole === "waiter") {
       try {
-        const stored = JSON.parse(localStorage.getItem("booking_assignments_list") || "[]");
+        const stored = JSON.parse(
+          localStorage.getItem("booking_assignments_list") || "[]",
+        );
         if (stored.length > 0) {
           const latest = stored[0];
-          const targetWaiter = (latest.assignedWaiterName || "").trim().toLowerCase();
+          const targetWaiter = (latest.assignedWaiterName || "")
+            .trim()
+            .toLowerCase();
           const currentUser = getCurrentLoggedUser();
           const myId = currentUser?.id ? String(currentUser.id) : "";
-          const targetId = latest.assignedWaiterId ? String(latest.assignedWaiterId) : "";
-          const myName = (currentUser?.full_name || currentUser?.name || currentUser?.username || "").trim().toLowerCase();
+          const targetId = latest.assignedWaiterId
+            ? String(latest.assignedWaiterId)
+            : "";
+          const myName = (
+            currentUser?.full_name ||
+            currentUser?.name ||
+            currentUser?.username ||
+            ""
+          )
+            .trim()
+            .toLowerCase();
 
-          let isMatch = targetWaiter.startsWith("tất cả") || 
+          let isMatch =
+            targetWaiter.startsWith("tất cả") ||
             targetWaiter.includes("tất cả") ||
             (myId && targetId && myId === targetId) ||
-            (myName && targetWaiter && (targetWaiter.includes(myName) || myName.includes(targetWaiter)));
+            (myName &&
+              targetWaiter &&
+              (targetWaiter.includes(myName) || myName.includes(targetWaiter)));
 
           if (!currentUser) isMatch = true;
 
           if (isMatch) {
-            const handledKey = "handled_assign_" + (latest.id || latest.bookingId);
+            const handledKey =
+              "handled_assign_" + (latest.id || latest.bookingId);
             if (!sessionStorage.getItem(handledKey)) {
               setAssignedNotification(latest);
             }
@@ -431,7 +534,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       toast.success(
         updated
           ? "🔔 ĐÃ BẬT giới hạn giờ 21:00 (Không nhận đặt bàn sau 21:00)"
-          : "🔓 ĐÃ TẮT giới hạn giờ 21:00 (Tự do test đặt bàn bất kỳ lúc nào)"
+          : "🔓 ĐÃ TẮT giới hạn giờ 21:00 (Tự do test đặt bàn bất kỳ lúc nào)",
       );
     } catch {
       toast.error("Không thể thay đổi trạng thái giới hạn giờ");
@@ -442,7 +545,8 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
   const playBeepSound = () => {
     try {
-      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+      const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
       const audioCtx = new AudioContextClass();
 
@@ -491,7 +595,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           hasInitializedRef.current = true;
         } else {
           // Lần poll tiếp theo: lọc ra các thông báo mới chưa từng nổ toast
-          const freshItems = unreadItems.filter((n: any) => !notifiedIdsRef.current.has(n.id));
+          const freshItems = unreadItems.filter(
+            (n: any) => !notifiedIdsRef.current.has(n.id),
+          );
           if (freshItems.length > 0) {
             freshItems.forEach((notif: any) => {
               notifiedIdsRef.current.add(notif.id);
@@ -530,7 +636,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     try {
       await markNotificationAsReadApi(id);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: 1 } : n))
+        prev.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
       );
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
@@ -550,7 +656,12 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     setDropdownOpen(false);
 
     // Chỉ navigate nếu là waiter
-    if (displayRole !== "waiter" && displayRole !== "manager" && displayRole !== "admin") return;
+    if (
+      displayRole !== "waiter" &&
+      displayRole !== "manager" &&
+      displayRole !== "admin"
+    )
+      return;
 
     // Parse tên bàn từ message
     const tableName = parseTableNameFromMessage(item.message || "");
@@ -560,9 +671,7 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
     try {
       const { getTablesV1 } = await import("../../services/tableService");
       const tables = await getTablesV1();
-      const found = tables.find(
-        (t: any) => t.name.toUpperCase() === tableName
-      );
+      const found = tables.find((t: any) => t.name.toUpperCase() === tableName);
       if (found) {
         navigate(`/waiter/orders/${found.id}`);
       }
@@ -587,8 +696,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
         <div className="flex flex-1 flex-col rounded-[24px] bg-gradient-to-b from-[#F0F0F0] to-[#EAEAEA] border border-white/80 shadow-xs p-4 w-full">
           {/* Header - ResManager + UtensilsCrossed */}
           <div className="flex items-center gap-2.5 pb-3.5 border-b border-[#8A8A8A]/20">
-            <UtensilsCrossed size={20} strokeWidth={1.8} className="text-[#1A1A1A]" />
-            <Link to={homeLink} className="text-lg font-black text-[#1A1A1A] tracking-tight font-sans">
+            <UtensilsCrossed
+              size={20}
+              strokeWidth={1.8}
+              className="text-[#1A1A1A]"
+            />
+            <Link
+              to={homeLink}
+              className="text-lg font-black text-[#1A1A1A] tracking-tight font-sans"
+            >
               ResManager
             </Link>
             <span className="ml-auto text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#FFFFFF] border border-[#8A8A8A]/20">
@@ -601,7 +717,8 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             {navLinks.map((link) => {
               const isActive =
                 location.pathname === link.to ||
-                (link.to !== "/" && location.pathname.startsWith(`${link.to}/`));
+                (link.to !== "/" &&
+                  location.pathname.startsWith(`${link.to}/`));
               return (
                 <Link
                   key={link.to}
@@ -634,11 +751,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 className="flex items-center gap-2 rounded-full bg-[#FFFFFF] px-3 py-1.5 text-[#1A1A1A] border border-slate-200/60 shadow-2xs hover:bg-slate-50 transition-colors"
               >
                 <Phone size={13} strokeWidth={1.5} className="text-[#3E2016]" />
-                <span className="font-bold text-[11px]">{restaurantInfo.hotline}</span>
+                <span className="font-bold text-[11px]">
+                  {restaurantInfo.hotline}
+                </span>
               </a>
             )}
             <div className="flex items-center gap-2 pt-1">
-              <Database size={14} strokeWidth={1.5} className="text-[#1A1A1A]" />
+              <Database
+                size={14}
+                strokeWidth={1.5}
+                className="text-[#1A1A1A]"
+              />
               <span>Hệ thống thời gian thực</span>
               <span className="ml-auto h-2 w-2 rounded-full bg-[#EC4899]" />
             </div>
@@ -701,7 +824,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
                     <div className="absolute right-0 mt-2.5 w-80 rounded-3xl bg-white/95 backdrop-blur-xl border border-slate-200/70 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 p-2">
                       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                        <span className="text-xs font-bold text-[#1A1A1A] uppercase tracking-wider">Thông báo</span>
+                        <span className="text-xs font-bold text-[#1A1A1A] uppercase tracking-wider">
+                          Thông báo
+                        </span>
                         {notifications.filter((n) => !n.is_read).length > 0 && (
                           <button
                             type="button"
@@ -724,12 +849,19 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                               key={item.id}
                               onClick={() => handleNotificationClick(item)}
                               className={`p-3 text-xs cursor-pointer transition-colors hover:bg-slate-50 flex items-start gap-2.5 ${
-                                !item.is_read ? "bg-amber-50/50 font-bold" : "text-[#8A8A8A]"
+                                !item.is_read
+                                  ? "bg-amber-50/50 font-bold"
+                                  : "text-[#8A8A8A]"
                               }`}
                             >
-                              <CheckCircle size={14} className="text-[#3E2016] mt-0.5 shrink-0" />
+                              <CheckCircle
+                                size={14}
+                                className="text-[#3E2016] mt-0.5 shrink-0"
+                              />
                               <div className="flex-1">
-                                <p className="text-[#1A1A1A] font-semibold">{item.message}</p>
+                                <p className="text-[#1A1A1A] font-semibold">
+                                  {item.message}
+                                </p>
                                 <span className="text-[10px] text-[#8A8A8A] mt-1 block">
                                   {formatTime(item.created_at)}
                                 </span>
@@ -760,8 +892,19 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                   : "border-slate-300 bg-slate-100 text-slate-400 hover:bg-slate-200 opacity-60"
               }`}
             >
-              <Clock size={14} className={bookingValidationEnabled ? "text-amber-600 animate-pulse" : "text-slate-400"} />
-              <span>{bookingValidationEnabled ? "Giới hạn giờ: BẬT" : "Giới hạn giờ: TẮT"}</span>
+              <Clock
+                size={14}
+                className={
+                  bookingValidationEnabled
+                    ? "text-amber-600 animate-pulse"
+                    : "text-slate-400"
+                }
+              />
+              <span>
+                {bookingValidationEnabled
+                  ? "Giới hạn giờ: BẬT"
+                  : "Giới hạn giờ: TẮT"}
+              </span>
             </button>
 
             {/* Profile Pill Card */}
@@ -784,11 +927,14 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                   <span>{user?.full_name || defaultName}</span>
                   {user && (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-[#1A1A1A] border border-slate-200">
-                      {user.employee_code || `NV${String(user.id).padStart(3, "0")}`}
+                      {user.employee_code ||
+                        `NV${String(user.id).padStart(3, "0")}`}
                     </span>
                   )}
                 </p>
-                <p className="text-[10px] font-semibold text-[#8A8A8A]">{ROLE_LABELS[displayRole]}</p>
+                <p className="text-[10px] font-semibold text-[#8A8A8A]">
+                  {ROLE_LABELS[displayRole]}
+                </p>
               </div>
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-white group-hover:scale-105 transition-transform">
                 <User size={15} />
@@ -842,7 +988,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           </div>
         }
       >
-        <p className="text-slate-700 text-xs font-medium">Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?</p>
+        <p className="text-slate-700 text-xs font-medium">
+          Bạn có chắc chắn muốn đăng xuất khỏi hệ thống ResManager không?
+        </p>
       </Modal>
 
       {/* Real-Time Pop-Up Notification Modal for Waiter (Chỉ hiển thị với Phục vụ) */}
@@ -850,16 +998,24 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
         <div className="fixed top-6 right-6 z-[9999] max-w-md w-full bg-white rounded-3xl shadow-2xl border-2 border-indigo-500 p-6 animate-in slide-in-from-top duration-300 font-sans">
           <div className="flex items-start justify-between border-b border-indigo-100 pb-3 mb-4">
             <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl font-bold animate-bounce text-base">📌</span>
+              <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl font-bold animate-bounce text-base">
+                📌
+              </span>
               <div>
-                <h4 className="font-extrabold text-indigo-950 text-xs font-display uppercase tracking-wider">THÔNG BÁO PHÂN CÔNG ĐẶT BÀN LỚN</h4>
-                <span className="text-[10px] text-slate-400 font-semibold">Bởi Quản lý nhà hàng</span>
+                <h4 className="font-extrabold text-indigo-950 text-xs font-display uppercase tracking-wider">
+                  THÔNG BÁO PHÂN CÔNG ĐẶT BÀN LỚN
+                </h4>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  Bởi Quản lý nhà hàng
+                </span>
               </div>
             </div>
             <button
               type="button"
               onClick={() => {
-                const handledKey = "handled_assign_" + (assignedNotification.id || assignedNotification.bookingId);
+                const handledKey =
+                  "handled_assign_" +
+                  (assignedNotification.id || assignedNotification.bookingId);
                 sessionStorage.setItem(handledKey, "true");
                 setAssignedNotification(null);
               }}
@@ -871,35 +1027,52 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
           <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100 space-y-2.5 text-xs text-slate-700 font-sans mb-5">
             <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-indigo-100 shadow-2xs">
-              <span className="font-extrabold text-indigo-800">Khu vực / Tầng:</span>
-              <span className="font-black text-indigo-950 text-sm bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">{assignedNotification.assignedArea}</span>
+              <span className="font-extrabold text-indigo-800">
+                Khu vực / Tầng:
+              </span>
+              <span className="font-black text-indigo-950 text-sm bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">
+                {assignedNotification.assignedArea}
+              </span>
             </div>
 
             <div className="flex justify-between">
               <span className="font-bold text-slate-500">Thông tin khách:</span>
-              <span className="font-bold text-slate-900">{assignedNotification.guestName} ({assignedNotification.guestPhone})</span>
+              <span className="font-bold text-slate-900">
+                {assignedNotification.guestName} (
+                {assignedNotification.guestPhone})
+              </span>
             </div>
 
             <div className="flex justify-between">
               <span className="font-bold text-slate-500">Số lượng khách:</span>
-              <span className="font-black text-rose-700 text-sm">{assignedNotification.partySize} người</span>
+              <span className="font-black text-rose-700 text-sm">
+                {assignedNotification.partySize} người
+              </span>
             </div>
 
             <div className="flex justify-between">
               <span className="font-bold text-slate-500">Thời gian đến:</span>
-              <span className="font-extrabold text-emerald-800">{assignedNotification.startTime}</span>
+              <span className="font-extrabold text-emerald-800">
+                {assignedNotification.startTime}
+              </span>
             </div>
 
             <div className="flex justify-between text-[11px] pt-1 border-t border-indigo-100">
               <span className="text-slate-400">Thời gian phân công:</span>
-              <span className="font-semibold text-slate-600">{assignedNotification.assignedAt}</span>
+              <span className="font-semibold text-slate-600">
+                {assignedNotification.assignedAt}
+              </span>
             </div>
           </div>
 
           {!isBookingScheduledToday(assignedNotification.startTime) && (
             <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-2xl text-xs text-indigo-900 font-semibold flex items-center gap-2">
               <span>📌</span>
-              <span>Lịch hẹn ngày {assignedNotification.startTime}. Bạn có thể chọn bàn chính và gộp bàn trước ngay bây giờ. Gọi món sẽ mở khi khách đến!</span>
+              <span>
+                Lịch hẹn ngày {assignedNotification.startTime}. Bạn có thể chọn
+                bàn chính và gộp bàn trước ngay bây giờ. Gọi món sẽ mở khi khách
+                đến!
+              </span>
             </div>
           )}
 
@@ -908,10 +1081,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             onClick={() => {
               const targetArea = assignedNotification.assignedArea;
               const notificationData = assignedNotification;
-              const handledKey = "handled_assign_" + (assignedNotification.id || assignedNotification.bookingId);
+              const handledKey =
+                "handled_assign_" +
+                (assignedNotification.id || assignedNotification.bookingId);
               sessionStorage.setItem(handledKey, "true");
               setAssignedNotification(null);
-              navigate("/waiter/tables", { state: { autoOpenAssignedBooking: notificationData, targetArea } });
+              navigate("/waiter/tables", {
+                state: {
+                  autoOpenAssignedBooking: notificationData,
+                  targetArea,
+                },
+              });
             }}
             className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
           >
@@ -936,7 +1116,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
               <div className="flex items-center gap-4">
                 <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-amber-500 to-orange-400 text-white font-black text-2xl flex items-center justify-center border-2 border-white/20 shadow-md">
-                  {(workSummary?.full_name || user?.full_name || defaultName).charAt(0).toUpperCase()}
+                  {(workSummary?.full_name || user?.full_name || defaultName)
+                    .charAt(0)
+                    .toUpperCase()}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -944,7 +1126,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                       {workSummary?.full_name || user?.full_name || defaultName}
                     </h3>
                     <span className="bg-white/20 text-white font-black text-[10px] px-2 py-0.5 rounded-full border border-white/20">
-                      {workSummary?.employee_code || user?.employee_code || `NV${String(user?.id || 1).padStart(3, "0")}`}
+                      {workSummary?.employee_code ||
+                        user?.employee_code ||
+                        `NV${String(user?.id || 1).padStart(3, "0")}`}
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 font-medium mt-0.5 capitalize">
@@ -954,7 +1138,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                     <span>🎂 Ngày sinh:</span>
                     <span className="font-bold">
                       {workSummary?.date_of_birth
-                        ? new Date(workSummary.date_of_birth).toLocaleDateString("vi-VN")
+                        ? new Date(
+                            workSummary.date_of_birth,
+                          ).toLocaleDateString("vi-VN")
                         : "18/08/1998"}
                     </span>
                   </p>
@@ -965,7 +1151,9 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             {/* Body: Realtime Work & Salary */}
             <div className="p-6 space-y-4 bg-slate-50/50">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Thống kê giờ làm & Lương</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Thống kê giờ làm & Lương
+                </span>
                 <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
                   Thời gian thực
@@ -975,31 +1163,47 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               {/* Worked Hours & Hourly Rate Cards */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-                  <p className="text-xs text-slate-500 font-medium">Tổng giờ làm</p>
-                  <p className="text-2xl font-black text-slate-900 mt-1 font-mono">
-                    {loadingSummary && !workSummary ? "..." : `${workSummary?.total_hours ?? 0.0}h`}
+                  <p className="text-xs text-slate-500 font-medium">
+                    Tổng giờ làm
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Tích lũy realtime</p>
+                  <p className="text-2xl font-black text-slate-900 mt-1 font-mono">
+                    {loadingSummary && !workSummary
+                      ? "..."
+                      : `${workSummary?.total_hours ?? 0.0}h`}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Tích lũy realtime
+                  </p>
                 </div>
                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-                  <p className="text-xs text-slate-500 font-medium">Lương theo giờ</p>
-                  <p className="text-xl font-black text-amber-600 mt-1 font-mono">
-                    {workSummary ? `${Number(workSummary.hourly_rate).toLocaleString("vi-VN")}đ` : "25.000đ"}
+                  <p className="text-xs text-slate-500 font-medium">
+                    Lương theo giờ
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Mức lương cơ sở</p>
+                  <p className="text-xl font-black text-amber-600 mt-1 font-mono">
+                    {workSummary
+                      ? `${Number(workSummary.hourly_rate).toLocaleString("vi-VN")}đ`
+                      : "25.000đ"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Mức lương cơ sở
+                  </p>
                 </div>
               </div>
 
               {/* Real-Time Total Calculated Salary Callout */}
               <div className="bg-gradient-to-br from-emerald-50 to-teal-50/60 p-4 rounded-2xl border border-emerald-200/70 shadow-2xs">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-emerald-900">Tổng lương ước tính</span>
+                  <span className="text-xs font-bold text-emerald-900">
+                    Tổng lương ước tính
+                  </span>
                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
                     {new Date().toLocaleDateString("vi-VN")}
                   </span>
                 </div>
                 <p className="text-2xl font-black text-emerald-700 mt-1 font-mono tracking-tight">
-                  {workSummary ? `${Number(workSummary.total_salary).toLocaleString("vi-VN")}đ` : "0đ"}
+                  {workSummary
+                    ? `${Number(workSummary.total_salary).toLocaleString("vi-VN")}đ`
+                    : "0đ"}
                 </p>
                 <div className="mt-2 pt-2 border-t border-emerald-200/50 text-[11px] font-medium text-emerald-800/80 flex items-center justify-between">
                   <span>Công thức tính:</span>
@@ -1015,11 +1219,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <div className="bg-white rounded-2xl p-4 border border-slate-200/80 space-y-2 text-xs text-slate-600">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Số điện thoại:</span>
-                  <span className="font-bold text-slate-800">{workSummary?.phone || user?.phone || "0912345678"}</span>
+                  <span className="font-bold text-slate-800">
+                    {workSummary?.phone || user?.phone || "0912345678"}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Email:</span>
-                  <span className="font-bold text-slate-800">{workSummary?.email || user?.email || "waiter1@resmanager.com"}</span>
+                  <span className="font-bold text-slate-800">
+                    {workSummary?.email ||
+                      user?.email ||
+                      "waiter1@resmanager.com"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1052,7 +1262,6 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           </div>
         </div>
       )}
->>>>>>> 0e2789edbb1c9540856d3f96f563e94b73e26d2a
     </div>
   );
 };
