@@ -15,6 +15,7 @@ import {
 import { toast } from "react-hot-toast";
 import { Modal } from "../Modal";
 import { getRestaurantInfo, type RestaurantInfo } from "../../services/restaurantInfoService";
+import api from "../../services/axiosInstance";
 
 const formatTime = (timeStr: string) => {
   try {
@@ -222,6 +223,30 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const [showLogoutModal, setShowLogoutModal] = React.useState(false);
+
+  const [showProfileModal, setShowProfileModal] = React.useState(false);
+  const [workSummary, setWorkSummary] = React.useState<any>(null);
+  const [loadingSummary, setLoadingSummary] = React.useState(false);
+
+  const fetchWorkSummary = React.useCallback(async () => {
+    try {
+      setLoadingSummary(true);
+      const res = await api.get("/v1/attendance/summary");
+      setWorkSummary(res.data.data);
+    } catch (err) {
+      // silent fail
+    } finally {
+      setLoadingSummary(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (showProfileModal) {
+      fetchWorkSummary();
+      const interval = setInterval(fetchWorkSummary, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [showProfileModal, fetchWorkSummary]);
 
   const [bookingValidationEnabled, setBookingValidationEnabled] = useState<boolean>(true);
   const [togglingValidation, setTogglingValidation] = useState<boolean>(false);
@@ -749,7 +774,11 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
               <Timer size={14} />
               Chấm công
             </button>
-            <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md border border-white/80 rounded-full pl-3 pr-1.5 py-1.5 shadow-xs">
+            <div
+              onClick={() => setShowProfileModal(true)}
+              title="Xem thông tin cá nhân & Số giờ làm thời gian thực"
+              className="flex items-center gap-3 bg-white/90 backdrop-blur-md border border-white/80 rounded-full pl-3 pr-1.5 py-1.5 shadow-xs cursor-pointer hover:bg-white hover:shadow-md transition-all group"
+            >
               <div className="hidden text-right sm:block pl-1">
                 <p className="text-xs font-bold text-[#1A1A1A] flex items-center justify-end gap-1.5">
                   <span>{user?.full_name || defaultName}</span>
@@ -761,12 +790,15 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
                 </p>
                 <p className="text-[10px] font-semibold text-[#8A8A8A]">{ROLE_LABELS[displayRole]}</p>
               </div>
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-white">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-white group-hover:scale-105 transition-transform">
                 <User size={15} />
               </div>
               <button
                 type="button"
-                onClick={() => setShowLogoutModal(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowLogoutModal(true);
+                }}
                 title="Đăng xuất"
                 className="flex items-center justify-center h-8 w-8 rounded-full text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
               >
@@ -878,6 +910,139 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           >
             🔘 Bấm vào đây để chọn Bàn chính & Mở bàn
           </button>
+        </div>
+      )}
+
+      {/* Staff Profile & Realtime Worked Hours Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col">
+            {/* Top Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-6 text-white relative">
+              <button
+                type="button"
+                onClick={() => setShowProfileModal(false)}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-gradient-to-tr from-amber-500 to-orange-400 text-white font-black text-2xl flex items-center justify-center border-2 border-white/20 shadow-md">
+                  {(workSummary?.full_name || user?.full_name || defaultName).charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-white">
+                      {workSummary?.full_name || user?.full_name || defaultName}
+                    </h3>
+                    <span className="bg-white/20 text-white font-black text-[10px] px-2 py-0.5 rounded-full border border-white/20">
+                      {workSummary?.employee_code || user?.employee_code || `NV${String(user?.id || 1).padStart(3, "0")}`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 font-medium mt-0.5 capitalize">
+                    Chức vụ: {ROLE_LABELS[displayRole] || displayRole}
+                  </p>
+                  <p className="text-[11px] text-amber-300 font-medium mt-1 flex items-center gap-1">
+                    <span>🎂 Ngày sinh:</span>
+                    <span className="font-bold">
+                      {workSummary?.date_of_birth
+                        ? new Date(workSummary.date_of_birth).toLocaleDateString("vi-VN")
+                        : "18/08/1998"}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body: Realtime Work & Salary */}
+            <div className="p-6 space-y-4 bg-slate-50/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Thống kê giờ làm & Lương</span>
+                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  Thời gian thực
+                </span>
+              </div>
+
+              {/* Worked Hours & Hourly Rate Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+                  <p className="text-xs text-slate-500 font-medium">Tổng giờ làm</p>
+                  <p className="text-2xl font-black text-slate-900 mt-1 font-mono">
+                    {loadingSummary && !workSummary ? "..." : `${workSummary?.total_hours ?? 0.0}h`}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Tích lũy realtime</p>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+                  <p className="text-xs text-slate-500 font-medium">Lương theo giờ</p>
+                  <p className="text-xl font-black text-amber-600 mt-1 font-mono">
+                    {workSummary ? `${Number(workSummary.hourly_rate).toLocaleString("vi-VN")}đ` : "25.000đ"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Mức lương cơ sở</p>
+                </div>
+              </div>
+
+              {/* Real-Time Total Calculated Salary Callout */}
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50/60 p-4 rounded-2xl border border-emerald-200/70 shadow-2xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-emerald-900">Tổng lương ước tính</span>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                    {new Date().toLocaleDateString("vi-VN")}
+                  </span>
+                </div>
+                <p className="text-2xl font-black text-emerald-700 mt-1 font-mono tracking-tight">
+                  {workSummary ? `${Number(workSummary.total_salary).toLocaleString("vi-VN")}đ` : "0đ"}
+                </p>
+                <div className="mt-2 pt-2 border-t border-emerald-200/50 text-[11px] font-medium text-emerald-800/80 flex items-center justify-between">
+                  <span>Công thức tính:</span>
+                  <span className="font-bold text-emerald-900 font-mono">
+                    {workSummary
+                      ? `${workSummary.total_hours}h × ${Number(workSummary.hourly_rate).toLocaleString("vi-VN")}đ/h`
+                      : "0h × 25.000đ/h"}
+                  </span>
+                </div>
+              </div>
+
+              {/* User Details Box */}
+              <div className="bg-white rounded-2xl p-4 border border-slate-200/80 space-y-2 text-xs text-slate-600">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số điện thoại:</span>
+                  <span className="font-bold text-slate-800">{workSummary?.phone || user?.phone || "0912345678"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Email:</span>
+                  <span className="font-bold text-slate-800">{workSummary?.email || user?.email || "waiter1@resmanager.com"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-4 bg-white border-t border-slate-100 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProfileModal(false);
+                  navigate("/checkin");
+                }}
+                className="flex-1 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold transition-colors border border-amber-200 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Timer size={15} />
+                Chấm công ngay
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProfileModal(false);
+                  setShowLogoutModal(true);
+                }}
+                className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-colors border border-rose-200 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <LogOut size={15} />
+                Đăng xuất
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

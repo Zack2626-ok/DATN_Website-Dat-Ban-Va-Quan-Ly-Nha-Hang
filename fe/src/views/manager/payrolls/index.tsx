@@ -650,6 +650,31 @@ const PayrollPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
+                payrolls.map((p) => {
+                  const isPaid = p.status === "paid";
+                  const displayHours = isPaid ? 0.0 : Number(p.total_hours || 0);
+                  const displaySalary = isPaid ? 0 : Number(p.total_salary || 0);
+                  return (
+                    <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                      <td className="px-6 py-4 text-sm font-medium">{p.employee_code || `NV${String(p.user_id).padStart(3, "0")}`}</td>
+                      <td className="px-6 py-4 font-medium text-sm text-gray-900">{p.full_name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 capitalize">{p.role_name}</td>
+                      <td className="px-6 py-4 text-sm text-right font-mono font-semibold">{displayHours.toFixed(1)}</td>
+                      <td className="px-6 py-4 text-sm text-right font-mono">{Number(p.hourly_rate || 25000).toLocaleString('vi-VN')} đ</td>
+                      <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900 font-mono">
+                        {displaySalary.toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${
+                          isPaid 
+                            ? 'bg-green-100 text-green-700 border border-green-200' 
+                            : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                        }`}>
+                          {isPaid ? 'Đã thanh toán' : 'Chờ thanh toán'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-3">
                 paginatedPayrolls.map((p) => (
                   <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                     <td className="px-6 py-4 text-sm">{p.employee_code}</td>
@@ -689,21 +714,39 @@ const PayrollPage: React.FC = () => {
 
                         {p.status === 'pending' ? (
                           <button 
-                            onClick={() => handleMarkAsPaid(p.id)}
-                            className="text-green-600 hover:text-green-700 p-1.5 rounded-full hover:bg-green-50 transition-colors"
-                            title="Xác nhận thanh toán"
+                            onClick={() => handlePrint(p)}
+                            className="text-blue-600 hover:text-blue-700 p-1.5 rounded-full hover:bg-blue-50 transition-colors"
+                            title="In phiếu lương"
                           >
-                            <CheckCircle2 size={18} />
+                            <Printer size={18} />
                           </button>
-                        ) : (
-                          <span className="text-gray-300 p-1.5" title="Đã thanh toán">
-                            <CheckCircle2 size={18} className="opacity-40 text-gray-400" />
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          
+                          <button 
+                            onClick={() => handleExportExcel(p)}
+                            className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-full hover:bg-emerald-50 transition-colors"
+                            title="Xuất Excel"
+                          >
+                            <FileSpreadsheet size={18} />
+                          </button>
+
+                          {!isPaid ? (
+                            <button 
+                              onClick={() => handleMarkAsPaid(p.id)}
+                              className="text-green-600 hover:text-green-700 p-1.5 rounded-full hover:bg-green-50 transition-colors"
+                              title="Xác nhận thanh toán"
+                            >
+                              <CheckCircle2 size={18} />
+                            </button>
+                          ) : (
+                            <span className="text-gray-300 p-1.5" title="Đã thanh toán">
+                              <CheckCircle2 size={18} className="opacity-40 text-gray-400" />
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
