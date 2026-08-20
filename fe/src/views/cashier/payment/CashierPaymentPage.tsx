@@ -13,7 +13,7 @@ import {
 } from "../../../store/invoiceSlice";
 import { fetchTables } from "../../../store/tableSlice";
 import { fetchOrders } from "../../../store/orderSlice";
-import type { Invoice, InvoiceStatus, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
+import type { Invoice, PaymentRequest, SplitBillGroup } from "../../../interfaces/invoice";
 import { InvoiceListPanel } from "./components/InvoiceListPanel";
 import { InvoiceDetailPanel } from "./components/InvoiceDetailPanel";
 import { PaymentModal } from "./components/PaymentModal";
@@ -39,7 +39,7 @@ export const CashierPaymentPage: React.FC = () => {
   );
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "unpaid">("all");
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -93,11 +93,19 @@ export const CashierPaymentPage: React.FC = () => {
       );
     };
 
-    const handlePaymentRequest = (data?: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string }) => {
+    const handlePaymentRequest = (data?: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string; isEarlyPayment?: boolean }) => {
       triggerRefresh();
       if (data) {
         const label = data.tableName || (data.tableId ? `bàn ${data.tableId}` : `đơn #${data.orderId || ""}`);
-        showSuccess(`Có yêu cầu thanh toán mới cho ${label}`);
+        const typeText = data.isEarlyPayment ? "thanh toán sớm" : "thanh toán";
+        toast.success(`🛎️ ${label} vừa gửi yêu cầu ${typeText} (${data.waiterName || "phục vụ"})!`, {
+          duration: 6000,
+          icon: "💳",
+        });
+        showSuccess(`Có yêu cầu ${typeText} mới cho ${label}`);
+        if (data.orderId) {
+          dispatch(selectInvoice(String(data.orderId)));
+        }
       }
     };
 
@@ -149,31 +157,53 @@ export const CashierPaymentPage: React.FC = () => {
 
   const activeUnpaidInvoices = useMemo(() => {
     return invoices
-      .filter((inv) => inv.invoiceStatus === "unpaid" && inv.items && inv.items.length > 0 && inv.totalAmount > 0 && inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName))
+      .filter(
+        (inv) =>
+          inv.invoiceStatus !== "paid" &&
+          inv.status !== "completed" &&
+          inv.status !== "paid" &&
+          inv.invoiceStatus !== "cancelled" &&
+          inv.items &&
+          inv.items.length > 0 &&
+          inv.totalAmount > 0 &&
+          inv.tableName !== "Mang về" &&
+          inv.tableName !== "Mang Về" &&
+          (inv.tableId || inv.tableName)
+      )
       .sort((a, b) => {
-        const pA = a.status === "pending_payment" ? 1 : 2;
-        const pB = b.status === "pending_payment" ? 1 : 2;
+        const isPendingA = a.status === "pending_payment" || a.invoiceStatus === "pending" || a.is_early_payment;
+        const isPendingB = b.status === "pending_payment" || b.invoiceStatus === "pending" || b.is_early_payment;
+        const pA = isPendingA ? 1 : 2;
+        const pB = isPendingB ? 1 : 2;
         if (pA !== pB) return pA - pB;
-        // Đến trước thanh toán trước (createdAt nhỏ hơn lên trước)
+        // Đến trước thanh toán trước
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       });
   }, [invoices]);
 
   const filteredInvoices = useMemo(() => {
-    let result = [...invoices];
-    if (statusFilter === "unpaid") {
+    // Chỉ lấy các hóa đơn chưa thanh toán / đang mở
+    let result = invoices.filter(
+      (inv) =>
+        inv.invoiceStatus !== "paid" &&
+        inv.status !== "completed" &&
+        inv.status !== "paid" &&
+        inv.invoiceStatus !== "cancelled"
+    );
+
+    if (statusFilter === "pending") {
       result = result.filter(
-        (inv) =>
-          (inv.invoiceStatus === "unpaid" || inv.invoiceStatus === "pending") &&
-          inv.totalAmount > 0
+        (inv) => inv.status === "pending_payment" || inv.invoiceStatus === "pending" || inv.is_early_payment
       );
-    } else if (statusFilter === "paid") {
-      result = result.filter((inv) => inv.invoiceStatus === "paid");
-    } else if (statusFilter !== "all") {
-      result = result.filter((inv) => inv.invoiceStatus === statusFilter);
+    } else if (statusFilter === "unpaid") {
+      result = result.filter(
+        (inv) => inv.status !== "pending_payment" && inv.invoiceStatus !== "pending" && !inv.is_early_payment
+      );
     }
-    // Loại bỏ "Mang về" theo yêu cầu người dùng
+
+    // Loại bỏ "Mang về"
     result = result.filter((inv) => inv.tableName !== "Mang về" && inv.tableName !== "Mang Về" && (inv.tableId || inv.tableName));
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -186,27 +216,17 @@ export const CashierPaymentPage: React.FC = () => {
     }
 
     // Ưu tiên hiển thị theo yêu cầu người dùng:
-    // 1. Chờ thanh toán (pending_payment) - ưu tiên cao nhất
+    // 1. Chờ thanh toán / TT Sớm (pending_payment / is_early_payment) - MẶC ĐỊNH NẰM Ở TRÊN ĐẦU
     // 2. Đang phục vụ / Chưa thanh toán (unpaid - open/serving)
-    // 3. Đã thanh toán (paid)
-    // 4. Đã hủy (cancelled)
     result.sort((a, b) => {
-      const getPriority = (inv: typeof a) => {
-        if (inv.status === "pending_payment") return 1;
-        if (inv.invoiceStatus === "unpaid") return 2;
-        if (inv.invoiceStatus === "paid") return 3;
-        return 4;
-      };
-      const pA = getPriority(a);
-      const pB = getPriority(b);
+      const isPendingA = a.status === "pending_payment" || a.invoiceStatus === "pending" || a.is_early_payment;
+      const isPendingB = b.status === "pending_payment" || b.invoiceStatus === "pending" || b.is_early_payment;
+      const pA = isPendingA ? 1 : 2;
+      const pB = isPendingB ? 1 : 2;
       if (pA !== pB) return pA - pB;
-      
+
       // Chưa thanh toán/Chờ thanh toán thì đến trước được thanh toán trước (createdAt tăng dần)
-      // Đã thanh toán/Đã hủy thì hiển thị hóa đơn mới nhất lên đầu (createdAt giảm dần)
-      if (pA === 1 || pA === 2) {
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      }
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
 
     return result;
@@ -407,31 +427,55 @@ export const CashierPaymentPage: React.FC = () => {
           ) : (
             activeUnpaidInvoices.map((inv) => {
               const isSelected = selectedInvoiceId === inv.id;
-              const isPendingPayment = inv.status === "pending_payment";
-                return (
-                  <button
-                    key={inv.id}
-                    onClick={() => handleSelectInvoice(inv.id)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-bold font-display border transition-all cursor-pointer flex items-center gap-1.5 ${
+              const isPendingPayment = inv.status === "pending_payment" || inv.invoiceStatus === "pending";
+              const isEarlyPayment = !!inv.is_early_payment;
+
+              return (
+                <button
+                  key={inv.id}
+                  onClick={() => handleSelectInvoice(inv.id)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold font-display border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-blue-600 border-blue-600 text-white shadow-xs"
+                      : isPendingPayment || isEarlyPayment
+                        ? "bg-red-50/90 border-red-400 text-red-900 shadow-2xs hover:bg-red-100"
+                        : "bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100"
+                  }`}
+                >
+                  <span className="font-black">{inv.tableName || "Khách lẻ"}</span>
+
+                  {isEarlyPayment && (
+                    <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-wide">
+                      TT Sớm
+                    </span>
+                  )}
+
+                  {isPendingPayment && (
+                    <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wide animate-pulse">
+                      Chờ TT
+                    </span>
+                  )}
+
+                  {!isPendingPayment && !isEarlyPayment && (
+                    <span className="text-[9px] bg-amber-200/80 text-amber-800 px-1.5 py-0.5 rounded font-bold">
+                      Đang ăn
+                    </span>
+                  )}
+
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
                       isSelected
-                        ? "bg-blue-600 border-blue-600 text-white shadow-xs"
-                        : isPendingPayment
-                          ? "bg-red-50 border-red-400 text-red-900 animate-pulse hover:bg-red-100"
-                          : "bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100"
+                        ? "bg-white/20 text-white"
+                        : isPendingPayment || isEarlyPayment
+                          ? "bg-red-200/90 text-red-900"
+                          : "bg-amber-200/80 text-amber-800"
                     }`}
                   >
-                    <span className="font-black">{inv.tableName || "Khách lẻ"}</span>
-                    {isPendingPayment && (
-                      <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-extrabold uppercase tracking-wide">Chờ TT</span>
-                    )}
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
-                      isSelected ? "bg-white/20 text-white" : isPendingPayment ? "bg-red-200 text-red-900" : "bg-amber-200/80 text-amber-800"
-                    }`}>
-                      {Number(inv.totalAmount).toLocaleString("vi-VN")}đ
-                    </span>
-                  </button>
-                );
-              })
+                    {Number(inv.totalAmount).toLocaleString("vi-VN")}đ
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
       </div>

@@ -23,11 +23,6 @@ const roleLabels: Record<string, string> = {
   sales_event: "Kinh doanh",
 };
 
-/** Returns today's date in the restaurant's business time zone for leave requests. */
-const getVietnamToday = (): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date());
-
-
-
 export default function CheckInPage() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();

@@ -94,7 +94,7 @@ export const CashierBookingDepositPage: React.FC = () => {
       const matchSearch =
         b.guest_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         b.guest_phone.includes(searchQuery) ||
-        b.confirmation_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(b.confirmation_code || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (b.table_name && b.table_name.toLowerCase().includes(searchQuery.toLowerCase()));
 
       let matchFilter = true;
@@ -398,7 +398,7 @@ export const CashierBookingDepositPage: React.FC = () => {
                           </div>
                         ) : (
                           <button
-                            onClick={() => handleConfirmPayDeposit(b.id, b.confirmation_code || `#${b.id}`)}
+                            onClick={() => handleConfirmPayDeposit(b.id, String(b.confirmation_code || `#${b.id}`))}
                             disabled={processingId === b.id}
                             className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-sm transition disabled:opacity-50"
                           >

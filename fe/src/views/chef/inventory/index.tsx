@@ -21,6 +21,7 @@ import {
   Truck,
   ClipboardCheck,
   CalendarRange,
+  Calendar,
   PieChart,
   ArrowUpRight,
   FileSpreadsheet,
@@ -1861,8 +1862,8 @@ export const InventoryControl: React.FC = () => {
       const ingredientId = tx.ingredientId || (tx as any).ingredient_id || (matchIng ? matchIng.id : tx.id);
       const ingredientCode = matchIng ? (matchIng.code || matchIng.itemCode) : `SP${String(ingredientId).padStart(6, '0')}`;
 
-      const txPaidAmount = tx.paidAmount !== undefined && tx.paidAmount !== null 
-        ? Number(tx.paidAmount) 
+      const txPaidAmount = (tx as any).paidAmount !== undefined && (tx as any).paidAmount !== null 
+        ? Number((tx as any).paidAmount) 
         : ((tx as any).paid_amount !== undefined && (tx as any).paid_amount !== null 
           ? Number((tx as any).paid_amount) 
           : (isCreditTx ? 0 : total));
@@ -4232,8 +4233,8 @@ export const InventoryControl: React.FC = () => {
                         const unitPrice = taggedCost > 0 
                           ? taggedCost 
                           : (isGeneralWaste 
-                            ? (Number(ingObj?.avgCost || 0) > 0 ? Number(ingObj.avgCost) : Number(t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || 0))
-                            : Number(t.unit_cost || (t as any).unitCost || recentImport?.unit_cost || (recentImport as any)?.unitCost || ingObj?.unitCost || 0));
+                            ? (Number(ingObj?.avgCost || 0) > 0 ? Number(ingObj.avgCost) : Number(t.unit_cost || (t as any).unitCost || ingObj?.unitCost || 0))
+                            : Number(t.unit_cost || (t as any).unitCost || ingObj?.unitCost || 0));
 
                         const totalLoss = Math.round(qty * unitPrice);
                         const slipCode =

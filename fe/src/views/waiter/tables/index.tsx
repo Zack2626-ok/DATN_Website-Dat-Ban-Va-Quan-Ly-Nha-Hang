@@ -22,6 +22,7 @@ import {
   Link2,
   UsersRound,
   Lock,
+  Clock,
 } from "lucide-react";
 import { useAppSelector } from "../../../store/hooks";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -61,7 +62,6 @@ import { AddTableModal } from "./AddTableModal";
 import { AddDishModal } from "./AddDishModal";
 import { ProvisionalBillModal } from "./ProvisionalBillModal";
 import { updateBookingStatus } from "../../../services/bookingService";
-import { isBookingScheduledToday } from "../../../constants/booking";
 
 type TableAction = "transfer" | "merge" | "groupSeating" | "split" | null;
 
@@ -620,6 +620,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
               guest_phone: data.customerPhone,
               guest_count: data.guestCount,
               booking_id: bId ? Number(bId) : t.booking_id,
+              booking_status: bId ? "checked_in" : (t as any).booking_status,
               start_time: new Date().toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }),
             } as any)
             : t,
@@ -904,7 +905,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       const { getBookings } = await import("../../../services/bookingService");
       const allBookings = await getBookings();
       const booking = allBookings.find(
-        (b: any) => b.table_id === cancelBookingModal.tableId && ["pending", "confirmed"].includes(b.status)
+        (b: any) =>
+          (b.table_id === cancelBookingModal.tableId ||
+            (Array.isArray(b.table_ids) && b.table_ids.includes(cancelBookingModal.tableId))) &&
+          ["pending", "confirmed"].includes(b.status)
       );
       if (!booking) {
         toast.error("Không tìm thấy booking cần hủy");
@@ -1366,6 +1370,25 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   </div>
                 )}
 
+                {selectedTable.status === "reserved" && (
+                  <div className="space-y-2">
+                    <button
+                      onClick={handleOpenTableSchedule}
+                      className="w-full rounded-xl bg-amber-600 px-4 py-3 text-xs font-bold text-white hover:bg-amber-700 transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Clock size={16} />
+                      Xem lịch đặt & Nhận khách
+                    </button>
+                    <button
+                      onClick={() => setCancelBookingModal({ tableId: Number(selectedTable.id), tableName: selectedTable.name })}
+                      className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <XCircle size={14} />
+                      Hủy đặt bàn
+                    </button>
+                  </div>
+                )}
+
                 {selectedTable.status === "maintenance" && (
                   <button
                     onClick={() => handleStatusChange("empty")}
@@ -1561,7 +1584,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                                   return (
                                     <div
                                       key={item.id}
-                                      className="flex items-center justify-between p-2.5 rounded-xl border border-sky-50 bg-sky-50/50/50 text-xs"
+                                      className="flex items-center justify-between p-2.5 rounded-xl border border-sky-50 bg-sky-50/50 text-xs"
                                     >
                                       <div className="min-w-0 flex-1 pr-2">
                                         <p className="font-bold text-slate-700 truncate">{item.item_name}</p>
@@ -1938,48 +1961,6 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           </div>
         )}
       </Modal>
-
-      <GroupSeatingModal
-        isOpen={activeAction === "groupSeating"}
-        onClose={() => setActiveAction(null)}
-        sourceTable={selectedTable}
-        availableTables={tables}
-        onSuccess={() => {
-          fetchData();
-          setActiveAction(null);
-        }}
-      />
-
-      <SplitTableModal
-        isOpen={activeAction === "split"}
-        onClose={() => setActiveAction(null)}
-        tableName={selectedTable?.name || ""}
-        sourceTableId={selectedTable ? Number(selectedTable.id) : undefined}
-        orderItems={
-          activeOrder?.items.map((item) => ({
-            id: item.id.toString(),
-            name: item.item_name,
-            quantity: item.quantity,
-            price: Number(item.unit_price),
-          })) || []
-        }
-        availableEmptyTables={tables.filter((t) => t.status === "empty")}
-        onConfirm={async () => {
-          await fetchData();
-          setActiveAction(null);
-        }}
-        onSuccess={() => {
-          fetchData();
-          setActiveAction(null);
-        }}
-      />
-
-      <SubOrderSelectionModal
-        isOpen={isSubOrderModalOpen}
-        onClose={() => setIsSubOrderModalOpen(false)}
-        tableId={selectedTableId ? Number(selectedTableId) : 0}
-        tableName={selectedTable?.name || ""}
-      />
 
       {/* ── Modal Lý Do Bảo Trì ── */}
       {isMaintenanceModalOpen && (

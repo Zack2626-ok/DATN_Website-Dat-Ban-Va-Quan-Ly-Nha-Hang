@@ -1058,13 +1058,13 @@ export const InvoiceManagement: React.FC = () => {
 
         const existingIdSet = new Set(expenses.map(exp => exp.id.toLowerCase()));
         
-        const getContentKey = (category: string, amount: number, payee: string, date: string) => {
-          const cleanDate = date.split("T")[0];
-          return `${category.toLowerCase().trim()}|${amount}|${payee.toLowerCase().trim()}|${cleanDate}`;
+        const getContentKey = (category: string = "", amount: number = 0, payee: string = "", date: string = "") => {
+          const cleanDate = (date || "").split("T")[0];
+          return `${(category || "").toLowerCase().trim()}|${amount}|${(payee || "").toLowerCase().trim()}|${cleanDate}`;
         };
 
         const existingContentKeys = new Set(expenses.map(exp => 
-          getContentKey(exp.category, exp.amount, exp.payee, exp.date)
+          getContentKey(exp.category || "", exp.amount || 0, exp.payee || "", exp.date || "")
         ));
 
         const excelSeenIds = new Set<string>();
@@ -1195,7 +1195,7 @@ export const InvoiceManagement: React.FC = () => {
         const mergedExpenses = [...newExpensesList, ...expenses];
         setExpenses(mergedExpenses);
         localStorage.setItem("resmanager_cash_expenses", JSON.stringify(mergedExpenses));
-        toast.success(`Đã nhập thành công ${newExpensesList.length} hóa đơn chi phí từ Excel!${skippedCount > 0 ? ` (Bỏ qua ${skippedCount} dòng do số tiền không hợp lệ)` : ""}`);
+        toast.success(`Đã nhập thành công ${newExpensesList.length} hóa đơn chi phí từ Excel!`);
         
         if (expenseExcelInputRef.current) expenseExcelInputRef.current.value = "";
       } catch (err) {

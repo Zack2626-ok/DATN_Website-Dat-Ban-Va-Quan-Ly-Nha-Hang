@@ -47,7 +47,6 @@ export const BookingPage: React.FC = () => {
   const [createdBooking, setCreatedBooking] = useState<CreatedBooking | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
-  const [preOrderedDishes] = useState<Record<number, any>>({});
 
   const handlePayDeposit = async () => {
     if (!createdBooking?.id) return;

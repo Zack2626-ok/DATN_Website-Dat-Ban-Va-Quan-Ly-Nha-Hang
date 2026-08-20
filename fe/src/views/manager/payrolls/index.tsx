@@ -650,7 +650,7 @@ const PayrollPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                payrolls.map((p) => {
+                paginatedPayrolls.map((p) => {
                   const isPaid = p.status === "paid";
                   const displayHours = isPaid ? 0.0 : Number(p.total_hours || 0);
                   const displaySalary = isPaid ? 0 : Number(p.total_salary || 0);
@@ -675,47 +675,9 @@ const PayrollPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-3">
-                paginatedPayrolls.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                    <td className="px-6 py-4 text-sm">{p.employee_code}</td>
-                    <td className="px-6 py-4 font-medium text-sm text-gray-900">{p.full_name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500 capitalize">{p.role_name}</td>
-                    <td className="px-6 py-4 text-sm text-right">{Number(p.total_hours).toFixed(2)}</td>
-                    <td className="px-6 py-4 text-sm text-right">{Number(p.hourly_rate).toLocaleString('vi-VN')} đ</td>
-                    <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900">
-                      {Number(p.total_salary).toLocaleString('vi-VN')} đ
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                        p.status === 'paid' 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-3">
-                        <button 
-                          onClick={() => handlePrint(p)}
-                          className="text-blue-600 hover:text-blue-700 p-1.5 rounded-full hover:bg-blue-50 transition-colors"
-                          title="In phiếu lương"
-                        >
-                          <Printer size={18} />
-                        </button>
-                        
-                        <button 
-                          onClick={() => handleExportExcel(p)}
-                          className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-full hover:bg-emerald-50 transition-colors"
-                          title="Xuất Excel"
-                        >
-                          <FileSpreadsheet size={18} />
-                        </button>
-
-                        {p.status === 'pending' ? (
                           <button 
                             onClick={() => handlePrint(p)}
-                            className="text-blue-600 hover:text-blue-700 p-1.5 rounded-full hover:bg-blue-50 transition-colors"
+                            className="text-blue-600 hover:text-blue-700 p-1.5 rounded-full hover:bg-blue-50 transition-colors cursor-pointer"
                             title="In phiếu lương"
                           >
                             <Printer size={18} />
@@ -723,7 +685,7 @@ const PayrollPage: React.FC = () => {
                           
                           <button 
                             onClick={() => handleExportExcel(p)}
-                            className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-full hover:bg-emerald-50 transition-colors"
+                            className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-full hover:bg-emerald-50 transition-colors cursor-pointer"
                             title="Xuất Excel"
                           >
                             <FileSpreadsheet size={18} />
@@ -732,7 +694,7 @@ const PayrollPage: React.FC = () => {
                           {!isPaid ? (
                             <button 
                               onClick={() => handleMarkAsPaid(p.id)}
-                              className="text-green-600 hover:text-green-700 p-1.5 rounded-full hover:bg-green-50 transition-colors"
+                              className="text-green-600 hover:text-green-700 p-1.5 rounded-full hover:bg-green-50 transition-colors cursor-pointer"
                               title="Xác nhận thanh toán"
                             >
                               <CheckCircle2 size={18} />

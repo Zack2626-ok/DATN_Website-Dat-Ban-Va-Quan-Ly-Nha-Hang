@@ -88,6 +88,7 @@ export const RefundModal: React.FC<RefundModalProps> = ({
     ? Math.round(refundSubtotal * estimatedInvoiceTax / estimatedInvoiceSubtotal)
     : 0;
   const estimatedRefundAmount = refundSubtotal + estimatedRefundVat;
+  const totalRefundAmount = estimatedRefundAmount;
 
   const handlePrintRefundReceipt = (refundData: any) => {
     const printWindow = window.open("", "_blank", "width=380,height=600");

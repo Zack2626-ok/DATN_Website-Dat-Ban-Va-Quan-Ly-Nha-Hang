@@ -164,7 +164,7 @@ export const WaiterBookingListPage: React.FC = () => {
     if (searchTerm.trim()) {
       const query = searchTerm.toLowerCase().trim();
       filtered = filtered.filter((b) => {
-        const code = (b.confirmation_code || `#BK${b.id}`).toLowerCase();
+        const code = String(b.confirmation_code || `#BK${b.id}`).toLowerCase();
         const name = (b.guest_name || "").toLowerCase();
         const phone = (b.guest_phone || "").toLowerCase();
         const table = (b.table_names || b.table_name || "").toLowerCase();

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from "recharts";
 import { ArrowDownCircle, ArrowUpCircle, DollarSign, RefreshCw, Inbox, Loader2, ChevronDown, ChevronUp, Printer, CheckCircle2, Clock, RotateCcw, Image, X } from "lucide-react";
 import { formatCurrency } from "../../../utils/formatCurrency";
 import api from "../../../services/axiosInstance";
@@ -7,6 +6,18 @@ import { toast } from "react-hot-toast";
 import { getInvoiceByIdApi } from "../../../services/invoiceService";
 import { printCashierInvoice } from "../../../utils/printBill";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../services/restaurantInfoService";
+
+// Helper chuyển đổi góc sang cung SVG vẽ Doughnut Chart
+const describeArc = (cx: number, cy: number, r: number, startAngle: number, endAngle: number): string => {
+  const startRad = ((startAngle - 90) * Math.PI) / 180.0;
+  const endRad = ((endAngle - 90) * Math.PI) / 180.0;
+  const x1 = cx + r * Math.cos(startRad);
+  const y1 = cy + r * Math.sin(startRad);
+  const x2 = cx + r * Math.cos(endRad);
+  const y2 = cy + r * Math.sin(endRad);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2}`;
+};
 
 export const FinanceReport: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -19,6 +30,7 @@ export const FinanceReport: React.FC = () => {
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [previewProofImage, setPreviewProofImage] = useState<string | null>(null);
+  const [hoveredSliceIdx, setHoveredSliceIdx] = useState<number | null>(null);
 
   const [timeRange, setTimeRange] = useState<"today" | "7days" | "30days" | "custom">("30days");
 
@@ -401,6 +413,19 @@ export const FinanceReport: React.FC = () => {
     return groupedTransactions.filter((tx: any) => tx.type === activeTab);
   }, [groupedTransactions, activeTab]);
 
+  const pieData = useMemo(() => {
+    const raw = [
+      { name: "Nguyên vật liệu", value: Number(data?.summary?.materialCost) || 0, color: "#3b82f6" },
+      { name: "Lương nhân viên", value: Number(data?.summary?.salaryCost) || 0, color: "#10b981" },
+      { name: "Chi phí vận hành", value: Number(data?.summary?.operationalCost) || 0, color: "#f59e0b" },
+    ].filter((d) => d.value > 0);
+
+    if (raw.length === 0 && Number(data?.summary?.totalExpenses) > 0) {
+      return [{ name: "Chi phí khác", value: Number(data.summary.totalExpenses), color: "#ef4444" }];
+    }
+    return raw;
+  }, [data?.summary]);
+
   const SUMMARY = [
     {
       label: "Doanh thu",
@@ -473,7 +498,7 @@ export const FinanceReport: React.FC = () => {
                 onChange={(e) => setStartDate(e.target.value)}
                 className="font-bold text-slate-700 outline-none bg-transparent cursor-pointer"
               />
-              <span className="text-slate-500 font-bold border-l border-slate-350 pl-2">Đến:</span>
+              <span className="text-slate-500 font-bold border-l border-slate-300 pl-2">Đến:</span>
               <input
                 type="date"
                 value={endDate}
@@ -534,46 +559,132 @@ export const FinanceReport: React.FC = () => {
         ))}
       </div>
 
-      {/* Expense Pie Chart */}
-      {data.summary.totalExpenses > 0 && (
-        <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] shadow-xs p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="w-full md:w-1/3 space-y-2">
-            <h2 className="font-playfair text-lg font-bold text-sky-900">Phân bổ chi phí</h2>
-            <p className="text-sm text-slate-500">Tỷ trọng các loại chi phí trong tổng chi (không tính các khoản đã xóa)</p>
+      {/* Expense Doughnut Chart */}
+      {pieData.length > 0 && (() => {
+        const totalExpenseAmount = pieData.reduce((acc, curr) => acc + curr.value, 0);
+        let cumulativeAngle = 0;
+
+        return (
+          <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] shadow-xs p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="w-full md:w-1/3 space-y-2">
+              <h2 className="font-playfair text-lg font-bold text-sky-900">Phân bổ chi phí</h2>
+              <p className="text-xs text-slate-500">
+                Tỷ trọng các loại chi phí trong tổng chi thực tế ({formatCurrency(totalExpenseAmount)})
+              </p>
+            </div>
+            
+            <div className="w-full md:w-2/3 flex flex-col sm:flex-row items-center justify-center gap-8">
+              {/* SVG Doughnut */}
+              <div className="relative w-48 h-48 shrink-0 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 200 200">
+                  {pieData.map((item, idx) => {
+                    const percentage = totalExpenseAmount > 0 ? (item.value / totalExpenseAmount) : 0;
+                    const angle = percentage * 360;
+                    const startAngle = cumulativeAngle;
+                    const endAngle = cumulativeAngle + angle;
+                    cumulativeAngle = endAngle;
+
+                    const isHovered = hoveredSliceIdx === idx;
+                    const isSingleSlice = pieData.length === 1 || percentage >= 0.999;
+
+                    if (isSingleSlice) {
+                      return (
+                        <circle
+                          key={idx}
+                          cx="100"
+                          cy="100"
+                          r="68"
+                          fill="none"
+                          stroke={item.color}
+                          strokeWidth={isHovered ? 34 : 28}
+                          className="transition-all duration-300 cursor-pointer"
+                          onMouseEnter={() => setHoveredSliceIdx(idx)}
+                          onMouseLeave={() => setHoveredSliceIdx(null)}
+                        />
+                      );
+                    }
+
+                    const pathD = describeArc(100, 100, 68, startAngle, Math.max(startAngle + 0.1, endAngle - 1.5));
+                    return (
+                      <path
+                        key={idx}
+                        d={pathD}
+                        fill="none"
+                        stroke={item.color}
+                        strokeWidth={isHovered ? 34 : 28}
+                        strokeLinecap="round"
+                        className="transition-all duration-300 cursor-pointer hover:opacity-90"
+                        onMouseEnter={() => setHoveredSliceIdx(idx)}
+                        onMouseLeave={() => setHoveredSliceIdx(null)}
+                      />
+                    );
+                  })}
+                </svg>
+
+                {/* Center text in Donut */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-none">
+                  {hoveredSliceIdx !== null && pieData[hoveredSliceIdx] ? (
+                    <>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate max-w-[110px]">
+                        {pieData[hoveredSliceIdx].name}
+                      </span>
+                      <span className="text-xs font-black text-slate-800 mt-0.5">
+                        {formatCurrency(pieData[hoveredSliceIdx].value)}
+                      </span>
+                      <span className="text-[10px] font-bold text-sky-600 mt-0.5">
+                        {totalExpenseAmount > 0 ? ((pieData[hoveredSliceIdx].value / totalExpenseAmount) * 100).toFixed(1) : 0}%
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Tổng chi phí
+                      </span>
+                      <span className="text-xs font-black text-slate-800 mt-0.5">
+                        {formatCurrency(totalExpenseAmount)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Legend List */}
+              <div className="flex flex-col gap-2.5 w-full max-w-xs">
+                {pieData.map((item, idx) => {
+                  const pct = totalExpenseAmount > 0 ? ((item.value / totalExpenseAmount) * 100).toFixed(1) : "0";
+                  const isHovered = hoveredSliceIdx === idx;
+                  return (
+                    <div
+                      key={idx}
+                      onMouseEnter={() => setHoveredSliceIdx(idx)}
+                      onMouseLeave={() => setHoveredSliceIdx(null)}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        isHovered
+                          ? "bg-slate-50 border-slate-300 shadow-xs scale-102"
+                          : "bg-white border-slate-100 hover:border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="text-xs font-bold text-slate-700">{item.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-900">{formatCurrency(item.value)}</span>
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                          {pct}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <div className="w-full md:w-2/3 h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'Nguyên vật liệu', value: data.summary.materialCost || 0, color: '#3b82f6' },
-                    { name: 'Lương nhân viên', value: data.summary.salaryCost || 0, color: '#10b981' },
-                    { name: 'Chi phí vận hành', value: data.summary.operationalCost || 0, color: '#f59e0b' },
-                  ].filter(d => d.value > 0)}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {
-                    [
-                      { name: 'Nguyên vật liệu', value: data.summary.materialCost || 0, color: '#3b82f6' },
-                      { name: 'Lương nhân viên', value: data.summary.salaryCost || 0, color: '#10b981' },
-                      { name: 'Chi phí vận hành', value: data.summary.operationalCost || 0, color: '#f59e0b' },
-                    ].filter(d => d.value > 0).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))
-                  }
-                </Pie>
-                <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
-                <Legend verticalAlign="middle" align="right" layout="vertical" />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Transactions table */}
       <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-[#FFFFFF] shadow-xs">
@@ -897,7 +1008,7 @@ export const FinanceReport: React.FC = () => {
                                     🔹 Danh sách hàng hóa chi tiết ({row.items?.length || 0} món)
                                   </h4>
                                   <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                                    <table className="min-w-full divide-y divide-slate-250">
+                                    <table className="min-w-full divide-y divide-slate-200">
                                       <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                         <tr>
                                           <th scope="col" className="px-4 py-2 text-left w-10">#</th>
@@ -907,7 +1018,7 @@ export const FinanceReport: React.FC = () => {
                                           <th scope="col" className="px-4 py-2 text-right">Thành tiền</th>
                                         </tr>
                                       </thead>
-                                      <tbody className="divide-y divide-slate-150 text-[11px] text-[#1A1A1A]">
+                                      <tbody className="divide-y divide-slate-100 text-[11px] text-[#1A1A1A]">
                                         {(row.items || []).map((item: any, idx: number) => (
                                           <tr key={idx} className="hover:bg-slate-50/50">
                                             <td className="px-4 py-2 text-slate-500">{idx + 1}</td>
@@ -996,7 +1107,7 @@ export const FinanceReport: React.FC = () => {
                                           <button
                                             type="button"
                                             onClick={() => setPreviewProofImage(row.proofImage)}
-                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-lg border border-sky-200 text-[10px] transition-colors cursor-pointer shadow-3xs"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold rounded-lg border border-sky-200 text-[10px] transition-colors cursor-pointer shadow-xs"
                                           >
                                             <Image size={11} /> Xem ảnh minh chứng
                                           </button>

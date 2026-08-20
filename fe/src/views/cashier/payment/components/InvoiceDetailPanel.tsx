@@ -55,8 +55,8 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
 
   const isPaid = invoice.invoiceStatus === "paid";
   const isCancelled = invoice.invoiceStatus === "cancelled";
-  const isPendingPayment = invoice.status === "pending_payment";
   const isEarlyPayment = Boolean(invoice.is_early_payment);
+  const isPendingPayment = invoice.status === "pending_payment" || invoice.invoiceStatus === "pending" || isEarlyPayment;
   const canAct = !isPaid && !isCancelled;
 
   const finalAmount = invoice.totalAmount;
@@ -95,9 +95,14 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
                   {invoice.tableName}
                 </span>
               )}
+              {isEarlyPayment && (
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                  ⚡ TT Sớm
+                </span>
+              )}
               {isPendingPayment && (
-                <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
-                  <Hourglass size={10} /> Chờ thanh toán
+                <span className="bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                  <Hourglass size={10} className="text-red-500" /> Chờ thanh toán
                 </span>
               )}
               {invoice.staffName && (

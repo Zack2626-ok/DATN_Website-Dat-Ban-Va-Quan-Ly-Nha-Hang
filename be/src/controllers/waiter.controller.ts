@@ -347,7 +347,7 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
     }
 
     if (isEarlyPayment) {
-      await db.query("UPDATE orders SET is_early_payment = 1 WHERE id = ?", [orderId]);
+      await db.query("UPDATE orders SET is_early_payment = 1, status = 'pending_payment' WHERE id = ?", [orderId]);
     } else {
       await db.updateOrderStatus(orderId, "pending_payment");
       if (order.table_id) {
@@ -366,17 +366,23 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
       "cashier"
     );
 
-    req.app.get("io")?.emit("payment:request", {
-      orderId: Number(orderId),
-      tableId: order.table_id,
-      tableName: order.table_name,
-      waiterName,
-      totalAmount: order.totalAmount,
-      note,
-      isEarlyPayment: !!isEarlyPayment,
-    });
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("payment:request", {
+        orderId: Number(orderId),
+        tableId: order.table_id,
+        tableName: order.table_name,
+        waiterName,
+        totalAmount: order.totalAmount,
+        note,
+        isEarlyPayment: !!isEarlyPayment,
+      });
+      io.emit("table:status_changed", { tableId: order.table_id, status: isEarlyPayment ? "serving" : "pending_payment" });
+      io.emit("order_updated", { orderId: Number(orderId) });
+      io.emit("invoice:updated", { orderId: Number(orderId) });
+    }
 
-    sendSuccess(res, { orderId, status: isEarlyPayment ? order.status : "pending_payment", isEarlyPayment: !!isEarlyPayment, waiterName }, "Đã gửi yêu cầu thanh toán");
+    sendSuccess(res, { orderId, status: "pending_payment", isEarlyPayment: !!isEarlyPayment, waiterName }, "Đã gửi yêu cầu thanh toán");
   } catch (error) {
     console.error("Error requesting payment:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
