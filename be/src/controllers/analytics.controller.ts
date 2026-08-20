@@ -296,10 +296,10 @@ export const getDashboardAnalytics = async (req: Request, res: Response): Promis
     }
 
     // c) Operational Expenses
-    const opsExpenseRow = await db.query(
-      `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ?`,
-      [startStr, endStr]
-    );
+      const opsExpenseRow = await db.query(
+        `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ? AND deleted_at IS NULL`,
+        [startStr, endStr]
+      );
     const operationalCost = Number(opsExpenseRow[0].val);
     if (operationalCost > 0) {
       expenseItems.push({ category: 'Chi phí vận hành', amount: operationalCost });
@@ -394,7 +394,7 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const salaryCost = Number(payrollRow[0].val);
 
     const opsExpenseRow = await db.query(
-      `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ?`,
+      `SELECT COALESCE(SUM(amount), 0) AS val FROM operational_expenses WHERE expense_date BETWEEN ? AND ? AND deleted_at IS NULL`,
       [startStr, endStr]
     );
     const operationalCost = Number(opsExpenseRow[0].val);
@@ -506,13 +506,13 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         CONCAT('EXP-OPS-', id) as id,
         'expense' as type,
         'operational' as txSubType,
-        CONCAT('Chi phí: ', title) as description,
-        amount as amount,
+        title as description,
+        amount,
         expense_date as date,
         'completed' as status,
         category
       FROM operational_expenses 
-      WHERE expense_date BETWEEN ? AND ?`,
+      WHERE expense_date BETWEEN ? AND ? AND deleted_at IS NULL`,
       [startStr, endStr]
     );
 

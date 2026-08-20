@@ -3,6 +3,7 @@ import api from "../../../services/axiosInstance";
 import { toast } from "react-hot-toast";
 import { CircleDollarSign, CheckCircle2, RefreshCw, Printer, FileSpreadsheet } from "lucide-react";
 import * as XLSX from "xlsx";
+import { io } from "socket.io-client";
 
 interface Payroll {
   id: number;
@@ -59,6 +60,30 @@ const PayrollPage: React.FC = () => {
 
   useEffect(() => {
     fetchPayrolls();
+
+    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"]
+    });
+
+    socket.on("connect", () => {
+      console.log("Payroll socket connected");
+    });
+
+    socket.on("system:attendance_changed", () => {
+      console.log("Attendance changed, refreshing payrolls in real-time...");
+      fetchPayrolls();
+    });
+
+    const handleCustomRefresh = () => {
+      fetchPayrolls();
+    };
+    window.addEventListener("refresh_staff_data", handleCustomRefresh);
+
+    return () => {
+      socket.disconnect();
+      window.removeEventListener("refresh_staff_data", handleCustomRefresh);
+    };
   }, [month, year]);
 
   const handleMarkAsPaid = async (id: number) => {
@@ -432,6 +457,117 @@ const PayrollPage: React.FC = () => {
     toast.success("Xuất file Excel thành công!");
   };
 
+  const handleExportAllExcel = () => {
+    if (payrolls.length === 0) {
+      toast.error("Không có dữ liệu để xuất Excel!");
+      return;
+    }
+
+    const header = [
+      [""],
+      ["", "RESMANAGER BISTRO", "", "", "", "", "", "", ""],
+      ["", "BẢNG LƯƠNG TỔNG HỢP NHÂN VIÊN", "", "", "", "", "", "", ""],
+      ["", `Kỳ lương: Tháng ${month} / Năm ${year}`, "", "", "", "", "", "", ""],
+      [""],
+      [
+        "",
+        "STT",
+        "Mã nhân viên",
+        "Họ và tên",
+        "Chức vụ",
+        "Số giờ làm (h)",
+        "Lương / Giờ (đ)",
+        "Tổng lương thực nhận (đ)",
+        "Trạng thái",
+        "Ngày thanh toán"
+      ]
+    ];
+
+    const rows = payrolls.map((p, index) => [
+      "",
+      index + 1,
+      p.employee_code,
+      p.full_name,
+      p.role_name.charAt(0).toUpperCase() + p.role_name.slice(1),
+      Number(p.total_hours),
+      Number(p.hourly_rate),
+      Number(p.total_salary),
+      p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán',
+      p.paid_at ? new Date(p.paid_at).toLocaleDateString('vi-VN') : '-'
+    ]);
+
+    const totalHours = payrolls.reduce((sum, p) => sum + Number(p.total_hours), 0);
+    const totalSalary = payrolls.reduce((sum, p) => sum + Number(p.total_salary), 0);
+
+    const totalRow = [
+      "",
+      "",
+      "TỔNG CỘNG",
+      "",
+      "",
+      totalHours,
+      "",
+      totalSalary,
+      "",
+      ""
+    ];
+
+    const footer = [
+      [""],
+      ["", "Người lập biểu", "", "", "Kế toán trưởng", "", "", "Giám đốc duyệt", ""],
+      ["", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", ""],
+      [""],
+      [""],
+      [""],
+      ["", `Ngày lập báo cáo: ${new Date().toLocaleString('vi-VN')}`, "", "", "", "", "", "", ""]
+    ];
+
+    const aoaData = [
+      ...header,
+      ...rows,
+      totalRow,
+      ...footer
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(aoaData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Bang Luong Tong Hop");
+
+    // Apply number formats
+    const startRowIdx = 7;
+    const endRowIdx = startRowIdx + payrolls.length; // 1-indexed
+
+    for (let r = startRowIdx; r <= endRowIdx; r++) {
+      const hoursCell = worksheet[`F${r}`];
+      const rateCell = worksheet[`G${r}`];
+      const salaryCell = worksheet[`H${r}`];
+
+      if (hoursCell) hoursCell.z = "0.00";
+      if (rateCell) rateCell.z = "#,##0\" đ\"";
+      if (salaryCell) salaryCell.z = "#,##0\" đ\"";
+    }
+
+    const totalRowIdx = endRowIdx + 1;
+    if (worksheet[`F${totalRowIdx}`]) worksheet[`F${totalRowIdx}`].z = "0.00";
+    if (worksheet[`H${totalRowIdx}`]) worksheet[`H${totalRowIdx}`].z = "#,##0\" đ\"";
+
+    worksheet["!cols"] = [
+      { wch: 4 },   // Column A (indent spacer)
+      { wch: 6 },   // Column B: STT
+      { wch: 15 },  // Column C: Mã NV
+      { wch: 25 },  // Column D: Tên NV
+      { wch: 15 },  // Column E: Chức vụ
+      { wch: 18 },  // Column F: Số giờ làm
+      { wch: 18 },  // Column G: Lương / Giờ
+      { wch: 25 },  // Column H: Tổng lương
+      { wch: 18 },  // Column I: Trạng thái
+      { wch: 18 }   // Column J: Ngày thanh toán
+    ];
+
+    XLSX.writeFile(workbook, `Bang_Luong_Tong_Hop_T${month}_${year}.xlsx`);
+    toast.success("Xuất bảng lương tổng hợp thành công!");
+  };
+
   const totalPages = Math.ceil(payrolls.length / rowsPerPage);
   const paginatedPayrolls = payrolls.slice(
     (currentPage - 1) * rowsPerPage,
@@ -465,6 +601,14 @@ const PayrollPage: React.FC = () => {
               </option>
             ))}
           </select>
+
+          <button 
+            onClick={handleExportAllExcel}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <FileSpreadsheet size={16} />
+            Xuất Excel Tổng
+          </button>
 
           <button 
             onClick={fetchPayrolls}
@@ -506,6 +650,31 @@ const PayrollPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
+                payrolls.map((p) => {
+                  const isPaid = p.status === "paid";
+                  const displayHours = isPaid ? 0.0 : Number(p.total_hours || 0);
+                  const displaySalary = isPaid ? 0 : Number(p.total_salary || 0);
+                  return (
+                    <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
+                      <td className="px-6 py-4 text-sm font-medium">{p.employee_code || `NV${String(p.user_id).padStart(3, "0")}`}</td>
+                      <td className="px-6 py-4 font-medium text-sm text-gray-900">{p.full_name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 capitalize">{p.role_name}</td>
+                      <td className="px-6 py-4 text-sm text-right font-mono font-semibold">{displayHours.toFixed(1)}</td>
+                      <td className="px-6 py-4 text-sm text-right font-mono">{Number(p.hourly_rate || 25000).toLocaleString('vi-VN')} đ</td>
+                      <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900 font-mono">
+                        {displaySalary.toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${
+                          isPaid 
+                            ? 'bg-green-100 text-green-700 border border-green-200' 
+                            : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                        }`}>
+                          {isPaid ? 'Đã thanh toán' : 'Chờ thanh toán'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-3">
                 paginatedPayrolls.map((p) => (
                   <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                     <td className="px-6 py-4 text-sm">{p.employee_code}</td>
@@ -545,21 +714,39 @@ const PayrollPage: React.FC = () => {
 
                         {p.status === 'pending' ? (
                           <button 
-                            onClick={() => handleMarkAsPaid(p.id)}
-                            className="text-green-600 hover:text-green-700 p-1.5 rounded-full hover:bg-green-50 transition-colors"
-                            title="Xác nhận thanh toán"
+                            onClick={() => handlePrint(p)}
+                            className="text-blue-600 hover:text-blue-700 p-1.5 rounded-full hover:bg-blue-50 transition-colors"
+                            title="In phiếu lương"
                           >
-                            <CheckCircle2 size={18} />
+                            <Printer size={18} />
                           </button>
-                        ) : (
-                          <span className="text-gray-300 p-1.5" title="Đã thanh toán">
-                            <CheckCircle2 size={18} className="opacity-40 text-gray-400" />
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          
+                          <button 
+                            onClick={() => handleExportExcel(p)}
+                            className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-full hover:bg-emerald-50 transition-colors"
+                            title="Xuất Excel"
+                          >
+                            <FileSpreadsheet size={18} />
+                          </button>
+
+                          {!isPaid ? (
+                            <button 
+                              onClick={() => handleMarkAsPaid(p.id)}
+                              className="text-green-600 hover:text-green-700 p-1.5 rounded-full hover:bg-green-50 transition-colors"
+                              title="Xác nhận thanh toán"
+                            >
+                              <CheckCircle2 size={18} />
+                            </button>
+                          ) : (
+                            <span className="text-gray-300 p-1.5" title="Đã thanh toán">
+                              <CheckCircle2 size={18} className="opacity-40 text-gray-400" />
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

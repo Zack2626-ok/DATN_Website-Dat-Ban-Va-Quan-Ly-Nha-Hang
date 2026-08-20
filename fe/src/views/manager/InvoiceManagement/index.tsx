@@ -970,6 +970,66 @@ export const InvoiceManagement: React.FC = () => {
     toast.success("Xuất báo cáo chi phí vận hành thành công!");
   };
 
+  const handleDownloadExpenseTemplate = () => {
+    const headers = [
+      ["Mã Chi Phí", "Hạng mục chi phí", "Đơn vị nhận (Đối tác)", "Số Tiền", "Ngày Chi", "Ghi Chú"]
+    ];
+
+    const sampleRows = [
+      ["EXP-08-01", "Gas", "Đại lý Gas Bình Minh HCM", 1500000, "08/08/2026", "Thay bình Gas nấu bếp chính"],
+      ["EXP-08-02", "Điện", "Tổng Công ty Điện lực miền Nam (EVN)", 4500000, "05/08/2026", "Tiền điện kỳ tháng 08/2026"],
+      ["EXP-08-03", "Nước", "Công ty Cổ phần Cấp nước Chợ Lớn", 850000, "03/08/2026", "Tiền nước kỳ tháng 08/2026"],
+      ["EXP-08-04", "Internet", "Chi nhánh Tập đoàn Viễn thông Viettel", 350000, "01/08/2026", "Cước Internet cáp quang nhà hàng"]
+    ];
+
+    const noteRows = [
+      [],
+      ["DANH MỤC HẠNG MỤC CHI PHÍ VÀ ĐƠN VỊ ĐỐI TÁC HỢP LỆ TRÊN HỆ THỐNG:"],
+      ["Hạng mục chi phí", "Đơn vị nhận (Đối tác) tương ứng"],
+      ["Điện", "Tổng Công ty Điện lực miền Nam (EVN)"],
+      ["Nước", "Công ty Cổ phần Cấp nước Chợ Lớn"],
+      ["Gas", "Đại lý Gas Bình Minh HCM"],
+      ["Internet", "Chi nhánh Tập đoàn Viễn thông Viettel"],
+      ["Tiền Thuế", "Chi cục Thuế Quận 1"],
+      ["Bảo Trì", "Công ty Cơ điện lạnh Việt Nam (REE)"],
+      ["Khác", "Cửa hàng tạp hóa Cô Ba (hoặc nhập tên đối tác khác tự chọn)"],
+      [],
+      ["HƯỚNG DẪN ĐIỀN DỮ LIỆU:"],
+      ["1. Số Tiền: Nhập số nguyên dương (ví dụ: 1500000), không chứa ký hiệu tiền tệ (đ, VNĐ) hoặc dấu chấm phân cách."],
+      ["2. Ngày Chi: Nhập theo định dạng ngày DD/MM/YYYY (ví dụ: 08/08/2026)."],
+      ["3. Mã Chi Phí: Không bắt buộc (nếu để trống hệ thống sẽ tự động tạo mã ngẫu nhiên dạng EXP-XXXXXX)."],
+      ["4. Để tránh lỗi trùng lặp, vui lòng không sử dụng lại nguyên văn các dòng dữ liệu mẫu (EXP-08-01 đến EXP-08-04) khi tải lên."]
+    ];
+
+    const aoaData = [
+      ...headers,
+      ...sampleRows,
+      ...noteRows
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(aoaData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Mau_Nhap_Chi_Phi");
+
+    worksheet["!cols"] = [
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 35 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 40 }
+    ];
+
+    for (let r = 2; r <= 5; r++) {
+      if (worksheet[`D${r}`]) {
+        worksheet[`D${r}`].z = "#,##0";
+      }
+    }
+
+    XLSX.writeFile(workbook, "Mau_Nhap_Chi_Phi_Van_Hanh.xlsx");
+    toast.success("Đã tải về tệp Excel mẫu!");
+  };
+
   const handleImportExpensesExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -983,54 +1043,40 @@ export const InvoiceManagement: React.FC = () => {
         const ws = wb.Sheets[wsname];
         const data: any[] = XLSX.utils.sheet_to_json(ws);
 
-        // First pass: Validate duplicate expense IDs
-        const existingIds = new Set(expenses.map(exp => exp.id.toLowerCase()));
+        const isSampleRow = (id: string, category: string, amount: number, payee: string) => {
+          const lowerId = id.toLowerCase().replace("#", "").trim();
+          if (["exp-08-01", "exp-08-02", "exp-08-03", "exp-08-04"].includes(lowerId)) {
+            return true;
+          }
+          const lowerPayee = payee.toLowerCase().trim();
+          if (category === "Gas" && amount === 1500000 && lowerPayee.includes("bình minh")) return true;
+          if (category === "Điện" && amount === 4500000 && lowerPayee.includes("evn")) return true;
+          if (category === "Nước" && amount === 850000 && lowerPayee.includes("chợ lớn")) return true;
+          if (category === "Internet" && amount === 350000 && lowerPayee.includes("viettel")) return true;
+          return false;
+        };
+
+        const existingIdSet = new Set(expenses.map(exp => exp.id.toLowerCase()));
+        
+        const getContentKey = (category: string, amount: number, payee: string, date: string) => {
+          const cleanDate = date.split("T")[0];
+          return `${category.toLowerCase().trim()}|${amount}|${payee.toLowerCase().trim()}|${cleanDate}`;
+        };
+
+        const existingContentKeys = new Set(expenses.map(exp => 
+          getContentKey(exp.category, exp.amount, exp.payee, exp.date)
+        ));
+
         const excelSeenIds = new Set<string>();
+        const excelSeenContents = new Set<string>();
+        
         const duplicateIdsInExcel = new Set<string>();
         const duplicateIdsWithSystem = new Set<string>();
-
-        for (const row of data) {
-          const amount = parseExcelNumber(row["Số Tiền"] || row["Số tiền"] || row["amount"] || 0);
-          if (amount <= 0) continue; // Skip invalid rows first
-
-          let expenseId = String(row["Mã Chi Phí"] || row["Mã chi phí"] || row["mã chi phí"] || row["id"] || "").trim();
-          if (expenseId.startsWith("#")) {
-            expenseId = expenseId.slice(1);
-          }
-
-          if (expenseId) {
-            const lowerId = expenseId.toLowerCase();
-            if (excelSeenIds.has(lowerId)) {
-              duplicateIdsInExcel.add(expenseId);
-            } else {
-              excelSeenIds.add(lowerId);
-            }
-
-            if (existingIds.has(lowerId)) {
-              duplicateIdsWithSystem.add(expenseId);
-            }
-          }
-        }
-
-        if (duplicateIdsInExcel.size > 0 || duplicateIdsWithSystem.size > 0) {
-          const dupExcelArr = Array.from(duplicateIdsInExcel);
-          const dupSysArr = Array.from(duplicateIdsWithSystem);
-          
-          let errorMsg = "";
-          if (dupExcelArr.length > 0) {
-            errorMsg += `Mã chi phí bị trùng lặp trong file Excel: ${dupExcelArr.map(id => `#${id}`).join(", ")}. `;
-          }
-          if (dupSysArr.length > 0) {
-            errorMsg += `Mã chi phí đã tồn tại trên hệ thống: ${dupSysArr.map(id => `#${id}`).join(", ")}.`;
-          }
-
-          toast.error(errorMsg);
-          if (expenseExcelInputRef.current) expenseExcelInputRef.current.value = "";
-          return;
-        }
+        const duplicateContentsInExcel = new Set<string>();
+        const duplicateContentsWithSystem = new Set<string>();
+        const sampleDataRowsFound = new Set<string>();
 
         const newExpensesList: OperationalExpense[] = [];
-        let skippedCount = 0;
 
         for (const row of data) {
           const categoryRaw = String(row["Hạng mục chi phí"] || row["Hạng mục"] || row["category"] || "").trim();
@@ -1058,27 +1104,87 @@ export const InvoiceManagement: React.FC = () => {
             finalDate = new Date().toISOString().split("T")[0] + "T09:00:00";
           }
 
-          if (amount <= 0) {
-            skippedCount++;
-            continue;
-          }
+          if (amount <= 0) continue;
 
           let expenseId = String(row["Mã Chi Phí"] || row["Mã chi phí"] || row["mã chi phí"] || row["id"] || "").trim();
           if (expenseId.startsWith("#")) {
             expenseId = expenseId.slice(1);
           }
-          if (!expenseId) {
-            expenseId = `EXP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
+
+          // Check if this row matches sample data template
+          if (isSampleRow(expenseId, category, amount, payee)) {
+            sampleDataRowsFound.add(`${category} - ${payee} (${amount.toLocaleString("vi-VN")} đ)`);
+            continue;
           }
 
+          // Validate duplicate ID
+          if (expenseId) {
+            const lowerId = expenseId.toLowerCase();
+            if (excelSeenIds.has(lowerId)) {
+              duplicateIdsInExcel.add(expenseId);
+            } else {
+              excelSeenIds.add(lowerId);
+            }
+
+            if (existingIdSet.has(lowerId)) {
+              duplicateIdsWithSystem.add(expenseId);
+            }
+          }
+
+          // Validate duplicate content
+          const contentKey = getContentKey(category, amount, payee, finalDate);
+          const displayContent = `${category}: ${payee} (${amount.toLocaleString("vi-VN")} đ)`;
+
+          if (excelSeenContents.has(contentKey)) {
+            duplicateContentsInExcel.add(displayContent);
+          } else {
+            excelSeenContents.add(contentKey);
+          }
+
+          if (existingContentKeys.has(contentKey)) {
+            duplicateContentsWithSystem.add(displayContent);
+          }
+
+          const finalExpenseId = expenseId || `EXP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
+
           newExpensesList.push({
-            id: expenseId,
+            id: finalExpenseId,
             category,
             amount,
             date: finalDate,
             note: note || undefined,
             payee: payee || "Khác"
           });
+        }
+
+        if (
+          sampleDataRowsFound.size > 0 ||
+          duplicateIdsInExcel.size > 0 ||
+          duplicateIdsWithSystem.size > 0 ||
+          duplicateContentsInExcel.size > 0 ||
+          duplicateContentsWithSystem.size > 0
+        ) {
+          let errorMsg = "";
+          
+          if (sampleDataRowsFound.size > 0) {
+            errorMsg += `⚠️ Không được nhập dữ liệu mẫu từ tệp tin: ${Array.from(sampleDataRowsFound).join(", ")}. `;
+          }
+          if (duplicateIdsInExcel.size > 0) {
+            errorMsg += `⚠️ Mã chi phí bị trùng lặp trong file Excel: ${Array.from(duplicateIdsInExcel).map(id => `#${id}`).join(", ")}. `;
+          }
+          if (duplicateIdsWithSystem.size > 0) {
+            errorMsg += `⚠️ Mã chi phí đã tồn tại trên hệ thống: ${Array.from(duplicateIdsWithSystem).map(id => `#${id}`).join(", ")}. `;
+          }
+          if (duplicateContentsInExcel.size > 0) {
+            errorMsg += `⚠️ Chi phí bị lặp lại trong file Excel: ${Array.from(duplicateContentsInExcel).join("; ")}. `;
+          }
+          if (duplicateContentsWithSystem.size > 0) {
+            errorMsg += `⚠️ Chi phí đã có sẵn trên hệ thống (trùng khớp ngày, đối tác, số tiền): ${Array.from(duplicateContentsWithSystem).join("; ")}.`;
+          }
+
+          toast.error(errorMsg, { duration: 6000 });
+          if (expenseExcelInputRef.current) expenseExcelInputRef.current.value = "";
+          return;
         }
 
         if (newExpensesList.length === 0) {
@@ -1198,6 +1304,13 @@ export const InvoiceManagement: React.FC = () => {
                 accept=".xlsx, .xls, .csv"
                 onChange={handleImportExpensesExcel}
               />
+              <button
+                onClick={handleDownloadExpenseTemplate}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-full border border-slate-300 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+                title="Tải tệp Excel mẫu để nhập dữ liệu"
+              >
+                <DownloadCloud size={14} /> Tải File Mẫu
+              </button>
               <button
                 onClick={() => expenseExcelInputRef.current?.click()}
                 className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-full border border-blue-200/50 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
