@@ -1197,6 +1197,12 @@ const runSchemaMigrations = async (): Promise<void> => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
 
+    await query(`ALTER TABLE operational_expenses ADD COLUMN created_by INT NULL`).catch(() => {});
+    await query(`ALTER TABLE operational_expenses ADD COLUMN is_recurring TINYINT(1) NOT NULL DEFAULT 0`).catch(() => {});
+    await query(`ALTER TABLE operational_expenses ADD COLUMN deleted_at DATETIME NULL`).catch(() => {});
+    await query(`ALTER TABLE operational_expenses ADD COLUMN deleted_by INT NULL`).catch(() => {});
+    await query(`ALTER TABLE operational_expenses ADD COLUMN deleted_reason VARCHAR(255) NULL`).catch(() => {});
+
     // Migration: Add hourly_rate & date_of_birth to users
     const hourlyCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS

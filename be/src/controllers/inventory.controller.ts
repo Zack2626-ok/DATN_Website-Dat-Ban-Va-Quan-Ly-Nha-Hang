@@ -827,9 +827,28 @@ export const uploadExcel = async (req: Request, res: Response): Promise<void> =>
 
 export const getSuppliers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const suppliers = await db.query(
-      "SELECT id, name, contact, phone, address, main_ingredients as mainIngredients, total_debt FROM suppliers"
-    );
+    const suppliers = await db.query(`
+      SELECT 
+        s.id, 
+        s.name, 
+        s.contact, 
+        s.phone, 
+        s.address, 
+        s.main_ingredients as mainIngredients, 
+        COALESCE(
+          (
+            SELECT SUM(GREATEST(0, (si.quantity * si.unit_cost) - COALESCE(si.paid_amount, 0)))
+            FROM stock_in si
+            WHERE si.supplier_id = s.id 
+              AND si.is_credit = 1
+              AND (si.note IS NULL OR (si.note NOT LIKE '%[LƯU TẠM]%' AND si.note NOT LIKE '%[HOÀN THÀNH]%'))
+          ),
+          s.total_debt, 
+          0
+        ) as total_debt
+      FROM suppliers s
+      ORDER BY s.id ASC
+    `);
     sendSuccess(res, suppliers, "Lấy danh sách nhà cung cấp thành công");
   } catch (error) {
     console.error("Error fetching suppliers:", error);
