@@ -15,7 +15,7 @@ export interface Booking {
   party_size: number;
   start_time: string;
   end_time: string;
-  confirmation_code: string;
+  confirmation_code: number;
   status: "pending" | "confirmed" | "cancelled" | "completed" | "arrived";
   guest_note?: string;
   note?: string;
@@ -94,12 +94,14 @@ export const createBooking = async (data: {
 };
 
 /** Fetches bookings scheduled in the selected staff-calendar range. */
-export const getBookingSchedule = async (params: {
-  tableId?: number;
-  startDate?: string;
-  endDate?: string;
-  includeCancelled?: boolean;
-} = {}): Promise<BookingScheduleItem[]> => {
+export const getBookingSchedule = async (
+  params: {
+    tableId?: number;
+    startDate?: string;
+    endDate?: string;
+    includeCancelled?: boolean;
+  } = {},
+): Promise<BookingScheduleItem[]> => {
   const response = await api.get("/v1/bookings/schedule", {
     params: {
       table_id: params.tableId,
@@ -144,7 +146,10 @@ export const deleteBooking = async (id: number): Promise<void> => {
   await api.delete(`/v1/bookings/${id}`);
 };
 
-export const assignBookingApi = async (id: number, payload: any): Promise<any> => {
+export const assignBookingApi = async (
+  id: number,
+  payload: any,
+): Promise<any> => {
   const response = await api.post(`/v1/bookings/${id}/assign`, payload);
   return response.data.data;
 };

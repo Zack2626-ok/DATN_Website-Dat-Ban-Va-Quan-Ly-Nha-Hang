@@ -493,6 +493,18 @@ export const initDb = async (): Promise<boolean> => {
 /** Lightweight migrations for resmanager schema columns */
 const runSchemaMigrations = async (): Promise<void> => {
   try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NULL,
+        message TEXT NOT NULL,
+        type VARCHAR(50) NOT NULL DEFAULT 'info',
+        role VARCHAR(50) DEFAULT 'waiter',
+        is_read TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
     const cols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'is_held'`,
@@ -3782,8 +3794,32 @@ export const updateBookingStatus = async (
     `, [status, id]);
   }
 
-  // Booking status is a calendar state. Physical table status changes only when staff seats,
-  // serves, cleans, or closes a table, so future schedules never reserve a physical table all day.
+  // Khi hủy đặt bàn (khách không đến / hủy đơn), giải phóng toàn bộ bàn gộp về bàn trống (empty)
+  if (status === 'cancelled') {
+    const assignedTableRows = await query<any[]>(
+      "SELECT table_id FROM booking_table_assignments WHERE booking_id = ? UNION SELECT table_id FROM bookings WHERE id = ? AND table_id IS NOT NULL",
+      [id, id]
+    ).catch(() => []);
+    const tableIds = [...new Set(assignedTableRows.map((r: any) => Number(r.table_id)).filter(Boolean))];
+    if (tableIds.length > 0) {
+      const placeholders = tableIds.map(() => "?").join(", ");
+      await query(
+        `UPDATE table_merges SET status = 'resolved' WHERE (primary_table_id IN (${placeholders}) OR secondary_table_id IN (${placeholders})) AND status = 'active'`,
+        [...tableIds, ...tableIds]
+      ).catch(() => {});
+
+      await query(
+        `UPDATE tables SET status = 'empty' WHERE id IN (${placeholders}) AND status IN ('reserved', 'serving')`,
+        tableIds
+      ).catch(() => {});
+    }
+
+    await query(
+      "UPDATE orders SET status = 'cancelled' WHERE booking_id = ? AND status IN ('open', 'serving', 'pending_payment')",
+      [id]
+    ).catch(() => {});
+  }
+
   return true;
 };
 
@@ -3964,6 +4000,7 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
            COALESCE(NULLIF(o.note, ''), b.guest_note) AS guest_note,
            b.confirmation_code AS booking_code,
            b.id AS booking_id,
+           b.status AS booking_status,
            COALESCE(b.deposit_amount, 0) AS deposit_amount,
            o.id AS active_order_id,
            o.order_type AS active_order_type,

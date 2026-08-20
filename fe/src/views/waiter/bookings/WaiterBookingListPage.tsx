@@ -221,7 +221,7 @@ export const WaiterBookingListPage: React.FC = () => {
             guestPhone: b.guest_phone,
             partySize: b.party_size,
             assignedArea: assignedArea,
-            startTime: `${formatTimeHHMM(b.start_time)} (${formatShortDate(b.start_time)})`,
+            startTime: b.start_time,
           },
         },
       });
@@ -515,10 +515,10 @@ export const WaiterBookingListPage: React.FC = () => {
                                   type="button"
                                   onClick={() => handleMarkArrivedAndNavigate(b)}
                                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-full text-xs transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer active:scale-95"
-                                  title="Khách đã đến ➔ Chuyển sang sơ đồ chọn bàn"
+                                  title="Khách đã đến ➔ Chuyển sang sơ đồ để mở bàn & phục vụ đoàn"
                                 >
                                   <Check size={14} strokeWidth={3} />
-                                  Khách đến
+                                  Mở bàn
                                 </button>
                                 <button
                                   type="button"
