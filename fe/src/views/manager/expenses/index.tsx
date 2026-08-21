@@ -42,6 +42,9 @@ const ExpensePage: React.FC = () => {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
 
+  const [showPermanentDeleteModal, setShowPermanentDeleteModal] = useState(false);
+  const [permanentDeletingId, setPermanentDeletingId] = useState<number | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [newExpense, setNewExpense] = useState({
@@ -134,6 +137,35 @@ const ExpensePage: React.FC = () => {
     }
   };
 
+  const handleRestore = async (id: number) => {
+    try {
+      await api.patch(`/expenses/${id}/restore`);
+      toast.success("Khôi phục chi phí thành công");
+      fetchDeletedExpenses();
+      if (!showHistory) fetchExpenses();
+    } catch (error) {
+      toast.error("Lỗi khi khôi phục chi phí");
+    }
+  };
+
+  const confirmPermanentDelete = (id: number) => {
+    setPermanentDeletingId(id);
+    setShowPermanentDeleteModal(true);
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!permanentDeletingId) return;
+    try {
+      await api.delete(`/expenses/${permanentDeletingId}/permanent`);
+      toast.success("Đã xóa vĩnh viễn chi phí");
+      setShowPermanentDeleteModal(false);
+      setPermanentDeletingId(null);
+      fetchDeletedExpenses();
+    } catch (error) {
+      toast.error("Lỗi khi xóa vĩnh viễn");
+    }
+  };
+
   const downloadTemplate = () => {
     const wsData = [
       ["Ngay Chi (YYYY-MM-DD)", "Ten Khoan Chi", "Hang Muc", "So Tien"],
@@ -164,26 +196,34 @@ const ExpensePage: React.FC = () => {
         const expensesToImport = [];
 
         for (const row of rows) {
-          if (row.length < 4) continue; // Skip empty rows
-          const date = row[0];
-          const title = row[1];
-          const categoryRaw = String(row[2]).toLowerCase();
-          const amount = row[3];
+          if (!row || row.length === 0) continue; // Skip totally empty rows
           
+          const rawDate = row[0];
+          const title = row[1];
+          const categoryRaw = String(row[2] || 'other').toLowerCase();
+          const rawAmount = row[3];
+          
+          if (!title) continue; // Title is required
+
+          // Xử lý ngày: Nếu rỗng -> Lấy ngày hiện tại
+          const expenseDate = rawDate ? String(rawDate).trim() : format(new Date(), 'yyyy-MM-dd');
+          
+          // Xử lý tiền: Loại bỏ ký tự lạ, đưa về số
+          const amount = Number(String(rawAmount || '').replace(/\D/g, ''));
+          if (!amount || isNaN(amount)) continue; // Bỏ qua nếu tiền không hợp lệ
+
           let category = 'other';
           if (['rent', 'mặt bằng', 'mat bang'].includes(categoryRaw)) category = 'rent';
           else if (['utilities', 'điện', 'nước', 'dien', 'nuoc'].includes(categoryRaw)) category = 'utilities';
           else if (['marketing', 'quảng cáo'].includes(categoryRaw)) category = 'marketing';
           else if (['maintenance', 'bảo trì', 'bao tri'].includes(categoryRaw)) category = 'maintenance';
 
-          if (date && title && amount) {
-            expensesToImport.push({
-              expense_date: date,
-              title: title,
-              category: category,
-              amount: amount
-            });
-          }
+          expensesToImport.push({
+            expense_date: expenseDate,
+            title: String(title).trim(),
+            category: category,
+            amount: amount
+          });
         }
 
         if (expensesToImport.length === 0) {
@@ -301,6 +341,7 @@ const ExpensePage: React.FC = () => {
                   <>
                     <th className="px-6 py-4">Người Xóa</th>
                     <th className="px-6 py-4 text-red-500">Lý Do Xóa</th>
+                    <th className="px-6 py-4 text-center">Thao Tác</th>
                   </>
                 ) : (
                   <>
@@ -336,6 +377,22 @@ const ExpensePage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-sm font-medium text-gray-700">{e.deleted_by_name || 'System'}</td>
                       <td className="px-6 py-4 text-sm text-red-600 font-medium">{e.deleted_reason || 'Không có lý do'}</td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex justify-center gap-2">
+                          <button
+                            onClick={() => handleRestore(e.id)}
+                            className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded transition-colors"
+                          >
+                            Hoàn tác
+                          </button>
+                          <button
+                            onClick={() => confirmPermanentDelete(e.id)}
+                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors"
+                          >
+                            Xóa hẳn
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )
@@ -421,6 +478,43 @@ const ExpensePage: React.FC = () => {
                   className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                 >
                   Xác nhận xóa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Permanent Delete Modal */}
+      {showPermanentDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-sm overflow-hidden animate-fade-in">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-red-50">
+              <h2 className="font-bold text-red-600 flex items-center gap-2">
+                <Trash2 size={18} /> Cảnh báo xóa vĩnh viễn
+              </h2>
+              <button onClick={() => setShowPermanentDeleteModal(false)} className="text-gray-400 hover:text-black">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-700">
+                Hành động này sẽ xóa dữ liệu <b>vĩnh viễn</b> khỏi cơ sở dữ liệu và không thể khôi phục. Bạn có chắc chắn muốn xóa?
+              </p>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowPermanentDeleteModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={handlePermanentDelete}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                >
+                  Xóa Vĩnh Viễn
                 </button>
               </div>
             </div>

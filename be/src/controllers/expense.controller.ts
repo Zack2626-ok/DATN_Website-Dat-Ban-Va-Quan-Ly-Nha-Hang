@@ -125,5 +125,49 @@ export const expenseController = {
       console.error("Error deleting expense:", error);
       sendError(res, `Lỗi: ${(error as Error).message}`, 500);
     }
+  },
+
+  // Khôi phục chi phí từ lịch sử xóa
+  restoreExpense: async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      
+      const checkResult = await db.query(`SELECT id FROM operational_expenses WHERE id = ? AND deleted_at IS NOT NULL`, [id]);
+      if ((checkResult as any[]).length === 0) {
+        res.status(404).json({ error: "Không tìm thấy chi phí đã xóa" });
+        return;
+      }
+
+      await db.query(`
+        UPDATE operational_expenses 
+        SET deleted_at = NULL, deleted_by = NULL, deleted_reason = NULL 
+        WHERE id = ?
+      `, [id]);
+      
+      sendSuccess(res, null, "Khôi phục chi phí thành công");
+    } catch (error) {
+      console.error("Error restoring expense:", error);
+      sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    }
+  },
+
+  // Xóa vĩnh viễn chi phí (Hard delete)
+  permanentDeleteExpense: async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      
+      const checkResult = await db.query(`SELECT id FROM operational_expenses WHERE id = ? AND deleted_at IS NOT NULL`, [id]);
+      if ((checkResult as any[]).length === 0) {
+        res.status(404).json({ error: "Không tìm thấy chi phí đã xóa để xóa vĩnh viễn" });
+        return;
+      }
+
+      await db.query(`DELETE FROM operational_expenses WHERE id = ?`, [id]);
+      
+      sendSuccess(res, null, "Đã xóa vĩnh viễn chi phí");
+    } catch (error) {
+      console.error("Error permanently deleting expense:", error);
+      sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+    }
   }
 };
