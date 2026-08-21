@@ -374,6 +374,7 @@ export const cancelMyBooking = async (req: Request, res: Response): Promise<void
       return;
     }
     const { id } = req.params;
+    const { reason } = req.body;
     const booking = await db.query("SELECT * FROM bookings WHERE id = ?", [id]);
     if (!booking[0]) {
       sendError(res, "Không tìm thấy đặt bàn.", 404);
@@ -390,7 +391,8 @@ export const cancelMyBooking = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const success = await db.updateBookingStatus(Number(id), "cancelled");
+    const cancelReason = reason && String(reason).trim() ? String(reason).trim() : "Khách hàng yêu cầu hủy đơn qua tài khoản";
+    const success = await db.updateBookingStatus(Number(id), "cancelled", undefined, cancelReason);
     if (!success) {
       sendError(res, "Hủy đặt bàn thất bại.", 500);
       return;

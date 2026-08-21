@@ -269,8 +269,10 @@ export const createBooking = async (data: {
   return response.data.data;
 };
 
-export const cancelBooking = async (id: number): Promise<void> => {
-  await customerApi.patch(`/v1/customer/bookings/${id}/cancel`);
+export const cancelBooking = async (payload: number | { id: number; reason?: string }): Promise<void> => {
+  const id = typeof payload === "number" ? payload : payload.id;
+  const reason = typeof payload === "object" ? payload.reason : undefined;
+  await customerApi.patch(`/v1/customer/bookings/${id}/cancel`, { reason });
 };
 
 export const payBookingDeposit = async (id: number): Promise<CreatedBooking> => {

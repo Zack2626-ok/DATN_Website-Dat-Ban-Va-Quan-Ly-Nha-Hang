@@ -1,5 +1,22 @@
-import React, { useState, useEffect } from "react";
-import { Phone, Mail, CheckCircle, ArrowRight, Calendar, Loader2, Printer, Star } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Phone,
+  Mail,
+  CheckCircle,
+  ArrowRight,
+  Calendar,
+  Loader2,
+  Printer,
+  Star,
+  AlertCircle,
+  Clock,
+  ChevronDown,
+  Sun,
+  Moon,
+  Minus,
+  Plus,
+  Users,
+} from "lucide-react";
 import { toast } from "react-hot-toast";
 import { createBooking, payBookingDeposit } from "../../services/customerService";
 import type { CreatedBooking, Customer } from "../../services/customerService";
@@ -47,6 +64,46 @@ export const BookingPage: React.FC = () => {
   const [createdBooking, setCreatedBooking] = useState<CreatedBooking | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
+
+  // Time picker popover state & ref
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const timePickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (timePickerRef.current && !timePickerRef.current.contains(event.target as Node)) {
+        setTimePickerOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const isSlotDisabled = (slot: string, selectedDate: string): boolean => {
+    if (!selectedDate) return false;
+    if (!bookingValidationEnabled) return false;
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (selectedDate < todayStr) return true;
+    if (selectedDate > todayStr) return false;
+    
+    // If today: check if time is past
+    const now = new Date();
+    const [slotH, slotM] = slot.split(":").map(Number);
+    const slotDate = new Date();
+    slotDate.setHours(slotH, slotM, 0, 0);
+    return slotDate <= now;
+  };
+
+  // Field validation states
+  const [errors, setErrors] = useState<{
+    date?: string;
+    time?: string;
+    guests?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+  }>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const handlePayDeposit = async () => {
     if (!createdBooking?.id) return;
@@ -106,89 +163,128 @@ export const BookingPage: React.FC = () => {
     }
   }, []);
 
-  const setField = (key: string, value: string) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const validateBookingForm = (values = form) => {
+    const errs: Record<string, string> = {};
+
+    // 1. Ngày đến
+    if (!values.date) {
+      errs.date = "Vui lòng chọn ngày đến";
+    } else {
+      const today = new Date().toISOString().split("T")[0];
+      if (bookingValidationEnabled && values.date < today) {
+        errs.date = "Ngày đến không được ở quá khứ";
+      } else if (bookingValidationEnabled && values.date > getMaximumBookingDate()) {
+        errs.date = `Chỉ có thể đặt bàn trước tối đa ${BOOKING_MAX_ADVANCE_DAYS} ngày`;
+      }
+    }
+
+    // 2. Giờ đến
+    if (!values.time) {
+      errs.time = "Vui lòng chọn giờ đến";
+    } else {
+      if (bookingValidationEnabled && !isWithinPublicBookingHours(values.time)) {
+        errs.time = `Giờ nhận khách online từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${ONLINE_BOOKING_LAST_ARRIVAL_TIME}`;
+      } else if (values.date) {
+        const selectedDateTime = new Date(`${values.date}T${values.time}:00`);
+        const now = new Date();
+        if (bookingValidationEnabled && selectedDateTime < now) {
+          errs.time = "Giờ đến đã qua so với thời gian hiện tại";
+        }
+      }
+    }
+
+    // 3. Số khách
+    const guestNum = Number(values.guests);
+    if (!values.guests || isNaN(guestNum) || guestNum < 1) {
+      errs.guests = "Tối thiểu 1 khách";
+    } else if (guestNum > 30) {
+      errs.guests = "Tối đa 30 khách cho mỗi đơn đặt online";
+    }
+
+    // 4. Họ và tên
+    if (!values.name || !values.name.trim()) {
+      errs.name = "Vui lòng nhập họ và tên người đặt bàn";
+    } else if (values.name.trim().length < 2) {
+      errs.name = "Họ và tên tối thiểu 2 ký tự";
+    }
+
+    // 5. Số điện thoại
+    const phone = values.phone ? values.phone.trim() : "";
+    if (!phone) {
+      errs.phone = "Vui lòng nhập số điện thoại liên hệ";
+    } else {
+      const hasLetters = /[a-zA-Z]/g.test(phone);
+      const cleanRegex = /^[0-9+\s-]+$/;
+      if (hasLetters || !cleanRegex.test(phone)) {
+        errs.phone = "Số điện thoại chỉ được chứa chữ số và dấu +, -";
+      } else {
+        const cleanedPhone = phone.replace(/[\s-]/g, '');
+        if (cleanedPhone.startsWith("+840") || cleanedPhone.startsWith("840")) {
+          errs.phone = "Vui lòng bỏ số 0 sau mã +84 (VD: +84912345678)";
+        } else if (!cleanedPhone.startsWith("0") && !cleanedPhone.startsWith("+84") && !cleanedPhone.startsWith("84")) {
+          errs.phone = "SĐT phải bắt đầu bằng 0, 84 hoặc +84";
+        } else if (cleanedPhone.length < 10 || cleanedPhone.length > 12) {
+          errs.phone = "Số điện thoại phải từ 10 đến 12 ký tự";
+        } else {
+          let prefixDigit = "";
+          if (cleanedPhone.startsWith("0")) prefixDigit = cleanedPhone.charAt(1);
+          else if (cleanedPhone.startsWith("+84")) prefixDigit = cleanedPhone.charAt(3);
+          else if (cleanedPhone.startsWith("84")) prefixDigit = cleanedPhone.charAt(2);
+          
+          const validPrefixes = ["3", "5", "7", "8", "9", "2"];
+          if (!validPrefixes.includes(prefixDigit)) {
+            errs.phone = "Đầu số nhà mạng không hợp lệ (VD: 03, 05, 07, 08, 09)";
+          }
+        }
+      }
+    }
+
+    // 6. Email (tùy chọn)
+    if (values.email && values.email.trim()) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
+        errs.email = "Định dạng email không hợp lệ (VD: name@example.com)";
+      }
+    }
+
+    return errs;
+  };
+
+  const setField = (key: string, value: string) => {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (touched[key]) {
+        const fieldErrors = validateBookingForm(next);
+        setErrors((prevErr) => ({ ...prevErr, [key]: fieldErrors[key] }));
+      }
+      return next;
+    });
+  };
+
+  const handleBlur = (key: string) => {
+    setTouched((prev) => ({ ...prev, [key]: true }));
+    const formErrors = validateBookingForm();
+    setErrors(formErrors);
+  };
 
   const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.date || !form.time) {
-      toast.error("Vui lòng chọn ngày và giờ đặt bàn!");
-      return;
-    }
-    if (bookingValidationEnabled && form.date > getMaximumBookingDate()) {
-      toast.error(`Chỉ có thể đặt bàn trong vòng ${BOOKING_MAX_ADVANCE_DAYS} ngày kể từ hôm nay.`);
-      return;
-    }
     
-    if (bookingValidationEnabled && !isWithinPublicBookingHours(form.time)) {
-      toast.error(`Nhà hàng nhận đặt bàn online từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${ONLINE_BOOKING_LAST_ARRIVAL_TIME}.`);
-      return;
-    }
+    // Mark all fields as touched
+    setTouched({
+      date: true,
+      time: true,
+      guests: true,
+      name: true,
+      phone: true,
+      email: true,
+    });
 
-    const selectedDateTime = new Date(`${form.date}T${form.time}:00`);
-    const now = new Date();
-    if (bookingValidationEnabled && selectedDateTime < now) {
-      toast.error("Thời gian đặt bàn không được ở quá khứ. Vui lòng chọn thời gian khác!");
-      return;
-    }
+    const formErrors = validateBookingForm();
+    setErrors(formErrors);
 
-    const guestCount = Number(form.guests);
-    if (isNaN(guestCount) || guestCount < 1 || guestCount > 30) {
-      toast.error("Số lượng khách phải từ 1 đến 30 người!");
-      return;
-    }
-
-    if (!form.name.trim()) {
-      toast.error("Vui lòng điền Họ và tên người đặt bàn!");
-      return;
-    }
-
-    const phone = form.phone.trim();
-    if (!phone) {
-      toast.error("Vui lòng điền Số điện thoại liên hệ!");
-      return;
-    }
-
-    const hasLetters = /[a-zA-Z]/g.test(phone);
-    const cleanRegex = /^[0-9+\s-]+$/;
-    if (hasLetters || !cleanRegex.test(phone)) {
-      toast.error("Số điện thoại chỉ được chứa các chữ số, dấu cộng (+), dấu gạch ngang (-) hoặc khoảng trắng.");
-      return;
-    }
-    const cleanedPhone = phone.replace(/[\s-]/g, '');
-    if (cleanedPhone.startsWith("+840") || cleanedPhone.startsWith("840")) {
-      toast.error("Khi sử dụng mã quốc gia '+84' hoặc '84', vui lòng bỏ số '0' ở đầu số điện thoại tiếp theo (ví dụ: +84912345678).");
-      return;
-    }
-    if (!cleanedPhone.startsWith("0") && !cleanedPhone.startsWith("+84") && !cleanedPhone.startsWith("84")) {
-      toast.error("Số điện thoại Việt Nam phải bắt đầu bằng số '0', '84' hoặc mã quốc gia '+84'.");
-      return;
-    }
-    if (cleanedPhone.length < 10 || cleanedPhone.length > 12) {
-      toast.error("Số điện thoại không đúng độ dài (phải từ 10 đến 12 ký tự).");
-      return;
-    }
-    let prefixDigit = "";
-    if (cleanedPhone.startsWith("0")) {
-      prefixDigit = cleanedPhone.charAt(1);
-    } else if (cleanedPhone.startsWith("+84")) {
-      prefixDigit = cleanedPhone.charAt(3);
-    } else if (cleanedPhone.startsWith("84")) {
-      prefixDigit = cleanedPhone.charAt(2);
-    }
-    const validPrefixes = ["3", "5", "7", "8", "9", "2"];
-    if (!validPrefixes.includes(prefixDigit)) {
-      toast.error("Đầu số nhà mạng không hợp lệ. Vui lòng nhập đầu số di động hợp lệ (bắt đầu bằng 03, 05, 07, 08, 09) hoặc số cố định (bắt đầu bằng 02).");
-      return;
-    }
-
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      toast.error("Email không đúng định dạng!");
-      return;
-    }
-
-    if (guestCount > 30) {
-      toast.error("Số lượng khách đặt bàn tối đa là 30 người!");
+    if (Object.keys(formErrors).length > 0) {
+      const firstError = Object.values(formErrors)[0];
+      toast.error(firstError || "Vui lòng kiểm tra lại các trường thông tin có lỗi!");
       return;
     }
 
@@ -207,7 +303,6 @@ export const BookingPage: React.FC = () => {
           console.error("Error parsing customer_info", e);
         }
       }
-
 
       const bookingResult = await createBooking({
         customer_id: customerId,
@@ -535,52 +630,321 @@ export const BookingPage: React.FC = () => {
       {/* Main Content */}
       <main className="mx-auto px-6 mt-8 max-w-4xl transition-all">
         {step === 1 && (
-          <form onSubmit={handleSubmitBooking} className="space-y-6 animate-fade-in">
+          <form noValidate onSubmit={handleSubmitBooking} className="space-y-6 animate-fade-in">
             {/* Card 1: Chọn lịch trình đặt bàn */}
-            <div className="bg-white rounded-3xl shadow-sm border border-client-accent p-8">
-              <h2 className="text-lg font-bold text-client-text font-display mb-6 border-b border-[#f0eae1] pb-4 flex items-center gap-2">
-                <Calendar size={18} className="text-client-primary" /> Chọn lịch trình đặt bàn
-              </h2>
+            <div className="bg-white rounded-3xl shadow-sm border border-client-accent p-6 sm:p-8">
+              <div className="flex items-center justify-between border-b border-[#f0eae1] pb-4 mb-6">
+                <h2 className="text-lg font-bold text-client-text font-display flex items-center gap-2">
+                  <Calendar size={18} className="text-client-primary" /> Chọn lịch trình đặt bàn
+                </h2>
+                <span className="text-[11px] font-semibold text-client-muted bg-[#f9f6f0] px-3 py-1 rounded-full border border-[#e8dfd5]">
+                  Phục vụ: 10:00 - 21:00 (Nhận khách online đến 19:00)
+                </span>
+              </div>
+
               <div className="grid gap-6 sm:grid-cols-3">
-                <div>
-                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Ngày đến *</label>
-                  <input
-                    required
-                    type="date"
-                    value={form.date}
-                    onChange={(e) => setField("date", e.target.value)}
-                    min={bookingValidationEnabled ? new Date().toISOString().split("T")[0] : undefined}
-                    max={bookingValidationEnabled ? getMaximumBookingDate() : undefined}
-                    className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
-                  />
+                
+                {/* 1. Ngày đến */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider">
+                    Ngày đến <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => {
+                        setField("date", e.target.value);
+                        // If changing date, re-validate time if today is deselected/selected
+                        if (form.time) {
+                          setTimeout(() => {
+                            setField("time", form.time);
+                          }, 0);
+                        }
+                      }}
+                      onBlur={() => handleBlur("date")}
+                      min={bookingValidationEnabled ? new Date().toISOString().split("T")[0] : undefined}
+                      max={bookingValidationEnabled ? getMaximumBookingDate() : undefined}
+                      className={`w-full rounded-2xl border px-4 py-3 text-sm outline-none transition-all ${
+                        errors.date
+                          ? "border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-rose-950"
+                          : "border-client-accent focus:ring-2 focus:ring-client-secondary bg-white"
+                      }`}
+                    />
+                  </div>
+
+                  {/* Quick Date Chips */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setField("date", new Date().toISOString().split("T")[0])}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                        form.date === new Date().toISOString().split("T")[0]
+                          ? "bg-client-primary text-white"
+                          : "bg-[#f5f1ea] hover:bg-client-accent text-client-text"
+                      }`}
+                    >
+                      Hôm nay
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 1);
+                        setField("date", d.toISOString().split("T")[0]);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                        (() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 1);
+                          return form.date === d.toISOString().split("T")[0];
+                        })()
+                          ? "bg-client-primary text-white"
+                          : "bg-[#f5f1ea] hover:bg-client-accent text-client-text"
+                      }`}
+                    >
+                      Ngày mai
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 2);
+                        setField("date", d.toISOString().split("T")[0]);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                        (() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 2);
+                          return form.date === d.toISOString().split("T")[0];
+                        })()
+                          ? "bg-client-primary text-white"
+                          : "bg-[#f5f1ea] hover:bg-client-accent text-client-text"
+                      }`}
+                    >
+                      Ngày kia
+                    </button>
+                  </div>
+
+                  {errors.date && (
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-rose-600 font-medium animate-slide-in">
+                      <AlertCircle size={13} className="shrink-0 text-rose-500" />
+                      <span>{errors.date}</span>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Giờ đến *</label>
-                  <input
-                    required
-                    type="time"
-                    min={bookingValidationEnabled ? PUBLIC_BOOKING_HOURS.OPEN : undefined}
-                    max={bookingValidationEnabled ? ONLINE_BOOKING_LAST_ARRIVAL_TIME : undefined}
-                    value={form.time}
-                    onChange={(e) => setField("time", e.target.value)}
-                    className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
-                  />
-                  <p className="mt-2 text-xs text-client-muted">Nhận đặt online từ 10:00 đến 19:00, tối đa 30 ngày.</p>
+
+                {/* 2. Giờ đến (Custom Time Slot Popover Picker) */}
+                <div className="space-y-1.5 relative" ref={timePickerRef}>
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider">
+                    Giờ đến <span className="text-rose-500">*</span>
+                  </label>
+
+                  <div
+                    onClick={() => setTimePickerOpen((prev) => !prev)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-sm flex items-center justify-between cursor-pointer transition-all select-none ${
+                      errors.time
+                        ? "border-rose-500 bg-rose-50/20 ring-2 ring-rose-500/10 text-rose-950"
+                        : timePickerOpen
+                        ? "border-client-secondary ring-2 ring-client-secondary/20 bg-white"
+                        : "border-client-accent bg-white hover:border-client-secondary"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Clock size={16} className={errors.time ? "text-rose-500" : form.time ? "text-client-primary" : "text-gray-400"} />
+                      <span className={form.time ? "font-bold text-gray-900 font-mono text-sm" : "text-gray-400 text-sm"}>
+                        {form.time ? `${form.time} (Giờ nhận bàn)` : "Chọn giờ dùng bữa..."}
+                      </span>
+                    </div>
+                    <ChevronDown size={16} className={`text-gray-400 transition-transform ${timePickerOpen ? "rotate-180 text-client-primary" : ""}`} />
+                  </div>
+
+                  {/* Popover Time Slot Picker Dropdown */}
+                  {timePickerOpen && (
+                    <div className="absolute left-0 top-full mt-2 w-80 sm:w-96 bg-white rounded-3xl shadow-2xl border border-client-accent p-4 z-50 animate-fade-in">
+                      <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={15} className="text-client-primary" />
+                          <span className="text-xs font-bold text-gray-900 font-display">Chọn khung giờ đến</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                          10:00 - 19:00
+                        </span>
+                      </div>
+
+                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                        {/* Bữa Trưa (Lunch) */}
+                        <div>
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-2">
+                            <Sun size={13} className="text-amber-500" />
+                            <span>Khung giờ trưa (10:00 - 14:00)</span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {["10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00"].map((slot) => {
+                              const disabled = isSlotDisabled(slot, form.date);
+                              const isSelected = form.time === slot;
+
+                              return (
+                                <button
+                                  key={slot}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => {
+                                    setField("time", slot);
+                                    setTimePickerOpen(false);
+                                  }}
+                                  className={`py-2 px-1 rounded-xl text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                    isSelected
+                                      ? "bg-client-primary text-white shadow-md ring-2 ring-client-secondary scale-105"
+                                      : disabled
+                                      ? "bg-gray-100 text-gray-300 line-through cursor-not-allowed border border-transparent"
+                                      : "bg-[#fdfbf9] hover:bg-client-secondary/15 hover:border-client-secondary text-gray-800 border border-[#e8dfd5]"
+                                  }`}
+                                >
+                                  {slot}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Bữa Tối (Dinner) */}
+                        <div>
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-800 uppercase tracking-wider mb-2">
+                            <Moon size={13} className="text-indigo-500" />
+                            <span>Khung giờ tối (16:30 - 19:00)</span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {["16:30", "17:00", "17:30", "18:00", "18:30", "19:00"].map((slot) => {
+                              const disabled = isSlotDisabled(slot, form.date);
+                              const isSelected = form.time === slot;
+
+                              return (
+                                <button
+                                  key={slot}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => {
+                                    setField("time", slot);
+                                    setTimePickerOpen(false);
+                                  }}
+                                  className={`py-2 px-1 rounded-xl text-xs font-mono font-bold transition-all text-center cursor-pointer ${
+                                    isSelected
+                                      ? "bg-client-primary text-white shadow-md ring-2 ring-client-secondary scale-105"
+                                      : disabled
+                                      ? "bg-gray-100 text-gray-300 line-through cursor-not-allowed border border-transparent"
+                                      : "bg-[#fdfbf9] hover:bg-client-secondary/15 hover:border-client-secondary text-gray-800 border border-[#e8dfd5]"
+                                  }`}
+                                >
+                                  {slot}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Manual Time input for exact minute */}
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                        <span className="text-[10px] text-gray-500">Hoặc chọn giờ tùy ý:</span>
+                        <input
+                          type="time"
+                          min={bookingValidationEnabled ? PUBLIC_BOOKING_HOURS.OPEN : undefined}
+                          max={bookingValidationEnabled ? ONLINE_BOOKING_LAST_ARRIVAL_TIME : undefined}
+                          value={form.time}
+                          onChange={(e) => setField("time", e.target.value)}
+                          className="px-2 py-1 text-xs border border-gray-200 rounded-lg outline-none font-mono"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {errors.time && (
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-rose-600 font-medium animate-slide-in">
+                      <AlertCircle size={13} className="shrink-0 text-rose-500" />
+                      <span>{errors.time}</span>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số khách *</label>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    max="30"
-                    value={form.guests}
-                    onChange={(e) => setField("guests", e.target.value.replace(/[^0-9]/g, ""))}
-                    className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
-                    placeholder="2"
-                  />
-                  <p className="mt-2 text-xs text-client-muted">Tối đa 30 người / đơn đặt online.</p>
+
+                {/* 3. Số khách */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider">
+                    Số khách <span className="text-rose-500">*</span>
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = parseInt(form.guests) || 1;
+                        if (current > 1) {
+                          setField("guests", String(current - 1));
+                        }
+                      }}
+                      className="w-11 h-11 rounded-2xl border border-client-accent bg-[#fdfbf9] hover:bg-client-accent flex items-center justify-center text-client-text font-bold transition-all cursor-pointer shrink-0 active:scale-95"
+                    >
+                      <Minus size={15} />
+                    </button>
+
+                    <div className="relative flex-1">
+                      <Users size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={form.guests}
+                        onChange={(e) => setField("guests", e.target.value.replace(/[^0-9]/g, ""))}
+                        onBlur={() => handleBlur("guests")}
+                        className={`w-full rounded-2xl border pl-10 pr-4 py-3 text-sm text-center font-bold outline-none transition-all ${
+                          errors.guests
+                            ? "border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-rose-950"
+                            : "border-client-accent bg-white focus:ring-2 focus:ring-client-secondary"
+                        }`}
+                        placeholder="2"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const current = parseInt(form.guests) || 0;
+                        if (current < 30) {
+                          setField("guests", String(current + 1));
+                        }
+                      }}
+                      className="w-11 h-11 rounded-2xl border border-client-accent bg-[#fdfbf9] hover:bg-client-accent flex items-center justify-center text-client-text font-bold transition-all cursor-pointer shrink-0 active:scale-95"
+                    >
+                      <Plus size={15} />
+                    </button>
+                  </div>
+
+                  {/* Quick Guest Chips */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {["2", "4", "6", "8", "10", "12"].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setField("guests", num)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                          form.guests === num
+                            ? "bg-client-primary text-white"
+                            : "bg-[#f5f1ea] hover:bg-client-accent text-client-text"
+                        }`}
+                      >
+                        {num} người
+                      </button>
+                    ))}
+                  </div>
+
+                  {errors.guests && (
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-rose-600 font-medium animate-slide-in">
+                      <AlertCircle size={13} className="shrink-0 text-rose-500" />
+                      <span>{errors.guests}</span>
+                    </div>
+                  )}
                 </div>
+
               </div>
             </div>
 
@@ -590,45 +954,84 @@ export const BookingPage: React.FC = () => {
                 Thông tin người đặt & Ghi chú
               </h2>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                
+                {/* Họ và tên */}
                 <div>
-                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Họ và tên *</label>
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">
+                    Họ và tên <span className="text-rose-500">*</span>
+                  </label>
                   <input
-                    required
                     value={form.name}
                     onChange={(e) => setField("name", e.target.value)}
+                    onBlur={() => handleBlur("name")}
                     placeholder="Nguyễn Văn A"
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${
+                      errors.name
+                        ? "border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-rose-950"
+                        : "border-gray-300 focus:ring-2 focus:ring-client-secondary"
+                    }`}
                   />
+                  {errors.name && (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-xs text-rose-600 font-medium animate-slide-in">
+                      <AlertCircle size={13} className="shrink-0 text-rose-500" />
+                      <span>{errors.name}</span>
+                    </div>
+                  )}
                 </div>
                 
+                {/* Số điện thoại */}
                 <div>
-                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Số điện thoại *</label>
+                  <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">
+                    Số điện thoại <span className="text-rose-500">*</span>
+                  </label>
                   <div className="relative">
-                    <Phone size={16} className="absolute left-4 top-4 text-[#7b6f65]" />
+                    <Phone size={16} className={`absolute left-4 top-4 ${errors.phone ? "text-rose-500" : "text-[#7b6f65]"}`} />
                     <input
-                      required
                       type="tel"
                       value={form.phone}
                       onChange={(e) => setField("phone", e.target.value.replace(/[^0-9+]/g, '').replace(/(?!^\+)\+/g, ''))}
+                      onBlur={() => handleBlur("phone")}
                       placeholder="0912345678"
-                      className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
+                      className={`w-full rounded-xl border pl-11 pr-4 py-3 text-sm outline-none transition-all ${
+                        errors.phone
+                          ? "border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-rose-950"
+                          : "border-gray-300 focus:ring-2 focus:ring-client-secondary"
+                      }`}
                     />
                   </div>
+                  {errors.phone && (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-xs text-rose-600 font-medium animate-slide-in">
+                      <AlertCircle size={13} className="shrink-0 text-rose-500" />
+                      <span>{errors.phone}</span>
+                    </div>
+                  )}
                 </div>
                 
+                {/* Email */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-client-muted uppercase tracking-wider mb-2">Email (Tùy chọn)</label>
                   <div className="relative">
-                    <Mail size={16} className="absolute left-4 top-4 text-[#7b6f65]" />
+                    <Mail size={16} className={`absolute left-4 top-4 ${errors.email ? "text-rose-500" : "text-[#7b6f65]"}`} />
                     <input
                       type="email"
                       value={form.email}
                       onChange={(e) => setField("email", e.target.value)}
+                      onBlur={() => handleBlur("email")}
                       placeholder="email@example.com"
-                      className="w-full rounded-xl border border-gray-300 pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none transition-all"
+                      className={`w-full rounded-xl border pl-11 pr-4 py-3 text-sm outline-none transition-all ${
+                        errors.email
+                          ? "border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-rose-950"
+                          : "border-gray-300 focus:ring-2 focus:ring-client-secondary"
+                      }`}
                     />
                   </div>
+                  {errors.email && (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-xs text-rose-600 font-medium animate-slide-in">
+                      <AlertCircle size={13} className="shrink-0 text-rose-500" />
+                      <span>{errors.email}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Ghi chú */}
