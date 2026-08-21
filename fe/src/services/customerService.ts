@@ -275,6 +275,18 @@ export const cancelBooking = async (payload: number | { id: number; reason?: str
   await customerApi.patch(`/v1/customer/bookings/${id}/cancel`, { reason });
 };
 
+export const updateBookingContact = async (
+  id: number,
+  data: {
+    guest_name: string;
+    guest_phone: string;
+    guest_email?: string;
+    guest_note?: string;
+  }
+): Promise<void> => {
+  await customerApi.patch(`/v1/customer/bookings/${id}/contact`, data);
+};
+
 export const payBookingDeposit = async (id: number): Promise<CreatedBooking> => {
   const response = await customerApi.patch(`/v1/bookings/${id}/pay-deposit`);
   return response.data.data;

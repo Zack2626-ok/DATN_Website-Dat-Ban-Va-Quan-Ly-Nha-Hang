@@ -1,21 +1,51 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { 
   User, Calendar, Award, ClipboardList, Sparkles, LogOut, Loader2, Phone, Mail, Edit3, Key, Star, X,
   Eye, EyeOff, AlertCircle, AlertTriangle, Clock, MapPin, Users, UtensilsCrossed, FileText,
-  MessageSquareQuote, ShieldAlert, Copy, Info, CheckCircle, Utensils, ShieldCheck, Crown, ChevronRight, Check
+  MessageSquareQuote, ShieldAlert, Copy, Info, CheckCircle, Utensils, ShieldCheck, Crown, ChevronRight, Check,
+  Lock, CalendarX, MoreHorizontal
 } from "lucide-react";
 import { 
   getCustomerProfile, updateCustomerProfile, changeCustomerPassword, 
-  getMyBookings, cancelBooking, getCustomerLoyalty, getCustomerVouchers, 
+  getMyBookings, cancelBooking, updateBookingContact, getCustomerLoyalty, getCustomerVouchers, 
   redeemVoucher, getMyUnusedVouchers, submitBookingReview
 } from "../../services/customerService";
 
 export const AccountPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"profile" | "bookings" | "loyalty">("profile");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+
+  const [activeTab, setActiveTab] = useState<"profile" | "bookings" | "loyalty">(() => {
+    if (tabParam === "bookings" || tabParam === "loyalty" || tabParam === "profile") {
+      return tabParam;
+    }
+    return "profile";
+  });
+
+  // Action menu dropdown state for booking cards
+  const [activeActionMenuId, setActiveActionMenuId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => setActiveActionMenuId(null);
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, []);
+
+  useEffect(() => {
+    const currentTab = searchParams.get("tab");
+    if (currentTab === "bookings" || currentTab === "loyalty" || currentTab === "profile") {
+      setActiveTab(currentTab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tab: "profile" | "bookings" | "loyalty") => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
 
   // Authentication check
   const token = localStorage.getItem("customer_token");
@@ -101,6 +131,19 @@ export const AccountPage: React.FC = () => {
     }
   });
 
+  const updateContactMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { guest_name: string; guest_phone: string; guest_email?: string; guest_note?: string } }) =>
+      updateBookingContact(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customer-bookings"] });
+      toast.success("Cập nhật thông tin người đặt bàn thành công!");
+      setEditContactModal((prev) => ({ ...prev, isOpen: false, booking: null }));
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Cập nhật thông tin thất bại.");
+    }
+  });
+
   const redeemVoucherMutation = useMutation({
     mutationFn: redeemVoucher,
     onSuccess: () => {
@@ -122,6 +165,27 @@ export const AccountPage: React.FC = () => {
   }>({
     isOpen: false,
     booking: null,
+  });
+
+  // Edit Contact Info Modal State
+  const [editContactModal, setEditContactModal] = useState<{
+    isOpen: boolean;
+    booking: any | null;
+    name: string;
+    phone: string;
+    email: string;
+    note: string;
+    errors: { name?: string; phone?: string; email?: string };
+    touched: { name?: boolean; phone?: boolean; email?: boolean };
+  }>({
+    isOpen: false,
+    booking: null,
+    name: "",
+    phone: "",
+    email: "",
+    note: "",
+    errors: {},
+    touched: {},
   });
 
   // View Review Modal State
@@ -515,7 +579,7 @@ export const AccountPage: React.FC = () => {
           <div className="lg:col-span-1 space-y-3">
             <div className="bg-[#fdfbf9] border border-[#e8dfd5] p-3 rounded-3xl space-y-2 shadow-xs">
               <button
-                onClick={() => setActiveTab("profile")}
+                onClick={() => handleTabChange("profile")}
                 className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-xs sm:text-sm font-bold transition-all text-left cursor-pointer ${
                   activeTab === "profile" 
                     ? "bg-gradient-to-r from-client-primary to-[#7a1f14] text-white shadow-md shadow-client-primary/20" 
@@ -530,7 +594,7 @@ export const AccountPage: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setActiveTab("bookings")}
+                onClick={() => handleTabChange("bookings")}
                 className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-xs sm:text-sm font-bold transition-all text-left cursor-pointer ${
                   activeTab === "bookings" 
                     ? "bg-gradient-to-r from-client-primary to-[#7a1f14] text-white shadow-md shadow-client-primary/20" 
@@ -551,7 +615,7 @@ export const AccountPage: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setActiveTab("loyalty")}
+                onClick={() => handleTabChange("loyalty")}
                 className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-xs sm:text-sm font-bold transition-all text-left cursor-pointer ${
                   activeTab === "loyalty" 
                     ? "bg-gradient-to-r from-client-primary to-[#7a1f14] text-white shadow-md shadow-client-primary/20" 
@@ -1087,34 +1151,108 @@ export const AccountPage: React.FC = () => {
                               )}
                             </div>
 
-                            {/* Actions button group */}
-                            <div className="flex items-center flex-wrap gap-2 shrink-0 w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-gray-100">
+                            {/* Actions button group - Ultra-Compact Executive Bar */}
+                            <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-start md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-[#f2ebe1] relative">
                               {/* Xem chi tiết button */}
                               <button
+                                type="button"
                                 onClick={() => setDetailModal({ isOpen: true, booking })}
-                                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                className="group inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#fdfbf9] hover:bg-white text-[#4a3f35] hover:text-[#1e1b18] border border-[#e2d7c9] hover:border-[#cbbaa5] rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
                                 title="Xem chi tiết đơn đặt bàn"
                               >
-                                <Eye size={14} />
-                                <span>Xem chi tiết</span>
+                                <Eye size={13.5} className="text-[#8c7e72] group-hover:text-[#4a3f35] transition-colors" />
+                                <span>Chi tiết</span>
                               </button>
 
-                              {/* Hủy đặt bàn button */}
+                              {/* More Actions Dropdown (Edit Info / Copy Code / Cancel Booking) */}
                               {isCancellable && (
-                                <button
-                                  onClick={() => {
-                                    setCancelModal({
-                                      isOpen: true,
-                                      booking,
-                                      reason: "Bận việc đột xuất / Thay đổi lịch trình",
-                                      customReason: "",
-                                      agreePolicy: false,
-                                    });
-                                  }}
-                                  className="px-3.5 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                                >
-                                  Hủy đặt bàn
-                                </button>
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveActionMenuId(activeActionMenuId === booking.id ? null : booking.id);
+                                    }}
+                                    className={`w-7.5 h-7.5 rounded-xl border flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                                      activeActionMenuId === booking.id
+                                        ? "bg-client-primary text-white border-client-primary shadow-xs"
+                                        : "bg-[#fdfbf9] hover:bg-white text-[#6e6053] hover:text-[#2a241f] border-[#e2d7c9] hover:border-[#cbbaa5]"
+                                    }`}
+                                    title="Tùy chọn khác"
+                                  >
+                                    <MoreHorizontal size={15} />
+                                  </button>
+
+                                  {/* Floating Action Menu */}
+                                  {activeActionMenuId === booking.id && (
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-2xl shadow-xl border border-[#e8dfd5] py-1.5 z-30 animate-scale-in text-xs"
+                                    >
+                                      {/* Sửa thông tin */}
+                                      {["pending", "confirmed"].includes(booking.status) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveActionMenuId(null);
+                                            setEditContactModal({
+                                              isOpen: true,
+                                              booking,
+                                              name: booking.guest_name || profile?.name || "",
+                                              phone: booking.guest_phone || profile?.phone || "",
+                                              email: booking.guest_email || profile?.email || "",
+                                              note: booking.guest_note || booking.note || "",
+                                              errors: {},
+                                              touched: {},
+                                            });
+                                          }}
+                                          className="w-full px-3.5 py-2 text-left hover:bg-amber-50/80 text-amber-950 font-bold flex items-center gap-2.5 transition-colors cursor-pointer"
+                                        >
+                                          <Edit3 size={13.5} className="text-amber-600 shrink-0" />
+                                          <span>Sửa thông tin</span>
+                                        </button>
+                                      )}
+
+                                      {/* Copy confirmation code */}
+                                      {booking.confirmation_code && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveActionMenuId(null);
+                                            navigator.clipboard.writeText(booking.confirmation_code);
+                                            toast.success(`Đã sao chép mã ${booking.confirmation_code}`);
+                                          }}
+                                          className="w-full px-3.5 py-2 text-left hover:bg-[#fbf9f6] text-slate-700 font-medium flex items-center gap-2.5 transition-colors cursor-pointer"
+                                        >
+                                          <Copy size={13.5} className="text-slate-400 shrink-0" />
+                                          <span>Sao chép mã đơn</span>
+                                        </button>
+                                      )}
+
+                                      {/* Divider */}
+                                      <div className="my-1 border-t border-[#f2ebe1]" />
+
+                                      {/* Hủy đặt bàn */}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveActionMenuId(null);
+                                          setCancelModal({
+                                            isOpen: true,
+                                            booking,
+                                            reason: "Bận việc đột xuất / Thay đổi lịch trình",
+                                            customReason: "",
+                                            agreePolicy: false,
+                                          });
+                                        }}
+                                        className="w-full px-3.5 py-2 text-left hover:bg-rose-50 text-rose-600 font-bold flex items-center gap-2.5 transition-colors cursor-pointer"
+                                      >
+                                        <CalendarX size={13.5} className="text-rose-500 shrink-0" />
+                                        <span>Hủy đặt bàn</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               )}
 
                               {/* Completed: Xem đánh giá hoặc Đánh giá */}
@@ -1809,24 +1947,48 @@ export const AccountPage: React.FC = () => {
 
               <div className="flex items-center gap-2">
                 {["pending", "confirmed"].includes(detailModal.booking.status) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const b = detailModal.booking;
-                      setDetailModal({ isOpen: false, booking: null });
-                      setCancelModal({
-                        isOpen: true,
-                        booking: b,
-                        reason: "Bận việc đột xuất / Thay đổi lịch trình",
-                        customReason: "",
-                        agreePolicy: false,
-                      });
-                    }}
-                    className="px-4 py-2.5 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <AlertTriangle size={14} />
-                    <span>Hủy đặt bàn</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const b = detailModal.booking;
+                        setDetailModal({ isOpen: false, booking: null });
+                        setEditContactModal({
+                          isOpen: true,
+                          booking: b,
+                          name: b.guest_name || profile?.name || "",
+                          phone: b.guest_phone || profile?.phone || "",
+                          email: b.guest_email || profile?.email || "",
+                          note: b.guest_note || b.note || "",
+                          errors: {},
+                          touched: {},
+                        });
+                      }}
+                      className="group inline-flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-amber-500/10 to-amber-600/15 hover:from-amber-500/20 hover:to-amber-600/25 text-amber-950 border border-amber-500/30 hover:border-amber-500/50 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                    >
+                      <Edit3 size={14} className="text-amber-700 group-hover:text-amber-800 transition-colors" />
+                      <span>Sửa thông tin</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const b = detailModal.booking;
+                        setDetailModal({ isOpen: false, booking: null });
+                        setCancelModal({
+                          isOpen: true,
+                          booking: b,
+                          reason: "Bận việc đột xuất / Thay đổi lịch trình",
+                          customReason: "",
+                          agreePolicy: false,
+                        });
+                      }}
+                      className="group inline-flex items-center gap-1.5 px-4 py-2.5 bg-rose-50/80 hover:bg-rose-100 text-rose-700 hover:text-rose-900 border border-rose-200/80 hover:border-rose-300 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer"
+                    >
+                      <CalendarX size={14} className="text-rose-500 group-hover:text-rose-600 transition-colors" />
+                      <span>Hủy đặt bàn</span>
+                    </button>
+                  </>
                 )}
 
                 {detailModal.booking.status === "completed" && (
@@ -2308,6 +2470,254 @@ export const AccountPage: React.FC = () => {
                 >
                   {reviewMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Gửi đánh giá (+30 PTS)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Contact Info Modal (Only Name, Phone, Email, Note; Locked Date/Time/Guests) */}
+      {editContactModal.isOpen && editContactModal.booking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-[#fdfbf9] rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-[#e8dfd5] animate-scale-in max-h-[90vh] flex flex-col">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-[#f0eae1] flex justify-between items-center bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 font-display flex items-center gap-2">
+                  <Edit3 className="text-blue-600" size={18} />
+                  Thay đổi thông tin người đặt bàn
+                </h3>
+                <p className="text-xs text-client-muted mt-0.5 font-medium">
+                  Mã đơn: <strong className="font-mono text-blue-800">{editContactModal.booking.confirmation_code || `#${editContactModal.booking.id}`}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditContactModal((prev) => ({ ...prev, isOpen: false, booking: null }))}
+                className="w-8 h-8 rounded-full bg-white hover:bg-gray-100 text-gray-400 hover:text-gray-700 border border-gray-200 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Scrollable Form Body */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const nameTrimmed = editContactModal.name.trim();
+                const phoneTrimmed = editContactModal.phone.trim();
+                const emailTrimmed = editContactModal.email.trim();
+                
+                const errs: { name?: string; phone?: string; email?: string } = {};
+                if (!nameTrimmed) {
+                  errs.name = "Họ và tên không được để trống";
+                } else if (nameTrimmed.length < 2) {
+                  errs.name = "Họ và tên tối thiểu 2 ký tự";
+                }
+
+                const phoneRegex = /(84|0[3|5|7|8|9])+([0-9]{8})\b/;
+                if (!phoneTrimmed) {
+                  errs.phone = "Số điện thoại không được để trống";
+                } else if (!phoneRegex.test(phoneTrimmed) || phoneTrimmed.length !== 10) {
+                  errs.phone = "Số điện thoại phải gồm 10 chữ số chuẩn";
+                }
+
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (emailTrimmed && !emailRegex.test(emailTrimmed)) {
+                  errs.email = "Định dạng email không hợp lệ";
+                }
+
+                if (Object.keys(errs).length > 0) {
+                  setEditContactModal((prev) => ({
+                    ...prev,
+                    errors: errs,
+                    touched: { name: true, phone: true, email: true },
+                  }));
+                  return;
+                }
+
+                updateContactMutation.mutate({
+                  id: editContactModal.booking.id,
+                  data: {
+                    guest_name: nameTrimmed,
+                    guest_phone: phoneTrimmed,
+                    guest_email: emailTrimmed || undefined,
+                    guest_note: editContactModal.note.trim() || undefined,
+                  },
+                });
+              }}
+              className="p-6 space-y-4 overflow-y-auto flex-1 text-xs"
+            >
+              {/* Locked / Read-only section */}
+              <div className="bg-gray-100/80 rounded-2xl p-4 border border-gray-200/80 space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-200/70 pb-2">
+                  <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Lock size={12} className="text-gray-500" />
+                    Lịch trình dùng bữa (Cố định)
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-medium">Không thể đổi trực tiếp</span>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-1">
+                  <div>
+                    <span className="text-[10px] text-gray-500 block">Ngày đến:</span>
+                    <span className="font-bold text-gray-800">{new Date(editContactModal.booking.start_time).toLocaleDateString("vi-VN")}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-500 block">Giờ nhận bàn:</span>
+                    <span className="font-bold text-gray-800">{new Date(editContactModal.booking.start_time).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <span className="text-[10px] text-gray-500 block">Số lượng khách:</span>
+                    <span className="font-bold text-gray-800">{editContactModal.booking.party_size} người</span>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-gray-500 italic pt-1 leading-tight">
+                  * Ngày, giờ và số khách được cố định để nhà hàng đảm bảo chỗ ngồi. Nếu cần thay đổi lịch, quý khách vui lòng liên hệ hotline <strong>028 3829 4000</strong>.
+                </p>
+              </div>
+
+              {/* Editable Fields */}
+              <div className="space-y-3.5 pt-1">
+                {/* Họ và tên */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-client-text uppercase tracking-wider">
+                    Họ và tên người đặt bàn <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <User size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${editContactModal.errors.name ? "text-rose-500" : "text-gray-400"}`} />
+                    <input
+                      type="text"
+                      value={editContactModal.name}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditContactModal((prev) => ({
+                          ...prev,
+                          name: val,
+                          errors: { ...prev.errors, name: val.trim() ? undefined : "Họ và tên không được để trống" },
+                        }));
+                      }}
+                      placeholder="Nguyễn Văn A"
+                      className={`w-full rounded-2xl border pl-10 pr-4 py-2.5 text-xs text-client-text outline-none transition-all bg-white ${
+                        editContactModal.errors.name
+                          ? "border-rose-500 bg-rose-50/20 ring-2 ring-rose-500/15 text-rose-950"
+                          : "border-[#e8dfd5] focus:border-client-secondary focus:ring-2 focus:ring-client-secondary/20"
+                      }`}
+                    />
+                  </div>
+                  {editContactModal.errors.name && (
+                    <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-1">
+                      <AlertCircle size={12} /> {editContactModal.errors.name}
+                    </p>
+                  )}
+                </div>
+
+                {/* Số điện thoại */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-client-text uppercase tracking-wider">
+                    Số điện thoại liên hệ <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${editContactModal.errors.phone ? "text-rose-500" : "text-gray-400"}`} />
+                    <input
+                      type="tel"
+                      value={editContactModal.phone}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, "");
+                        setEditContactModal((prev) => ({
+                          ...prev,
+                          phone: val,
+                          errors: {
+                            ...prev.errors,
+                            phone: val.length === 10 ? undefined : "Số điện thoại phải gồm 10 chữ số",
+                          },
+                        }));
+                      }}
+                      placeholder="0912345678"
+                      className={`w-full rounded-2xl border pl-10 pr-4 py-2.5 text-xs text-client-text outline-none transition-all font-mono bg-white ${
+                        editContactModal.errors.phone
+                          ? "border-rose-500 bg-rose-50/20 ring-2 ring-rose-500/15 text-rose-950"
+                          : "border-[#e8dfd5] focus:border-client-secondary focus:ring-2 focus:ring-client-secondary/20"
+                      }`}
+                    />
+                  </div>
+                  {editContactModal.errors.phone && (
+                    <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-1">
+                      <AlertCircle size={12} /> {editContactModal.errors.phone}
+                    </p>
+                  )}
+                </div>
+
+                {/* Email */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-client-text uppercase tracking-wider">
+                    Email nhận thông báo (Tùy chọn)
+                  </label>
+                  <div className="relative">
+                    <Mail size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${editContactModal.errors.email ? "text-rose-500" : "text-gray-400"}`} />
+                    <input
+                      type="email"
+                      value={editContactModal.email}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        setEditContactModal((prev) => ({
+                          ...prev,
+                          email: val,
+                          errors: {
+                            ...prev.errors,
+                            email: !val || emailRegex.test(val.trim()) ? undefined : "Email không hợp lệ",
+                          },
+                        }));
+                      }}
+                      placeholder="nguyenvana@gmail.com"
+                      className={`w-full rounded-2xl border pl-10 pr-4 py-2.5 text-xs text-client-text outline-none transition-all bg-white ${
+                        editContactModal.errors.email
+                          ? "border-rose-500 bg-rose-50/20 ring-2 ring-rose-500/15 text-rose-950"
+                          : "border-[#e8dfd5] focus:border-client-secondary focus:ring-2 focus:ring-client-secondary/20"
+                      }`}
+                    />
+                  </div>
+                  {editContactModal.errors.email && (
+                    <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-1">
+                      <AlertCircle size={12} /> {editContactModal.errors.email}
+                    </p>
+                  )}
+                </div>
+
+                {/* Ghi chú & Dịp đặc biệt */}
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-client-text uppercase tracking-wider">
+                    Ghi chú / Lời dặn cho nhà hàng
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editContactModal.note}
+                    onChange={(e) => setEditContactModal((prev) => ({ ...prev, note: e.target.value }))}
+                    placeholder="Ví dụ: Bàn gần cửa sổ, tiệc sinh nhật..."
+                    className="w-full rounded-2xl border border-[#e8dfd5] p-3 text-xs outline-none focus:border-client-secondary focus:ring-2 focus:ring-client-secondary/20 resize-none bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-[#f0eae1]">
+                <button
+                  type="button"
+                  onClick={() => setEditContactModal((prev) => ({ ...prev, isOpen: false, booking: null }))}
+                  className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateContactMutation.isPending}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {updateContactMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                  Lưu thay đổi
                 </button>
               </div>
             </form>
