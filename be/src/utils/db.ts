@@ -889,6 +889,10 @@ const runSchemaMigrations = async (): Promise<void> => {
       await query(`ALTER TABLE bookings ADD COLUMN guest_email VARCHAR(255) DEFAULT NULL AFTER guest_phone`).catch(() => {});
       console.log("✅ Migration: added bookings.guest_email");
     }
+    if (!existingBookingCols.has('cancel_reason')) {
+      await query(`ALTER TABLE bookings ADD COLUMN cancel_reason TEXT DEFAULT NULL`).catch(() => {});
+      console.log("✅ Migration: added bookings.cancel_reason");
+    }
     const bookingMenuItemsTable = await query<any[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_menu_items'`,
@@ -2519,13 +2523,19 @@ export const updateResmanagerTableStatus = async (
          SET status = ?, resolved_at = NOW()
          WHERE primary_table_id = ? AND status = ?`,
         [TABLE_MERGE_STATUS.RESOLVED, primaryTableId, TABLE_MERGE_STATUS.ACTIVE],
-      );
+      ).catch(() => {});
       await connection.query(
         `UPDATE table_group_seatings
          SET status = ?, resolved_at = NOW()
          WHERE primary_table_id = ? AND status = ?`,
         [GROUP_SEATING_STATUS.RESOLVED, primaryTableId, GROUP_SEATING_STATUS.ACTIVE],
-      );
+      ).catch(() => {});
+      await connection.query(
+        `UPDATE orders
+         SET status = 'cancelled', is_early_payment = 0, is_early_paid = 0
+         WHERE table_id IN (${tablePlaceholders}) AND status IN ('open', 'serving')`,
+        [...updatedTableIds],
+      ).catch(() => {});
     }
 
     await connection.commit();
@@ -3804,7 +3814,18 @@ export const updateBookingStatus = async (
     noteValue = `Updated by staff id: ${userId}`;
   }
 
-  if (noteValue !== null) {
+  if (status === 'cancelled') {
+    const reasonText = cancelReason || (userId ? `Updated by staff id: ${userId}` : 'Khách hàng yêu cầu hủy đơn');
+    try {
+      await query(`
+        UPDATE bookings SET status = ?, cancel_reason = ?, note = COALESCE(note, ?) WHERE id = ?
+      `, [status, reasonText, reasonText, id]);
+    } catch {
+      await query(`
+        UPDATE bookings SET status = ?, note = ? WHERE id = ?
+      `, [status, reasonText, id]);
+    }
+  } else if (noteValue !== null) {
     await query(`
       UPDATE bookings SET status = ?, note = ? WHERE id = ?
     `, [status, noteValue, id]);
@@ -6630,9 +6651,9 @@ export const getCustomerBookings = async (customerId: number | string): Promise<
     phone = custRows[0].phone;
   }
 
-  return query(`
+  const bookings = await query<any[]>(`
     SELECT b.*, t.name AS table_name, a.name AS area_name,
-           r.rating AS review_rating, r.comment AS review_comment,
+           r.rating AS review_rating, r.comment AS review_comment, r.created_at AS review_created_at,
            IF(r.id IS NOT NULL, 1, 0) AS is_reviewed
     FROM bookings b
     LEFT JOIN tables t ON b.table_id = t.id
@@ -6641,6 +6662,58 @@ export const getCustomerBookings = async (customerId: number | string): Promise<
     WHERE b.customer_id = ? ${phone ? "OR (b.customer_id IS NULL AND b.guest_phone = ?)" : ""}
     ORDER BY b.start_time DESC
   `, phone ? [customerId, phone] : [customerId]);
+
+  if (bookings && bookings.length > 0) {
+    const bookingIds = bookings.map((b) => b.id);
+    const placeholders = bookingIds.map(() => "?").join(",");
+
+    try {
+      const items = await query<any[]>(`
+        SELECT bmi.*, mi.name AS menu_item_name, mi.price AS menu_item_price, mi.image_url AS menu_item_image
+        FROM booking_menu_items bmi
+        JOIN menu_items mi ON bmi.menu_item_id = mi.id
+        WHERE bmi.booking_id IN (${placeholders})
+      `, bookingIds);
+
+      const itemsMap: Record<number, any[]> = {};
+      for (const it of items) {
+        if (!itemsMap[it.booking_id]) itemsMap[it.booking_id] = [];
+        itemsMap[it.booking_id].push(it);
+      }
+      for (const b of bookings) {
+        b.pre_ordered_items = itemsMap[b.id] || [];
+      }
+    } catch {
+      for (const b of bookings) {
+        b.pre_ordered_items = [];
+      }
+    }
+
+    try {
+      const assignments = await query<any[]>(`
+        SELECT bta.booking_id, bta.table_id, bta.is_primary, bta.allocated_capacity, t.name AS table_name, a.name AS area_name
+        FROM booking_table_assignments bta
+        JOIN tables t ON t.id = bta.table_id
+        LEFT JOIN table_areas a ON a.id = t.area_id
+        WHERE bta.booking_id IN (${placeholders})
+        ORDER BY bta.is_primary DESC, t.name ASC
+      `, bookingIds);
+
+      const assignMap: Record<number, any[]> = {};
+      for (const a of assignments) {
+        if (!assignMap[a.booking_id]) assignMap[a.booking_id] = [];
+        assignMap[a.booking_id].push(a);
+      }
+      for (const b of bookings) {
+        if (assignMap[b.id] && assignMap[b.id].length > 0) {
+          b.table_assignments = assignMap[b.id];
+          b.table_names = assignMap[b.id].map((t: any) => t.table_name).join(", ");
+        }
+      }
+    } catch {}
+  }
+
+  return bookings;
 };
 
 export const createBookingReview = async (data: {
