@@ -97,13 +97,15 @@ export const UserTable: React.FC<UserTableProps> = ({
                     >
                       <Edit size={16} />
                     </button>
-                    <button
-                      onClick={() => onDelete(user)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                      title="Xóa"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {user.role?.name !== "manager" && (
+                      <button
+                        onClick={() => onDelete(user)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title="Xóa"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 )}
               </td>

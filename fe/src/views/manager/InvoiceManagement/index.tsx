@@ -131,6 +131,35 @@ const CATEGORY_DEFAULT_PAYEES: Record<string, string> = {
   "Khác": "Cửa hàng tạp hóa Cô Ba"
 };
 
+const getUtilityDefaults = (cat: string, dateStr: string) => {
+  if (!dateStr) return { note: "", amount: "", payee: "" };
+  const date = new Date(dateStr);
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  const monthYearLabel = `${mm}/${yyyy}`;
+
+  if (cat === "Điện") {
+    return {
+      note: `Tiền điện kỳ tháng ${monthYearLabel}`,
+      amount: "4500000",
+      payee: "Tổng Công ty Điện lực miền Nam (EVN)"
+    };
+  } else if (cat === "Nước") {
+    return {
+      note: `Tiền nước kỳ tháng ${monthYearLabel}`,
+      amount: "850000",
+      payee: "Công ty Cổ phần Cấp nước Chợ Lớn"
+    };
+  } else if (cat === "Internet") {
+    return {
+      note: `Cước mạng Viettel tháng ${monthYearLabel}`,
+      amount: "350000",
+      payee: "Chi nhánh Tập đoàn Viễn thông Viettel"
+    };
+  }
+  return { note: "", amount: "", payee: "" };
+};
+
 const formatNumberWithDots = (val: string | number): string => {
   const num = String(val).replace(/\D/g, "");
   if (!num) return "";
@@ -425,7 +454,17 @@ export const InvoiceManagement: React.FC = () => {
   const handleDateChangeInForm = (val: string) => {
     const adjusted = adjustDateForCategory(expenseForm.category, val);
     setExpenseForm(prev => {
-      const updated = { ...prev, date: adjusted };
+      const defaults = ["Điện", "Nước", "Internet"].includes(prev.category)
+        ? getUtilityDefaults(prev.category, adjusted)
+        : { note: prev.note, amount: prev.amount ? String(prev.amount).replace(/\D/g, "") : "", payee: prev.payee };
+
+      const updated = {
+        ...prev,
+        date: adjusted,
+        amount: defaults.amount ? formatNumberWithDots(defaults.amount) : prev.amount,
+        note: defaults.note,
+        payee: defaults.payee
+      };
       if (!editingExpenseId) {
         updated.id = generateDefaultExpenseId(adjusted);
       }
@@ -441,11 +480,17 @@ export const InvoiceManagement: React.FC = () => {
     }
     setExpenseForm(prev => {
       const adjustedDate = adjustDateForCategory(cat, prev.date);
+      const defaults = ["Điện", "Nước", "Internet"].includes(cat)
+        ? getUtilityDefaults(cat, adjustedDate)
+        : { note: "", amount: "", payee: defaultPayee === "Khác" ? "" : defaultPayee };
+
       const updated = {
         ...prev,
         category: cat,
         date: adjustedDate,
-        payee: defaultPayee === "Khác" ? "" : defaultPayee
+        amount: defaults.amount ? formatNumberWithDots(defaults.amount) : "",
+        note: defaults.note,
+        payee: defaults.payee
       };
       if (!editingExpenseId) {
         updated.id = generateDefaultExpenseId(adjustedDate);
@@ -473,20 +518,22 @@ export const InvoiceManagement: React.FC = () => {
     setEditingExpenseId(null);
     setEditReason("");
     setIsExpenseModalOpen(true);
-    const defaultPayee = CATEGORY_DEFAULT_PAYEES["Điện"];
     const rawSyncedDate = new Date(Date.now() + serverTimeOffset);
     // Force day to 8 for Điện
     rawSyncedDate.setDate(8);
     const syncedDateStr = formatForDatetimeLocal(rawSyncedDate);
+    
+    const defaults = getUtilityDefaults("Điện", syncedDateStr);
+
     setExpenseForm({
       id: generateDefaultExpenseId(syncedDateStr),
       category: "Điện",
-      amount: "",
+      amount: formatNumberWithDots(defaults.amount),
       date: syncedDateStr,
-      note: "",
-      payee: defaultPayee
+      note: defaults.note,
+      payee: defaults.payee
     });
-    setPayeeSelectOption(defaultPayee);
+    setPayeeSelectOption(defaults.payee);
     setCustomPayeeText("");
   };
 
