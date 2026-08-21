@@ -828,9 +828,18 @@ export const OrderPage: React.FC = () => {
             ) : orderItems.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-10 italic">Chưa có món trong order</p>
             ) : (
-              orderItems.map((item) => {
-                const constituents = getComboConstituents(item.name);
-                return (
+              [...orderItems]
+                .sort((a, b) => {
+                  const getPriority = (status: string) => {
+                    if (status === "served") return 1;
+                    if (status === "voided") return 2;
+                    return 0; // pending, waiting_kitchen, cooking, done
+                  };
+                  return getPriority(a.status) - getPriority(b.status);
+                })
+                .map((item) => {
+                  const constituents = getComboConstituents(item.name);
+                  return (
                 <div
                   key={item.id}
                   className={`p-4 rounded-xl border border-sky-50 ${item.status === "voided" ? "opacity-60" : ""}`}
