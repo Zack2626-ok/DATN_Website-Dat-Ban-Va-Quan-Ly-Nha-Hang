@@ -1171,6 +1171,7 @@ const runSchemaMigrations = async (): Promise<void> => {
         total_hours DECIMAL(10, 2) NOT NULL DEFAULT 0,
         hourly_rate DECIMAL(15, 2) NOT NULL DEFAULT 0,
         total_salary DECIMAL(15, 2) NOT NULL DEFAULT 0,
+        holiday_bonus DECIMAL(15, 2) NOT NULL DEFAULT 0,
         status ENUM('pending', 'paid') NOT NULL DEFAULT 'pending',
         paid_at DATETIME NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1178,6 +1179,19 @@ const runSchemaMigrations = async (): Promise<void> => {
         UNIQUE KEY unique_user_month_year (user_id, month, year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
+
+    // Migration: Ensure holiday_bonus column exists in payrolls table
+    const payrollCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payrolls' AND COLUMN_NAME = 'holiday_bonus'`
+    ).catch(() => []);
+    if (payrollCols && payrollCols.length === 0) {
+      await query(`
+        ALTER TABLE payrolls 
+        ADD COLUMN holiday_bonus DECIMAL(15, 2) NOT NULL DEFAULT 0 AFTER total_salary
+      `).catch(() => {});
+      console.log("✅ Migration: added holiday_bonus column to payrolls table");
+    }
 
     // Migration: Ensure operational_expenses table exists
     await query(`

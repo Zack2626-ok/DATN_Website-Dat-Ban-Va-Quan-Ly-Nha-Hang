@@ -2,6 +2,62 @@ import { Request, Response } from "express";
 import * as db from "../utils/db";
 import { sendSuccess, sendError } from "../utils/response";
 
+function getVietnameseHolidayName(date: Date): string | null {
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const md = `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const ymd = `${y}-${md}`;
+
+  // Solar calendar holidays
+  if (md === "01-01") return "Tết Dương lịch";
+  if (md === "04-30") return "Ngày Giải phóng miền Nam (30/4)";
+  if (md === "05-01") return "Ngày Quốc tế Lao động (1/5)";
+  if (md === "09-02") return "Ngày Quốc khánh (2/9)";
+  if (md === "09-03") return "Ngày Quốc khánh (3/9)";
+
+  // Lunar calendar holidays mapped to Solar dates
+  const lunarHolidays: { [key: string]: string } = {
+    // 2024
+    "2024-02-09": "Tết Nguyên Đán (30 Tết)",
+    "2024-02-10": "Tết Nguyên Đán (Mùng 1)",
+    "2024-02-11": "Tết Nguyên Đán (Mùng 2)",
+    "2024-02-12": "Tết Nguyên Đán (Mùng 3)",
+    "2024-02-13": "Tết Nguyên Đán (Mùng 4)",
+    "2024-02-14": "Tết Nguyên Đán (Mùng 5)",
+    "2024-04-18": "Giỗ tổ Hùng Vương (10/3 Âm lịch)",
+
+    // 2025
+    "2025-01-28": "Tết Nguyên Đán (30 Tết)",
+    "2025-01-29": "Tết Nguyên Đán (Mùng 1)",
+    "2025-01-30": "Tết Nguyên Đán (Mùng 2)",
+    "2025-01-31": "Tết Nguyên Đán (Mùng 3)",
+    "2025-02-01": "Tết Nguyên Đán (Mùng 4)",
+    "2025-02-02": "Tết Nguyên Đán (Mùng 5)",
+    "2025-04-07": "Giỗ tổ Hùng Vương (10/3 Âm lịch)",
+
+    // 2026
+    "2026-02-16": "Tết Nguyên Đán (30 Tết)",
+    "2026-02-17": "Tết Nguyên Đán (Mùng 1)",
+    "2026-02-18": "Tết Nguyên Đán (Mùng 2)",
+    "2026-02-19": "Tết Nguyên Đán (Mùng 3)",
+    "2026-02-20": "Tết Nguyên Đán (Mùng 4)",
+    "2026-02-21": "Tết Nguyên Đán (Mùng 5)",
+    "2026-04-26": "Giỗ tổ Hùng Vương (10/3 Âm lịch)",
+
+    // 2027
+    "2027-02-05": "Tết Nguyên Đán (30 Tết)",
+    "2027-02-06": "Tết Nguyên Đán (Mùng 1)",
+    "2027-02-07": "Tết Nguyên Đán (Mùng 2)",
+    "2027-02-08": "Tết Nguyên Đán (Mùng 3)",
+    "2027-02-09": "Tết Nguyên Đán (Mùng 4)",
+    "2027-02-10": "Tết Nguyên Đán (Mùng 5)",
+    "2027-04-16": "Giỗ tổ Hùng Vương (10/3 Âm lịch)"
+  };
+
+  return lunarHolidays[ymd] || null;
+}
+
 async function calculatePayrollInternal(month: number, year: number): Promise<void> {
   // 1. Lấy danh sách nhân viên active
   const users = await db.query<any[]>(`SELECT id, COALESCE(hourly_rate, 25000) AS hourly_rate FROM users WHERE is_deleted = 0`);
@@ -52,28 +108,46 @@ async function calculatePayrollInternal(month: number, year: number): Promise<vo
     const attendanceRecords = await db.query<any[]>(attendanceSql, sqlParams);
 
     let totalMinutes = 0;
+    let holidayMinutes = 0;
     for (const record of attendanceRecords) {
       if (!record.clock_in) continue;
       const inTime = new Date(record.clock_in).getTime();
       const outTime = record.clock_out ? new Date(record.clock_out).getTime() : now.getTime();
       const diffMin = (outTime - inTime) / (1000 * 60);
-      if (diffMin > 0) totalMinutes += diffMin;
+      if (diffMin > 0) {
+        totalMinutes += diffMin;
+        
+        // Kiểm tra xem ca làm việc này có phải ngày lễ Việt Nam không
+        const clockInDate = new Date(record.clock_in);
+        if (getVietnameseHolidayName(clockInDate) !== null) {
+          holidayMinutes += diffMin;
+        }
+      }
     }
 
-    const totalHours = Math.round((totalMinutes / 60) * 10) / 10;
-    const totalSalary = Math.round(totalHours * hourlyRate);
+    const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
+    const holidayHours = Math.round((holidayMinutes / 60) * 100) / 100;
+    
+    // Thưởng ngày lễ: Thêm x2 lương (tổng cộng nhận x3 cho giờ làm ngày lễ)
+    const holidayBonus = Math.round(holidayHours * hourlyRate * 2);
+    const basicSalary = Math.round(totalHours * hourlyRate);
+    const totalSalary = basicSalary + holidayBonus;
 
     if (existing.length > 0) {
-      await db.query(`
-        UPDATE payrolls 
-        SET total_hours = ?, hourly_rate = ?, total_salary = ? 
-        WHERE id = ?
-      `, [totalHours, hourlyRate, totalSalary, existing[0].id]);
+      // Nếu đã thanh toán rồi thì không tính lại
+      const isPaid = await db.query(`SELECT status FROM payrolls WHERE id = ?`, [existing[0].id]);
+      if (isPaid[0]?.status !== 'paid') {
+        await db.query(`
+          UPDATE payrolls 
+          SET total_hours = ?, hourly_rate = ?, holiday_bonus = ?, total_salary = ? 
+          WHERE id = ?
+        `, [totalHours, hourlyRate, holidayBonus, totalSalary, existing[0].id]);
+      }
     } else {
       await db.query(`
-        INSERT INTO payrolls (user_id, month, year, total_hours, hourly_rate, total_salary, status) 
-        VALUES (?, ?, ?, ?, ?, ?, 'pending')
-      `, [user.id, month, year, totalHours, hourlyRate, totalSalary]);
+        INSERT INTO payrolls (user_id, month, year, total_hours, hourly_rate, holiday_bonus, total_salary, status) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+      `, [user.id, month, year, totalHours, hourlyRate, holidayBonus, totalSalary]);
     }
   }
 }

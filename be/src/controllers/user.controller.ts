@@ -148,14 +148,21 @@ export const deleteUserHandler = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    // Guard: Prevent deleting the System Admin account
+    // Guard: Prevent deleting the System Admin or Manager accounts
     const targetUsers = await db.query(
       "SELECT u.*, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
       [Number(id)]
     );
-    if (targetUsers && targetUsers.length > 0 && targetUsers[0].role_name === "admin") {
-      sendError(res, "Không có quyền xóa tài khoản Quản trị hệ thống!", 403);
-      return;
+    if (targetUsers && targetUsers.length > 0) {
+      const roleName = targetUsers[0].role_name;
+      if (roleName === "admin") {
+        sendError(res, "Không có quyền xóa tài khoản Quản trị hệ thống!", 403);
+        return;
+      }
+      if (roleName === "manager") {
+        sendError(res, "Không có quyền xóa tài khoản Quản lý!", 403);
+        return;
+      }
     }
 
     const success = await db.updateResmanagerUser(id, {
