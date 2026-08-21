@@ -32,6 +32,9 @@ export const FinanceReport: React.FC = () => {
   const [previewProofImage, setPreviewProofImage] = useState<string | null>(null);
   const [hoveredSliceIdx, setHoveredSliceIdx] = useState<number | null>(null);
 
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
+
   const [timeRange, setTimeRange] = useState<"today" | "7days" | "30days" | "custom">("30days");
 
   const getTodayStr = () => new Date().toISOString().split("T")[0];
@@ -413,6 +416,18 @@ export const FinanceReport: React.FC = () => {
     return groupedTransactions.filter((tx: any) => tx.type === activeTab);
   }, [groupedTransactions, activeTab]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+    setExpandedTxId(null);
+  }, [activeTab, startDate, endDate]);
+
+  const totalPages = Math.ceil(filteredTransactions.length / rowsPerPage);
+
+  const paginatedTransactions = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredTransactions.slice(start, start + rowsPerPage);
+  }, [filteredTransactions, currentPage, rowsPerPage]);
+
   const pieData = useMemo(() => {
     const raw = [
       { name: "Nguyên vật liệu", value: Number(data?.summary?.materialCost) || 0, color: "#3b82f6" },
@@ -755,7 +770,7 @@ export const FinanceReport: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map((row: any, idx: number) => {
+                paginatedTransactions.map((row: any, idx: number) => {
                   const isExpanded = expandedTxId === row.id;
                   return (
                     <React.Fragment key={`${row.id}-${row.date}`}>
@@ -1170,6 +1185,93 @@ export const FinanceReport: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        {!loading && filteredTransactions.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-100 px-6 py-4 gap-4 bg-slate-50/40 text-xs text-slate-600">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-medium">Hiển thị</span>
+              <select
+                value={rowsPerPage}
+                onChange={(e) => {
+                  setRowsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                  setExpandedTxId(null);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-xs focus:border-sky-500 focus:outline-none cursor-pointer"
+              >
+                {[5, 10, 20, 50].map((size) => (
+                  <option key={size} value={size}>
+                    {size} dòng / trang
+                  </option>
+                ))}
+              </select>
+              <span className="text-slate-500">
+                Hiển thị từ <strong className="text-slate-800">{(currentPage - 1) * rowsPerPage + 1}</strong> đến{" "}
+                <strong className="text-slate-800">
+                  {Math.min(currentPage * rowsPerPage, filteredTransactions.length)}
+                </strong>{" "}
+                trong tổng số <strong className="text-slate-800">{filteredTransactions.length}</strong> giao dịch
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentPage((prev) => Math.max(prev - 1, 1));
+                  setExpandedTxId(null);
+                }}
+                disabled={currentPage === 1}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:hover:bg-white cursor-pointer shadow-xs disabled:cursor-not-allowed"
+              >
+                Trước
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((page) => {
+                    if (totalPages <= 7) return true;
+                    return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                  })
+                  .map((page, index, array) => {
+                    const showEllipsis = index > 0 && page - array[index - 1] > 1;
+                    return (
+                      <React.Fragment key={page}>
+                        {showEllipsis && <span className="px-1 text-slate-400 font-bold">...</span>}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentPage(page);
+                            setExpandedTxId(null);
+                          }}
+                          className={`min-w-[30px] h-[30px] rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center justify-center ${
+                            currentPage === page
+                              ? "bg-[#3E2016] text-white shadow-xs"
+                              : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentPage((prev) => Math.min(prev + 1, totalPages));
+                  setExpandedTxId(null);
+                }}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition-all hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:hover:bg-white cursor-pointer shadow-xs disabled:cursor-not-allowed"
+              >
+                Sau
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Lightbox Modal for Proof Image */}
