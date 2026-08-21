@@ -253,16 +253,21 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     }
     const ioApp = req.app.get("io");
     if (ioApp && bId) {
-      ioApp.emit("booking:claimed", {
-        bookingId: bId,
-        id: bId,
-        status,
-      });
-      ioApp.emit("table:booking_checked_in", {
-        bookingId: bId,
-        id: bId,
-        status,
-      });
+      if (status === "arrived" || status === "completed") {
+        ioApp.emit("booking:claimed", {
+          bookingId: bId,
+          id: bId,
+          status,
+        });
+        ioApp.emit("table:booking_checked_in", {
+          bookingId: bId,
+          id: bId,
+          status,
+        });
+      }
+      ioApp.emit("table:status_changed", { status });
+      ioApp.emit("table:merged", { bookingId: bId });
+      ioApp.emit("table:merge_resolved", { bookingId: bId });
     }
 
     sendSuccess(res, { id, status, email_preview_url: emailPreviewUrl }, "Cập nhật trạng thái đặt bàn thành công");

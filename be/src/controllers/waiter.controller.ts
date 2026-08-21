@@ -58,24 +58,38 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       return;
     }
 
+    const requestedTableId = table_id ? Number(table_id) : null;
+    const primaryTableId = requestedTableId ? await db.resolveResmanagerPrimaryTableId(requestedTableId) : null;
+
     const bId = booking_id ? Number(booking_id) : null;
     if (bId && Number.isInteger(bId) && bId > 0) {
+      const bookingRows = await db.query<any[]>(
+        "SELECT id, status, start_time FROM bookings WHERE id = ? LIMIT 1",
+        [bId]
+      );
+      if (bookingRows.length === 0) {
+        sendError(res, "Không tìm thấy thông tin đơn đặt bàn!", 404);
+        return;
+      }
+      const bRow = bookingRows[0];
+      if (["arrived", "completed"].includes(bRow.status)) {
+        sendError(res, "Đơn đặt bàn này đã được nhân viên khác mở bàn từ trước!", 409);
+        return;
+      }
       const existingOrders = await db.query<any[]>(
         "SELECT id, table_id FROM orders WHERE booking_id = ? AND status IN ('open', 'serving', 'pending_payment') LIMIT 1",
         [bId]
       );
-      const bookingRows = await db.query<any[]>(
-        "SELECT id, status FROM bookings WHERE id = ? LIMIT 1",
-        [bId]
-      );
-      if (existingOrders.length > 0 || (bookingRows.length > 0 && ["arrived", "completed"].includes(bookingRows[0].status))) {
-        sendError(res, "Đơn đặt bàn này đã được nhân viên khác mở bàn từ trước!", 409);
+      if (existingOrders.length > 0) {
+        sendError(res, "Đơn đặt bàn này đã được mở bàn phục vụ rồi!", 409);
         return;
       }
-    }
 
-    const requestedTableId = table_id ? Number(table_id) : null;
-    const primaryTableId = requestedTableId ? await db.resolveResmanagerPrimaryTableId(requestedTableId) : null;
+      // Gán bàn trước cho đơn đặt bàn
+      if (primaryTableId) {
+        await db.query("UPDATE bookings SET table_id = ? WHERE id = ?", [primaryTableId, bId]).catch(() => {});
+      }
+    }
 
     if (primaryTableId && order_type !== ORDER_TYPE.PRE_ORDER) {
       const currentTime = formatVietnamBookingDateTime();
@@ -124,10 +138,15 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       const waiterName = waiterObj?.full_name || waiterObj?.name || waiterObj?.username || "Nhân viên";
       const tableRows = primaryTableId ? await db.query<any[]>("SELECT name FROM tables WHERE id = ? LIMIT 1", [primaryTableId]).catch(() => []) : [];
       const tableName = tableRows?.[0]?.name || `Bàn ${primaryTableId}`;
+      const bookingDataRows = await db.query<any[]>("SELECT guest_name, confirmation_code FROM bookings WHERE id = ? LIMIT 1", [bId]).catch(() => []);
+      const bCode = bookingDataRows?.[0]?.confirmation_code || `BK-${bId}`;
+      const bGuestName = bookingDataRows?.[0]?.guest_name || guest_name || "Khách đặt";
 
       io?.emit("booking:claimed", {
         bookingId: bId,
         id: bId,
+        confirmationCode: bCode,
+        guestName: bGuestName,
         waiterId: Number(created_by),
         waiterName,
         tableId: primaryTableId,
@@ -137,6 +156,8 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
       io?.emit("table:booking_checked_in", {
         bookingId: bId,
         id: bId,
+        confirmationCode: bCode,
+        guestName: bGuestName,
         waiterName,
         tableId: primaryTableId,
         tableName,
@@ -159,6 +180,19 @@ export const addOrderItemHandler = async (req: Request, res: Response): Promise<
     if (!menu_item_id || !quantity || unit_price === undefined) {
       sendError(res, "menu_item_id, quantity, unit_price là bắt buộc", 400);
       return;
+    }
+
+    // Kiểm tra nếu order gắn với đơn đặt bàn chưa xác nhận khách đến
+    const orderRows = await db.query<any[]>(
+      "SELECT o.booking_id, b.status AS booking_status FROM orders o LEFT JOIN bookings b ON b.id = o.booking_id WHERE o.id = ? LIMIT 1",
+      [Number(orderId)]
+    );
+    if (orderRows.length > 0 && orderRows[0].booking_id) {
+      const bStatus = orderRows[0].booking_status;
+      if (bStatus && ["pending", "confirmed"].includes(bStatus)) {
+        sendError(res, "Đơn đặt bàn này đang ở trạng thái xếp bàn trước (chưa xác nhận khách đến). Vui lòng vào Lịch đặt bàn bấm Xác nhận khách đến để mở gọi món!", 400);
+        return;
+      }
     }
 
     const item = await db.addResmanagerOrderItem({
@@ -313,7 +347,7 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
     }
 
     if (isEarlyPayment) {
-      await db.query("UPDATE orders SET is_early_payment = 1 WHERE id = ?", [orderId]);
+      await db.query("UPDATE orders SET is_early_payment = 1, status = 'pending_payment' WHERE id = ?", [orderId]);
     } else {
       await db.updateOrderStatus(orderId, "pending_payment");
       if (order.table_id) {
@@ -332,17 +366,23 @@ export const requestPaymentHandler = async (req: Request, res: Response): Promis
       "cashier"
     );
 
-    req.app.get("io")?.emit("payment:request", {
-      orderId: Number(orderId),
-      tableId: order.table_id,
-      tableName: order.table_name,
-      waiterName,
-      totalAmount: order.totalAmount,
-      note,
-      isEarlyPayment: !!isEarlyPayment,
-    });
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("payment:request", {
+        orderId: Number(orderId),
+        tableId: order.table_id,
+        tableName: order.table_name,
+        waiterName,
+        totalAmount: order.totalAmount,
+        note,
+        isEarlyPayment: !!isEarlyPayment,
+      });
+      io.emit("table:status_changed", { tableId: order.table_id, status: isEarlyPayment ? "serving" : "pending_payment" });
+      io.emit("order_updated", { orderId: Number(orderId) });
+      io.emit("invoice:updated", { orderId: Number(orderId) });
+    }
 
-    sendSuccess(res, { orderId, status: isEarlyPayment ? order.status : "pending_payment", isEarlyPayment: !!isEarlyPayment, waiterName }, "Đã gửi yêu cầu thanh toán");
+    sendSuccess(res, { orderId, status: "pending_payment", isEarlyPayment: !!isEarlyPayment, waiterName }, "Đã gửi yêu cầu thanh toán");
   } catch (error) {
     console.error("Error requesting payment:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);

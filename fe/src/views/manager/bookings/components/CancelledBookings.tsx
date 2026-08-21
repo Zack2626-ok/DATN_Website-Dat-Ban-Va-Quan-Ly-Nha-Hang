@@ -30,7 +30,7 @@ export const CancelledBookings: React.FC = () => {
     return (
       b.guest_name.toLowerCase().includes(term) ||
       b.guest_phone.includes(term) ||
-      (b.confirmation_code && b.confirmation_code.toLowerCase().includes(term))
+      (b.confirmation_code && String(b.confirmation_code).toLowerCase().includes(term))
     );
   });
 

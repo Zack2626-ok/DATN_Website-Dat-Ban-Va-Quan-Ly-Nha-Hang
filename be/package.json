@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "ts-node-dev --transpile-only src/seed-dishes.ts",
+    "seed:recent": "ts-node-dev --transpile-only src/seed-recent-data.ts",
     "seed:full": "ts-node-dev --transpile-only src/seed.ts",
     "reset": "cd .. && reset_db.bat"
   },

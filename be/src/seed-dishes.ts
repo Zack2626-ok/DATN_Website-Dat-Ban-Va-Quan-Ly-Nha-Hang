@@ -538,6 +538,10 @@ async function seedDishes() {
 
     console.log("   ✅ Seeded Inventory Test Cases.");
 
+    // --- 4. SEED 30-DAY RECENT TRANSACTIONS & SUPPLIER DEBT ---
+    const { seedRecentData } = require("./seed-recent-data");
+    await seedRecentData();
+
     process.exit(0);
   } catch (err: any) {
     console.error("❌ ERROR SEEDING DISHES IN DB:", err.message);

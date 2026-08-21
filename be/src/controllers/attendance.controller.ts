@@ -169,3 +169,82 @@ export const isCheckedInToday = async (req: Request, res: Response): Promise<voi
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+export const getMyWorkSummary = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
+      return;
+    }
+    const empId = Number(userId);
+
+    const users = await db.query<any[]>(
+      `SELECT u.id, u.full_name, u.email, u.phone, u.employee_code, u.date_of_birth,
+              COALESCE(u.hourly_rate, 25000) AS hourly_rate,
+              COALESCE(r.name, 'waiter') AS role_name
+       FROM users u
+       LEFT JOIN roles r ON u.role_id = r.id
+       WHERE u.id = ?`,
+      [empId]
+    );
+
+    if (!users || users.length === 0) {
+      sendError(res, "Không tìm thấy hồ sơ nhân viên trong hệ thống.", 404);
+      return;
+    }
+    const userObj = users[0];
+
+    const paidRecords = await db.query<any[]>(
+      `SELECT paid_at FROM payrolls WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1`,
+      [empId]
+    );
+    const lastPaidAt = paidRecords.length > 0 && paidRecords[0].paid_at ? new Date(paidRecords[0].paid_at) : null;
+
+    let attendanceSql = `SELECT clock_in, clock_out FROM attendance WHERE employee_id = ?`;
+    const sqlParams: any[] = [empId];
+    if (lastPaidAt) {
+      attendanceSql += ` AND clock_in >= ?`;
+      sqlParams.push(lastPaidAt);
+    }
+    const records = await db.query<any[]>(attendanceSql, sqlParams);
+
+    let totalMinutes = 0;
+    const now = new Date();
+
+    for (const rec of records) {
+      if (!rec.clock_in) continue;
+      const inTime = new Date(rec.clock_in).getTime();
+      const outTime = rec.clock_out ? new Date(rec.clock_out).getTime() : now.getTime();
+      const diffMins = (outTime - inTime) / (1000 * 60);
+      if (diffMins > 0) {
+        totalMinutes += diffMins;
+      }
+    }
+
+    const totalHours = Math.round((totalMinutes / 60) * 10) / 10;
+    const hourlyRate = Number(userObj.hourly_rate) || 25000;
+    const totalSalary = Math.round(totalHours * hourlyRate);
+
+    const result = {
+      user_id: userObj.id,
+      full_name: userObj.full_name || "Nhân viên",
+      employee_code: userObj.employee_code || `NV${String(userObj.id).padStart(3, "0")}`,
+      role_name: userObj.role_name,
+      date_of_birth: userObj.date_of_birth ? new Date(userObj.date_of_birth).toISOString().slice(0, 10) : "1998-08-18",
+      phone: userObj.phone || "",
+      email: userObj.email || "",
+      hourly_rate: hourlyRate,
+      total_hours: totalHours,
+      total_salary: totalSalary,
+      last_paid_at: lastPaidAt ? lastPaidAt.toISOString() : null,
+      server_time: now.toISOString()
+    };
+
+    sendSuccess(res, result, "Lấy thông tin cá nhân và tổng số giờ làm thời gian thực thành công.");
+  } catch (error) {
+    console.error("Error in getMyWorkSummary:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+

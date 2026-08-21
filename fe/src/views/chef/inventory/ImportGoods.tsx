@@ -427,9 +427,6 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
       }
     }
 
-    const currentTicket = initialData && initialData[0]?.ticketCode ? initialData[0].ticketCode : undefined;
-    const currentSupName = suppliers.find((s: any) => s.id == selectedSupplier)?.name || "";
-
     for (const item of importItems) {
       if (item.displayUnit && !ALLOWED_UNITS.includes(item.displayUnit.toLowerCase())) {
         toast.error(`Đơn vị tính "${item.displayUnit}" của mặt hàng "${item.ingredientName}" không hợp lệ! Vui lòng chọn (kg, g, lít, ml, bao, hộp...)`, { id: "unit-val-err" });

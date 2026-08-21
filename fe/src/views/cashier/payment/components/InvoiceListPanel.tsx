@@ -1,6 +1,6 @@
 import React from "react";
-import { Search, Filter, X, FileText, Clock, CheckCircle2, XCircle, Hourglass } from "lucide-react";
-import type { Invoice, InvoiceStatus } from "../../../../interfaces/invoice";
+import { Search, Filter, X, FileText, Clock, Hourglass } from "lucide-react";
+import type { Invoice } from "../../../../interfaces/invoice";
 
 interface Props {
   invoices: Invoice[];
@@ -8,28 +8,31 @@ interface Props {
   onSelect: (id: string) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  statusFilter: InvoiceStatus | "all";
-  onStatusFilterChange: (s: InvoiceStatus | "all") => void;
+  statusFilter: "all" | "pending" | "unpaid" | string;
+  onStatusFilterChange: (s: any) => void;
   loading: boolean;
 }
 
-const STATUS_OPTIONS: { value: InvoiceStatus | "all"; label: string }[] = [
-  { value: "all", label: "Tất cả" },
-  { value: "unpaid", label: "Chưa thanh toán" },
-  { value: "paid", label: "Đã thanh toán" },
+const STATUS_OPTIONS: { value: "all" | "pending" | "unpaid"; label: string }[] = [
+  { value: "all", label: "Tất cả bàn mở" },
+  { value: "pending", label: "Chờ thanh toán" },
+  { value: "unpaid", label: "Đang phục vụ" },
 ];
 
-const statusBadge = (status: InvoiceStatus) => {
-  const map: Record<InvoiceStatus, { bg: string; text: string; icon: React.ReactNode; label: string }> = {
-    unpaid: { bg: "bg-amber-50 border-amber-200", text: "text-amber-700", icon: <Clock size={12} />, label: "Chưa TT" },
-    pending: { bg: "bg-orange-50 border-orange-200", text: "text-orange-700", icon: <Hourglass size={12} />, label: "Chờ TT" },
-    paid: { bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", icon: <CheckCircle2 size={12} />, label: "Đã TT" },
-    cancelled: { bg: "bg-red-50 border-red-200", text: "text-red-700", icon: <XCircle size={12} />, label: "Đã hủy" },
-  };
-  const s = map[status];
+const renderInvoiceBadge = (inv: Invoice) => {
+  const isPending = inv.status === "pending_payment" || inv.invoiceStatus === "pending" || inv.is_early_payment;
+
+  if (isPending) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-red-50 border-red-200 text-red-700">
+        <Hourglass size={12} className="text-red-500" /> Chờ TT
+      </span>
+    );
+  }
+
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${s.bg} ${s.text}`}>
-      {s.icon} {s.label}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 border-amber-200 text-amber-700">
+      <Clock size={12} /> Đang phục vụ
     </span>
   );
 };
@@ -141,7 +144,7 @@ export const InvoiceListPanel: React.FC<Props> = ({
                           Hoàn {Number(inv.refunded_total || 0).toLocaleString("vi-VN")}đ
                         </span>
                       )}
-                      {statusBadge(inv.invoiceStatus)}
+                      {renderInvoiceBadge(inv)}
                     </div>
                     <p className="text-[10px] text-slate-500 truncate">
                       {inv.customerName || "Khách lẻ"} &middot; {inv.items.length} món
