@@ -176,8 +176,20 @@ export const payrollController = {
       const monthQuery = req.query.month ? Number(req.query.month) : (now.getMonth() + 1);
       const yearQuery = req.query.year ? Number(req.query.year) : now.getFullYear();
 
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const offset = (page - 1) * limit;
+
       // Tự động tính toán lại bảng lương khi lấy dữ liệu
       await calculatePayrollInternal(monthQuery, yearQuery);
+
+      const countResult = await db.query(`
+        SELECT COUNT(*) as total 
+        FROM payrolls p 
+        WHERE p.month = ? AND p.year = ?
+      `, [monthQuery, yearQuery]);
+      const totalItems = countResult[0].total || 0;
+      const totalPages = Math.ceil(totalItems / limit);
 
       const sql = `
         SELECT p.*, u.full_name, COALESCE(r.name, 'waiter') AS role_name, u.employee_code 
@@ -186,10 +198,11 @@ export const payrollController = {
         LEFT JOIN roles r ON u.role_id = r.id
         WHERE p.month = ? AND p.year = ? AND r.name NOT IN ('admin', 'manager')
         ORDER BY u.full_name ASC
+        LIMIT ? OFFSET ?
       `;
 
-      const payrolls = await db.query(sql, [monthQuery, yearQuery]);
-      sendSuccess(res, payrolls, "Tải danh sách bảng lương thành công");
+      const payrolls = await db.query(sql, [monthQuery, yearQuery, limit, offset]);
+      sendSuccess(res, { currentPage: page, totalPages, totalItems, data: payrolls }, "Tải danh sách bảng lương thành công");
     } catch (error) {
       console.error("Error fetching payrolls:", error);
       sendError(res, `Lỗi: ${(error as Error).message}`, 500);
