@@ -24,3 +24,4 @@
 - Entry 22 - docs(db): document database schema relationships and constraints
 - Entry 23 - refactor(utils): extract currency formatting utility to shared module
 - Entry 24 - style(forms): standardize input focus ring and error messaging
+- Entry 25 - docs(deploy): add deployment guidelines for staging environment
