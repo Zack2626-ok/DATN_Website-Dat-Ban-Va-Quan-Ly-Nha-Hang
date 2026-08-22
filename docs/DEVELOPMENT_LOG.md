@@ -45,3 +45,4 @@
 - Entry 43 - style(invoice): refine typography and margin for printed receipt layout
 - Entry 44 - perf(cache): implement lightweight in-memory cache helper for menu categories
 - Entry 45 - docs(auth): document password hashing policy and bcrypt rounds
+- Entry 46 - refactor(tables): clean up table status state transition handlers
