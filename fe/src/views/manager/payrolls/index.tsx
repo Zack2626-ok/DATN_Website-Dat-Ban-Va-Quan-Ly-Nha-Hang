@@ -29,9 +29,6 @@ const PayrollPage: React.FC = () => {
   
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [pageSize, setPageSize] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
 
   const generateMonths = () => {
     const list = [];
@@ -57,11 +54,9 @@ const PayrollPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.get(`/payrolls`, {
-        params: { month, year, page: currentPage, limit: pageSize }
+        params: { month, year, page: 1, limit: 1000 }
       });
       setPayrolls(res.data.data?.data || []);
-      setTotalItems(res.data.data?.totalItems || 0);
-      setTotalPages(res.data.data?.totalPages || 1);
     } catch (error) {
       toast.error("Không thể tải danh sách bảng lương");
     } finally {
@@ -95,7 +90,7 @@ const PayrollPage: React.FC = () => {
       socket.disconnect();
       window.removeEventListener("refresh_staff_data", handleCustomRefresh);
     };
-  }, [month, year, currentPage, pageSize]);
+  }, [month, year]);
 
   const handleMarkAsPaid = async (id: number) => {
     if (!window.confirm("Xác nhận đã thanh toán lương cho nhân viên này?")) return;
