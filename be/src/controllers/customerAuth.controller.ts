@@ -374,7 +374,8 @@ export const cancelMyBooking = async (req: Request, res: Response): Promise<void
       return;
     }
     const { id } = req.params;
-    const booking = await db.query("SELECT * FROM bookings WHERE id = ?", [id]);
+    const { reason } = req.body;
+    const booking = await db.query<any[]>("SELECT * FROM bookings WHERE id = ?", [id]);
     if (!booking[0]) {
       sendError(res, "Không tìm thấy đặt bàn.", 404);
       return;
@@ -390,7 +391,8 @@ export const cancelMyBooking = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const success = await db.updateBookingStatus(Number(id), "cancelled");
+    const cancelReason = reason && String(reason).trim() ? String(reason).trim() : "Khách hàng yêu cầu hủy đơn qua tài khoản";
+    const success = await db.updateBookingStatus(Number(id), "cancelled", undefined, cancelReason);
     if (!success) {
       sendError(res, "Hủy đặt bàn thất bại.", 500);
       return;
@@ -399,6 +401,67 @@ export const cancelMyBooking = async (req: Request, res: Response): Promise<void
     sendSuccess(res, null, "Hủy đặt bàn thành công.");
   } catch (error) {
     console.error("Error in cancelMyBooking:", error);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+export const updateMyBookingContact = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.customer) {
+      sendError(res, "Bạn cần đăng nhập.", 401);
+      return;
+    }
+    const { id } = req.params;
+    const { guest_name, guest_phone, guest_email, guest_note } = req.body;
+
+    const booking = await db.query<any[]>("SELECT * FROM bookings WHERE id = ?", [id]);
+    if (!booking || !booking[0]) {
+      sendError(res, "Không tìm thấy đơn đặt bàn.", 404);
+      return;
+    }
+
+    const b = booking[0];
+    if (b.customer_id !== req.customer.id) {
+      sendError(res, "Bạn không có quyền chỉnh sửa đơn đặt bàn này.", 403);
+      return;
+    }
+
+    if (b.status === "cancelled" || b.status === "completed" || b.status === "arrived") {
+      sendError(res, "Không thể thay đổi thông tin đơn đặt bàn ở trạng thái hiện tại.", 400);
+      return;
+    }
+
+    if (!guest_name || !String(guest_name).trim()) {
+      sendError(res, "Họ và tên người đặt không được để trống.", 400);
+      return;
+    }
+
+    if (!guest_phone || !isValidPhoneNumber(String(guest_phone).trim())) {
+      sendError(res, "Số điện thoại không hợp lệ (phải gồm 10 chữ số chuẩn Việt Nam).", 400);
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (guest_email && !emailRegex.test(String(guest_email).trim())) {
+      sendError(res, "Email không hợp lệ.", 400);
+      return;
+    }
+
+    // Cập nhật thông tin người nhận (KHÔNG sửa ngày, giờ, số khách theo quy định)
+    await db.query(
+      "UPDATE bookings SET guest_name = ?, guest_phone = ?, guest_email = ?, guest_note = ?, updated_at = NOW() WHERE id = ?",
+      [
+        String(guest_name).trim(),
+        String(guest_phone).trim(),
+        guest_email ? String(guest_email).trim() : null,
+        guest_note ? String(guest_note).trim() : null,
+        id,
+      ]
+    );
+
+    sendSuccess(res, null, "Cập nhật thông tin liên hệ đặt bàn thành công.");
+  } catch (error) {
+    console.error("Error in updateMyBookingContact:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };

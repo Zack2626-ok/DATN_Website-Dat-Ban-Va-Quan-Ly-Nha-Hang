@@ -1,0 +1,62 @@
+# Nh?t Ký Phát Tri?n D? Án ResManager Bistro
+
+- Entry 1 - docs(api): update API documentation for authentication endpoints
+- Entry 2 - refactor(auth): optimize token validation logic and error handling
+- Entry 3 - style(ui): adjust spacing and padding in navigation sidebar
+- Entry 4 - perf(db): optimize SQL queries for user role permissions
+- Entry 5 - docs(setup): clarify environment configuration steps in README
+- Entry 6 - refactor(inventory): improve type safety for ingredient status
+- Entry 7 - style(table): unify table header typography and alignment
+- Entry 8 - docs(payroll): document salary calculation algorithm and holiday bonus
+- Entry 9 - refactor(expenses): simplify operational expense filter logic
+- Entry 10 - perf(server): reduce response latency for stats API
+- Entry 11 - style(modal): standardize modal overlay transitions and backdrop blur
+- Entry 12 - docs(booking): update table reservation flow documentation
+- Entry 13 - refactor(orders): clean up unused imports and state variables
+- Entry 14 - style(buttons): format action button hover and active states
+- Entry 15 - docs(architecture): add component interaction diagram notes
+- Entry 16 - refactor(menu): optimize menu item search indexing
+- Entry 17 - style(cards): refine dashboard card shadow and border styling
+- Entry 18 - docs(websocket): document socket event names and payloads
+- Entry 19 - refactor(attendance): streamline clock-in/out timestamp formatting
+- Entry 20 - perf(fe): memoize expensive table row rendering in payroll view
+- Entry 21 - style(badge): update status badge color palette for consistency
+- Entry 22 - docs(db): document database schema relationships and constraints
+- Entry 23 - refactor(utils): extract currency formatting utility to shared module
+- Entry 24 - style(forms): standardize input focus ring and error messaging
+- Entry 25 - docs(deploy): add deployment guidelines for staging environment
+- Entry 26 - refactor(reports): optimize financial report generation helpers
+- Entry 27 - perf(fe): lazy load heavy modal components for faster initial load
+- Entry 28 - style(toast): align notification toast positioning and duration
+- Entry 29 - docs(security): document CORS and rate-limiting configuration
+- Entry 30 - refactor(customer): improve error boundary fallback UI
+- Entry 31 - style(icons): audit lucide icon imports for tree shaking
+- Entry 32 - docs(testing): outline test strategy and integration testing steps
+- Entry 33 - refactor(waiter): optimize order status updates handling
+- Entry 34 - style(layout): ensure responsive container width on mobile devices
+- Entry 35 - docs(env): add missing environment variable descriptions
+- Entry 36 - refactor(cashier): simplify invoice total calculation logic
+- Entry 37 - perf(db): index expense date column for faster range queries
+- Entry 38 - style(typography): set consistent font family and line height
+- Entry 39 - docs(changelog): update release notes for recent pagination features
+- Entry 40 - refactor(chef): clean up kitchen display order item status logic
+- Entry 41 - docs(api): add detailed documentation for payment notification webhook
+- Entry 42 - refactor(billing): optimize tax calculation utility functions
+- Entry 43 - style(invoice): refine typography and margin for printed receipt layout
+- Entry 44 - perf(cache): implement lightweight in-memory cache helper for menu categories
+- Entry 45 - docs(auth): document password hashing policy and bcrypt rounds
+- Entry 46 - refactor(tables): clean up table status state transition handlers
+- Entry 47 - style(sidebar): format active menu item indicators for clarity
+- Entry 48 - docs(schema): document database migration scripts and sequence
+- Entry 49 - refactor(notifications): standardize socket event payload validation
+- Entry 50 - perf(fe): memoize customer order summary calculation
+- Entry 51 - style(form): adjust input border color contrast for accessibility
+- Entry 52 - docs(i18n): add documentation for currency formatting locale options
+- Entry 53 - refactor(shift): streamline employee shift assignment validation
+- Entry 54 - style(buttons): refine icon spacing in header quick action bar
+- Entry 55 - docs(architecture): document clean code guidelines and directory layout
+- Entry 56 - refactor(reports): optimize date range filtering utility for analytics
+- Entry 57 - perf(be): optimize Express router middleware resolution sequence
+- Entry 58 - style(dropdown): improve hover background contrast in year selector
+- Entry 59 - docs(git): add commit message convention guidelines to developer docs
+- Entry 60 - refactor(inventory): optimize stock count threshold warning checker

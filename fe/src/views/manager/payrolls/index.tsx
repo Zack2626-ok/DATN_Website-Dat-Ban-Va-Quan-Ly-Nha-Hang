@@ -13,6 +13,7 @@ interface Payroll {
   total_hours: string;
   hourly_rate: string;
   total_salary: string;
+  holiday_bonus?: string | number;
   status: "pending" | "paid";
   paid_at: string | null;
   full_name: string;
@@ -26,19 +27,28 @@ const PayrollPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   
-  const [month, setMonth] = useState(8);
-  const [year, setYear] = useState(2026);
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [pageSize, setPageSize] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const generateMonths = () => {
     const list = [];
-    const startDate = new Date(2026, 7); // index 7 is August
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(startDate.getFullYear(), startDate.getMonth() - i, 1);
-      list.push({
-        month: d.getMonth() + 1,
-        year: d.getFullYear(),
-        label: `Tháng ${d.getMonth() + 1} / ${d.getFullYear()}`
-      });
+    const startYear = 2024;
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+
+    for (let y = currentYear; y >= startYear; y--) {
+      const endM = (y === currentYear) ? currentMonth : 12;
+      for (let m = endM; m >= 1; m--) {
+        list.push({
+          month: m,
+          year: y,
+          label: `Tháng ${m} / ${y}`
+        });
+      }
     }
     return list;
   };
@@ -47,10 +57,11 @@ const PayrollPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.get(`/payrolls`, {
-        params: { month, year }
+        params: { month, year, page: currentPage, limit: pageSize }
       });
-      setPayrolls(res.data.data || []);
-      setCurrentPage(1);
+      setPayrolls(res.data.data?.data || []);
+      setTotalItems(res.data.data?.totalItems || 0);
+      setTotalPages(res.data.data?.totalPages || 1);
     } catch (error) {
       toast.error("Không thể tải danh sách bảng lương");
     } finally {
@@ -84,7 +95,7 @@ const PayrollPage: React.FC = () => {
       socket.disconnect();
       window.removeEventListener("refresh_staff_data", handleCustomRefresh);
     };
-  }, [month, year]);
+  }, [month, year, currentPage, pageSize]);
 
   const handleMarkAsPaid = async (id: number) => {
     if (!window.confirm("Xác nhận đã thanh toán lương cho nhân viên này?")) return;
@@ -330,48 +341,31 @@ const PayrollPage: React.FC = () => {
             </div>
 
             <table class="details-table">
-              <thead>
-                <tr>
-                  <th>Hạng mục lương</th>
-                  <th style="text-align: right;">Chi tiết định mức</th>
-                  <th style="text-align: right;">Thành tiền</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Tổng số giờ làm việc thực tế</td>
-                  <td style="text-align: right; font-weight: 600;">${Number(p.total_hours).toFixed(2)} giờ</td>
-                  <td style="text-align: right; color: #64748b;">-</td>
-                </tr>
-                <tr>
-                  <td>Mức đơn giá lương theo giờ</td>
-                  <td style="text-align: right; font-weight: 600;">${Number(p.hourly_rate).toLocaleString('vi-VN')} đ/giờ</td>
-                  <td style="text-align: right; color: #64748b;">-</td>
-                </tr>
-                <tr class="grand-total-row">
-                  <td class="grand-total-label">Tổng cộng lương thực nhận</td>
-                  <td style="text-align: right; color: #64748b;">-</td>
-                  <td class="grand-total-val">${Number(p.total_salary).toLocaleString('vi-VN')} đ</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="payment-badge-container">
-              <div>
-                <span class="info-label">Trạng thái thanh toán</span>
-                <div style="margin-top: 6px;">
-                  <span class="badge-status ${p.status === 'paid' ? 'badge-paid' : 'badge-pending'}">
-                    ${p.status === 'paid' ? '● Đã thanh toán' : '● Chờ thanh toán'}
-                  </span>
-                </div>
-              </div>
-              ${p.paid_at ? `
-              <div style="text-align: right;">
-                <span class="info-label">Thời gian tất toán</span>
-                <div class="info-val" style="font-size: 13px;">${new Date(p.paid_at).toLocaleString('vi-VN')}</div>
-              </div>
-              ` : ''}
-            </div>
+               <thead>
+                 <tr>
+                   <th>Hạng mục lương</th>
+                   <th style="text-align: right;">Chi tiết định mức</th>
+                   <th style="text-align: right;">Thành tiền</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 <tr>
+                   <td>Lương cơ bản theo giờ</td>
+                   <td style="text-align: right; font-weight: 600;">${Number(p.total_hours).toFixed(2)} giờ × ${Number(p.hourly_rate).toLocaleString('vi-VN')} đ/giờ</td>
+                   <td style="text-align: right; font-weight: 600;">${Math.round(Number(p.total_hours) * Number(p.hourly_rate)).toLocaleString('vi-VN')} đ</td>
+                 </tr>
+                 <tr>
+                   <td>Thưởng làm việc ngày lễ Tết (lịch VN)</td>
+                   <td style="text-align: right; font-weight: 600;">Hệ số x3 cho giờ làm ngày lễ (cộng thêm x2)</td>
+                   <td style="text-align: right; font-weight: 600;">${Number(p.holiday_bonus || 0).toLocaleString('vi-VN')} đ</td>
+                 </tr>
+                 <tr class="grand-total-row">
+                   <td class="grand-total-label">Tổng cộng lương thực nhận</td>
+                   <td style="text-align: right; color: #64748b;">-</td>
+                   <td class="grand-total-val">${Number(p.total_salary).toLocaleString('vi-VN')} đ</td>
+                 </tr>
+               </tbody>
+             </table>
 
             <div class="signatures-section">
               <div>
@@ -387,7 +381,6 @@ const PayrollPage: React.FC = () => {
                 <div style="border-bottom: 1px dashed #cbd5e1; width: 150px; margin: 0 auto;"></div>
               </div>
             </div>
-
             <div class="footer-info">
               <p>Phiếu thanh toán được trích xuất tự động bởi ResManager Bistro.</p>
               <p>Mọi thắc mắc vui lòng liên hệ bộ phận Kế toán / Nhân sự để giải quyết.</p>
@@ -420,10 +413,10 @@ const PayrollPage: React.FC = () => {
       [""],
       ["", "II. CHI TIẾT LƯƠNG & CHẤM CÔNG", "", ""],
       ["", "Tổng số giờ làm (h):", Number(p.total_hours), ""],
-      ["", "Lương mỗi giờ (đ):", Number(p.hourly_rate), ""],
-      ["", "Tổng tiền lương (đ):", Number(p.total_salary), ""],
-      ["", "Trạng thái:", p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán', ""],
-      ["", "Ngày thanh toán:", p.paid_at ? new Date(p.paid_at).toLocaleString('vi-VN') : 'Chưa thanh toán', ""],
+      ["", "Lương mỗi giờ (đ/h):", Number(p.hourly_rate), ""],
+      ["", "Lương cơ bản theo giờ (đ):", Number(p.total_hours) * Number(p.hourly_rate), ""],
+      ["", "Thưởng ngày lễ Tết (đ):", Number(p.holiday_bonus || 0), ""],
+      ["", "Tổng tiền lương thực nhận (đ):", Number(p.total_salary), ""],
       [""],
       ["", "III. XÁC NHẬN CHI TRẢ", "", ""],
       ["", "Người lập biểu", "", "Người nhận lương"],
@@ -439,17 +432,16 @@ const PayrollPage: React.FC = () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Phieu Luong");
 
     // Apply specific number formats to numeric cells
-    // C12 -> Row 12 (0-indexed 11) is Tổng số giờ làm
-    // C13 -> Row 13 (0-indexed 12) is Lương mỗi giờ
-    // C14 -> Row 14 (0-indexed 13) is Tổng tiền lương
-    if (worksheet["C12"]) worksheet["C12"].z = "0.0";
+    if (worksheet["C12"]) worksheet["C12"].z = "0.00";
     if (worksheet["C13"]) worksheet["C13"].z = "#,##0\" đ\"";
     if (worksheet["C14"]) worksheet["C14"].z = "#,##0\" đ\"";
+    if (worksheet["C15"]) worksheet["C15"].z = "#,##0\" đ\"";
+    if (worksheet["C16"]) worksheet["C16"].z = "#,##0\" đ\"";
 
     worksheet["!cols"] = [
       { wch: 4 },   // Column A (indent spacer)
-      { wch: 22 },  // Column B
-      { wch: 30 },  // Column C
+      { wch: 28 },  // Column B: labels
+      { wch: 30 },  // Column C: values
       { wch: 30 }   // Column D
     ];
 
@@ -465,9 +457,9 @@ const PayrollPage: React.FC = () => {
 
     const header = [
       [""],
-      ["", "RESMANAGER BISTRO", "", "", "", "", "", "", ""],
-      ["", "BẢNG LƯƠNG TỔNG HỢP NHÂN VIÊN", "", "", "", "", "", "", ""],
-      ["", `Kỳ lương: Tháng ${month} / Năm ${year}`, "", "", "", "", "", "", ""],
+      ["", "RESMANAGER BISTRO", "", "", "", "", "", "", "", ""],
+      ["", "BẢNG LƯƠNG TỔNG HỢP NHÂN VIÊN", "", "", "", "", "", "", "", ""],
+      ["", `Kỳ lương: Tháng ${month} / Năm ${year}`, "", "", "", "", "", "", "", ""],
       [""],
       [
         "",
@@ -477,6 +469,7 @@ const PayrollPage: React.FC = () => {
         "Chức vụ",
         "Số giờ làm (h)",
         "Lương / Giờ (đ)",
+        "Thưởng lễ Tết (đ)",
         "Tổng lương thực nhận (đ)",
         "Trạng thái",
         "Ngày thanh toán"
@@ -491,12 +484,14 @@ const PayrollPage: React.FC = () => {
       p.role_name.charAt(0).toUpperCase() + p.role_name.slice(1),
       Number(p.total_hours),
       Number(p.hourly_rate),
+      Number(p.holiday_bonus || 0),
       Number(p.total_salary),
       p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán',
       p.paid_at ? new Date(p.paid_at).toLocaleDateString('vi-VN') : '-'
     ]);
 
     const totalHours = payrolls.reduce((sum, p) => sum + Number(p.total_hours), 0);
+    const totalHolidayBonus = payrolls.reduce((sum, p) => sum + Number(p.holiday_bonus || 0), 0);
     const totalSalary = payrolls.reduce((sum, p) => sum + Number(p.total_salary), 0);
 
     const totalRow = [
@@ -507,6 +502,7 @@ const PayrollPage: React.FC = () => {
       "",
       totalHours,
       "",
+      totalHolidayBonus,
       totalSalary,
       "",
       ""
@@ -514,12 +510,12 @@ const PayrollPage: React.FC = () => {
 
     const footer = [
       [""],
-      ["", "Người lập biểu", "", "", "Kế toán trưởng", "", "", "Giám đốc duyệt", ""],
-      ["", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", ""],
+      ["", "Người lập biểu", "", "", "Kế toán trưởng", "", "", "Giám đốc duyệt", "", ""],
+      ["", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", "", "", "(Ký và ghi rõ họ tên)", "", ""],
       [""],
       [""],
       [""],
-      ["", `Ngày lập báo cáo: ${new Date().toLocaleString('vi-VN')}`, "", "", "", "", "", "", ""]
+      ["", `Ngày lập báo cáo: ${new Date().toLocaleString('vi-VN')}`, "", "", "", "", "", "", "", ""]
     ];
 
     const aoaData = [
@@ -540,16 +536,19 @@ const PayrollPage: React.FC = () => {
     for (let r = startRowIdx; r <= endRowIdx; r++) {
       const hoursCell = worksheet[`F${r}`];
       const rateCell = worksheet[`G${r}`];
-      const salaryCell = worksheet[`H${r}`];
+      const bonusCell = worksheet[`H${r}`];
+      const salaryCell = worksheet[`I${r}`];
 
       if (hoursCell) hoursCell.z = "0.00";
       if (rateCell) rateCell.z = "#,##0\" đ\"";
+      if (bonusCell) bonusCell.z = "#,##0\" đ\"";
       if (salaryCell) salaryCell.z = "#,##0\" đ\"";
     }
 
     const totalRowIdx = endRowIdx + 1;
     if (worksheet[`F${totalRowIdx}`]) worksheet[`F${totalRowIdx}`].z = "0.00";
     if (worksheet[`H${totalRowIdx}`]) worksheet[`H${totalRowIdx}`].z = "#,##0\" đ\"";
+    if (worksheet[`I${totalRowIdx}`]) worksheet[`I${totalRowIdx}`].z = "#,##0\" đ\"";
 
     worksheet["!cols"] = [
       { wch: 4 },   // Column A (indent spacer)
@@ -559,13 +558,231 @@ const PayrollPage: React.FC = () => {
       { wch: 15 },  // Column E: Chức vụ
       { wch: 18 },  // Column F: Số giờ làm
       { wch: 18 },  // Column G: Lương / Giờ
-      { wch: 25 },  // Column H: Tổng lương
-      { wch: 18 },  // Column I: Trạng thái
-      { wch: 18 }   // Column J: Ngày thanh toán
+      { wch: 18 },  // Column H: Thưởng lễ Tết
+      { wch: 25 },  // Column I: Tổng lương
+      { wch: 18 },  // Column J: Trạng thái
+      { wch: 18 }   // Column K: Ngày thanh toán
     ];
 
     XLSX.writeFile(workbook, `Bang_Luong_Tong_Hop_T${month}_${year}.xlsx`);
     toast.success("Xuất bảng lương tổng hợp thành công!");
+  };
+
+  const handlePrintAll = () => {
+    if (payrolls.length === 0) {
+      toast.error("Không có dữ liệu để in!");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error("Không thể mở cửa sổ in. Vui lòng tắt chặn pop-up.");
+      return;
+    }
+
+    const totalHours = payrolls.reduce((sum, p) => sum + Number(p.total_hours), 0);
+    const totalHolidayBonus = payrolls.reduce((sum, p) => sum + Number(p.holiday_bonus || 0), 0);
+    const totalSalary = payrolls.reduce((sum, p) => sum + Number(p.total_salary), 0);
+
+    const rowsHtml = payrolls.map((p, index) => `
+      <tr>
+        <td style="text-align: center; padding: 10px 8px;">${index + 1}</td>
+        <td style="padding: 10px 8px;">${p.employee_code}</td>
+        <td style="font-weight: 600; padding: 10px 8px;">${p.full_name}</td>
+        <td style="text-transform: capitalize; padding: 10px 8px;">${p.role_name}</td>
+        <td style="text-align: right; padding: 10px 8px;">${Number(p.total_hours).toFixed(2)}</td>
+        <td style="text-align: right; padding: 10px 8px;">${Number(p.hourly_rate).toLocaleString('vi-VN')} đ</td>
+        <td style="text-align: right; padding: 10px 8px; color: #b45309; font-weight: 500;">${Number(p.holiday_bonus || 0).toLocaleString('vi-VN')} đ</td>
+        <td style="text-align: right; font-weight: 700; padding: 10px 8px;">${Number(p.total_salary).toLocaleString('vi-VN')} đ</td>
+      </tr>
+    `).join("");
+
+    const html = `
+      <html>
+        <head>
+          <title>Bảng Lương Tổng Hợp - Tháng ${month}/${year}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+            body { 
+              font-family: 'Inter', sans-serif; 
+              padding: 20px; 
+              color: #1e293b; 
+              background-color: #ffffff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .payslip-container { 
+              max-width: 1000px; 
+              margin: 0 auto; 
+              padding: 20px; 
+            }
+            .header-section { 
+              display: flex; 
+              justify-content: space-between; 
+              align-items: flex-start;
+              border-bottom: 2px solid #e2e8f0; 
+              padding-bottom: 16px;
+              margin-bottom: 24px;
+            }
+            .brand-name {
+              font-size: 18px;
+              font-weight: 700;
+              color: #0f172a;
+            }
+            .brand-sub {
+              font-size: 12px;
+              color: #64748b;
+              margin-top: 2px;
+            }
+            .document-title {
+              text-align: right;
+            }
+            .document-title h1 {
+              margin: 0;
+              font-size: 20px;
+              font-weight: 800;
+              color: #1e293b;
+            }
+            .document-title p {
+              margin: 4px 0 0 0;
+              font-size: 13px;
+              color: #64748b;
+              font-weight: 500;
+            }
+            .details-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 28px;
+            }
+            .details-table th {
+              background-color: #f1f5f9;
+              color: #475569;
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+              border: 1px solid #cbd5e1;
+              padding: 10px 8px;
+            }
+            .details-table td {
+              font-size: 13px;
+              border: 1px solid #e2e8f0;
+              color: #334155;
+            }
+            .grand-total-row {
+              background-color: #f8fafc;
+              font-weight: 700;
+            }
+            .grand-total-row td {
+              border: 1px solid #cbd5e1;
+              padding: 12px 8px;
+            }
+            .signatures-section {
+              display: flex;
+              justify-content: flex-end;
+              margin-top: 50px;
+              padding-top: 20px;
+              padding-right: 40px;
+            }
+            .signature-block {
+              text-align: center;
+              width: 250px;
+            }
+            .signature-title {
+              font-size: 13px;
+              font-weight: 700;
+              color: #334155;
+              text-transform: uppercase;
+            }
+            .signature-sub {
+              font-size: 11px;
+              color: #94a3b8;
+              margin-top: 2px;
+            }
+            .signature-space {
+              height: 90px;
+            }
+            .footer-info {
+              text-align: center;
+              margin-top: 48px;
+              font-size: 11px;
+              color: #94a3b8;
+              border-top: 1px solid #f1f5f9;
+              padding-top: 16px;
+            }
+            @media print {
+              body {
+                padding: 0;
+              }
+              .payslip-container {
+                padding: 0;
+                max-width: 100%;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="payslip-container">
+            <div class="header-section">
+              <div>
+                <div class="brand-name">🍽️ RESMANAGER BISTRO</div>
+                <div class="brand-sub">Hệ thống quản lý nhà hàng thông minh</div>
+              </div>
+              <div class="document-title">
+                <h1>BẢNG TỔNG HỢP THANH TOÁN LƯƠNG NHÂN VIÊN</h1>
+                <p>Kỳ lương: Tháng ${month} / Năm ${year}</p>
+              </div>
+            </div>
+
+            <table class="details-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%;">STT</th>
+                  <th style="width: 10%;">Mã NV</th>
+                  <th style="width: 20%; text-align: left;">Họ và Tên</th>
+                  <th style="width: 12%; text-align: left;">Chức Vụ</th>
+                  <th style="width: 13%; text-align: right;">Số Giờ Làm (h)</th>
+                  <th style="width: 13%; text-align: right;">Lương / Giờ</th>
+                  <th style="width: 13%; text-align: right;">Thưởng Lễ Tết</th>
+                  <th style="width: 14%; text-align: right;">Tổng Thực Nhận</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+                <tr class="grand-total-row">
+                  <td colspan="4" style="text-align: center; font-weight: 800;">TỔNG CỘNG LŨY KẾ</td>
+                  <td style="text-align: right; font-weight: 800;">${totalHours.toFixed(2)}</td>
+                  <td style="text-align: right; color: #64748b;">-</td>
+                  <td style="text-align: right; font-weight: 800; color: #b45309;">${totalHolidayBonus.toLocaleString('vi-VN')} đ</td>
+                  <td style="text-align: right; font-weight: 800; color: #10b981;">${totalSalary.toLocaleString('vi-VN')} đ</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="signatures-section">
+              <div class="signature-block">
+                <span class="signature-title">Người lập biểu</span>
+                <span class="signature-sub">(Ký, ghi rõ họ tên)</span>
+                <div class="signature-space"></div>
+                <div style="border-bottom: 1px dashed #cbd5e1; width: 180px; margin: 0 auto;"></div>
+              </div>
+            </div>
+
+            <div class="footer-info">
+              <p>Báo cáo lương được lập tự động bởi hệ thống ResManager Bistro vào ngày ${new Date().toLocaleDateString('vi-VN')}.</p>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            }
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const totalPages = Math.ceil(payrolls.length / rowsPerPage);
@@ -611,6 +828,14 @@ const PayrollPage: React.FC = () => {
           </button>
 
           <button 
+            onClick={handlePrintAll}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <Printer size={16} />
+            In Bảng Lương Tổng
+          </button>
+
+          <button 
             onClick={fetchPayrolls}
             disabled={loading}
             className="bg-black hover:bg-gray-800 text-white px-4 py-2 rounded-md flex items-center gap-2 text-sm disabled:opacity-50 transition-colors"
@@ -631,6 +856,7 @@ const PayrollPage: React.FC = () => {
                 <th className="px-6 py-4">Chức Vụ</th>
                 <th className="px-6 py-4 text-right">Số Giờ (h)</th>
                 <th className="px-6 py-4 text-right">Lương / Giờ</th>
+                <th className="px-6 py-4 text-right">Thưởng Lễ Tết</th>
                 <th className="px-6 py-4 text-right">Tổng Lương</th>
                 <th className="px-6 py-4 text-center">Trạng Thái</th>
                 <th className="px-6 py-4 text-center">Thao Tác</th>
@@ -639,13 +865,13 @@ const PayrollPage: React.FC = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     Đang tải dữ liệu...
                   </td>
                 </tr>
               ) : payrolls.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     Chưa có dữ liệu lương cho tháng này.
                   </td>
                 </tr>
@@ -653,14 +879,18 @@ const PayrollPage: React.FC = () => {
                 paginatedPayrolls.map((p) => {
                   const isPaid = p.status === "paid";
                   const displayHours = isPaid ? 0.0 : Number(p.total_hours || 0);
+                  const displayHolidayBonus = isPaid ? 0 : Number(p.holiday_bonus || 0);
                   const displaySalary = isPaid ? 0 : Number(p.total_salary || 0);
                   return (
                     <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                       <td className="px-6 py-4 text-sm font-medium">{p.employee_code || `NV${String(p.user_id).padStart(3, "0")}`}</td>
                       <td className="px-6 py-4 font-medium text-sm text-gray-900">{p.full_name}</td>
                       <td className="px-6 py-4 text-sm text-gray-500 capitalize">{p.role_name}</td>
-                      <td className="px-6 py-4 text-sm text-right font-mono font-semibold">{displayHours.toFixed(1)}</td>
+                      <td className="px-6 py-4 text-sm text-right font-mono font-semibold">{displayHours.toFixed(2)}</td>
                       <td className="px-6 py-4 text-sm text-right font-mono">{Number(p.hourly_rate || 25000).toLocaleString('vi-VN')} đ</td>
+                      <td className="px-6 py-4 text-sm text-right text-amber-600 font-medium font-mono">
+                        {displayHolidayBonus.toLocaleString('vi-VN')} đ
+                      </td>
                       <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900 font-mono">
                         {displaySalary.toLocaleString('vi-VN')} đ
                       </td>

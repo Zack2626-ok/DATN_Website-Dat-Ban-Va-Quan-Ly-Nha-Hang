@@ -269,8 +269,22 @@ export const createBooking = async (data: {
   return response.data.data;
 };
 
-export const cancelBooking = async (id: number): Promise<void> => {
-  await customerApi.patch(`/v1/customer/bookings/${id}/cancel`);
+export const cancelBooking = async (payload: number | { id: number; reason?: string }): Promise<void> => {
+  const id = typeof payload === "number" ? payload : payload.id;
+  const reason = typeof payload === "object" ? payload.reason : undefined;
+  await customerApi.patch(`/v1/customer/bookings/${id}/cancel`, { reason });
+};
+
+export const updateBookingContact = async (
+  id: number,
+  data: {
+    guest_name: string;
+    guest_phone: string;
+    guest_email?: string;
+    guest_note?: string;
+  }
+): Promise<void> => {
+  await customerApi.patch(`/v1/customer/bookings/${id}/contact`, data);
 };
 
 export const payBookingDeposit = async (id: number): Promise<CreatedBooking> => {

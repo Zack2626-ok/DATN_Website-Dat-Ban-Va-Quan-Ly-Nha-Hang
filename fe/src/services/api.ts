@@ -110,8 +110,11 @@ export const getKdsHistoryApi = async (date?: string): Promise<any[]> => {
 /**
  * Fetch all real ingredients from backend
  */
-export const getIngredientsApi = async (): Promise<any[]> => {
-  const response = await api.get("/inventory/ingredients");
+export const getIngredientsApi = async (page?: number, limit?: number): Promise<any> => {
+  const params: any = {};
+  if (page) params.page = page;
+  if (limit) params.limit = limit;
+  const response = await api.get(`/inventory/ingredients`, { params });
   return response.data.data;
 };
 

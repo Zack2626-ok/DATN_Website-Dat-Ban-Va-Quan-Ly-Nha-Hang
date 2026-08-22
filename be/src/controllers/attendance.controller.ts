@@ -113,6 +113,10 @@ export const clockInEmployeeByManager = async (req: Request, res: Response): Pro
     }
     const timing = res.locals.attendanceTiming as AttendanceTimingMetadata | undefined;
     const attendance = await db.clockInEmployee(employeeId, timing);
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("system:attendance_changed", { employeeId: employeeId, action: "clock-in" });
+    }
     sendSuccess(res, attendance, "Chấm công vào thành công!");
   } catch (error) {
     console.error("Error in clockInEmployeeByManager:", error);
@@ -135,6 +139,10 @@ export const clockOutEmployeeByManager = async (req: Request, res: Response): Pr
     }
     const timing = res.locals.attendanceTiming as AttendanceTimingMetadata | undefined;
     const attendance = await db.clockOutEmployee(employeeId, timing);
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("system:attendance_changed", { employeeId: employeeId, action: "clock-out" });
+    }
     sendSuccess(res, attendance, "Chấm công ra thành công!");
   } catch (error) {
     console.error("Error in clockOutEmployeeByManager:", error);
