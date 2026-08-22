@@ -43,3 +43,4 @@
 - Entry 41 - docs(api): add detailed documentation for payment notification webhook
 - Entry 42 - refactor(billing): optimize tax calculation utility functions
 - Entry 43 - style(invoice): refine typography and margin for printed receipt layout
+- Entry 44 - perf(cache): implement lightweight in-memory cache helper for menu categories
