@@ -30,3 +30,4 @@
 - Entry 28 - style(toast): align notification toast positioning and duration
 - Entry 29 - docs(security): document CORS and rate-limiting configuration
 - Entry 30 - refactor(customer): improve error boundary fallback UI
+- Entry 31 - style(icons): audit lucide icon imports for tree shaking
