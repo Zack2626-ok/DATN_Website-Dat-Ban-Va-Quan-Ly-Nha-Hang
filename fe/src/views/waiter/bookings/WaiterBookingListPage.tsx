@@ -155,9 +155,9 @@ export const WaiterBookingListPage: React.FC = () => {
   }, [bookings, selectedDate]);
 
   // Lọc theo từ khóa & SẮP XẾP THEO THỨ TỰ YÊU CẦU:
-  // 1. ĐẦU TIÊN (Ưu tiên 1): Khách chờ đến (pending / confirmed)
-  // 2. Ở GIỮA (Ưu tiên 2): Đã hủy (cancelled)
-  // 3. CUỐI CÙNG (Ưu tiên 3): Đã mở bàn cho khách / Khách đã đến (arrived / completed)
+  // 1. ĐẦU TIÊN (Ưu tiên 1): Đã mở bàn thành công (arrived / completed)
+  // 2. ƯU TIÊN 2: Chờ khách đến (pending / confirmed)
+  // 3. CUỐI CÙNG (Ưu tiên 3): Đã hủy (cancelled)
   const sortedAndFilteredBookings = useMemo(() => {
     let filtered = dateBookings;
 
@@ -178,9 +178,9 @@ export const WaiterBookingListPage: React.FC = () => {
     }
 
     const getGroupPriority = (status: string): number => {
-      if (status === "pending" || status === "confirmed") return 1; // Đầu tiên: Chờ khách đến
-      if (status === "cancelled") return 2;                        // Ở giữa: Đã hủy
-      if (status === "arrived" || status === "completed") return 3; // Cuối cùng: Đã mở bàn cho khách
+      if (status === "arrived" || status === "completed") return 1; // Đầu tiên: Đã mở bàn thành công
+      if (status === "pending" || status === "confirmed") return 2; // Ở giữa: Chờ khách đến
+      if (status === "cancelled") return 3;                        // Cuối cùng: Đã hủy
       return 4;
     };
 
@@ -204,16 +204,17 @@ export const WaiterBookingListPage: React.FC = () => {
 
   // Nút Thao tác: "Khách đã đến" ➔ Cập nhật trạng thái + Nhảy sang Sơ đồ bàn tự điền dữ liệu
   const handleMarkArrivedAndNavigate = async (b: Booking) => {
-    const assignedArea = b.area_name || assignmentMap[b.id]?.assignedArea || "Tầng 2";
+    const assignedArea = b.area_name || assignmentMap[b.id]?.assignedArea || null;
     try {
       await updateBookingStatus(b.id, "arrived");
-      toast.success(`✅ Đã nhận khách cho đơn #${b.confirmation_code || b.id}. Đang chuyển tới sơ đồ bàn...`);
       loadData();
 
+      const targetTableId = b.table_id || (b.table_ids && b.table_ids.length > 0 ? b.table_ids[0] : null);
       // Chuyển sang trang sơ đồ bàn và tự truyền dữ liệu khách để mở bàn
       navigate("/waiter/tables", {
         state: {
           targetArea: assignedArea,
+          selectedTableId: targetTableId,
           autoOpenAssignedBooking: {
             id: b.id,
             bookingId: b.id,
@@ -222,6 +223,7 @@ export const WaiterBookingListPage: React.FC = () => {
             partySize: b.party_size,
             assignedArea: assignedArea,
             startTime: b.start_time,
+            tableId: targetTableId,
           },
         },
       });
@@ -495,7 +497,7 @@ export const WaiterBookingListPage: React.FC = () => {
                         {isArrivedOrCompleted && (
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100/80 text-emerald-900 border border-emerald-300 rounded-full text-xs font-black">
                             <span className="h-2 w-2 rounded-full bg-emerald-600" />
-                            Đã mở bàn chờ khách
+                            Khách đã đến
                           </span>
                         )}
                       </td>
@@ -697,7 +699,7 @@ export const WaiterBookingListPage: React.FC = () => {
                 <span className="text-slate-400 font-bold block text-[10px] uppercase">KHU VỰC & BÀN PHÂN CÔNG</span>
                 <div className="flex items-center justify-between pt-1">
                   <span className="font-black text-indigo-950 text-xs bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">
-                    📍 Khu vực: {assignmentMap[detailModalBooking.id]?.assignedArea || (detailModalBooking as any).assigned_area || detailModalBooking.area_name || "Tầng 2"}
+                    📍 Khu vực: {assignmentMap[detailModalBooking.id]?.assignedArea || (detailModalBooking as any).assigned_area || detailModalBooking.area_name || "Chưa phân công"}
                   </span>
                   <span className="font-bold text-slate-700 text-xs text-right">
                     {getHeldTableGroupLabel(detailModalBooking)

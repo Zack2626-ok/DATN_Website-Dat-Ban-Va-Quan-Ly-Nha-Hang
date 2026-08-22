@@ -39,10 +39,16 @@ export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose,
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
-    if (isOpen && initialData) {
-      if (initialData.guestCount) setGuestCount(initialData.guestCount);
-      if (initialData.customerName) setCustomerName(initialData.customerName);
-      if (initialData.customerPhone) setCustomerPhone(initialData.customerPhone);
+    if (isOpen) {
+      if (initialData) {
+        setGuestCount(initialData.guestCount || DEFAULT_WALK_IN_GUESTS);
+        setCustomerName(initialData.customerName || "");
+        setCustomerPhone(initialData.customerPhone || "");
+      } else {
+        setGuestCount(DEFAULT_WALK_IN_GUESTS);
+        setCustomerName("");
+        setCustomerPhone("");
+      }
     }
   }, [isOpen, initialData]);
 

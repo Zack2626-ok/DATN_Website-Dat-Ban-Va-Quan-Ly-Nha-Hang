@@ -889,6 +889,8 @@ const runSchemaMigrations = async (): Promise<void> => {
       await query(`ALTER TABLE bookings ADD COLUMN guest_email VARCHAR(255) DEFAULT NULL AFTER guest_phone`).catch(() => {});
       console.log("✅ Migration: added bookings.guest_email");
     }
+    await query(`ALTER TABLE bookings MODIFY COLUMN status ENUM('pending','confirmed','arrived','completed','cancelled') NOT NULL DEFAULT 'pending'`).catch(() => {});
+    console.log("✅ Migration: updated bookings.status ENUM to include arrived");
     const bookingMenuItemsTable = await query<any[]>(
       `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_menu_items'`,
@@ -906,6 +908,19 @@ const runSchemaMigrations = async (): Promise<void> => {
       `);
       console.log("✅ Migration: created booking_menu_items table");
     }
+
+    // Migration: Tạo bảng notifications nếu chưa có
+    await query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        type VARCHAR(50) DEFAULT 'info',
+        role VARCHAR(50) DEFAULT NULL,
+        is_read TINYINT(1) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
 
     // Migration: Tạo bảng booking_reviews để lưu đánh giá phản hồi nếu chưa có
     await query(`
@@ -2719,32 +2734,61 @@ export const hasBookingInProgressForTable = async (
 export const getWalkInBookingConflictForTable = async (
   tableId: number,
   currentTime: string,
+  excludeBookingId?: number | null,
 ): Promise<WalkInBookingConflictRow | null> => {
-  const rows = await query<WalkInBookingConflictRow[]>(
-    `SELECT b.id, DATE_FORMAT(b.start_time, '%H:%i') AS booking_clock
-     FROM bookings b
-     WHERE b.status IN (?, ?)
-       AND b.start_time < DATE_ADD(?, INTERVAL ${BOOKING_DURATION_MINUTES} MINUTE)
-       AND b.end_time > ?
-       AND (
-         b.table_id = ?
-         OR EXISTS (
-           SELECT 1
-           FROM booking_table_assignments bta
-           WHERE bta.booking_id = b.id AND bta.table_id = ?
+  const querySql = excludeBookingId
+    ? `SELECT b.id, DATE_FORMAT(b.start_time, '%H:%i') AS booking_clock
+       FROM bookings b
+       WHERE b.status IN (?, ?)
+         AND b.id <> ?
+         AND b.start_time < DATE_ADD(?, INTERVAL ${BOOKING_DURATION_MINUTES} MINUTE)
+         AND b.end_time > ?
+         AND (
+           b.table_id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM booking_table_assignments bta
+             WHERE bta.booking_id = b.id AND bta.table_id = ?
+           )
          )
-       )
-     ORDER BY b.start_time ASC, b.id ASC
-     LIMIT 1`,
-    [
-      BOOKING_STATUS.PENDING,
-      BOOKING_STATUS.CONFIRMED,
-      currentTime,
-      currentTime,
-      tableId,
-      tableId,
-    ],
-  );
+       ORDER BY b.start_time ASC, b.id ASC
+       LIMIT 1`
+    : `SELECT b.id, DATE_FORMAT(b.start_time, '%H:%i') AS booking_clock
+       FROM bookings b
+       WHERE b.status IN (?, ?)
+         AND b.start_time < DATE_ADD(?, INTERVAL ${BOOKING_DURATION_MINUTES} MINUTE)
+         AND b.end_time > ?
+         AND (
+           b.table_id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM booking_table_assignments bta
+             WHERE bta.booking_id = b.id AND bta.table_id = ?
+           )
+         )
+       ORDER BY b.start_time ASC, b.id ASC
+       LIMIT 1`;
+
+  const params = excludeBookingId
+    ? [
+        BOOKING_STATUS.PENDING,
+        BOOKING_STATUS.CONFIRMED,
+        excludeBookingId,
+        currentTime,
+        currentTime,
+        tableId,
+        tableId,
+      ]
+    : [
+        BOOKING_STATUS.PENDING,
+        BOOKING_STATUS.CONFIRMED,
+        currentTime,
+        currentTime,
+        tableId,
+        tableId,
+      ];
+
+  const rows = await query<WalkInBookingConflictRow[]>(querySql, params);
   return rows[0] ?? null;
 };
 
@@ -3659,7 +3703,9 @@ export const checkInScheduledBooking = async (
     if (physicalTableRows.length !== bookingTableIds.length) {
       throw new Error("Không thể xác định đầy đủ các bàn đã gán cho lịch đặt.");
     }
-    const unavailableTables = physicalTableRows.filter((table) => table.status !== TABLE_STATUS.EMPTY);
+    const unavailableTables = physicalTableRows.filter(
+      (table) => table.status !== TABLE_STATUS.EMPTY && table.status !== TABLE_STATUS.RESERVED,
+    );
     if (unavailableTables.length > 0) {
       const tableNames = unavailableTables.map((table) => table.name).join(", ");
       throw new Error(`Bàn ${tableNames} chưa sẵn sàng để nhận khách mới.`);
@@ -3681,6 +3727,8 @@ export const checkInScheduledBooking = async (
       throw new Error("Bàn vẫn đang phục vụ khách trước. Không thể mở lịch đặt kế tiếp cho đến khi bàn được thanh toán và dọn xong.");
     }
 
+    const primaryTableId = booking.table_id || bookingTableIds[0];
+
     const [preOrderRows] = await connection.query<BookingCheckInOrderRow[]>(
       `SELECT id FROM orders
        WHERE booking_id = ? AND order_type = 'pre_order'
@@ -3700,7 +3748,7 @@ export const checkInScheduledBooking = async (
              guest_name = ?, guest_phone = ?, guest_count = ?
          WHERE id = ?`,
         [
-          booking.table_id,
+          primaryTableId,
           createdBy,
           "dine_in",
           ORDER_STATUS.OPEN,
@@ -3722,7 +3770,7 @@ export const checkInScheduledBooking = async (
           guest_name, guest_phone, guest_count, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          booking.table_id,
+          primaryTableId,
           booking.id,
           booking.customer_id,
           createdBy,
@@ -3762,7 +3810,7 @@ export const checkInScheduledBooking = async (
     return {
       orderId,
       bookingId,
-      primaryTableId: Number(booking.table_id),
+      primaryTableId: Number(primaryTableId),
       updatedTableIds: bookingTableIds,
     };
   } catch (error) {
@@ -4020,7 +4068,21 @@ export const getResmanagerTablesWithExtra = async (areaId?: number): Promise<any
       ORDER BY created_at DESC, id DESC
       LIMIT 1
     )
-    LEFT JOIN bookings b ON b.id = o.booking_id
+    LEFT JOIN bookings b ON b.id = COALESCE(
+      o.booking_id,
+      CASE WHEN t.status = 'reserved' THEN (
+        SELECT id FROM bookings
+        WHERE table_id = t.id AND status IN ('pending', 'confirmed', 'arrived')
+        ORDER BY start_time ASC, id ASC
+        LIMIT 1
+      ) END,
+      CASE WHEN t.status = 'reserved' THEN (
+        SELECT booking_id FROM booking_table_assignments
+        WHERE table_id = t.id
+        ORDER BY booking_id ASC
+        LIMIT 1
+      ) END
+    )
     WHERE t.is_deleted = 0
   `;
   const params: any[] = [];
