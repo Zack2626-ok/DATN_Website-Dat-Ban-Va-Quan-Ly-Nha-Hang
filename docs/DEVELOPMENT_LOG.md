@@ -49,3 +49,4 @@
 - Entry 47 - style(sidebar): format active menu item indicators for clarity
 - Entry 48 - docs(schema): document database migration scripts and sequence
 - Entry 49 - refactor(notifications): standardize socket event payload validation
+- Entry 50 - perf(fe): memoize customer order summary calculation
