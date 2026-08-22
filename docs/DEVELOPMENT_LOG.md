@@ -38,3 +38,4 @@
 - Entry 36 - refactor(cashier): simplify invoice total calculation logic
 - Entry 37 - perf(db): index expense date column for faster range queries
 - Entry 38 - style(typography): set consistent font family and line height
+- Entry 39 - docs(changelog): update release notes for recent pagination features
