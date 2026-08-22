@@ -9,3 +9,4 @@
 - Entry 7 - style(table): unify table header typography and alignment
 - Entry 8 - docs(payroll): document salary calculation algorithm and holiday bonus
 - Entry 9 - refactor(expenses): simplify operational expense filter logic
+- Entry 10 - perf(server): reduce response latency for stats API
