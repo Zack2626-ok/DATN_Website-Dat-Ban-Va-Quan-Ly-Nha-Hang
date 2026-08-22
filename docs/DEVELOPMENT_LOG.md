@@ -35,3 +35,4 @@
 - Entry 33 - refactor(waiter): optimize order status updates handling
 - Entry 34 - style(layout): ensure responsive container width on mobile devices
 - Entry 35 - docs(env): add missing environment variable descriptions
+- Entry 36 - refactor(cashier): simplify invoice total calculation logic
