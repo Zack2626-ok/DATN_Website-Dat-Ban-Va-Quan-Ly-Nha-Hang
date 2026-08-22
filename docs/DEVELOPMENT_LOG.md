@@ -16,3 +16,4 @@
 - Entry 14 - style(buttons): format action button hover and active states
 - Entry 15 - docs(architecture): add component interaction diagram notes
 - Entry 16 - refactor(menu): optimize menu item search indexing
+- Entry 17 - style(cards): refine dashboard card shadow and border styling
