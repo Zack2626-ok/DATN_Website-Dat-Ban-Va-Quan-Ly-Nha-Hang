@@ -1,6 +1,6 @@
-# 🖼️ Image Upload App
+# 🍽️ ResManager Bistro - Hệ Thống Quản Lý Nhà Hàng
 
-Ứng dụng upload ảnh đơn giản với React + Node.js + Express.
+Ứng dụng quản lý nhà hàng Fine Dining với React + Node.js + Express + MySQL + Real-time Socket.io.
 
 ---
 
