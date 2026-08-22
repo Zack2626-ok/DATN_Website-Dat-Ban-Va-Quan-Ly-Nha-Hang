@@ -26,3 +26,4 @@
 - Entry 24 - style(forms): standardize input focus ring and error messaging
 - Entry 25 - docs(deploy): add deployment guidelines for staging environment
 - Entry 26 - refactor(reports): optimize financial report generation helpers
+- Entry 27 - perf(fe): lazy load heavy modal components for faster initial load
