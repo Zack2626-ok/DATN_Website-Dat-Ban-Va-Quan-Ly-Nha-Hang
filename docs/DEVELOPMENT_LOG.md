@@ -2,3 +2,4 @@
 
 - Entry 1 - docs(api): update API documentation for authentication endpoints
 - Entry 2 - refactor(auth): optimize token validation logic and error handling
+- Entry 3 - style(ui): adjust spacing and padding in navigation sidebar
