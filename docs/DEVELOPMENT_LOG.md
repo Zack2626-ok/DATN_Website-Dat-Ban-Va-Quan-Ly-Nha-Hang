@@ -46,3 +46,4 @@
 - Entry 44 - perf(cache): implement lightweight in-memory cache helper for menu categories
 - Entry 45 - docs(auth): document password hashing policy and bcrypt rounds
 - Entry 46 - refactor(tables): clean up table status state transition handlers
+- Entry 47 - style(sidebar): format active menu item indicators for clarity
