@@ -20,3 +20,4 @@
 - Entry 18 - docs(websocket): document socket event names and payloads
 - Entry 19 - refactor(attendance): streamline clock-in/out timestamp formatting
 - Entry 20 - perf(fe): memoize expensive table row rendering in payroll view
+- Entry 21 - style(badge): update status badge color palette for consistency
