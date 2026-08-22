@@ -10,3 +10,4 @@
 - Entry 8 - docs(payroll): document salary calculation algorithm and holiday bonus
 - Entry 9 - refactor(expenses): simplify operational expense filter logic
 - Entry 10 - perf(server): reduce response latency for stats API
+- Entry 11 - style(modal): standardize modal overlay transitions and backdrop blur
