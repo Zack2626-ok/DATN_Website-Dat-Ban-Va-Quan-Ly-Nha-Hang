@@ -37,3 +37,4 @@
 - Entry 35 - docs(env): add missing environment variable descriptions
 - Entry 36 - refactor(cashier): simplify invoice total calculation logic
 - Entry 37 - perf(db): index expense date column for faster range queries
+- Entry 38 - style(typography): set consistent font family and line height
