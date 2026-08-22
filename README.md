@@ -275,4 +275,12 @@ cp .env.example .env
 
 ---
 
+## 🛠️ Các tính năng hệ thống chính
+
+- **Quản lý Đặt bàn & Gọi món:** Đặt bàn trực tuyến, quét mã QR gọi món realtime.
+- **Quản lý Nhân sự & Bảng lương:** Tự động chấm công, tính giờ làm việc và lương thưởng.
+- **Quản lý Kho & Chi phí:** Phân trang quản lý nguyên vật liệu, theo dõi biến động chi phí hoạt động.
+
+---
+
 **Made with ❤️ by the team**
