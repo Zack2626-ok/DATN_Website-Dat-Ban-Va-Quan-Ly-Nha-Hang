@@ -40,3 +40,4 @@
 - Entry 38 - style(typography): set consistent font family and line height
 - Entry 39 - docs(changelog): update release notes for recent pagination features
 - Entry 40 - refactor(chef): clean up kitchen display order item status logic
+- Entry 41 - docs(api): add detailed documentation for payment notification webhook
