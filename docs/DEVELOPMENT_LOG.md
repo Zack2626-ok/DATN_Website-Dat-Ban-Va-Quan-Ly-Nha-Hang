@@ -28,3 +28,4 @@
 - Entry 26 - refactor(reports): optimize financial report generation helpers
 - Entry 27 - perf(fe): lazy load heavy modal components for faster initial load
 - Entry 28 - style(toast): align notification toast positioning and duration
+- Entry 29 - docs(security): document CORS and rate-limiting configuration
