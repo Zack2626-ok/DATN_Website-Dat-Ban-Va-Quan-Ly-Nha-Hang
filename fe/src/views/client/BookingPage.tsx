@@ -120,10 +120,10 @@ export const BookingPage: React.FC = () => {
       return;
     }
     
-    // if (bookingValidationEnabled && !isWithinPublicBookingHours(form.time)) {
-    //   toast.error(`Nhà hàng nhận đặt bàn online từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${ONLINE_BOOKING_LAST_ARRIVAL_TIME}.`);
-    //   return;
-    // }
+    if (bookingValidationEnabled && !isWithinPublicBookingHours(form.time)) {
+      toast.error(`Nhà hàng nhận đặt bàn online từ ${PUBLIC_BOOKING_HOURS.OPEN} đến ${ONLINE_BOOKING_LAST_ARRIVAL_TIME}.`);
+      return;
+    }
 
     const selectedDateTime = new Date(`${form.date}T${form.time}:00`);
     const now = new Date();
@@ -559,8 +559,8 @@ export const BookingPage: React.FC = () => {
                   <input
                     required
                     type="time"
-                    // min={bookingValidationEnabled ? PUBLIC_BOOKING_HOURS.OPEN : undefined}
-                    // max={bookingValidationEnabled ? ONLINE_BOOKING_LAST_ARRIVAL_TIME : undefined}
+                    min={bookingValidationEnabled ? PUBLIC_BOOKING_HOURS.OPEN : undefined}
+                    max={bookingValidationEnabled ? ONLINE_BOOKING_LAST_ARRIVAL_TIME : undefined}
                     value={form.time}
                     onChange={(e) => setField("time", e.target.value)}
                     className="w-full rounded-xl border border-client-accent px-4 py-3 text-sm focus:ring-2 focus:ring-client-secondary outline-none bg-white transition-all"
