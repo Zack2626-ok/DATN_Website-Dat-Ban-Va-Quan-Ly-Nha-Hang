@@ -347,7 +347,7 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status, maint
 -- ============================================================================
 CREATE TABLE bookings (
     id                INT          NOT NULL AUTO_INCREMENT,
-    table_id          INT          NOT NULL,
+    table_id          INT          DEFAULT NULL,
     customer_id       INT          DEFAULT NULL,
     promotion_id      INT          DEFAULT NULL,
     guest_name        VARCHAR(100) NOT NULL,

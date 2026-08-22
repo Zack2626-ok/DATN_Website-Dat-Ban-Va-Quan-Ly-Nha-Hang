@@ -22,7 +22,10 @@ export const getAllInventory = async (req: Request, res: Response): Promise<void
           id, 
           name,
           name as itemName,
-          current_stock as stock, 
+          COALESCE(
+            (SELECT SUM(remaining_quantity) FROM stock_in WHERE ingredient_id = ingredients.id),
+            current_stock
+          ) as stock, 
           unit, 
           min_stock as threshold,
           COALESCE(
@@ -42,7 +45,10 @@ export const getAllInventory = async (req: Request, res: Response): Promise<void
           id, 
           name,
           name as itemName,
-          current_stock as stock, 
+          COALESCE(
+            (SELECT SUM(remaining_quantity) FROM stock_in WHERE ingredient_id = ingredients.id),
+            current_stock
+          ) as stock, 
           unit, 
           min_stock as threshold,
           COALESCE(
