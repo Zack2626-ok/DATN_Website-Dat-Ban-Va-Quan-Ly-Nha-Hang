@@ -7,23 +7,37 @@ export const expenseController = {
   getExpenses: async (req: Request, res: Response): Promise<void> => {
     try {
       const { month, year } = req.query;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const offset = (page - 1) * limit;
+
+      let countSql = `SELECT COUNT(*) as total FROM operational_expenses e WHERE e.deleted_at IS NULL`;
       let sql = `
         SELECT e.*, u.full_name as creator_name 
         FROM operational_expenses e 
         LEFT JOIN users u ON e.created_by = u.id 
         WHERE e.deleted_at IS NULL
       `;
+      const countParams: any[] = [];
       const params: any[] = [];
       
       if (month && year) {
-        sql += ` AND MONTH(e.expense_date) = ? AND YEAR(e.expense_date) = ?`;
+        const dateCond = ` AND MONTH(e.expense_date) = ? AND YEAR(e.expense_date) = ?`;
+        countSql += dateCond;
+        sql += dateCond;
+        countParams.push(Number(month), Number(year));
         params.push(Number(month), Number(year));
       }
+
+      const countResult = await db.query(countSql, countParams);
+      const totalItems = countResult[0].total || 0;
+      const totalPages = Math.ceil(totalItems / limit);
       
-      sql += ` ORDER BY e.expense_date DESC, e.created_at DESC`;
+      sql += ` ORDER BY e.expense_date DESC, e.created_at DESC LIMIT ? OFFSET ?`;
+      params.push(limit, offset);
 
       const expenses = await db.query(sql, params);
-      sendSuccess(res, expenses, "Tải danh sách chi phí thành công");
+      sendSuccess(res, { currentPage: page, totalPages, totalItems, data: expenses }, "Tải danh sách chi phí thành công");
     } catch (error) {
       console.error("Error fetching expenses:", error);
       sendError(res, `Lỗi: ${(error as Error).message}`, 500);

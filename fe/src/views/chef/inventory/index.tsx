@@ -75,11 +75,24 @@ export const InventoryControl: React.FC = () => {
 
   const [reduxIngredients, setReduxIngredients] = useState<any[]>([]);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
   useEffect(() => {
-    getIngredientsApi()
-      .then((data) => setReduxIngredients(data))
+    getIngredientsApi(currentPage, pageSize)
+      .then((res) => {
+        if (res && res.data) {
+          setReduxIngredients(res.data);
+          setTotalItems(res.totalItems || 0);
+          setTotalPages(res.totalPages || 1);
+        } else {
+          setReduxIngredients(res as any);
+        }
+      })
       .catch((err) => console.error("Failed to load ingredients", err));
-  }, []);
+  }, [currentPage, pageSize]);
 
   const [searchParams] = useSearchParams();
   const initialTabParam = searchParams.get("tab");
@@ -2568,6 +2581,58 @@ export const InventoryControl: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination UI */}
+            <div className="flex flex-col sm:flex-row items-center justify-between p-4 border border-slate-200 border-t-0 bg-white rounded-b-xl mb-4">
+              <div className="flex items-center gap-3 mb-4 sm:mb-0">
+                <span className="text-sm text-slate-600">Hiển thị</span>
+                <select
+                  className="border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-emerald-500"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                </select>
+                <span className="text-sm text-slate-600">
+                  bản ghi - Hiển thị {filteredIngredients.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, totalItems)} trên tổng số {totalItems} bản ghi
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <div className="flex gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={`w-8 h-8 rounded text-sm flex items-center justify-center ${
+                        currentPage === p ? "bg-emerald-600 text-white font-medium" : "border border-slate-300 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex gap-2.5 items-start text-xs font-semibold text-blue-800 shadow-inner mt-2">

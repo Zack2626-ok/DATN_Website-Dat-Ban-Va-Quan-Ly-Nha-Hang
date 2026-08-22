@@ -3,26 +3,59 @@ const xlsx = require("xlsx");
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 
-export const getAllInventory = async (_req: Request, res: Response): Promise<void> => {
+export const getAllInventory = async (req: Request, res: Response): Promise<void> => {
   try {
-    const items = await db.query(`
-      SELECT 
-        id, 
-        name,
-        name as itemName,
-        current_stock as stock, 
-        unit, 
-        min_stock as threshold,
-        COALESCE(
-          (SELECT SUM(unit_cost * remaining_quantity) / NULLIF(SUM(remaining_quantity), 0)
-           FROM stock_in WHERE ingredient_id = ingredients.id AND remaining_quantity > 0 AND unit_cost > 0),
-          (SELECT unit_cost FROM stock_in WHERE ingredient_id = ingredients.id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1),
-          0
-        ) AS avgCost
-      FROM ingredients 
-      WHERE is_deleted = 0
-    `);
-    sendSuccess(res, items, "Lấy danh sách kho thành công");
+    const pageStr = req.query.page as string;
+    const limitStr = req.query.limit as string;
+
+    if (pageStr && limitStr) {
+      const page = parseInt(pageStr) || 1;
+      const limit = parseInt(limitStr) || 10;
+      const offset = (page - 1) * limit;
+
+      const countResult = await db.query(`SELECT COUNT(*) as total FROM ingredients WHERE is_deleted = 0`);
+      const totalItems = countResult[0].total || 0;
+      const totalPages = Math.ceil(totalItems / limit);
+
+      const items = await db.query(`
+        SELECT 
+          id, 
+          name,
+          name as itemName,
+          current_stock as stock, 
+          unit, 
+          min_stock as threshold,
+          COALESCE(
+            (SELECT SUM(unit_cost * remaining_quantity) / NULLIF(SUM(remaining_quantity), 0)
+             FROM stock_in WHERE ingredient_id = ingredients.id AND remaining_quantity > 0 AND unit_cost > 0),
+            (SELECT unit_cost FROM stock_in WHERE ingredient_id = ingredients.id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1),
+            0
+          ) AS avgCost
+        FROM ingredients 
+        WHERE is_deleted = 0
+        LIMIT ? OFFSET ?
+      `, [limit, offset]);
+      sendSuccess(res, { currentPage: page, totalPages, totalItems, data: items }, "Lấy danh sách kho thành công");
+    } else {
+      const items = await db.query(`
+        SELECT 
+          id, 
+          name,
+          name as itemName,
+          current_stock as stock, 
+          unit, 
+          min_stock as threshold,
+          COALESCE(
+            (SELECT SUM(unit_cost * remaining_quantity) / NULLIF(SUM(remaining_quantity), 0)
+             FROM stock_in WHERE ingredient_id = ingredients.id AND remaining_quantity > 0 AND unit_cost > 0),
+            (SELECT unit_cost FROM stock_in WHERE ingredient_id = ingredients.id AND unit_cost > 0 ORDER BY created_at DESC LIMIT 1),
+            0
+          ) AS avgCost
+        FROM ingredients 
+        WHERE is_deleted = 0
+      `);
+      sendSuccess(res, items, "Lấy danh sách kho thành công");
+    }
   } catch (error) {
     console.error("Error fetching inventory:", error);
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);

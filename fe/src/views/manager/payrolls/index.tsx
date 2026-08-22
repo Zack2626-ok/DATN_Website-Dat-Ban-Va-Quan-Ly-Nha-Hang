@@ -25,17 +25,27 @@ const PayrollPage: React.FC = () => {
   
   const [month, setMonth] = useState(8);
   const [year, setYear] = useState(2026);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const generateMonths = () => {
     const list = [];
-    const startDate = new Date(2026, 7); // index 7 is August
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(startDate.getFullYear(), startDate.getMonth() - i, 1);
-      list.push({
-        month: d.getMonth() + 1,
-        year: d.getFullYear(),
-        label: `Tháng ${d.getMonth() + 1} / ${d.getFullYear()}`
-      });
+    const startYear = 2024;
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+
+    for (let y = currentYear; y >= startYear; y--) {
+      const endM = (y === currentYear) ? currentMonth : 12;
+      for (let m = endM; m >= 1; m--) {
+        list.push({
+          month: m,
+          year: y,
+          label: `Tháng ${m} / ${y}`
+        });
+      }
     }
     return list;
   };
@@ -44,9 +54,11 @@ const PayrollPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.get(`/payrolls`, {
-        params: { month, year }
+        params: { month, year, page: currentPage, limit: pageSize }
       });
-      setPayrolls(res.data.data || []);
+      setPayrolls(res.data.data?.data || []);
+      setTotalItems(res.data.data?.totalItems || 0);
+      setTotalPages(res.data.data?.totalPages || 1);
     } catch (error) {
       toast.error("Không thể tải danh sách bảng lương");
     } finally {
@@ -56,7 +68,7 @@ const PayrollPage: React.FC = () => {
 
   useEffect(() => {
     fetchPayrolls();
-  }, [month, year]);
+  }, [month, year, currentPage, pageSize]);
 
   const handleMarkAsPaid = async (id: number) => {
     if (!window.confirm("Xác nhận đã thanh toán lương cho nhân viên này?")) return;
@@ -119,18 +131,6 @@ const PayrollPage: React.FC = () => {
               <span class="info-label">Lương / Giờ:</span>
               <span class="info-value">${Number(p.hourly_rate).toLocaleString('vi-VN')} đ/giờ</span>
             </div>
-            <div class="info-row">
-              <span class="info-label">Trạng Thái:</span>
-              <span class="info-value" style="font-weight: 600; color: ${p.status === 'paid' ? '#10b981' : '#f59e0b'};">
-                ${p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán'}
-              </span>
-            </div>
-            ${p.paid_at ? `
-            <div class="info-row">
-              <span class="info-label">Ngày Thanh Toán:</span>
-              <span class="info-value">${new Date(p.paid_at).toLocaleString('vi-VN')}</span>
-            </div>
-            ` : ''}
             <div class="info-row total-salary">
               <span class="info-label" style="color: #111;">TỔNG LƯƠNG NHẬN:</span>
               <span class="info-value">${Number(p.total_salary).toLocaleString('vi-VN')} đ</span>
@@ -169,8 +169,6 @@ const PayrollPage: React.FC = () => {
       ["", "Tổng số giờ làm (h):", Number(p.total_hours), ""],
       ["", "Lương mỗi giờ (đ):", Number(p.hourly_rate), ""],
       ["", "Tổng tiền lương (đ):", Number(p.total_salary), ""],
-      ["", "Trạng thái:", p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán', ""],
-      ["", "Ngày thanh toán:", p.paid_at ? new Date(p.paid_at).toLocaleString('vi-VN') : 'Chưa thanh toán', ""],
       [""],
       ["", "III. XÁC NHẬN CHI TRẢ", "", ""],
       ["", "Người lập biểu", "", "Người nhận lương"],
@@ -267,7 +265,7 @@ const PayrollPage: React.FC = () => {
                 </tr>
               ) : payrolls.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={8} className="text-center py-12 text-slate-500 bg-slate-50">
                     Chưa có dữ liệu lương cho tháng này.
                   </td>
                 </tr>
