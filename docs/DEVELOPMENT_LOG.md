@@ -14,3 +14,4 @@
 - Entry 12 - docs(booking): update table reservation flow documentation
 - Entry 13 - refactor(orders): clean up unused imports and state variables
 - Entry 14 - style(buttons): format action button hover and active states
+- Entry 15 - docs(architecture): add component interaction diagram notes
