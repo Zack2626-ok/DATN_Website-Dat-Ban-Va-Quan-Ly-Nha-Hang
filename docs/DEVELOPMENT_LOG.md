@@ -12,3 +12,4 @@
 - Entry 10 - perf(server): reduce response latency for stats API
 - Entry 11 - style(modal): standardize modal overlay transitions and backdrop blur
 - Entry 12 - docs(booking): update table reservation flow documentation
+- Entry 13 - refactor(orders): clean up unused imports and state variables
