@@ -72,8 +72,8 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
         return;
       }
       const bRow = bookingRows[0];
-      if (["arrived", "completed"].includes(bRow.status)) {
-        sendError(res, "Đơn đặt bàn này đã được nhân viên khác mở bàn từ trước!", 409);
+      if (["completed", "cancelled"].includes(bRow.status)) {
+        sendError(res, "Đơn đặt bàn này đã hoàn tất hoặc đã bị hủy!", 409);
         return;
       }
       const existingOrders = await db.query<any[]>(
@@ -93,7 +93,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
 
     if (primaryTableId && order_type !== ORDER_TYPE.PRE_ORDER) {
       const currentTime = formatVietnamBookingDateTime();
-      const bookingConflict = await db.getWalkInBookingConflictForTable(primaryTableId, currentTime);
+      const bookingConflict = await db.getWalkInBookingConflictForTable(primaryTableId, currentTime, bId);
       if (bookingConflict) {
         sendError(
           res,
@@ -133,6 +133,7 @@ export const createResmanagerOrderHandler = async (req: Request, res: Response):
     }
 
     if (bId) {
+      await db.query("UPDATE bookings SET status = 'arrived' WHERE id = ?", [bId]).catch(() => {});
       const waiterRows = await db.query<any[]>("SELECT name, full_name, username FROM users WHERE id = ? LIMIT 1", [created_by]).catch(() => []);
       const waiterObj = waiterRows?.[0];
       const waiterName = waiterObj?.full_name || waiterObj?.name || waiterObj?.username || "Nhân viên";

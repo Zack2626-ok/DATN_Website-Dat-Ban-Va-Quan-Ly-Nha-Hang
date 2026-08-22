@@ -281,18 +281,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       }
     : prefilledBookingData;
 
-  const unmergedLargePartyTable = useMemo(() => {
-    return tables.find(
-      (t) => (t.status === "serving" || t.status === "reserved") && !t.is_merged_child && isTableOverClusterCapacity(t)
-    );
-  }, [tables]);
-
-  const activeLockedAreaName = activeAssignedBooking?.assignedArea || (unmergedLargePartyTable ? unmergedLargePartyTable.area_name : null);
-
-  // Auto-switch area tab when targetArea, activeAssignedBooking or activeLockedAreaName changes
+  // Auto-switch area tab when targetArea or activeAssignedBooking changes
   useEffect(() => {
     const navState = location.state as any;
-    const targetAreaName = navState?.targetArea || activeAssignedBooking?.assignedArea || activeLockedAreaName;
+    const targetAreaName = navState?.targetArea || activeAssignedBooking?.assignedArea;
     if (targetAreaName && areas.length > 0) {
       const match = areas.find(
         (a) => a.name.toLowerCase().trim().includes(targetAreaName.toLowerCase().trim()) ||
@@ -302,7 +294,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         setSelectedAreaId(match.id);
       }
     }
-  }, [location.state, activeAssignedBooking, activeLockedAreaName, areas]);
+  }, [location.state, activeAssignedBooking, areas]);
 
   // Auto-select bàn khi quay lại từ trang Gọi món
   useEffect(() => {
@@ -493,11 +485,6 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         setIsAssignedBannerDismissed(true);
         setAssignedBookingBanner(null);
         setPrefilledBookingData(null);
-        const wName = payload?.waiterName;
-        const tName = payload?.tableName || "bàn chính";
-        if (wName && wName !== userInfo.name) {
-          toast(`ℹ️ ${wName} đã mở ${tName} cho đơn đặt bàn này. Banner phân công đã tự động đóng!`, { icon: "ℹ️", duration: 5000 });
-        }
       }
     };
 
@@ -507,16 +494,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     };
   }, [activeAssignedBooking, savedAssignedBooking, userInfo.name]);
 
-  // Tự động đóng banner nếu đơn đặt bàn đã được mở trên sơ đồ
+  // Tự động reset booking đã gán nếu đơn đặt bàn đó đã được mở trên sơ đồ (theo unique booking_id)
   useEffect(() => {
     const currentActive = activeAssignedBooking || savedAssignedBooking;
     if (currentActive && tables.length > 0) {
       const targetBId = currentActive.bookingId || currentActive.id;
+      if (!targetBId) return;
       const alreadyOpened = tables.some(
         (t) =>
           t.status === "serving" &&
-          (String(t.booking_id) === String(targetBId) ||
-            (currentActive.guestPhone && t.guest_phone === currentActive.guestPhone)),
+          t.booking_id &&
+          String(t.booking_id) === String(targetBId)
       );
       if (alreadyOpened) {
         localStorage.removeItem("active_waiter_assigned_booking");
@@ -667,7 +655,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           setIsAssignedBannerDismissed(true);
           setAssignedBookingBanner(null);
           setPrefilledBookingData(null);
-          toast.success(`🎉 Đã gộp đủ ${clusterCap}/${reqSize} chỗ cho đoàn. Đã mở khóa tất cả các tầng!`, { duration: 6000 });
+          toast.success(`🎉 Đã gộp đủ ${clusterCap}/${reqSize} chỗ cho đoàn!`, { duration: 6000 });
         }
       }
     }
@@ -954,54 +942,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Banner Thông báo Phân công Đặt bàn lớn */}
-      {activeAssignedBooking && (
-        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-5 rounded-3xl shadow-xl border-2 border-indigo-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 bg-white text-indigo-800 rounded-lg text-xs font-black uppercase tracking-wider">
-                📍 KHU VỰC PHÂN CÔNG: {activeAssignedBooking?.assignedArea || (location.state as any)?.targetArea || "Tầng 2"}
-              </span>
-              <span className="text-xs font-bold text-indigo-200">Đơn đặt bàn lớn</span>
-            </div>
-            <p className="text-sm font-black text-white">
-              Khách hàng: {activeAssignedBooking?.guestName} (SĐT: {activeAssignedBooking?.guestPhone})
-            </p>
-            <p className="text-xs text-indigo-100">
-              Số lượng: <strong className="text-amber-300 font-extrabold">{activeAssignedBooking?.partySize} người</strong> | Giờ đến: <strong className="text-emerald-300 font-extrabold">{activeAssignedBooking?.startTime}</strong>
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setIsAssignedBannerDismissed(true);
-                setAssignedBookingBanner(null);
-                setPrefilledBookingData(null);
-                navigate(location.pathname, { replace: true, state: {} });
-              }}
-              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-            >
-              Bỏ qua
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const emptyTable = filteredTables.find((t) => t.status === "empty") || tables.find((t) => t.status === "empty");
-                if (emptyTable) {
-                  setSelectedTableId(emptyTable.id);
-                  setIsOpenTableModalOpen(true);
-                } else {
-                  toast("Vui lòng chọn 1 bàn trống bên dưới.", { icon: "ℹ️" });
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 rounded-xl text-xs font-black shadow-md border border-amber-300 animate-pulse transition-all cursor-pointer"
-            >
-              ⚡ Chọn 1 Bàn chính bên dưới để Mở bàn!
-            </button>
-          </div>
-        </div>
-      )}
+
 
       {/* Tiêu đề trang & Thanh thao tác */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1055,31 +996,18 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         <div className="flex gap-2 overflow-x-auto">
           {areas.map((area) => {
             const isActive = selectedAreaId === area.id;
-            const isAssignedArea = activeLockedAreaName && (
-              area.name.toLowerCase().trim().includes(String(activeLockedAreaName || "").toLowerCase().trim()) ||
-              String(activeLockedAreaName || "").toLowerCase().trim().includes(area.name.toLowerCase().trim())
-            );
-            const isLockedOut = Boolean(activeLockedAreaName && !isAssignedArea);
 
             return (
               <button
                 key={area.id}
-                onClick={() => {
-                  if (isLockedOut) {
-                    toast(`🔒 Đang xếp và gộp bàn cho đoàn tại ${activeLockedAreaName}. Vui lòng hoàn tất gộp đủ chỗ tại tầng này trước!`, { icon: "🔒" });
-                    return;
-                  }
-                  setSelectedAreaId(area.id);
-                }}
+                onClick={() => setSelectedAreaId(area.id)}
                 className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-t border-x cursor-pointer whitespace-nowrap ${isActive
                   ? "bg-white border-sky-100 text-sky-600 border-b-white z-10"
-                  : isLockedOut
-                    ? "bg-slate-100 border-transparent text-slate-400 opacity-60 cursor-not-allowed"
-                    : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
+                  : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
                   }`}
-                title={isLockedOut ? `Đang có nhiệm vụ xếp bàn cho đoàn tại ${activeLockedAreaName}` : area.name}
+                title={area.name}
               >
-                {area.name} {isLockedOut && "🔒"}
+                {area.name}
               </button>
             );
           })}
