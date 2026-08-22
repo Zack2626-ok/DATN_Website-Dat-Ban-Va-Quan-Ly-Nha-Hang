@@ -18,3 +18,4 @@
 - Entry 16 - refactor(menu): optimize menu item search indexing
 - Entry 17 - style(cards): refine dashboard card shadow and border styling
 - Entry 18 - docs(websocket): document socket event names and payloads
+- Entry 19 - refactor(attendance): streamline clock-in/out timestamp formatting
