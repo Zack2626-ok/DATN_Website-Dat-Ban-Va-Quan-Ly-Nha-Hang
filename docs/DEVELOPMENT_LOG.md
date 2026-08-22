@@ -11,3 +11,4 @@
 - Entry 9 - refactor(expenses): simplify operational expense filter logic
 - Entry 10 - perf(server): reduce response latency for stats API
 - Entry 11 - style(modal): standardize modal overlay transitions and backdrop blur
+- Entry 12 - docs(booking): update table reservation flow documentation
