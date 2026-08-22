@@ -39,3 +39,4 @@
 - Entry 37 - perf(db): index expense date column for faster range queries
 - Entry 38 - style(typography): set consistent font family and line height
 - Entry 39 - docs(changelog): update release notes for recent pagination features
+- Entry 40 - refactor(chef): clean up kitchen display order item status logic
