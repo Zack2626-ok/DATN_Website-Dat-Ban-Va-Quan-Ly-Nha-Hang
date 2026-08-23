@@ -706,8 +706,7 @@ export const BookingListPage: React.FC = () => {
                       ((rawAssignment.confirmationCode &&
                         rawAssignment.confirmationCode ===
                           b.confirmation_code) ||
-                        (rawAssignment.bookingId === b.id &&
-                          rawAssignment.guestPhone === b.guest_phone))
+                        rawAssignment.bookingId === b.id)
                         ? rawAssignment
                         : null;
                     return (

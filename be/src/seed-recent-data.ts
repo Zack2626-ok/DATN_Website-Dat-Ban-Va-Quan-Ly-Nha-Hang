@@ -223,11 +223,11 @@ export async function seedRecentData() {
       await connection.query(
         `INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, is_credit, paid_amount, note, created_by, created_at)
          VALUES (?, ?, ?, ?, ?, ?, '2026-12-31', 0, NULL, ?, 2, ?)`,
-        [dp.ingredientId, batchCode, dp.qty, dp.qty * 0.8, dp.cost, dp.supplierId, dp.note, formatDateTime(pDate)]
+        [dp.ingredientId, batchCode, dp.qty, dp.qty, dp.cost, dp.supplierId, dp.note, formatDateTime(pDate)]
       );
       await connection.query(
         `UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?`,
-        [dp.qty * 0.8, dp.ingredientId]
+        [dp.qty, dp.ingredientId]
       );
     }
 
@@ -507,16 +507,29 @@ export async function seedRecentData() {
     }
 
     // =========================================================================
+    // 8.5. SYNCHRONIZE INGREDIENTS' CURRENT_STOCK WITH BATCH REMAINING QUANTITY
+    // =========================================================================
+    console.log("📦 Synchronizing Ingredients Current Stock with Stock In Batches...");
+    await connection.query(
+      `UPDATE ingredients i
+       SET current_stock = COALESCE(
+         (SELECT SUM(remaining_quantity) FROM stock_in si WHERE si.ingredient_id = i.id),
+         0
+       )`
+    );
+
+    // =========================================================================
     // 9. SEED UPCOMING BOOKINGS (HÔM NAY & NGÀY MAI)
     // =========================================================================
     console.log("📅 Generating Upcoming Bookings...");
+    await connection.query("ALTER TABLE bookings MODIFY COLUMN table_id INT NULL");
 
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const bookingsData = [
       {
-        tableId: 5,
+        tableId: null,
         custId: 1,
         name: "Nguyễn Văn An",
         phone: "0911111111",
@@ -529,7 +542,7 @@ export async function seedRecentData() {
         note: "Tiệc sinh nhật gia đình",
       },
       {
-        tableId: 8,
+        tableId: null,
         custId: 2,
         name: "Trần Thị Bình",
         phone: "0922222222",
@@ -542,7 +555,7 @@ export async function seedRecentData() {
         note: "Bàn gần cửa sổ lãng mạn",
       },
       {
-        tableId: 12,
+        tableId: null,
         custId: 3,
         name: "Lê Văn Cường",
         phone: "0933333333",
@@ -555,7 +568,7 @@ export async function seedRecentData() {
         note: "Tiệc tiếp khách công ty",
       },
       {
-        tableId: 15,
+        tableId: null,
         custId: 4,
         name: "Phạm Thị Dung",
         phone: "0944444444",
@@ -568,7 +581,7 @@ export async function seedRecentData() {
         note: "Khách VIP gọi món trước",
       },
       {
-        tableId: 18,
+        tableId: null,
         custId: null,
         name: "Hoàng Minh Tuấn",
         phone: "0934567890",
@@ -600,9 +613,6 @@ export async function seedRecentData() {
           formatDateTime(now),
         ]
       );
-      if (bk.status === "confirmed" && bk.date === formatDate(now)) {
-        await connection.query("UPDATE tables SET status = 'reserved' WHERE id = ?", [bk.tableId]);
-      }
     }
 
     console.log("   ✅ Seeded upcoming bookings.");

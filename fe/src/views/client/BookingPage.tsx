@@ -19,11 +19,8 @@ import {
   Users,
   User,
   Sparkles,
-  Check,
   MessageSquare,
   ShieldCheck,
-  Wine,
-  Gift,
   Award,
   MapPin,
   Copy,
@@ -511,7 +508,7 @@ export const BookingPage: React.FC = () => {
                         <Users size={14} className="text-client-primary" /> Số lượng khách:
                       </span>
                       <span className="font-black text-client-text">
-                        {createdBooking?.party_size || form.guests} người lớn
+                        {createdBooking?.party_size || form.guests} khách
                       </span>
                     </div>
 
@@ -1173,7 +1170,7 @@ export const BookingPage: React.FC = () => {
                         <Users size={13} className="text-gray-400" />
                       </label>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => {
@@ -1182,13 +1179,14 @@ export const BookingPage: React.FC = () => {
                               setField("guests", String(current - 1));
                             }
                           }}
-                          className="w-10 h-10 rounded-xl border border-[#e8dfd5] bg-white hover:bg-client-accent flex items-center justify-center text-client-text font-bold transition-all cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+                          disabled={parseInt(form.guests) <= 1}
+                          className="w-10 h-11 rounded-xl border border-[#e8dfd5] bg-white hover:bg-client-accent disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-client-text font-bold transition-all cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+                          aria-label="Giảm số khách"
                         >
-                          <Minus size={14} />
+                          <Minus size={16} />
                         </button>
 
-                        <div className="relative flex-1">
-                          <Users size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <div className="relative flex-1 min-w-0">
                           <input
                             type="number"
                             min="1"
@@ -1196,10 +1194,10 @@ export const BookingPage: React.FC = () => {
                             value={form.guests}
                             onChange={(e) => setField("guests", e.target.value.replace(/[^0-9]/g, ""))}
                             onBlur={() => handleBlur("guests")}
-                            className={`w-full rounded-xl border pl-9 pr-3 py-2 text-xs sm:text-sm text-center font-black outline-none transition-all ${
+                            className={`w-full h-11 rounded-xl border px-2 text-base sm:text-lg text-center font-black outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                               errors.guests
                                 ? "border-rose-500 bg-rose-50/20 ring-2 ring-rose-500/15 focus:border-rose-500 text-rose-950"
-                                : "border-[#e8dfd5] bg-white focus:border-client-secondary focus:ring-2 focus:ring-client-secondary/20"
+                                : "border-[#e8dfd5] bg-white focus:border-client-secondary focus:ring-2 focus:ring-client-secondary/20 text-slate-800"
                             }`}
                             placeholder="2"
                           />
@@ -1213,28 +1211,16 @@ export const BookingPage: React.FC = () => {
                               setField("guests", String(current + 1));
                             }
                           }}
-                          className="w-10 h-10 rounded-xl border border-[#e8dfd5] bg-white hover:bg-client-accent flex items-center justify-center text-client-text font-bold transition-all cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+                          disabled={parseInt(form.guests) >= 30}
+                          className="w-10 h-11 rounded-xl border border-[#e8dfd5] bg-white hover:bg-client-accent disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-client-text font-bold transition-all cursor-pointer shrink-0 active:scale-95 shadow-2xs"
+                          aria-label="Tăng số khách"
                         >
-                          <Plus size={14} />
+                          <Plus size={16} />
                         </button>
                       </div>
 
-                      {/* Quick Guest Chips */}
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {["2", "4", "6", "8", "10", "12"].map((num) => (
-                          <button
-                            key={num}
-                            type="button"
-                            onClick={() => setField("guests", num)}
-                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
-                              form.guests === num
-                                ? "bg-client-primary text-white border-client-primary shadow-xs"
-                                : "bg-[#fdfbf9] hover:bg-client-accent text-client-text border-[#e8dfd5]"
-                            }`}
-                          >
-                            {num} người
-                          </button>
-                        ))}
+                      <div className="text-[11px] text-gray-400 text-center font-medium pt-0.5">
+                        Tối đa 30 khách / bàn đặt online
                       </div>
 
                       {errors.guests && (
@@ -1259,7 +1245,7 @@ export const BookingPage: React.FC = () => {
                       </div>
                       <div>
                         <h2 className="text-lg font-bold text-client-text font-display flex items-center gap-2">
-                          2. Dịp tiệc & Thông tin thực khách
+                          2. Thông tin thực khách
                         </h2>
                         <p className="text-xs text-client-muted">Thông tin liên hệ xác nhận và lưu ý dịch vụ chuẩn 5 sao</p>
                       </div>
@@ -1271,56 +1257,6 @@ export const BookingPage: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Dịp dùng bữa đặc biệt */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold text-client-text uppercase tracking-wider flex items-center gap-1.5">
-                      <Gift size={13} className="text-amber-600" />
-                      <span>Dịp dùng bữa của quý khách (Tùy chọn)</span>
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { label: "Tiệc sinh nhật", icon: "🎂" },
-                        { label: "Kỷ niệm ngày cưới / Tình yêu", icon: "💍" },
-                        { label: "Hẹn hò lãng mạn", icon: "🕯️" },
-                        { label: "Gặp gỡ đối tác / Kinh doanh", icon: "💼" },
-                        { label: "Tụ họp gia đình & bạn bè", icon: "🥂" },
-                      ].map((item) => {
-                        const isSelected = form.note.includes(item.label);
-                        return (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => {
-                              setForm((prev) => {
-                                const trimmed = prev.note.trim();
-                                if (trimmed.includes(item.label)) {
-                                  const updated = trimmed
-                                    .replace(item.label, "")
-                                    .replace(/,\s*,/g, ",")
-                                    .replace(/^,\s*/, "")
-                                    .replace(/,\s*$/, "")
-                                    .trim();
-                                  return { ...prev, note: updated };
-                                }
-                                const separator = trimmed ? ", " : "";
-                                return { ...prev, note: trimmed + separator + item.label };
-                              });
-                            }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
-                              isSelected
-                                ? "bg-amber-600 text-white border-amber-600 shadow-xs scale-105"
-                                : "bg-white hover:bg-amber-50/50 text-gray-700 border-[#e8dfd5] shadow-2xs"
-                            }`}
-                          >
-                            <span>{item.icon}</span>
-                            <span>{item.label}</span>
-                            {isSelected && <Check size={12} className="text-white" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
                     
                     {/* Họ và tên */}
@@ -1424,28 +1360,25 @@ export const BookingPage: React.FC = () => {
                       
                       {/* Tag ghi chú nhanh */}
                       <div className="space-y-1.5 pt-1">
-                        <span className="text-[11px] font-semibold text-client-muted">Gợi ý yêu cầu nhanh:</span>
-                        <div className="flex flex-wrap gap-2">
+                        <span className="text-[11px] text-gray-500 font-medium">Gợi ý nhanh:</span>
+                        <div className="flex flex-wrap gap-1.5">
                           {[
-                            { label: "Bàn gần cửa sổ", icon: "🪟" },
-                            { label: "Không lấy hành", icon: "🌿" },
-                            { label: "Có ghế em bé", icon: "👶" },
-                            { label: "Bàn VIP sang trọng", icon: "⭐" },
-                            { label: "Không gian yên tĩnh", icon: "🤫" },
-                            { label: "Bàn ngoài trời sân vườn", icon: "🌳" },
-                            { label: "Bàn nến lãng mạn", icon: "🕯️" },
-                          ].map((item) => {
-                            const isAdded = form.note.includes(item.label);
+                            "Bàn gần cửa sổ",
+                            "Ghế trẻ em",
+                            "Không gian yên tĩnh",
+                            "Bàn ngoài trời",
+                          ].map((tag) => {
+                            const isAdded = form.note.includes(tag);
                             return (
                               <button
-                                key={item.label}
+                                key={tag}
                                 type="button"
                                 onClick={() => {
                                   setForm((prev) => {
                                     const trimmed = prev.note.trim();
-                                    if (trimmed.includes(item.label)) {
+                                    if (trimmed.includes(tag)) {
                                       const updated = trimmed
-                                        .replace(item.label, "")
+                                        .replace(tag, "")
                                         .replace(/,\s*,/g, ",")
                                         .replace(/^,\s*/, "")
                                         .replace(/,\s*$/, "")
@@ -1453,18 +1386,16 @@ export const BookingPage: React.FC = () => {
                                       return { ...prev, note: updated };
                                     }
                                     const separator = trimmed ? ", " : "";
-                                    return { ...prev, note: trimmed + separator + item.label };
+                                    return { ...prev, note: trimmed + separator + tag };
                                   });
                                 }}
-                                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
                                   isAdded
-                                    ? "bg-client-primary text-white border-client-primary shadow-xs scale-105"
-                                    : "bg-white hover:bg-client-accent text-client-text border-[#e8dfd5] shadow-2xs"
+                                    ? "bg-client-primary text-white border-client-primary shadow-xs"
+                                    : "bg-[#fdfbf9] hover:bg-client-accent text-gray-700 border-[#e8dfd5]"
                                 }`}
                               >
-                                <span>{item.icon}</span>
-                                <span>{item.label}</span>
-                                {isAdded && <Check size={11} className="text-white" />}
+                                {isAdded ? `✓ ${tag}` : `+ ${tag}`}
                               </button>
                             );
                           })}
@@ -1540,7 +1471,7 @@ export const BookingPage: React.FC = () => {
                           <Users size={14} className="text-client-primary" /> Số thực khách:
                         </span>
                         <span className="font-black text-client-text">
-                          {form.guests || 2} người lớn
+                          {form.guests || 2} khách
                         </span>
                       </div>
 
@@ -1573,28 +1504,6 @@ export const BookingPage: React.FC = () => {
                           </p>
                         </div>
                       )}
-                    </div>
-
-                    {/* Fine Dining Privileges */}
-                    <div className="bg-amber-50/60 rounded-2xl p-3.5 border border-amber-200/70 space-y-2 text-[11px]">
-                      <div className="font-bold text-amber-900 flex items-center gap-1.5">
-                        <Sparkles size={13} className="text-amber-600" />
-                        <span>Đặc quyền đặt bàn trực tuyến:</span>
-                      </div>
-                      <ul className="space-y-1.5 text-amber-800">
-                        <li className="flex items-center gap-1.5">
-                          <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
-                          <span>Hỗ trợ hủy hoặc dời lịch trước 2 giờ</span>
-                        </li>
-                        <li className="flex items-center gap-1.5">
-                          <Wine size={13} className="text-amber-600 shrink-0" />
-                          <span>Tặng 1 ly Welcome Drink cho hội viên</span>
-                        </li>
-                        <li className="flex items-center gap-1.5">
-                          <CheckCircle size={13} className="text-emerald-600 shrink-0" />
-                          <span>Bãi đỗ xe ô tô miễn phí có bảo vệ</span>
-                        </li>
-                      </ul>
                     </div>
 
                     {/* Submit CTA Button inside Sticky Card */}

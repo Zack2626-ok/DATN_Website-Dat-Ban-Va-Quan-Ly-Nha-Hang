@@ -520,10 +520,18 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
     const returnStockOutRows = await db.query(
       `SELECT 
         CONCAT('RET-', so.id) as id,
-        'income' as type,
+        (CASE 
+          WHEN si.is_credit = 1 AND (si.paid_amount IS NULL OR si.paid_amount = 0) THEN 'debt_deduction'
+          ELSE 'income'
+        END) as type,
         'return_supplier' as txSubType,
         COALESCE(so.note, 'Xuất trả hàng NCC') as description,
-        (so.quantity * COALESCE(si.unit_cost, 0)) as amount,
+        (CASE 
+          WHEN si.is_credit = 1 AND (si.paid_amount IS NULL OR si.paid_amount = 0) THEN 0
+          WHEN si.is_credit = 1 THEN LEAST(COALESCE(si.paid_amount, 0), (so.quantity * COALESCE(si.unit_cost, 0)))
+          ELSE (so.quantity * COALESCE(si.unit_cost, 0))
+        END) as amount,
+        (so.quantity * COALESCE(si.unit_cost, 0)) as returnTotal,
         so.created_at as date,
         'completed' as status,
         so.quantity,
@@ -532,6 +540,8 @@ export const getFinanceReport = async (req: Request, res: Response): Promise<voi
         i.unit as ingredientUnit,
         si.batch_code as batchCode,
         COALESCE(s.name, 'Nhà cung cấp') as supplierName,
+        si.is_credit as isCredit,
+        COALESCE(si.paid_amount, 0) as paidAmount,
         so.note
       FROM stock_out so
       JOIN stock_in si ON so.stock_in_id = si.id
