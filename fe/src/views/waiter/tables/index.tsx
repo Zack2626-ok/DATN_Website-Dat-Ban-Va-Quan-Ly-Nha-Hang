@@ -282,18 +282,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       }
     : prefilledBookingData;
 
-  const unmergedLargePartyTable = useMemo(() => {
-    return tables.find(
-      (t) => (t.status === "serving" || t.status === "reserved") && !t.is_merged_child && isTableOverClusterCapacity(t)
-    );
-  }, [tables]);
-
-  const activeLockedAreaName = activeAssignedBooking?.assignedArea || (unmergedLargePartyTable ? unmergedLargePartyTable.area_name : null);
-
-  // Auto-switch area tab when targetArea, activeAssignedBooking or activeLockedAreaName changes
+  // Auto-switch area tab when targetArea or activeAssignedBooking changes
   useEffect(() => {
     const navState = location.state as any;
-    const targetAreaName = navState?.targetArea || activeAssignedBooking?.assignedArea || activeLockedAreaName;
+    const targetAreaName = navState?.targetArea || activeAssignedBooking?.assignedArea;
     if (targetAreaName && areas.length > 0) {
       const match = areas.find(
         (a) => a.name.toLowerCase().trim().includes(targetAreaName.toLowerCase().trim()) ||
@@ -303,7 +295,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         setSelectedAreaId(match.id);
       }
     }
-  }, [location.state, activeAssignedBooking, activeLockedAreaName, areas]);
+  }, [location.state, activeAssignedBooking, areas]);
 
   // Auto-select bàn khi quay lại từ trang Gọi món
   useEffect(() => {
@@ -495,11 +487,6 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         setIsAssignedBannerDismissed(true);
         setAssignedBookingBanner(null);
         setPrefilledBookingData(null);
-        const wName = payload?.waiterName;
-        const tName = payload?.tableName || "bàn chính";
-        if (wName && wName !== userInfo.name) {
-          toast(`ℹ️ ${wName} đã mở ${tName} cho đơn đặt bàn này. Banner phân công đã tự động đóng!`, { icon: "ℹ️", duration: 5000 });
-        }
       }
     };
 
@@ -509,16 +496,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     };
   }, [activeAssignedBooking, savedAssignedBooking, userInfo.name]);
 
-  // Tự động đóng banner nếu đơn đặt bàn đã được mở trên sơ đồ
+  // Tự động reset booking đã gán nếu đơn đặt bàn đó đã được mở trên sơ đồ (theo unique booking_id)
   useEffect(() => {
     const currentActive = activeAssignedBooking || savedAssignedBooking;
     if (currentActive && tables.length > 0) {
       const targetBId = currentActive.bookingId || currentActive.id;
+      if (!targetBId) return;
       const alreadyOpened = tables.some(
         (t) =>
           t.status === "serving" &&
-          (String(t.booking_id) === String(targetBId) ||
-            (currentActive.guestPhone && t.guest_phone === currentActive.guestPhone)),
+          t.booking_id &&
+          String(t.booking_id) === String(targetBId)
       );
       if (alreadyOpened) {
         localStorage.removeItem("active_waiter_assigned_booking");
@@ -669,7 +657,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
           setIsAssignedBannerDismissed(true);
           setAssignedBookingBanner(null);
           setPrefilledBookingData(null);
-          toast.success(`🎉 Đã gộp đủ ${clusterCap}/${reqSize} chỗ cho đoàn. Đã mở khóa tất cả các tầng!`, { duration: 6000 });
+          toast.success(`🎉 Đã gộp đủ ${clusterCap}/${reqSize} chỗ cho đoàn!`, { duration: 6000 });
         }
       }
     }
@@ -862,34 +850,58 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   const handleVoidUnfinishedAndRequestPaymentFromTable = async () => {
     if (!selectedTableId || !activeOrder || !unfinishedPaymentModal) return;
 
-    // Kiểm tra xem có món nào đang nấu hoặc đã hoàn thành hay không
-    const cookingOrDoneItems = unfinishedPaymentModal.filter((i) => i.status === "cooking" || i.status === "done");
-    if (cookingOrDoneItems.length > 0) {
-      toast.error(`Không thể tự động hủy vì có ${cookingOrDoneItems.length} món đang nấu hoặc đã hoàn thành trên bếp!`);
+    // Lọc các món chờ gửi (pending) và chờ nấu (waiting_kitchen) để hủy
+    const cancellableItems = unfinishedPaymentModal.filter(
+      (i) => i.status === "pending" || i.status === "waiting_kitchen"
+    );
+    const cookingOrDoneItems = unfinishedPaymentModal.filter(
+      (i) => i.status === "cooking" || i.status === "done"
+    );
+
+    if (cancellableItems.length === 0) {
+      toast.error("Không có món nào ở trạng thái Chờ gửi hoặc Chờ nấu để hủy!");
       return;
     }
 
     try {
       setProcessingPaymentRequest(true);
-      for (const item of unfinishedPaymentModal) {
-        await voidOrderItem(activeOrder.id, item.id, unfinishedVoidReason.trim() || "Khách yêu cầu thanh toán sớm");
+      for (const item of cancellableItems) {
+        await voidOrderItem(
+          activeOrder.id,
+          item.id,
+          unfinishedVoidReason.trim() || "Khách yêu cầu thanh toán sớm - Hủy món chưa nấu"
+        );
       }
       const remainingActive = activeOrder.items.filter(
-        (i) => i.status !== "voided" && i.status !== "cancelled" && !unfinishedPaymentModal.some((u) => u.id === i.id)
-      ).length;
+        (i) => i.status !== "voided" && i.status !== "cancelled" && !cancellableItems.some((u) => u.id === i.id)
+      );
 
-      if (remainingActive === 0) {
-        await updateTableStatus(Number(selectedTableId), "empty");
-        toast.success("Đã hủy toàn bộ món chưa ra và trả bàn trống thành công!");
+      if (remainingActive.length === 0) {
+        await updateTableStatus(Number(selectedTableId), "empty").catch(console.error);
+        toast.success("Đã hủy toàn bộ món chưa nấu và trả bàn trống thành công!");
       } else {
-        await updateTableStatus(Number(selectedTableId), "pending_payment");
-        toast.success("Đã hủy các món chưa ra & gửi yêu cầu thanh toán thành công!");
+        const hasUnfinishedStillCooking = cookingOrDoneItems.length > 0;
+        if (activeOrder?.id) {
+          await requestPayment(activeOrder.id, undefined, hasUnfinishedStillCooking).catch(async () => {
+            await updateTableStatus(Number(selectedTableId), "pending_payment");
+          });
+        } else {
+          await updateTableStatus(Number(selectedTableId), "pending_payment");
+        }
+        if (hasUnfinishedStillCooking) {
+          toast.success(
+            `Đã hủy ${cancellableItems.length} món chưa nấu & gửi yêu cầu thanh toán (giữ lại ${cookingOrDoneItems.length} món đang/đã nấu)!`
+          );
+        } else {
+          toast.success(`Đã hủy ${cancellableItems.length} món chưa nấu & gửi yêu cầu thanh toán thành công!`);
+        }
       }
       setUnfinishedPaymentModal(null);
       fetchData();
       if (selectedTableId) loadActiveOrder(selectedTableId);
-    } catch {
-      toast.error("Có lỗi xảy ra khi hủy món và yêu cầu thanh toán");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.response?.data?.message || "Có lỗi xảy ra khi hủy món và yêu cầu thanh toán");
     } finally {
       setProcessingPaymentRequest(false);
     }
@@ -942,54 +954,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Banner Thông báo Phân công Đặt bàn lớn */}
-      {activeAssignedBooking && (
-        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-5 rounded-3xl shadow-xl border-2 border-indigo-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in slide-in-from-top duration-300">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 bg-white text-indigo-800 rounded-lg text-xs font-black uppercase tracking-wider">
-                📍 KHU VỰC PHÂN CÔNG: {activeAssignedBooking?.assignedArea || (location.state as any)?.targetArea || "Tầng 2"}
-              </span>
-              <span className="text-xs font-bold text-indigo-200">Đơn đặt bàn lớn</span>
-            </div>
-            <p className="text-sm font-black text-white">
-              Khách hàng: {activeAssignedBooking?.guestName} (SĐT: {activeAssignedBooking?.guestPhone})
-            </p>
-            <p className="text-xs text-indigo-100">
-              Số lượng: <strong className="text-amber-300 font-extrabold">{activeAssignedBooking?.partySize} người</strong> | Giờ đến: <strong className="text-emerald-300 font-extrabold">{activeAssignedBooking?.startTime}</strong>
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setIsAssignedBannerDismissed(true);
-                setAssignedBookingBanner(null);
-                setPrefilledBookingData(null);
-                navigate(location.pathname, { replace: true, state: {} });
-              }}
-              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-            >
-              Bỏ qua
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const emptyTable = filteredTables.find((t) => t.status === "empty") || tables.find((t) => t.status === "empty");
-                if (emptyTable) {
-                  setSelectedTableId(emptyTable.id);
-                  setIsOpenTableModalOpen(true);
-                } else {
-                  toast("Vui lòng chọn 1 bàn trống bên dưới.", { icon: "ℹ️" });
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-indigo-950 rounded-xl text-xs font-black shadow-md border border-amber-300 animate-pulse transition-all cursor-pointer"
-            >
-              ⚡ Chọn 1 Bàn chính bên dưới để Mở bàn!
-            </button>
-          </div>
-        </div>
-      )}
+
 
       {/* Tiêu đề trang & Thanh thao tác */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1043,31 +1008,18 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         <div className="flex gap-2 overflow-x-auto">
           {areas.map((area) => {
             const isActive = selectedAreaId === area.id;
-            const isAssignedArea = activeLockedAreaName && (
-              area.name.toLowerCase().trim().includes(String(activeLockedAreaName || "").toLowerCase().trim()) ||
-              String(activeLockedAreaName || "").toLowerCase().trim().includes(area.name.toLowerCase().trim())
-            );
-            const isLockedOut = Boolean(activeLockedAreaName && !isAssignedArea);
 
             return (
               <button
                 key={area.id}
-                onClick={() => {
-                  if (isLockedOut) {
-                    toast(`🔒 Đang xếp và gộp bàn cho đoàn tại ${activeLockedAreaName}. Vui lòng hoàn tất gộp đủ chỗ tại tầng này trước!`, { icon: "🔒" });
-                    return;
-                  }
-                  setSelectedAreaId(area.id);
-                }}
+                onClick={() => setSelectedAreaId(area.id)}
                 className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-t border-x cursor-pointer whitespace-nowrap ${isActive
                   ? "bg-white border-sky-100 text-sky-600 border-b-white z-10"
-                  : isLockedOut
-                    ? "bg-slate-100 border-transparent text-slate-400 opacity-60 cursor-not-allowed"
-                    : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
+                  : "bg-sky-50/50 border-transparent text-slate-400 hover:text-slate-700 hover:bg-sky-100/50"
                   }`}
-                title={isLockedOut ? `Đang có nhiệm vụ xếp bàn cho đoàn tại ${activeLockedAreaName}` : area.name}
+                title={area.name}
               >
-                {area.name} {isLockedOut && "🔒"}
+                {area.name}
               </button>
             );
           })}
@@ -2134,27 +2086,63 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   }
                 })()}
 
-                {/* Lựa chọn 2: Hủy món chưa ra & Thanh toán */}
-                <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                  <label className="block text-xs font-bold text-gray-700">
-                    Hoặc Hủy món chưa ra (nếu khách không muốn chờ nữa):
-                  </label>
-                  <input
-                    type="text"
-                    value={unfinishedVoidReason}
-                    onChange={(e) => setUnfinishedVoidReason(e.target.value)}
-                    placeholder="Lý do hủy: Khách không muốn chờ món nữa..."
-                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20"
-                  />
-                  <button
-                    onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
-                    disabled={processingPaymentRequest}
-                    className="w-full py-2.5 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm mt-1"
-                  >
-                    {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                    🚫 Hủy các món chưa ra & Yêu cầu thanh toán các món đã ra
-                  </button>
-                </div>
+                {/* Lựa chọn 2: Hủy món chưa nấu & Thanh toán */}
+                {(() => {
+                  const cookingCount = unfinishedPaymentModal.filter((i) => i.status === "cooking").length;
+                  const doneCount = unfinishedPaymentModal.filter((i) => i.status === "done").length;
+                  const cancellableItems = unfinishedPaymentModal.filter(
+                    (i) => i.status === "pending" || i.status === "waiting_kitchen"
+                  );
+                  const cancellableCount = cancellableItems.length;
+                  const hasCancellable = cancellableCount > 0;
+                  const hasCookingOrDone = cookingCount + doneCount > 0;
+
+                  return (
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <label className="block text-xs font-bold text-gray-700">
+                        Hoặc Hủy món chưa nấu (nếu khách không muốn chờ nữa):
+                      </label>
+                      <input
+                        type="text"
+                        value={unfinishedVoidReason}
+                        onChange={(e) => setUnfinishedVoidReason(e.target.value)}
+                        placeholder="Lý do hủy: Khách không muốn chờ món nữa..."
+                        disabled={!hasCancellable}
+                        className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20 disabled:bg-gray-100 disabled:text-gray-400"
+                      />
+
+                      {hasCookingOrDone && hasCancellable && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
+                          <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                          <span>
+                            Đang có <strong>{cookingCount > 0 ? `${cookingCount} món đang nấu` : ''}{cookingCount > 0 && doneCount > 0 ? ' và ' : ''}{doneCount > 0 ? `${doneCount} món đã nấu` : ''}</strong> trên bếp. Hệ thống sẽ <strong>HỦY {cancellableCount} món chưa nấu</strong> và <strong>GIỮ LẠI các món đang/đã nấu</strong> để tính tiền.
+                          </span>
+                        </div>
+                      )}
+
+                      {!hasCancellable && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium">
+                          💡 Tất cả các món còn lại đều đang nấu hoặc đã nấu xong. Vui lòng chọn "Thanh toán sớm" để tính tiền hoặc liên hệ bếp nếu cần hủy món đang nấu.
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
+                        disabled={processingPaymentRequest || !hasCancellable}
+                        className={`w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm ${
+                          !hasCancellable
+                            ? "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                            : "bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
+                        }`}
+                      >
+                        {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
+                        {hasCancellable
+                          ? `🚫 Hủy ${cancellableCount} món chưa nấu & Thanh toán (${hasCookingOrDone ? "tính các món đang/đã nấu" : "tính các món đã ra"})`
+                          : "🚫 Không có món chưa nấu để hủy"}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Lựa chọn 3: Đóng / Hủy thao tác */}
                 <button

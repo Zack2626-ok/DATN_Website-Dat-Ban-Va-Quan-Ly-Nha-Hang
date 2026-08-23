@@ -219,7 +219,7 @@ export const FinanceReport: React.FC = () => {
     
     // Gom nhóm trả hàng NCC theo SLIP code & theo vết mã phiếu nhập (e.g. PN...) (chỉ tính phiếu ĐÃ TRẢ HÀNG)
     const returnList = rawList.filter((tx: any) => 
-      tx.type === "income" && 
+      (tx.type === "income" || tx.type === "debt_deduction") && 
       tx.txSubType === "return_supplier" &&
       !String(tx.note || "").includes("[LƯU TẠM]") &&
       !String(tx.note || "").includes("[HOÀN THÀNH]")
@@ -246,23 +246,29 @@ export const FinanceReport: React.FC = () => {
         returnedSlipMap[importCode] = (returnedSlipMap[importCode] || 0) + total;
       }
 
+      const txCashAmount = Number(tx.amount || 0);
+
       if (!returnGroups[groupKey]) {
         returnGroups[groupKey] = {
           id: groupKey,
           ticketCode,
-          type: "income",
+          type: txCashAmount > 0 ? "income" : "debt_deduction",
           txSubType: "return_supplier",
           date: tx.date,
           status: "completed",
           supplierName,
-          isCredit: false,
+          isCredit: tx.isCredit,
           note: noteStr,
           items: [],
           amount: 0,
+          totalGoodsValue: 0,
           hasRefund: false,
           refundedTotal: 0
         };
       }
+
+      returnGroups[groupKey].amount += txCashAmount;
+      returnGroups[groupKey].totalGoodsValue += total;
       returnGroups[groupKey].items.push({
         ingredientName: tx.ingredientName || "Nguyên liệu",
         quantity: qty,
@@ -271,7 +277,6 @@ export const FinanceReport: React.FC = () => {
         batchCode: tx.batchCode || "-",
         amount: total
       });
-      returnGroups[groupKey].amount += total;
     });
 
 
@@ -892,6 +897,11 @@ export const FinanceReport: React.FC = () => {
                           {row.type === "income" && row.hasRefund && row.refundedTotal > 0 && (
                             <div className="text-[9px] text-red-500 font-bold mt-0.5">
                               Hoàn: -{formatCurrency(row.refundedTotal)}
+                            </div>
+                          )}
+                          {row.txSubType === "return_supplier" && Number(row.amount) === 0 && (
+                            <div className="text-[9px] text-teal-600 font-bold mt-0.5">
+                              (Giảm nợ NCC: -{formatCurrency(row.totalGoodsValue || 0)} - Thu thực tế: 0 đ)
                             </div>
                           )}
                         </td>

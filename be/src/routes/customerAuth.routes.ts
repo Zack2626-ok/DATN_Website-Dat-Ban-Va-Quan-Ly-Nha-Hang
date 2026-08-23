@@ -15,6 +15,7 @@ import {
   createEventContract,
   getMyEventContracts,
   cancelMyBooking,
+  updateMyBookingContact,
 } from "../controllers/customerAuth.controller";
 import { authCustomer } from "../middlewares/auth.middleware";
 
@@ -35,6 +36,7 @@ router.get("/my-unused-vouchers", authCustomer, getMyUnusedVouchers);
 router.get("/bookings/my", authCustomer, getMyBookings);
 router.post("/bookings/:id/review", authCustomer, createBookingReviewHandler);
 router.patch("/bookings/:id/cancel", authCustomer, cancelMyBooking);
+router.patch("/bookings/:id/contact", authCustomer, updateMyBookingContact);
 router.post("/contracts", authCustomer, createEventContract);
 router.get("/contracts/my", authCustomer, getMyEventContracts);
 

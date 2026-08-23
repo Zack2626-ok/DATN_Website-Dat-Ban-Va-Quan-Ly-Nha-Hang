@@ -32,14 +32,20 @@ const PayrollPage: React.FC = () => {
 
   const generateMonths = () => {
     const list = [];
-    const startDate = new Date();
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(startDate.getFullYear(), startDate.getMonth() - i, 1);
-      list.push({
-        month: d.getMonth() + 1,
-        year: d.getFullYear(),
-        label: `Tháng ${d.getMonth() + 1} / ${d.getFullYear()}`
-      });
+    const startYear = 2024;
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+
+    for (let y = currentYear; y >= startYear; y--) {
+      const endM = (y === currentYear) ? currentMonth : 12;
+      for (let m = endM; m >= 1; m--) {
+        list.push({
+          month: m,
+          year: y,
+          label: `Tháng ${m} / ${y}`
+        });
+      }
     }
     return list;
   };
@@ -48,10 +54,9 @@ const PayrollPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.get(`/payrolls`, {
-        params: { month, year }
+        params: { month, year, page: 1, limit: 1000 }
       });
-      setPayrolls(res.data.data || []);
-      setCurrentPage(1);
+      setPayrolls(res.data.data?.data || []);
     } catch (error) {
       toast.error("Không thể tải danh sách bảng lương");
     } finally {
@@ -371,7 +376,6 @@ const PayrollPage: React.FC = () => {
                 <div style="border-bottom: 1px dashed #cbd5e1; width: 150px; margin: 0 auto;"></div>
               </div>
             </div>
-
             <div class="footer-info">
               <p>Phiếu thanh toán được trích xuất tự động bởi ResManager Bistro.</p>
               <p>Mọi thắc mắc vui lòng liên hệ bộ phận Kế toán / Nhân sự để giải quyết.</p>

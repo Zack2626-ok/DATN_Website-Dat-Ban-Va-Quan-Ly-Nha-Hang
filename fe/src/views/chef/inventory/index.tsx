@@ -76,11 +76,24 @@ export const InventoryControl: React.FC = () => {
 
   const [reduxIngredients, setReduxIngredients] = useState<any[]>([]);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
   useEffect(() => {
-    getIngredientsApi()
-      .then((data) => setReduxIngredients(data))
+    getIngredientsApi(currentPage, pageSize)
+      .then((res) => {
+        if (res && res.data) {
+          setReduxIngredients(res.data);
+          setTotalItems(res.totalItems || 0);
+          setTotalPages(res.totalPages || 1);
+        } else {
+          setReduxIngredients(res as any);
+        }
+      })
       .catch((err) => console.error("Failed to load ingredients", err));
-  }, []);
+  }, [currentPage, pageSize]);
 
   const [searchParams] = useSearchParams();
   const initialTabParam = searchParams.get("tab");
@@ -1202,6 +1215,109 @@ export const InventoryControl: React.FC = () => {
       topWastedList
     };
   }, [transactions, reduxIngredients, reportTimeFilter, reportStartDate, reportEndDate]);
+
+  // Audit Variance Stats for Reports (Surplus (+) and Shortage (-))
+  const stocktakeAuditStats = useMemo(() => {
+    const auditByIngredient: Record<string, {
+      name: string;
+      unit: string;
+      diffQty: number;
+      diffValue: number;
+      count: number;
+    }> = {};
+
+    transactions.forEach((t: any) => {
+      if (t.type === "adjust" || (t.reasonOrSupplier && t.reasonOrSupplier.toLowerCase().includes("kiểm kê"))) {
+        const inRange = isDateInReportRange(t.timestamp || t.created_at || t.createdAt);
+        if (!inRange) return;
+
+        const ingObj = reduxIngredients.find(
+          (i: any) => Number(i.id) === Number(t.ingredientId) || i.name === t.ingredientName
+        );
+        const qty = Number(t.quantity) || 0;
+        const unitCost = Number(ingObj?.avgCost || ingObj?.unitCost || ingObj?.cost || 0);
+        const diffVal = Math.round(qty * unitCost);
+
+        const ingName = t.ingredientName || ingObj?.name || "Nguyên liệu";
+        if (!auditByIngredient[ingName]) {
+          auditByIngredient[ingName] = {
+            name: ingName,
+            unit: t.unit || ingObj?.unit || "kg",
+            diffQty: 0,
+            diffValue: 0,
+            count: 0
+          };
+        }
+        auditByIngredient[ingName].diffQty += qty;
+        auditByIngredient[ingName].diffValue += diffVal;
+        auditByIngredient[ingName].count++;
+      }
+    });
+
+    try {
+      const history = JSON.parse(localStorage.getItem("inventory_history") || "[]");
+      const drafts = JSON.parse(localStorage.getItem("inventory_drafts") || "[]");
+      [...history, ...drafts].forEach((ticket: any) => {
+        if (!ticket.items || !Array.isArray(ticket.items)) return;
+        const inRange = isDateInReportRange(ticket.date || ticket.createdDate);
+        if (!inRange) return;
+
+        ticket.items.forEach((it: any) => {
+          const ingObj = reduxIngredients.find(
+            (i: any) => Number(i.id) === Number(it.ingredientId) || i.name === (it.ingredientName || it.name)
+          );
+          const sys = Number(it.systemStock ?? it.system ?? 0);
+          const act = Number(it.actualStock ?? it.actual ?? 0);
+          const diffQty = Number((act - sys).toFixed(3));
+          if (diffQty === 0) return;
+
+          const unitCost = Number(it.avgCost || it.unitCost || ingObj?.avgCost || ingObj?.unitCost || ingObj?.cost || 0);
+          const diffVal = Math.round(diffQty * unitCost);
+
+          const ingName = it.ingredientName || it.name || ingObj?.name || "Nguyên liệu";
+          if (!auditByIngredient[ingName]) {
+            auditByIngredient[ingName] = {
+              name: ingName,
+              unit: it.unit || ingObj?.unit || "kg",
+              diffQty: 0,
+              diffValue: 0,
+              count: 0
+            };
+          }
+
+          if (!transactions.some((tx: any) => tx.ingredientName === ingName && tx.type === "adjust")) {
+            auditByIngredient[ingName].diffQty += diffQty;
+            auditByIngredient[ingName].diffValue += diffVal;
+            auditByIngredient[ingName].count++;
+          }
+        });
+      });
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Filter out zero variance rows and sum totals directly from auditList for 100% accuracy
+    const auditList = Object.values(auditByIngredient)
+      .filter((item) => Math.abs(item.diffQty) > 0.0001 || Math.abs(item.diffValue) > 0)
+      .sort((a, b) => Math.abs(b.diffValue) - Math.abs(a.diffValue));
+
+    let totalSurplusVal = 0;
+    let totalDeficitVal = 0;
+    auditList.forEach((item) => {
+      if (item.diffValue > 0) {
+        totalSurplusVal += item.diffValue;
+      } else if (item.diffValue < 0) {
+        totalDeficitVal += Math.abs(item.diffValue);
+      }
+    });
+
+    return {
+      totalSurplusVal,
+      totalDeficitVal,
+      totalAuditCount: auditList.length,
+      auditList
+    };
+  }, [transactions, reduxIngredients, reportTimeFilter, reportStartDate, reportEndDate, auditRefreshTrigger]);
 
   // Dynamic Category distribution (by count of items)
   const categoryDistribution = useMemo(() => {
@@ -2569,6 +2685,58 @@ export const InventoryControl: React.FC = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination UI */}
+            <div className="flex flex-col sm:flex-row items-center justify-between p-4 border border-slate-200 border-t-0 bg-white rounded-b-xl mb-4">
+              <div className="flex items-center gap-3 mb-4 sm:mb-0">
+                <span className="text-sm text-slate-600">Hiển thị</span>
+                <select
+                  className="border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-emerald-500"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                </select>
+                <span className="text-sm text-slate-600">
+                  bản ghi - Hiển thị {filteredIngredients.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, totalItems)} trên tổng số {totalItems} bản ghi
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <div className="flex gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={`w-8 h-8 rounded text-sm flex items-center justify-center ${
+                        currentPage === p ? "bg-emerald-600 text-white font-medium" : "border border-slate-300 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex gap-2.5 items-start text-xs font-semibold text-blue-800 shadow-inner mt-2">
@@ -4523,31 +4691,36 @@ export const InventoryControl: React.FC = () => {
               )}
 
               {/* Quick stats grids */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 print-avoid-break">
-                <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 print-avoid-break">
+                <div className="bg-slate-50 border border-slate-200/60 p-3.5 rounded-2xl">
                   <span className="text-[9px] font-black text-slate-600 uppercase tracking-wider block">Tổng số mặt hàng</span>
-                  <span className="text-2xl font-black text-slate-800 block mt-1">{reportsStats.totalIngredients}</span>
-                  <span className="text-[10px] text-slate-600 font-semibold mt-0.5 block">Nguyên liệu trong danh mục</span>
+                  <span className="text-xl font-black text-slate-800 block mt-1">{reportsStats.totalIngredients}</span>
+                  <span className="text-[10px] text-slate-600 font-semibold mt-0.5 block">Nguyên liệu danh mục</span>
                 </div>
-                <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-2xl">
-                  <span className="text-[9px] font-black text-rose-500 uppercase tracking-wider block">Nguyên liệu tồn thấp</span>
-                  <span className="text-2xl font-black text-rose-600 block mt-1">{reportsStats.lowStockCount}</span>
+                <div className="bg-rose-50/50 border border-rose-200 p-3.5 rounded-2xl">
+                  <span className="text-[9px] font-black text-rose-500 uppercase tracking-wider block">Tồn thấp</span>
+                  <span className="text-xl font-black text-rose-600 block mt-1">{reportsStats.lowStockCount}</span>
                   <span className="text-[10px] text-rose-400 font-semibold mt-0.5 block">Dưới ngưỡng an toàn</span>
                 </div>
-                <div className="bg-amber-50/50 border border-amber-250 p-4 rounded-2xl">
-                  <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider block">Lô hàng cận hạn</span>
-                  <span className="text-2xl font-black text-amber-700 block mt-1">{reportsStats.nearExpiryCount}</span>
+                <div className="bg-amber-50/50 border border-amber-250 p-3.5 rounded-2xl">
+                  <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider block">Lô cận hạn</span>
+                  <span className="text-xl font-black text-amber-700 block mt-1">{reportsStats.nearExpiryCount}</span>
                   <span className="text-[10px] text-amber-400 font-semibold mt-0.5 block">Hạn dưới 3 ngày</span>
                 </div>
-                <div className="bg-rose-50/70 border border-rose-200 p-4 rounded-2xl">
-                  <span className="text-[9px] font-black text-rose-650 uppercase tracking-wider block">Lô hàng hết hạn</span>
-                  <span className="text-2xl font-black text-rose-700 block mt-1">{reportsStats.expiredCount}</span>
+                <div className="bg-rose-50/70 border border-rose-200 p-3.5 rounded-2xl">
+                  <span className="text-[9px] font-black text-rose-650 uppercase tracking-wider block">Lô hết hạn</span>
+                  <span className="text-xl font-black text-rose-700 block mt-1">{reportsStats.expiredCount}</span>
                   <span className="text-[10px] text-rose-400 font-semibold mt-0.5 block">Cần tiêu hủy gấp</span>
                 </div>
-                <div className="bg-rose-100/60 border border-rose-300 p-4 rounded-2xl col-span-2 sm:col-span-1">
+                <div className="bg-rose-100/60 border border-rose-300 p-3.5 rounded-2xl">
                   <span className="text-[9px] font-black text-rose-700 uppercase tracking-wider block">Tổn thất tiêu hủy</span>
-                  <span className="text-xl font-black text-rose-700 block mt-1">{wasteStats.totalWasteLoss.toLocaleString("vi-VN")} đ</span>
-                  <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{wasteStats.totalWasteCount} lượt xuất hủy hỏng/hạn</span>
+                  <span className="text-base font-black text-rose-700 block mt-1">{wasteStats.totalWasteLoss.toLocaleString("vi-VN")} đ</span>
+                  <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{wasteStats.totalWasteCount} lượt xuất hủy hỏng</span>
+                </div>
+                <div className="bg-emerald-50/70 border border-emerald-300 p-3.5 rounded-2xl">
+                  <span className="text-[9px] font-black text-emerald-700 uppercase tracking-wider block">Cộng tăng kiểm kê</span>
+                  <span className="text-base font-black text-emerald-700 block mt-1">+{stocktakeAuditStats.totalSurplusVal.toLocaleString("vi-VN")} đ</span>
+                  <span className="text-[10px] text-emerald-600 font-bold mt-0.5 block">Thừa kho thực tế đếm</span>
                 </div>
               </div>
 
@@ -4593,11 +4766,15 @@ export const InventoryControl: React.FC = () => {
                   <div className="flex flex-col justify-between gap-3 h-full">
                     <div className="flex flex-col gap-2">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-450 font-bold">Hao hụt kiểm định</span>
-                        <span className="font-extrabold text-rose-600">-{dynamicMovementStats.adjustedPercent}%</span>
+                        <span className="text-slate-450 font-bold">
+                          {stocktakeAuditStats.totalSurplusVal >= stocktakeAuditStats.totalDeficitVal ? "Biến động kiểm định (Cộng tăng)" : "Hao hụt kiểm định (Trừ giảm)"}
+                        </span>
+                        <span className={`font-extrabold ${stocktakeAuditStats.totalSurplusVal >= stocktakeAuditStats.totalDeficitVal ? "text-emerald-600" : "text-rose-600"}`}>
+                          {stocktakeAuditStats.totalSurplusVal >= stocktakeAuditStats.totalDeficitVal ? "+" : "-"}{dynamicMovementStats.adjustedPercent}%
+                        </span>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-2">
-                        <div className="bg-rose-500 h-full rounded-full" style={{ width: `${dynamicMovementStats.adjustedPercent}%` }} />
+                        <div className={`${stocktakeAuditStats.totalSurplusVal >= stocktakeAuditStats.totalDeficitVal ? "bg-emerald-500" : "bg-rose-500"} h-full rounded-full`} style={{ width: `${dynamicMovementStats.adjustedPercent}%` }} />
                       </div>
                     </div>
 
@@ -4685,6 +4862,78 @@ export const InventoryControl: React.FC = () => {
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
                                   {percent}%
                                 </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Chi tiết biến động & chênh lệch kiểm kê kho (Thừa / Thiếu kho) */}
+              <div className="border border-blue-200/80 bg-white rounded-2xl p-5 shadow-xs print-avoid-break mt-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-blue-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                      <ClipboardCheck size={16} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">Chi tiết biến động & chênh lệch kiểm kê kho</h4>
+                      <p className="text-[10px] text-slate-500 font-medium">Thống kê chênh lệch thực tế từ các phiên kiểm kê kho (Cộng tăng khi thừa & Trừ giảm khi thiếu)</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                    <span className="text-[11px] font-bold text-emerald-700">Cộng tăng: +{stocktakeAuditStats.totalSurplusVal.toLocaleString("vi-VN")} đ</span>
+                    <span className="text-slate-300">|</span>
+                    <span className="text-[11px] font-bold text-rose-600">Hao hụt: -{stocktakeAuditStats.totalDeficitVal.toLocaleString("vi-VN")} đ</span>
+                  </div>
+                </div>
+
+                {stocktakeAuditStats.auditList.length === 0 ? (
+                  <div className="py-8 text-center text-slate-450 text-xs font-semibold">
+                    ✨ Chưa có chênh lệch kiểm kê kho nào trong khoảng thời gian đã chọn!
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto mt-3">
+                    <table className="min-w-full divide-y divide-slate-100 text-xs">
+                      <thead>
+                        <tr className="bg-slate-50/80 text-[10px] font-black uppercase text-slate-600 tracking-wider">
+                          <th className="px-4 py-2.5 text-left">#</th>
+                          <th className="px-4 py-2.5 text-left">Nguyên liệu</th>
+                          <th className="px-4 py-2.5 text-center">Số lượng chênh lệch</th>
+                          <th className="px-4 py-2.5 text-center">Số đợt kiểm</th>
+                          <th className="px-4 py-2.5 text-right">Giá trị chênh lệch (VND)</th>
+                          <th className="px-4 py-2.5 text-right">Loại biến động</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {stocktakeAuditStats.auditList.map((item, idx) => {
+                          const isSurplus = item.diffValue >= 0;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                              <td className="px-4 py-2.5 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                              <td className="px-4 py-2.5 font-bold text-slate-800">{item.name}</td>
+                              <td className={`px-4 py-2.5 text-center font-black ${isSurplus ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {isSurplus ? `+${item.diffQty}` : item.diffQty} {item.unit}
+                              </td>
+                              <td className="px-4 py-2.5 text-center font-medium text-slate-600">
+                                {item.count} lần
+                              </td>
+                              <td className={`px-4 py-2.5 text-right font-black ${isSurplus ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                {isSurplus ? `+${item.diffValue.toLocaleString("vi-VN")}` : item.diffValue.toLocaleString("vi-VN")} đ
+                              </td>
+                              <td className="px-4 py-2.5 text-right">
+                                {isSurplus ? (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    + Thừa kho (Cộng tăng)
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
+                                    - Hao hụt (Trừ giảm)
+                                  </span>
+                                )}
                               </td>
                             </tr>
                           );

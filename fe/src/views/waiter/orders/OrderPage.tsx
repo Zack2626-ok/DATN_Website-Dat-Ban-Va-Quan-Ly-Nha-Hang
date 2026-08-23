@@ -518,33 +518,57 @@ export const OrderPage: React.FC = () => {
   const handleVoidUnfinishedAndRequestPayment = async () => {
     if (!tableId || !orderId || !unfinishedPaymentModal) return;
 
-    // Kiểm tra xem có món nào đang nấu hoặc đã hoàn thành hay không
-    const cookingOrDoneItems = unfinishedPaymentModal.filter((i) => i.status === "cooking" || i.status === "done");
-    if (cookingOrDoneItems.length > 0) {
-      toast.error(`Không thể tự động hủy vì có ${cookingOrDoneItems.length} món đang nấu hoặc đã hoàn thành trên bếp!`);
+    // Lọc các món chờ gửi (pending) và chờ nấu (waiting_kitchen) để hủy
+    const cancellableItems = unfinishedPaymentModal.filter(
+      (i) => i.status === "pending" || i.status === "waiting_kitchen"
+    );
+    const cookingOrDoneItems = unfinishedPaymentModal.filter(
+      (i) => i.status === "cooking" || i.status === "done"
+    );
+
+    if (cancellableItems.length === 0) {
+      toast.error("Không có món nào ở trạng thái Chờ gửi hoặc Chờ nấu để hủy!");
       return;
     }
 
     try {
       setProcessingPaymentRequest(true);
-      for (const item of unfinishedPaymentModal) {
-        await voidOrderItem(orderId, item.id, unfinishedVoidReason.trim() || "Khách yêu cầu thanh toán sớm");
+      for (const item of cancellableItems) {
+        await voidOrderItem(
+          orderId,
+          item.id,
+          unfinishedVoidReason.trim() || "Khách yêu cầu thanh toán sớm - Hủy món chưa nấu"
+        );
       }
       const remainingActive = orderItems.filter(
-        (i) => i.status !== "voided" && !unfinishedPaymentModal.some((u) => u.id === i.id)
-      ).length;
+        (i) => i.status !== "voided" && !cancellableItems.some((u) => u.id === i.id)
+      );
 
-      if (remainingActive === 0) {
-        await updateTableStatus(Number(tableId), "empty");
-        toast.success("Đã hủy toàn bộ món chưa ra và trả bàn trống thành công!");
+      if (remainingActive.length === 0) {
+        await updateTableStatus(Number(tableId), "empty").catch(console.error);
+        toast.success("Đã hủy toàn bộ món chưa nấu và trả bàn trống thành công!");
       } else {
-        await updateTableStatus(Number(tableId), "pending_payment");
-        toast.success("Đã hủy các món chưa ra & gửi yêu cầu thanh toán thành công!");
+        const hasUnfinishedStillCooking = cookingOrDoneItems.length > 0;
+        if (orderId) {
+          await requestPayment(orderId, undefined, hasUnfinishedStillCooking).catch(async () => {
+            await updateTableStatus(Number(tableId), "pending_payment");
+          });
+        } else {
+          await updateTableStatus(Number(tableId), "pending_payment");
+        }
+        if (hasUnfinishedStillCooking) {
+          toast.success(
+            `Đã hủy ${cancellableItems.length} món chưa nấu & gửi yêu cầu thanh toán (giữ lại ${cookingOrDoneItems.length} món đang/đã nấu)!`
+          );
+        } else {
+          toast.success(`Đã hủy ${cancellableItems.length} món chưa nấu & gửi yêu cầu thanh toán thành công!`);
+        }
       }
       setUnfinishedPaymentModal(null);
       navigate("/waiter/tables");
-    } catch {
-      toast.error("Có lỗi xảy ra khi hủy món và yêu cầu thanh toán");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.response?.data?.message || "Có lỗi xảy ra khi hủy món và yêu cầu thanh toán");
     } finally {
       setProcessingPaymentRequest(false);
     }
@@ -1150,27 +1174,63 @@ export const OrderPage: React.FC = () => {
                   }
                 })()}
 
-                {/* Lựa chọn 2: Hủy món chưa ra & Thanh toán */}
-                <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                  <label className="block text-xs font-bold text-gray-700">
-                    Hoặc Hủy món chưa ra (nếu khách không muốn chờ nữa):
-                  </label>
-                  <input
-                    type="text"
-                    value={unfinishedVoidReason}
-                    onChange={(e) => setUnfinishedVoidReason(e.target.value)}
-                    placeholder="Lý do hủy: Khách không muốn chờ món nữa..."
-                    className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20"
-                  />
-                  <button
-                    onClick={handleVoidUnfinishedAndRequestPayment}
-                    disabled={processingPaymentRequest}
-                    className="w-full py-2.5 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm mt-1"
-                  >
-                    {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                    🚫 Hủy các món chưa ra & Yêu cầu thanh toán các món đã ra
-                  </button>
-                </div>
+                {/* Lựa chọn 2: Hủy món chưa nấu & Thanh toán */}
+                {(() => {
+                  const cookingCount = unfinishedPaymentModal.filter((i) => i.status === "cooking").length;
+                  const doneCount = unfinishedPaymentModal.filter((i) => i.status === "done").length;
+                  const cancellableItems = unfinishedPaymentModal.filter(
+                    (i) => i.status === "pending" || i.status === "waiting_kitchen"
+                  );
+                  const cancellableCount = cancellableItems.length;
+                  const hasCancellable = cancellableCount > 0;
+                  const hasCookingOrDone = cookingCount + doneCount > 0;
+
+                  return (
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <label className="block text-xs font-bold text-gray-700">
+                        Hoặc Hủy món chưa nấu (nếu khách không muốn chờ nữa):
+                      </label>
+                      <input
+                        type="text"
+                        value={unfinishedVoidReason}
+                        onChange={(e) => setUnfinishedVoidReason(e.target.value)}
+                        placeholder="Lý do hủy: Khách không muốn chờ món nữa..."
+                        disabled={!hasCancellable}
+                        className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20 disabled:bg-gray-100 disabled:text-gray-400"
+                      />
+
+                      {hasCookingOrDone && hasCancellable && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
+                          <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                          <span>
+                            Đang có <strong>{cookingCount > 0 ? `${cookingCount} món đang nấu` : ''}{cookingCount > 0 && doneCount > 0 ? ' và ' : ''}{doneCount > 0 ? `${doneCount} món đã nấu` : ''}</strong> trên bếp. Hệ thống sẽ <strong>HỦY {cancellableCount} món chưa nấu</strong> và <strong>GIỮ LẠI các món đang/đã nấu</strong> để tính tiền.
+                          </span>
+                        </div>
+                      )}
+
+                      {!hasCancellable && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium">
+                          💡 Tất cả các món còn lại đều đang nấu hoặc đã nấu xong. Vui lòng chọn "Thanh toán sớm" để tính tiền hoặc liên hệ bếp nếu cần hủy món đang nấu.
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleVoidUnfinishedAndRequestPayment}
+                        disabled={processingPaymentRequest || !hasCancellable}
+                        className={`w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm ${
+                          !hasCancellable
+                            ? "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                            : "bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
+                        }`}
+                      >
+                        {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
+                        {hasCancellable
+                          ? `🚫 Hủy ${cancellableCount} món chưa nấu & Thanh toán (${hasCookingOrDone ? "tính các món đang/đã nấu" : "tính các món đã ra"})`
+                          : "🚫 Không có món chưa nấu để hủy"}
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Lựa chọn 3: Đóng / Hủy thao tác */}
                 <button

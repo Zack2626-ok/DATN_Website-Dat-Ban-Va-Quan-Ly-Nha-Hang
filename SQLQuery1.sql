@@ -299,18 +299,18 @@ CREATE TABLE tables (
 
 -- Tầng 1 (12 bàn) — Thể hiện đầy đủ 6 trạng thái bàn
 INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status, maintenance_note) VALUES
- (1,  1, 'B01', 4,  'A', 1, 'pending_payment', NULL),          -- Chờ thanh toán (Order #4)
- (2,  1, 'B02', 4,  'A', 2, 'cleaning',         NULL),          -- Đang dọn dẹp (Order #6 vừa xong)
- (3,  1, 'B03', 6,  'A', 3, 'reserved',          NULL),          -- Đặt trước tối nay (BK004 confirmed)
- (4,  1, 'B04', 8,  'A', 4, 'serving',           NULL),          -- Đang phục vụ (Order #1)
- (5,  1, 'B05', 4,  'B', 1, 'pending_payment', NULL),          -- Chờ thanh toán (Order #3)
- (6,  1, 'B06', 4,  'B', 2, 'reserved',          NULL),          -- Đặt trước tối nay (BK005 confirmed)
- (7,  1, 'B07', 6,  'B', 3, 'serving',           NULL),          -- Vừa mở bàn (Order #5 open)
- (8,  1, 'B08', 8,  'B', 4, 'serving',           NULL),          -- Đang phục vụ (Order #2)
- (9,  1, 'B09', 10, 'C', 1, 'maintenance',       'Bàn bị hỏng chân, đang chờ thợ sửa chữa'),
- (10, 1, 'B10', 4,  'C', 2, 'empty',             NULL),
- (11, 1, 'B11', 4,  'C', 3, 'empty',             NULL),
- (12, 1, 'B12', 4,  'C', 4, 'empty',             NULL),
+ (1,  1, 'B01', 4,  'A', 1, 'empty', NULL),
+ (2,  1, 'B02', 4,  'A', 2, 'empty', NULL),
+ (3,  1, 'B03', 6,  'A', 3, 'empty', NULL),
+ (4,  1, 'B04', 8,  'A', 4, 'serving', NULL),          -- Bàn duy nhất đang phục vụ (Order #1)
+ (5,  1, 'B05', 4,  'B', 1, 'empty', NULL),
+ (6,  1, 'B06', 4,  'B', 2, 'empty', NULL),
+ (7,  1, 'B07', 6,  'B', 3, 'empty', NULL),
+ (8,  1, 'B08', 8,  'B', 4, 'empty', NULL),
+ (9,  1, 'B09', 10, 'C', 1, 'empty', NULL),
+ (10, 1, 'B10', 4,  'C', 2, 'empty', NULL),
+ (11, 1, 'B11', 4,  'C', 3, 'empty', NULL),
+ (12, 1, 'B12', 4,  'C', 4, 'empty', NULL),
  -- Tầng 2 (12 bàn)
  (13, 2, 'B13', 4, 'A', 1, 'empty', NULL),
  (14, 2, 'B14', 4, 'A', 2, 'empty', NULL),
@@ -347,7 +347,7 @@ INSERT INTO tables (id, area_id, name, capacity, row_pos, col_pos, status, maint
 -- ============================================================================
 CREATE TABLE bookings (
     id                INT          NOT NULL AUTO_INCREMENT,
-    table_id          INT          NOT NULL,
+    table_id          INT          DEFAULT NULL,
     customer_id       INT          DEFAULT NULL,
     promotion_id      INT          DEFAULT NULL,
     guest_name        VARCHAR(100) NOT NULL,
@@ -375,28 +375,28 @@ INSERT INTO bookings (id, table_id, customer_id, promotion_id, guest_name, guest
  -- ─── PENDING (3): Chờ nhân viên xác nhận ───────────────────────────────
  (1,  13, 1,    NULL, 'Nguyen Van An',    '0911111111', 4,
    '2026-07-31 18:00:00', '2026-07-31 20:00:00', 'BK20260731001',
-   'pending', 'Bàn gần cửa sổ, cần 1 ghế cao cho trẻ em',
+   'completed', 'Bàn gần cửa sổ, cần 1 ghế cao cho trẻ em',
    NULL, NULL, '2026-07-30 09:00:00'),
 
  (2,  14, NULL, NULL, 'Nguyen Minh Hoa', '0978123456', 6,
    '2026-07-31 19:00:00', '2026-07-31 21:00:00', 'BK20260731002',
-   'pending', 'Tiệc sinh nhật, cần hỗ trợ mang bánh vào',
+   'completed', 'Tiệc sinh nhật, cần hỗ trợ mang bánh vào',
    NULL, NULL, '2026-07-30 10:30:00'),
 
  (3,  25, 3,    2,    'Le Van Cuong',    '0933333333', 4,
    '2026-08-01 12:00:00', '2026-08-01 14:00:00', 'BK20260801001',
-   'pending', NULL,
+   'completed', NULL,
    NULL, 'Khách đặt gói tiệc trưa, áp dụng khuyến mãi', '2026-07-30 11:00:00'),
 
  -- ─── CONFIRMED (3): Đã xác nhận — B03 & B06 đang reserved ─────────────
  (4,  3,  2,    1,    'Tran Thi Binh',   '0922222222', 4,
    '2026-07-30 20:00:00', '2026-07-30 22:00:00', 'BK20260730001',
-   'confirmed', 'Dị ứng hải sản, nhờ báo bếp không dùng hải sản',
+   'completed', 'Dị ứng hải sản, nhờ báo bếp không dùng hải sản',
    NULL, 'Đã gọi xác nhận lúc 10h sáng', '2026-07-30 08:00:00'),
 
  (5,  6,  4,    NULL, 'Pham Thi Dung',   '0944444444', 8,
    '2026-07-30 19:00:00', '2026-07-30 21:00:00', 'BK20260730002',
-   'confirmed', 'Tiệc gia đình, cần thêm 2 ghế phụ cho trẻ em',
+   'completed', 'Tiệc gia đình, cần thêm 2 ghế phụ cho trẻ em',
    NULL, 'Khách VIP — ưu tiên phục vụ', '2026-07-30 07:30:00'),
 
  (6,  15, 5,    NULL, 'Hoang Van Em',    '0955555555', 4,
@@ -708,14 +708,13 @@ CREATE TABLE orders (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO orders (id, table_id, customer_id, created_by, order_type, split_label, status, note, guest_name, guest_phone, guest_count, created_at, closed_at) VALUES
- -- ─── SERVING (2) ───────────────────────────────────────────────────────
+ -- ─── SERVING (1): Duy nhất bàn B04 ─────────────────────────────────────
  (1,  4,  1,    4, 'dine_in', NULL, 'serving',         'Khách yêu cầu ít muối',              NULL,           NULL,         4, '2026-07-30 18:00:00', NULL),
- (2,  8,  NULL, 5, 'dine_in', NULL, 'serving',         NULL,                                 'Tran Van Binh','0988887777', 5, '2026-07-30 19:00:00', NULL),
- -- ─── PENDING_PAYMENT (2) ────────────────────────────────────────────────
- (3,  5,  2,    4, 'dine_in', NULL, 'pending_payment', 'Khách muốn in hóa đơn',              NULL,           NULL,         2, '2026-07-30 17:30:00', NULL),
- (4,  1,  NULL, 5, 'dine_in', NULL, 'pending_payment', NULL,                                 'Le Thi Hoa',   '0966778899', 3, '2026-07-30 17:00:00', NULL),
- -- ─── OPEN (1): Vừa mở bàn, chưa gọi hết món ────────────────────────────
- (5,  7,  NULL, 4, 'dine_in', NULL, 'open',            NULL,                                 'Nguyen Hoang', '0912344321', 4, '2026-07-30 19:30:00', NULL),
+ -- ─── COMPLETED ──────────────────────────────────────────────────────────
+ (2,  8,  NULL, 5, 'dine_in', NULL, 'completed',       NULL,                                 'Tran Van Binh','0988887777', 5, '2026-07-30 19:00:00', '2026-07-30 21:00:00'),
+ (3,  5,  2,    4, 'dine_in', NULL, 'completed',       'Khách muốn in hóa đơn',              NULL,           NULL,         2, '2026-07-30 17:30:00', '2026-07-30 19:00:00'),
+ (4,  1,  NULL, 5, 'dine_in', NULL, 'completed',       NULL,                                 'Le Thi Hoa',   '0966778899', 3, '2026-07-30 17:00:00', '2026-07-30 19:00:00'),
+ (5,  7,  NULL, 4, 'dine_in', NULL, 'completed',       NULL,                                 'Nguyen Hoang', '0912344321', 4, '2026-07-30 19:30:00', '2026-07-30 21:00:00'),
  -- ─── COMPLETED (5) ──────────────────────────────────────────────────────
  (6,  2,  3,    5, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         3, '2026-07-30 17:00:00', '2026-07-30 19:00:00'),
  (7,  10, 4,    4, 'dine_in', NULL, 'completed',       NULL,                                 NULL,           NULL,         4, '2026-07-29 19:00:00', '2026-07-29 21:00:00'),
