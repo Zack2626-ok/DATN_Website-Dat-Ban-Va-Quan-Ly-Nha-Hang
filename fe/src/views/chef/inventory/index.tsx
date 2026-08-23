@@ -1825,6 +1825,9 @@ export const InventoryControl: React.FC = () => {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
+  const [importPage, setImportPage] = useState(1);
+  const [importPageSize, setImportPageSize] = useState(10);
+
   const groupedImportSlips = useMemo(() => {
     const groups: { [key: string]: any } = {};
 
@@ -1905,6 +1908,10 @@ export const InventoryControl: React.FC = () => {
 
     return Object.values(groups);
   }, [filteredImportTransactions, reduxIngredients]);
+
+  const paginatedImportSlips = useMemo(() => {
+    return groupedImportSlips.slice((importPage - 1) * importPageSize, importPage * importPageSize);
+  }, [groupedImportSlips, importPage, importPageSize]);
 
   const groupedReturnSlips = useMemo(() => {
     const groups: { [key: string]: any } = {};
@@ -2898,7 +2905,7 @@ export const InventoryControl: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    groupedImportSlips.map((slip: any) => {
+                    paginatedImportSlips.map((slip: any) => {
                       const firstItem = slip.items[0];
                       const totalItemsCount = slip.items.length;
                       const totalQtyVal = slip.items.reduce((s: number, i: any) => s + i.quantity, 0);
@@ -3222,7 +3229,59 @@ export const InventoryControl: React.FC = () => {
             {/* Footer summary matching POS/KiotViet */}
             <div className="flex justify-between items-center bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
               <div>
-                Tổng số phiếu nhập: <span className="text-blue-600 font-extrabold">{filteredImportTransactions.length}</span>
+                Tổng số phiếu nhập: <span className="text-blue-600 font-extrabold">{groupedImportSlips.length}</span>
+              </div>
+            </div>
+
+            {/* Pagination UI for Import Invoices */}
+            <div className="flex flex-col sm:flex-row items-center justify-between p-4 border border-slate-200 bg-white rounded-xl">
+              <div className="flex items-center gap-3 mb-4 sm:mb-0">
+                <span className="text-sm text-slate-600">Hiển thị</span>
+                <select
+                  className="border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
+                  value={importPageSize}
+                  onChange={(e) => {
+                    setImportPageSize(Number(e.target.value));
+                    setImportPage(1);
+                  }}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                </select>
+                <span className="text-sm text-slate-600">
+                  hóa đơn - Hiển thị {groupedImportSlips.length > 0 ? (importPage - 1) * importPageSize + 1 : 0} - {Math.min(importPage * importPageSize, groupedImportSlips.length)} trên tổng số {groupedImportSlips.length} hóa đơn nhập
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={importPage <= 1}
+                  onClick={() => setImportPage(p => Math.max(1, p - 1))}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
+                >
+                  Previous
+                </button>
+                <div className="flex gap-1">
+                  {Array.from({ length: Math.ceil(groupedImportSlips.length / importPageSize) || 1 }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setImportPage(p)}
+                      className={`w-8 h-8 rounded text-sm flex items-center justify-center cursor-pointer ${
+                        importPage === p ? "bg-blue-600 text-white font-medium" : "border border-slate-300 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={importPage >= Math.ceil(groupedImportSlips.length / importPageSize)}
+                  onClick={() => setImportPage(p => Math.min(Math.ceil(groupedImportSlips.length / importPageSize), p + 1))}
+                  className="px-3 py-1 border border-slate-300 rounded text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
+                >
+                  Next
+                </button>
               </div>
             </div>
           </div>
