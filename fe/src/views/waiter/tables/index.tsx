@@ -848,15 +848,14 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
   const handleVoidUnfinishedAndRequestPaymentFromTable = async () => {
     if (!selectedTableId || !activeOrder || !unfinishedPaymentModal) return;
 
-    // Kiểm tra xem có món nào đang nấu trên bếp hay không
-    const cookingItems = unfinishedPaymentModal.filter((i) => i.status === "cooking");
-    if (cookingItems.length > 0) {
-      toast.error(`Không thể hủy vì có ${cookingItems.length} món đang nấu trên bếp!`);
-      return;
-    }
-
     // Lọc các món chờ gửi (pending) và chờ nấu (waiting_kitchen) để hủy
-    const cancellableItems = unfinishedPaymentModal.filter((i) => i.status === "pending" || i.status === "waiting_kitchen");
+    const cancellableItems = unfinishedPaymentModal.filter(
+      (i) => i.status === "pending" || i.status === "waiting_kitchen"
+    );
+    const cookingOrDoneItems = unfinishedPaymentModal.filter(
+      (i) => i.status === "cooking" || i.status === "done"
+    );
+
     if (cancellableItems.length === 0) {
       toast.error("Không có món nào ở trạng thái Chờ gửi hoặc Chờ nấu để hủy!");
       return;
@@ -865,24 +864,35 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     try {
       setProcessingPaymentRequest(true);
       for (const item of cancellableItems) {
-        await voidOrderItem(activeOrder.id, item.id, unfinishedVoidReason.trim() || "Khách yêu cầu thanh toán sớm - Hủy món chưa nấu");
+        await voidOrderItem(
+          activeOrder.id,
+          item.id,
+          unfinishedVoidReason.trim() || "Khách yêu cầu thanh toán sớm - Hủy món chưa nấu"
+        );
       }
       const remainingActive = activeOrder.items.filter(
         (i) => i.status !== "voided" && i.status !== "cancelled" && !cancellableItems.some((u) => u.id === i.id)
-      ).length;
+      );
 
-      if (remainingActive === 0) {
+      if (remainingActive.length === 0) {
         await updateTableStatus(Number(selectedTableId), "empty").catch(console.error);
         toast.success("Đã hủy toàn bộ món chưa nấu và trả bàn trống thành công!");
       } else {
+        const hasUnfinishedStillCooking = cookingOrDoneItems.length > 0;
         if (activeOrder?.id) {
-          await requestPayment(activeOrder.id).catch(async () => {
+          await requestPayment(activeOrder.id, undefined, hasUnfinishedStillCooking).catch(async () => {
             await updateTableStatus(Number(selectedTableId), "pending_payment");
           });
         } else {
           await updateTableStatus(Number(selectedTableId), "pending_payment");
         }
-        toast.success(`Đã hủy ${cancellableItems.length} món chưa nấu & gửi yêu cầu thanh toán thành công!`);
+        if (hasUnfinishedStillCooking) {
+          toast.success(
+            `Đã hủy ${cancellableItems.length} món chưa nấu & gửi yêu cầu thanh toán (giữ lại ${cookingOrDoneItems.length} món đang/đã nấu)!`
+          );
+        } else {
+          toast.success(`Đã hủy ${cancellableItems.length} món chưa nấu & gửi yêu cầu thanh toán thành công!`);
+        }
       }
       setUnfinishedPaymentModal(null);
       fetchData();
@@ -2077,10 +2087,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 {/* Lựa chọn 2: Hủy món chưa nấu & Thanh toán */}
                 {(() => {
                   const cookingCount = unfinishedPaymentModal.filter((i) => i.status === "cooking").length;
-                  const cancellableItems = unfinishedPaymentModal.filter((i) => i.status === "pending" || i.status === "waiting_kitchen");
+                  const doneCount = unfinishedPaymentModal.filter((i) => i.status === "done").length;
+                  const cancellableItems = unfinishedPaymentModal.filter(
+                    (i) => i.status === "pending" || i.status === "waiting_kitchen"
+                  );
                   const cancellableCount = cancellableItems.length;
-                  const hasCooking = cookingCount > 0;
                   const hasCancellable = cancellableCount > 0;
+                  const hasCookingOrDone = cookingCount + doneCount > 0;
 
                   return (
                     <div className="space-y-2 pt-2 border-t border-slate-100">
@@ -2092,38 +2105,38 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         value={unfinishedVoidReason}
                         onChange={(e) => setUnfinishedVoidReason(e.target.value)}
                         placeholder="Lý do hủy: Khách không muốn chờ món nữa..."
-                        disabled={hasCooking || !hasCancellable}
+                        disabled={!hasCancellable}
                         className="w-full p-2.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-rose-500/20 disabled:bg-gray-100 disabled:text-gray-400"
                       />
-                      
-                      {hasCooking && (
-                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium flex items-center gap-2">
-                          <AlertTriangle size={15} className="text-rose-600 shrink-0" />
-                          <span>Không thể hủy tự động vì đang có <strong>{cookingCount} món đang nấu</strong> trên bếp. Vui lòng chờ bếp nấu xong hoặc báo bếp dừng nấu!</span>
+
+                      {hasCookingOrDone && hasCancellable && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium flex items-center gap-2">
+                          <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                          <span>
+                            Đang có <strong>{cookingCount > 0 ? `${cookingCount} món đang nấu` : ''}{cookingCount > 0 && doneCount > 0 ? ' và ' : ''}{doneCount > 0 ? `${doneCount} món đã nấu` : ''}</strong> trên bếp. Hệ thống sẽ <strong>HỦY {cancellableCount} món chưa nấu</strong> và <strong>GIỮ LẠI các món đang/đã nấu</strong> để tính tiền.
+                          </span>
                         </div>
                       )}
 
-                      {!hasCooking && !hasCancellable && (
+                      {!hasCancellable && (
                         <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium">
-                          💡 Các món còn lại đều đã được bếp nấu xong (chờ bưng ra). Vui lòng nhấn "Đã mang ra" hoặc chọn "Thanh toán sớm"!
+                          💡 Tất cả các món còn lại đều đang nấu hoặc đã nấu xong. Vui lòng chọn "Thanh toán sớm" để tính tiền hoặc liên hệ bếp nếu cần hủy món đang nấu.
                         </div>
                       )}
 
                       <button
                         onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
-                        disabled={processingPaymentRequest || hasCooking || !hasCancellable}
+                        disabled={processingPaymentRequest || !hasCancellable}
                         className={`w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm ${
-                          hasCooking || !hasCancellable
+                          !hasCancellable
                             ? "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
                             : "bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
                         }`}
                       >
                         {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                        {hasCooking
-                          ? `🚫 Không thể hủy (${cookingCount} món đang nấu trên bếp)`
-                          : hasCancellable
-                          ? `🚫 Hủy ${cancellableCount} món chưa nấu & Yêu cầu thanh toán các món đã ra`
-                          : "🚫 Không có món chờ nấu để hủy"}
+                        {hasCancellable
+                          ? `🚫 Hủy ${cancellableCount} món chưa nấu & Thanh toán (${hasCookingOrDone ? "tính các món đang/đã nấu" : "tính các món đã ra"})`
+                          : "🚫 Không có món chưa nấu để hủy"}
                       </button>
                     </div>
                   );
