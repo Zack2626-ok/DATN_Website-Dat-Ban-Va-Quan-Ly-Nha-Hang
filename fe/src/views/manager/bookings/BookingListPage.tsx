@@ -464,18 +464,36 @@ export const BookingListPage: React.FC = () => {
     };
   }, [bookings]);
 
-  const filteredBookings = bookings.filter((b) => {
-    const matchesSearch =
-      b.guest_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.guest_phone.includes(searchTerm) ||
-      String(b.confirmation_code || "").toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredBookings = useMemo(() => {
+    let result = bookings.filter((b) => {
+      const matchesSearch =
+        b.guest_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.guest_phone.includes(searchTerm) ||
+        String(b.confirmation_code || "").toLowerCase().includes(searchTerm.toLowerCase());
 
-    let matchesStatus = filterStatus === "all" || b.status === filterStatus;
-    if (filterStatus === "large") {
-      matchesStatus = b.party_size >= 10;
-    }
-    return matchesSearch && matchesStatus;
-  });
+      let matchesStatus = filterStatus === "all" || b.status === filterStatus;
+      if (filterStatus === "large") {
+        matchesStatus = b.party_size >= 10;
+      }
+      return matchesSearch && matchesStatus;
+    });
+
+    const getGroupPriority = (status: string): number => {
+      if (status === "pending" || status === "confirmed") return 1; // Đầu tiên: Đang chờ khách đến
+      if (status === "arrived" || status === "completed") return 2; // Ở giữa: Khách đã đến
+      if (status === "cancelled") return 3;                        // Cuối cùng: Đã hủy
+      return 4;
+    };
+
+    return result.sort((a, b) => {
+      const priorityA = getGroupPriority(a.status);
+      const priorityB = getGroupPriority(b.status);
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      return (a.start_time || "").localeCompare(b.start_time || "");
+    });
+  }, [bookings, searchTerm, filterStatus]);
 
   const totalPages = Math.ceil(filteredBookings.length / ITEMS_PER_PAGE);
 
