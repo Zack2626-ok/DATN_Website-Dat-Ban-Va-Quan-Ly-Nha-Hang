@@ -218,7 +218,7 @@ export const InvoiceDetailPanel: React.FC<Props> = (props) => {
           </div>
           {Boolean(invoice.tax && invoice.tax > 0) && (
             <div className="flex justify-between items-center text-xs text-slate-500">
-              <span>VAT ({invoice.vatRate || 10}%)</span>
+              <span>VAT ({invoice.vatRate || 8}%)</span>
               <span className="font-semibold text-slate-800">+{formatVnd(invoice.tax || 0)} vnđ</span>
             </div>
           )}

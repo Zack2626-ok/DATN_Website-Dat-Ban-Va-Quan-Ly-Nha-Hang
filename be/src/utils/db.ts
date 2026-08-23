@@ -405,7 +405,7 @@ const createDatabaseTables = async (): Promise<void> => {
       opening_hours VARCHAR(200) DEFAULT 'Thứ 2 – Chủ nhật: 10:00 – 22:00',
       happy_hour VARCHAR(200) DEFAULT 'Happy Hour: 17:00 – 19:00',
       map_url TEXT DEFAULT NULL,
-      tax_rate DOUBLE NOT NULL DEFAULT 10.00,
+      tax_rate DOUBLE NOT NULL DEFAULT 8.00,
       service_fee_rate DOUBLE NOT NULL DEFAULT 5.00,
       default_payment_method VARCHAR(50) NOT NULL DEFAULT 'cash',
       timezone VARCHAR(50) NOT NULL DEFAULT 'GMT+07:00',
@@ -478,9 +478,12 @@ export const initDb = async (): Promise<boolean> => {
     if (infoCount[0].count === 0) {
       await query(`
         INSERT INTO restaurant_info (id, name, address, hotline, hotline_hours, email, opening_hours, happy_hour, tax_rate, service_fee_rate, default_payment_method, timezone, bank_code, bank_account, bank_name, bank_account_name)
-        VALUES (1, 'ResManager Bistro', '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM', '028 3829 4000', 'Hỗ trợ 10:00–22:00 hàng ngày', 'contact@resmanager.vn', 'Thứ 2 – Chủ nhật: 10:00 – 22:00', 'Happy Hour: 17:00 – 19:00', 10.00, 5.00, 'cash', 'GMT+07:00', 'VCB', '1234567890', 'Ngân hàng TMCP Ngoại thương Việt Nam', 'CONG TY TNHH RESMANAGER')
+        VALUES (1, 'ResManager Bistro', '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM', '028 3829 4000', 'Hỗ trợ 10:00–22:00 hàng ngày', 'contact@resmanager.vn', 'Thứ 2 – Chủ nhật: 10:00 – 22:00', 'Happy Hour: 17:00 – 19:00', 8.00, 5.00, 'cash', 'GMT+07:00', 'VCB', '1234567890', 'Ngân hàng TMCP Ngoại thương Việt Nam', 'CONG TY TNHH RESMANAGER')
       `);
       console.log("✅ Seeded default restaurant_info.");
+    } else {
+      // Tự động cập nhật thuế suất từ 10% xuống 8% cho cấu hình hiện tại
+      await query("UPDATE restaurant_info SET tax_rate = 8.00 WHERE id = 1 AND tax_rate = 10.00");
     }
   } catch (err: any) {
     console.warn("Seeding restaurant_info skipped:", err.message);
@@ -5392,6 +5395,15 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
      ORDER BY id DESC`,
     [primaryTableId, ...ACTIVE_ORDER_STATUSES],
   );
+
+  let currentTaxRate = 8;
+  try {
+    const resInfo = await getRestaurantInfo();
+    if (resInfo && resInfo.tax_rate !== undefined) {
+      currentTaxRate = Number(resInfo.tax_rate);
+    }
+  } catch {}
+
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
     order.items = allItems.filter(
@@ -5410,8 +5422,8 @@ export const getResmanagerOrdersByTable = async (tableId: number): Promise<any[]
       depositAmount = Number(bRows[0].deposit_amount || 0);
     }
     order.depositAmount = depositAmount;
-    order.vatRate = 10;
-    order.tax = Math.round(subtotal * 0.10);
+    order.vatRate = currentTaxRate;
+    order.tax = Math.round(subtotal * (currentTaxRate / 100));
     order.discount = 0;
     order.totalAmount = Math.max(0, subtotal + order.tax - depositAmount);
   }
@@ -5435,6 +5447,14 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
   }
   sql += " ORDER BY o.created_at DESC";
   const orders = await query<any[]>(sql, params);
+
+  let currentTaxRate = 8;
+  try {
+    const resInfo = await getRestaurantInfo();
+    if (resInfo && resInfo.tax_rate !== undefined) {
+      currentTaxRate = Number(resInfo.tax_rate);
+    }
+  } catch {}
 
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
@@ -5482,7 +5502,7 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
         order.voucherDiscount = Number(notesData.voucher !== undefined ? notesData.voucher : pRow.discount || 0);
         order.pointsDiscount = Number(notesData.pointsDiscount || 0);
         order.discount = order.voucherDiscount + order.pointsDiscount;
-        order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : 10));
+        order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : currentTaxRate));
         if (notesData.depositAmount !== undefined) {
           order.depositAmount = Number(notesData.depositAmount || 0);
         }
@@ -5501,8 +5521,8 @@ export const getAllResmanagerOrders = async (status?: string): Promise<any[]> =>
       }
     } else {
       // Đơn chưa thanh toán (open, serving, pending_payment): tính toán chuẩn từ subtotal và khấu trừ cọc
-      order.vatRate = 10;
-      order.tax = Math.round(subtotal * 0.10);
+      order.vatRate = currentTaxRate;
+      order.tax = Math.round(subtotal * (currentTaxRate / 100));
       order.discount = 0;
       order.totalAmount = Math.max(0, subtotal + order.tax - order.depositAmount - order.discount);
     }
@@ -7571,7 +7591,7 @@ export const getRestaurantInfo = async (): Promise<any> => {
     opening_hours: "Thứ 2 – Chủ nhật: 10:00 – 22:00",
     happy_hour: "Happy Hour: 17:00 – 19:00",
     map_url: null,
-    tax_rate: 10.0,
+    tax_rate: 8.0,
     service_fee_rate: 5.0,
     default_payment_method: "cash",
     timezone: "GMT+07:00",

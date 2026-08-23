@@ -51,7 +51,7 @@ export const PaymentModal: React.FC<Props> = ({
   loading,
 }) => {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
-  const [vatRate, setVatRate] = useState(10);
+  const [vatRate, setVatRate] = useState(8);
   const [serviceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
@@ -74,7 +74,7 @@ export const PaymentModal: React.FC<Props> = ({
     getRestaurantInfo()
       .then((info) => {
         if (info) {
-          setVatRate(info.tax_rate ?? 10);
+          setVatRate(info.tax_rate ?? 8);
         }
         setResInfo(info);
       })

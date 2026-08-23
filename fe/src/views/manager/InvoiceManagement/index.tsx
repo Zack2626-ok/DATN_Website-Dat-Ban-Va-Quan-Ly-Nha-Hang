@@ -1879,7 +1879,7 @@ export const InvoiceManagement: React.FC = () => {
                 </div>
                 {selectedInvoice.tax ? (
                   <div className="flex justify-between">
-                    <span>Thuế VAT ({selectedInvoice.vatRate || 10}%):</span>
+                    <span>Thuế VAT ({selectedInvoice.vatRate || 8}%):</span>
                     <span>+{formatCurrency(selectedInvoice.tax)}</span>
                   </div>
                 ) : null}

@@ -303,8 +303,16 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
     let depositAmount = Number(order.deposit_amount) || 0;
     let linkedBookingId: number | null = null;
 
+    let defaultTaxRate = 8;
+    try {
+      const resInfo = await db.getRestaurantInfo();
+      if (resInfo && resInfo.tax_rate !== undefined) {
+        defaultTaxRate = Number(resInfo.tax_rate);
+      }
+    } catch {}
+
     const subtotal = order.subtotal !== undefined ? Number(order.subtotal) : Number(order.totalAmount || 0);
-    const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * 0.1);
+    const vat = vatRate !== undefined ? Math.round(subtotal * (vatRate / 100)) : Math.round(subtotal * (defaultTaxRate / 100));
     
     // Validate and calculate voucher discount dynamically
     let calculatedVoucherAmount = Number(voucherAmount || 0);
@@ -386,7 +394,7 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
         pointsUsed: pointsToUse,
         pointsDiscount,
         finalAmount,
-        vatRate: vatRate ?? 10,
+        vatRate: vatRate ?? defaultTaxRate,
         rawNotes: notes,
       }),
       completedAt: new Date().toISOString(),
