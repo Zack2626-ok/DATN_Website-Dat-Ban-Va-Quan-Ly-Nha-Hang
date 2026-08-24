@@ -1547,6 +1547,25 @@ const runSchemaMigrations = async (): Promise<void> => {
     await query(
       `ALTER TABLE payments ADD INDEX idx_payments_reconciliation (status, expires_at)`,
     ).catch(() => {});
+
+    // Ensure loyalty_transactions.type supports 'refund'
+    const loyaltyTransTypeCol = await query<any[]>(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loyalty_transactions' AND COLUMN_NAME = 'type'`,
+    ).catch(() => []);
+    if (
+      loyaltyTransTypeCol &&
+      loyaltyTransTypeCol.length > 0 &&
+      !String(loyaltyTransTypeCol[0].COLUMN_TYPE).includes("refund")
+    ) {
+      await query(`
+        ALTER TABLE loyalty_transactions 
+        MODIFY COLUMN type ENUM('earn', 'redeem', 'refund') NOT NULL
+      `).catch(() => {});
+      console.log(
+        "✅ Migration: updated loyalty_transactions.type ENUM to include 'refund'",
+      );
+    }
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -6746,13 +6765,8 @@ export const getResmanagerOrdersByTable = async (
       depositAmount = Number(bRows[0].deposit_amount || 0);
     }
     order.depositAmount = depositAmount;
-<<<<<<< HEAD
     order.vatRate = currentTaxRate;
     order.tax = Math.round(subtotal * (currentTaxRate / 100));
-=======
-    order.vatRate = 10;
-    order.tax = Math.round(subtotal * 0.1);
->>>>>>> e7acbe4aa721aa9dc5f495fcf951c530b0ea6d0f
     order.discount = 0;
     order.totalAmount = Math.max(0, subtotal + order.tax - depositAmount);
   }
@@ -6845,19 +6859,7 @@ export const getAllResmanagerOrders = async (
         );
         order.pointsDiscount = Number(notesData.pointsDiscount || 0);
         order.discount = order.voucherDiscount + order.pointsDiscount;
-<<<<<<< HEAD
         order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : currentTaxRate));
-=======
-        order.vatRate = Number(
-          notesData.vatRate !== undefined
-            ? notesData.vatRate
-            : order.tax > 0
-              ? Math.round(
-                  (order.tax / (notesData.subtotal || subtotal || 1)) * 100,
-                )
-              : 10,
-        );
->>>>>>> e7acbe4aa721aa9dc5f495fcf951c530b0ea6d0f
         if (notesData.depositAmount !== undefined) {
           order.depositAmount = Number(notesData.depositAmount || 0);
         }
@@ -6880,13 +6882,8 @@ export const getAllResmanagerOrders = async (
       }
     } else {
       // Đơn chưa thanh toán (open, serving, pending_payment): tính toán chuẩn từ subtotal và khấu trừ cọc
-<<<<<<< HEAD
       order.vatRate = currentTaxRate;
       order.tax = Math.round(subtotal * (currentTaxRate / 100));
-=======
-      order.vatRate = 10;
-      order.tax = Math.round(subtotal * 0.1);
->>>>>>> e7acbe4aa721aa9dc5f495fcf951c530b0ea6d0f
       order.discount = 0;
       order.totalAmount = Math.max(
         0,
@@ -9664,7 +9661,7 @@ export const processOrderItemRefund = async (data: {
 
   const refundResult = await withTransaction(async (connection) => {
     const [orderRows] = await connection.query<any[]>(
-      `SELECT id, refunded_total
+      `SELECT id, customer_id, refunded_total
        FROM orders
        WHERE id = ?
        FOR UPDATE`,
@@ -9749,6 +9746,46 @@ export const processOrderItemRefund = async (data: {
     );
     if (invoiceUpdate.affectedRows !== 1) {
       throw new Error("Không thể cập nhật hóa đơn hoàn tiền");
+    }
+
+    // Tích/Trừ điểm loyalty nếu đơn hàng có khách hàng thành viên liên kết
+    if (orderRows[0].customer_id) {
+      const customerId = orderRows[0].customer_id;
+      const pointsToDeduct = Math.floor(netRefundAmount / 1000);
+      if (pointsToDeduct > 0) {
+        const [custRows] = await connection.query<any[]>(
+          `SELECT loyalty_points FROM customers WHERE id = ? AND is_deleted = 0 FOR UPDATE`,
+          [customerId]
+        );
+        if (custRows.length > 0) {
+          const currentPoints = Number(custRows[0].loyalty_points || 0);
+          const newPoints = Math.max(0, currentPoints - pointsToDeduct);
+          
+          const getTierLevel = (pts: number) => {
+            if (pts >= 20000) return "vip";
+            if (pts >= 8000) return "gold";
+            if (pts >= 2000) return "silver";
+            return "bronze";
+          };
+          const newLevel = getTierLevel(newPoints);
+
+          await connection.query(
+            `UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?`,
+            [newPoints, newLevel, customerId]
+          );
+
+          await connection.query(
+            `INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note, created_at)
+             VALUES (?, ?, 'refund', ?, ?, NOW())`,
+            [
+              customerId,
+              pointsToDeduct,
+              invoice.id,
+              `Trừ điểm do hoàn trả món ăn của hóa đơn #${invoice.id} số tiền hoàn ${netRefundAmount.toLocaleString("vi-VN")} đ`
+            ]
+          );
+        }
+      }
     }
 
     return {

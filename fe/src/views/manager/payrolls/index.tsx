@@ -845,7 +845,7 @@ const PayrollPage: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-500">
+              <tr className="bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-500 whitespace-nowrap">
                 <th className="px-6 py-4">Mã NV</th>
                 <th className="px-6 py-4">Tên Nhân Viên</th>
                 <th className="px-6 py-4">Chức Vụ</th>
@@ -878,19 +878,19 @@ const PayrollPage: React.FC = () => {
                   const displaySalary = isPaid ? 0 : Number(p.total_salary || 0);
                   return (
                     <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                      <td className="px-6 py-4 text-sm font-medium">{p.employee_code || `NV${String(p.user_id).padStart(3, "0")}`}</td>
-                      <td className="px-6 py-4 font-medium text-sm text-gray-900">{p.full_name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500 capitalize">{p.role_name}</td>
-                      <td className="px-6 py-4 text-sm text-right font-mono font-semibold">{displayHours.toFixed(2)}</td>
-                      <td className="px-6 py-4 text-sm text-right font-mono">{Number(p.hourly_rate || 25000).toLocaleString('vi-VN')} đ</td>
-                      <td className="px-6 py-4 text-sm text-right text-amber-600 font-medium font-mono">
+                      <td className="px-6 py-4 text-sm font-medium whitespace-nowrap">{p.employee_code || `NV${String(p.user_id).padStart(3, "0")}`}</td>
+                      <td className="px-6 py-4 font-medium text-sm text-gray-900 whitespace-nowrap">{p.full_name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500 capitalize whitespace-nowrap">{p.role_name}</td>
+                      <td className="px-6 py-4 text-sm text-right font-mono font-semibold whitespace-nowrap">{displayHours.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-sm text-right font-mono whitespace-nowrap">{Number(p.hourly_rate || 25000).toLocaleString('vi-VN')} đ</td>
+                      <td className="px-6 py-4 text-sm text-right text-amber-600 font-medium font-mono whitespace-nowrap">
                         {displayHolidayBonus.toLocaleString('vi-VN')} đ
                       </td>
-                      <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900 font-mono">
+                      <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900 font-mono whitespace-nowrap">
                         {displaySalary.toLocaleString('vi-VN')} đ
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${
+                      <td className="px-6 py-4 text-center whitespace-nowrap">
+                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
                           isPaid 
                             ? 'bg-green-100 text-green-700 border border-green-200' 
                             : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
