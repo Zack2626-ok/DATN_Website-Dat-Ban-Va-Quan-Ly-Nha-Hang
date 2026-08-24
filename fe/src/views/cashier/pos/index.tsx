@@ -49,7 +49,7 @@ export const CashierPOS: React.FC = () => {
   const [splitMode, setSplitMode] = useState<SplitMode>("equal");
   const [splitCount, setSplitCount] = useState<number>(2);
   const [tipAmount, setTipAmount] = useState<string>("0");
-  const [vatRate, setVatRate] = useState<number>(10);
+  const [vatRate, setVatRate] = useState<number>(8);
   const [roundEnabled, setRoundEnabled] = useState<boolean>(false);
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
@@ -105,7 +105,7 @@ export const CashierPOS: React.FC = () => {
   useEffect(() => {
     getRestaurantInfo()
       .then((info) => {
-        setVatRate(info.tax_rate ?? 10);
+        setVatRate(info.tax_rate ?? 8);
       })
       .catch(() => {});
   }, []);

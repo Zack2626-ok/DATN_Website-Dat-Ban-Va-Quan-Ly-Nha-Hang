@@ -55,7 +55,8 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
     (sum, item) => sum + Number(item.unit_price) * item.quantity,
     0,
   );
-  const calcTax = tax !== undefined ? tax : Math.round(calcSubtotal * 0.10);
+  const currentTaxRate = resInfo?.tax_rate !== undefined ? resInfo.tax_rate : 8;
+  const calcTax = tax !== undefined ? tax : Math.round(calcSubtotal * (currentTaxRate / 100));
   const calcDeposit = depositAmount || 0;
   const calcTotal = totalAmount !== undefined ? totalAmount : Math.max(0, calcSubtotal + calcTax - calcDeposit);
 
@@ -153,7 +154,7 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
           <span>${calcSubtotal.toLocaleString("vi-VN")} đ</span>
         </div>
         <div class="row">
-          <span>VAT (10%):</span>
+          <span>VAT (${currentTaxRate}%):</span>
           <span>+${calcTax.toLocaleString("vi-VN")} đ</span>
         </div>
         ${calcDeposit > 0 ? `
@@ -292,7 +293,7 @@ export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
               <span className="font-bold">{calcSubtotal.toLocaleString("vi-VN")} đ</span>
             </div>
             <div className="flex justify-between items-center text-slate-600">
-              <span>VAT (10%):</span>
+              <span>VAT ({currentTaxRate}%):</span>
               <span className="font-bold">+{calcTax.toLocaleString("vi-VN")} đ</span>
             </div>
             {calcDeposit > 0 && (

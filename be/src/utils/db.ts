@@ -474,7 +474,7 @@ const createDatabaseTables = async (): Promise<void> => {
       opening_hours VARCHAR(200) DEFAULT 'Thứ 2 – Chủ nhật: 10:00 – 22:00',
       happy_hour VARCHAR(200) DEFAULT 'Happy Hour: 17:00 – 19:00',
       map_url TEXT DEFAULT NULL,
-      tax_rate DOUBLE NOT NULL DEFAULT 10.00,
+      tax_rate DOUBLE NOT NULL DEFAULT 8.00,
       service_fee_rate DOUBLE NOT NULL DEFAULT 5.00,
       default_payment_method VARCHAR(50) NOT NULL DEFAULT 'cash',
       timezone VARCHAR(50) NOT NULL DEFAULT 'GMT+07:00',
@@ -558,9 +558,12 @@ export const initDb = async (): Promise<boolean> => {
     if (infoCount[0].count === 0) {
       await query(`
         INSERT INTO restaurant_info (id, name, address, hotline, hotline_hours, email, opening_hours, happy_hour, tax_rate, service_fee_rate, default_payment_method, timezone, bank_code, bank_account, bank_name, bank_account_name)
-        VALUES (1, 'ResManager Bistro', '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM', '028 3829 4000', 'Hỗ trợ 10:00–22:00 hàng ngày', 'contact@resmanager.vn', 'Thứ 2 – Chủ nhật: 10:00 – 22:00', 'Happy Hour: 17:00 – 19:00', 10.00, 5.00, 'cash', 'GMT+07:00', 'VCB', '1234567890', 'Ngân hàng TMCP Ngoại thương Việt Nam', 'CONG TY TNHH RESMANAGER')
+        VALUES (1, 'ResManager Bistro', '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM', '028 3829 4000', 'Hỗ trợ 10:00–22:00 hàng ngày', 'contact@resmanager.vn', 'Thứ 2 – Chủ nhật: 10:00 – 22:00', 'Happy Hour: 17:00 – 19:00', 8.00, 5.00, 'cash', 'GMT+07:00', 'VCB', '1234567890', 'Ngân hàng TMCP Ngoại thương Việt Nam', 'CONG TY TNHH RESMANAGER')
       `);
       console.log("✅ Seeded default restaurant_info.");
+    } else {
+      // Tự động cập nhật thuế suất từ 10% xuống 8% cho cấu hình hiện tại
+      await query("UPDATE restaurant_info SET tax_rate = 8.00 WHERE id = 1 AND tax_rate = 10.00");
     }
   } catch (err: any) {
     console.warn("Seeding restaurant_info skipped:", err.message);
@@ -1544,6 +1547,25 @@ const runSchemaMigrations = async (): Promise<void> => {
     await query(
       `ALTER TABLE payments ADD INDEX idx_payments_reconciliation (status, expires_at)`,
     ).catch(() => {});
+
+    // Ensure loyalty_transactions.type supports 'refund'
+    const loyaltyTransTypeCol = await query<any[]>(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'loyalty_transactions' AND COLUMN_NAME = 'type'`,
+    ).catch(() => []);
+    if (
+      loyaltyTransTypeCol &&
+      loyaltyTransTypeCol.length > 0 &&
+      !String(loyaltyTransTypeCol[0].COLUMN_TYPE).includes("refund")
+    ) {
+      await query(`
+        ALTER TABLE loyalty_transactions 
+        MODIFY COLUMN type ENUM('earn', 'redeem', 'refund') NOT NULL
+      `).catch(() => {});
+      console.log(
+        "✅ Migration: updated loyalty_transactions.type ENUM to include 'refund'",
+      );
+    }
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
   }
@@ -6711,6 +6733,15 @@ export const getResmanagerOrdersByTable = async (
      ORDER BY id DESC`,
     [primaryTableId, ...ACTIVE_ORDER_STATUSES],
   );
+
+  let currentTaxRate = 8;
+  try {
+    const resInfo = await getRestaurantInfo();
+    if (resInfo && resInfo.tax_rate !== undefined) {
+      currentTaxRate = Number(resInfo.tax_rate);
+    }
+  } catch {}
+
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
     order.items = allItems.filter(
@@ -6734,8 +6765,8 @@ export const getResmanagerOrdersByTable = async (
       depositAmount = Number(bRows[0].deposit_amount || 0);
     }
     order.depositAmount = depositAmount;
-    order.vatRate = 10;
-    order.tax = Math.round(subtotal * 0.1);
+    order.vatRate = currentTaxRate;
+    order.tax = Math.round(subtotal * (currentTaxRate / 100));
     order.discount = 0;
     order.totalAmount = Math.max(0, subtotal + order.tax - depositAmount);
   }
@@ -6761,6 +6792,14 @@ export const getAllResmanagerOrders = async (
   }
   sql += " ORDER BY o.created_at DESC";
   const orders = await query<any[]>(sql, params);
+
+  let currentTaxRate = 8;
+  try {
+    const resInfo = await getRestaurantInfo();
+    if (resInfo && resInfo.tax_rate !== undefined) {
+      currentTaxRate = Number(resInfo.tax_rate);
+    }
+  } catch {}
 
   for (const order of orders) {
     const allItems = await getResmanagerOrderItems(order.id);
@@ -6820,15 +6859,7 @@ export const getAllResmanagerOrders = async (
         );
         order.pointsDiscount = Number(notesData.pointsDiscount || 0);
         order.discount = order.voucherDiscount + order.pointsDiscount;
-        order.vatRate = Number(
-          notesData.vatRate !== undefined
-            ? notesData.vatRate
-            : order.tax > 0
-              ? Math.round(
-                  (order.tax / (notesData.subtotal || subtotal || 1)) * 100,
-                )
-              : 10,
-        );
+        order.vatRate = Number(notesData.vatRate !== undefined ? notesData.vatRate : (order.tax > 0 ? Math.round((order.tax / (notesData.subtotal || subtotal || 1)) * 100) : currentTaxRate));
         if (notesData.depositAmount !== undefined) {
           order.depositAmount = Number(notesData.depositAmount || 0);
         }
@@ -6851,8 +6882,8 @@ export const getAllResmanagerOrders = async (
       }
     } else {
       // Đơn chưa thanh toán (open, serving, pending_payment): tính toán chuẩn từ subtotal và khấu trừ cọc
-      order.vatRate = 10;
-      order.tax = Math.round(subtotal * 0.1);
+      order.vatRate = currentTaxRate;
+      order.tax = Math.round(subtotal * (currentTaxRate / 100));
       order.discount = 0;
       order.totalAmount = Math.max(
         0,
@@ -9552,7 +9583,7 @@ export const getRestaurantInfo = async (): Promise<any> => {
     opening_hours: "Thứ 2 – Chủ nhật: 10:00 – 22:00",
     happy_hour: "Happy Hour: 17:00 – 19:00",
     map_url: null,
-    tax_rate: 10.0,
+    tax_rate: 8.0,
     service_fee_rate: 5.0,
     default_payment_method: "cash",
     timezone: "GMT+07:00",
@@ -9630,7 +9661,7 @@ export const processOrderItemRefund = async (data: {
 
   const refundResult = await withTransaction(async (connection) => {
     const [orderRows] = await connection.query<any[]>(
-      `SELECT id, refunded_total
+      `SELECT id, customer_id, refunded_total
        FROM orders
        WHERE id = ?
        FOR UPDATE`,
@@ -9715,6 +9746,46 @@ export const processOrderItemRefund = async (data: {
     );
     if (invoiceUpdate.affectedRows !== 1) {
       throw new Error("Không thể cập nhật hóa đơn hoàn tiền");
+    }
+
+    // Tích/Trừ điểm loyalty nếu đơn hàng có khách hàng thành viên liên kết
+    if (orderRows[0].customer_id) {
+      const customerId = orderRows[0].customer_id;
+      const pointsToDeduct = Math.floor(netRefundAmount / 1000);
+      if (pointsToDeduct > 0) {
+        const [custRows] = await connection.query<any[]>(
+          `SELECT loyalty_points FROM customers WHERE id = ? AND is_deleted = 0 FOR UPDATE`,
+          [customerId]
+        );
+        if (custRows.length > 0) {
+          const currentPoints = Number(custRows[0].loyalty_points || 0);
+          const newPoints = Math.max(0, currentPoints - pointsToDeduct);
+          
+          const getTierLevel = (pts: number) => {
+            if (pts >= 20000) return "vip";
+            if (pts >= 8000) return "gold";
+            if (pts >= 2000) return "silver";
+            return "bronze";
+          };
+          const newLevel = getTierLevel(newPoints);
+
+          await connection.query(
+            `UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?`,
+            [newPoints, newLevel, customerId]
+          );
+
+          await connection.query(
+            `INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note, created_at)
+             VALUES (?, ?, 'refund', ?, ?, NOW())`,
+            [
+              customerId,
+              pointsToDeduct,
+              invoice.id,
+              `Trừ điểm do hoàn trả món ăn của hóa đơn #${invoice.id} số tiền hoàn ${netRefundAmount.toLocaleString("vi-VN")} đ`
+            ]
+          );
+        }
+      }
     }
 
     return {

@@ -23,6 +23,7 @@ import {
 } from "../../../services/waiterService";
 import { getTablesV1, updateTableStatus } from "../../../services/tableService";
 import { getComboConstituents } from "../../../utils/comboHelper";
+import { getRestaurantInfo } from "../../../services/restaurantInfoService";
 
 interface DisplayOrderItem {
   id: number;
@@ -71,6 +72,18 @@ export const OrderPage: React.FC = () => {
   // Table info
   const [table, setTable] = useState<any | null>(null);
   const [tableLoading, setTableLoading] = useState(true);
+
+  // Tax rate info
+  const [taxRate, setTaxRate] = useState<number>(8);
+  useEffect(() => {
+    getRestaurantInfo()
+      .then((info) => {
+        if (info && info.tax_rate !== undefined) {
+          setTaxRate(info.tax_rate);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Menu data
   const [menuItems, setMenuItems] = useState<WaiterMenuItem[]>([]);
@@ -961,7 +974,7 @@ export const OrderPage: React.FC = () => {
             {(() => {
               const subtotal = total;
               const depositAmt = Number(table?.deposit_amount || 0);
-              const taxAmt = Math.round(subtotal * 0.10);
+              const taxAmt = Math.round(subtotal * (taxRate / 100));
               const finalAmt = Math.max(0, subtotal + taxAmt - depositAmt);
               return (
                 <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-100 text-sm">
@@ -970,7 +983,7 @@ export const OrderPage: React.FC = () => {
                     <span className="font-bold text-slate-700">{subtotal.toLocaleString("vi-VN")}₫</span>
                   </div>
                   <div className="flex justify-between items-center text-slate-500">
-                    <span>VAT (10%):</span>
+                    <span>VAT ({taxRate}%):</span>
                     <span className="font-bold text-slate-700">+{taxAmt.toLocaleString("vi-VN")}₫</span>
                   </div>
                   {depositAmt > 0 && (

@@ -78,6 +78,7 @@ interface ActiveOrderInfo {
   subtotal?: number;
   depositAmount?: number;
   tax?: number;
+  vatRate?: number;
   totalAmount: number;
   status: string;
 }
@@ -382,7 +383,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
       const validItems = items.filter((i) => i.status !== "voided" && i.status !== "cancelled");
       const subtotal = validItems.reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0);
       const depositAmount = Number((latestOrder as any).depositAmount || (latestOrder as any).deposit_amount || (t as any).deposit_amount || 0);
-      const tax = Number((latestOrder as any).tax !== undefined ? (latestOrder as any).tax : Math.round(subtotal * 0.10));
+      const tax = Number((latestOrder as any).tax !== undefined ? (latestOrder as any).tax : Math.round(subtotal * ((latestOrder as any).vatRate || 8) / 100));
       const totalAmount = Number((latestOrder as any).totalAmount !== undefined ? (latestOrder as any).totalAmount : Math.max(0, subtotal + tax - depositAmount));
       setActiveOrder({
         id: latestOrder.id,
@@ -390,6 +391,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         subtotal,
         depositAmount,
         tax,
+        vatRate: (latestOrder as any).vatRate,
         totalAmount,
         status: t.status,
       });
@@ -1589,8 +1591,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                                 <span className="font-bold">{(activeOrder.subtotal !== undefined ? activeOrder.subtotal : activeOrder.totalAmount || 0).toLocaleString("vi-VN")} đ</span>
                               </div>
                               <div className="flex justify-between items-center text-xs text-gray-300">
-                                <span>VAT (10%):</span>
-                                <span className="font-bold">+{(activeOrder.tax !== undefined ? activeOrder.tax : Math.round((activeOrder.subtotal || activeOrder.totalAmount || 0) * 0.10)).toLocaleString("vi-VN")} đ</span>
+                                <span>VAT ({activeOrder.vatRate || 8}%):</span>
+                                <span className="font-bold">+{(activeOrder.tax !== undefined ? activeOrder.tax : Math.round((activeOrder.subtotal || activeOrder.totalAmount || 0) * (activeOrder.vatRate || 8) / 100)).toLocaleString("vi-VN")} đ</span>
                               </div>
                               {(activeOrder.depositAmount || 0) > 0 && (
                                 <div className="flex justify-between items-center text-xs text-amber-400">

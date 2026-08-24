@@ -275,7 +275,7 @@ export const CashierPaymentPage: React.FC = () => {
         showSuccess("Thanh toán thành công!");
         
         const subtotal = selectedInvoice.subtotal !== undefined ? selectedInvoice.subtotal : selectedInvoice.totalAmount;
-        const vat = Math.round(subtotal * ((data.vatRate || 10) / 100));
+        const vat = Math.round(subtotal * ((data.vatRate || 8) / 100));
         const depositAmount = selectedInvoice.depositAmount || 0;
         const voucherDiscount = data.voucherAmount || 0;
         const pointsDiscount = data.pointsUsed ? data.pointsUsed * 100 : 0;
@@ -291,7 +291,7 @@ export const CashierPaymentPage: React.FC = () => {
             voucherDiscount: voucherDiscount,
             pointsDiscount: pointsDiscount,
             tax: vat,
-            vatRate: data.vatRate || 10,
+            vatRate: data.vatRate || 8,
             totalAmount: finalAmount
           },
           restaurantInfo?.name,
