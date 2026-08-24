@@ -155,8 +155,8 @@ export const WaiterBookingListPage: React.FC = () => {
   }, [bookings, selectedDate]);
 
   // Lọc theo từ khóa & SẮP XẾP THEO THỨ TỰ YÊU CẦU:
-  // 1. ĐẦU TIÊN (Ưu tiên 1): Đã mở bàn thành công (arrived / completed)
-  // 2. ƯU TIÊN 2: Chờ khách đến (pending / confirmed)
+  // 1. ĐẦU TIÊN (Ưu tiên 1): Chờ khách đến (pending / confirmed) - Mặc định lên hàng đầu!
+  // 2. ƯU TIÊN 2: Đã mở bàn thành công (arrived / completed)
   // 3. CUỐI CÙNG (Ưu tiên 3): Đã hủy (cancelled)
   const sortedAndFilteredBookings = useMemo(() => {
     let filtered = dateBookings;
@@ -178,8 +178,8 @@ export const WaiterBookingListPage: React.FC = () => {
     }
 
     const getGroupPriority = (status: string): number => {
-      if (status === "arrived" || status === "completed") return 1; // Đầu tiên: Đã mở bàn thành công
-      if (status === "pending" || status === "confirmed") return 2; // Ở giữa: Chờ khách đến
+      if (status === "pending" || status === "confirmed") return 1; // Đầu tiên: Chờ khách đến
+      if (status === "arrived" || status === "completed") return 2; // Ở giữa: Đã mở bàn thành công / Khách đã đến
       if (status === "cancelled") return 3;                        // Cuối cùng: Đã hủy
       return 4;
     };
