@@ -16,11 +16,13 @@ export default function LoginPage() {
 
   const [form, setForm] = useState<LoginPayload>({ email: "", password: "" });
 
-  /** Đã đăng nhập → nhân viên đi vào trang chấm công trước, admin vào khu vực quản trị */
+  /** Đã đăng nhập → nhân viên đi vào trang chấm công trước, admin vào khu vực quản trị, manager vào khu vực quản lý */
   useEffect(() => {
     if (user) {
       if (user.role === "admin") {
         navigate("/admin", { replace: true });
+      } else if (user.role === "manager") {
+        navigate("/manager", { replace: true });
       } else {
         navigate("/checkin", { replace: true });
       }

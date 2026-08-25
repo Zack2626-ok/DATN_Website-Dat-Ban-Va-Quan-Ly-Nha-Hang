@@ -908,15 +908,17 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
             </button>
 
             {/* Profile Pill Card */}
-            <button
-              type="button"
-              onClick={() => navigate("/checkin")}
-              title="Chấm công vào hoặc ra"
-              className="hidden sm:flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100"
-            >
-              <Timer size={14} />
-              Chấm công
-            </button>
+            {user?.role !== "admin" && user?.role !== "manager" && (
+              <button
+                type="button"
+                onClick={() => navigate("/checkin")}
+                title="Chấm công vào hoặc ra"
+                className="hidden sm:flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100"
+              >
+                <Timer size={14} />
+                Chấm công
+              </button>
+            )}
             <div
               onClick={() => setShowProfileModal(true)}
               title="Xem thông tin cá nhân & Số giờ làm thời gian thực"
@@ -1236,17 +1238,19 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
             {/* Footer Actions */}
             <div className="p-4 bg-white border-t border-slate-100 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowProfileModal(false);
-                  navigate("/checkin");
-                }}
-                className="flex-1 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold transition-colors border border-amber-200 flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Timer size={15} />
-                Chấm công ngay
-              </button>
+              {user?.role !== "admin" && user?.role !== "manager" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileModal(false);
+                    navigate("/checkin");
+                  }}
+                  className="flex-1 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold transition-colors border border-amber-200 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Timer size={15} />
+                  Chấm công ngay
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
