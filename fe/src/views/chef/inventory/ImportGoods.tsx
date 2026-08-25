@@ -428,6 +428,14 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
     }
 
     for (const item of importItems) {
+      if (item.quantity <= 0) {
+        toast.error(`Số lượng nhập của mặt hàng "${item.ingredientName}" không hợp lệ! Số lượng phải lớn hơn 0.`, { id: "qty-val-err" });
+        return;
+      }
+      if (item.unitCost < 0) {
+        toast.error(`Đơn giá nhập của mặt hàng "${item.ingredientName}" không hợp lệ! Đơn giá không được là số âm.`, { id: "cost-val-err" });
+        return;
+      }
       if (item.displayUnit && !ALLOWED_UNITS.includes(item.displayUnit.toLowerCase())) {
         toast.error(`Đơn vị tính "${item.displayUnit}" của mặt hàng "${item.ingredientName}" không hợp lệ! Vui lòng chọn (kg, g, lít, ml, bao, hộp...)`, { id: "unit-val-err" });
         return;
@@ -1298,17 +1306,31 @@ export const ImportGoods: React.FC<ImportGoodsProps> = ({ onBack, initialData, o
                           toast.error(`Dòng ${rowIndex}: Cảnh báo trùng lặp mã lô "${batchVal}" của mặt hàng "${name}" trong file Excel!`, { id: `excel-batch-dup-${rowIndex}` });
                         }
 
+                        const itemQty = parseExcelNumber(
+                          row["Số lượng"] || row["Số lượng nhập"] || row.Quantity || row.quantity || 0
+                        );
+                        if (itemQty <= 0) {
+                          toast.error(`Dòng ${rowIndex}: Số lượng nhập (${itemQty}) của mặt hàng "${name}" không hợp lệ! Số lượng phải lớn hơn 0.`, { id: `excel-qty-err-${rowIndex}` });
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          return;
+                        }
+
+                        const itemCost = parseExcelNumber(row["Đơn giá"] || row["Giá nhập"] || row.Price || row.price || 0);
+                        if (itemCost < 0) {
+                          toast.error(`Dòng ${rowIndex}: Đơn giá (${itemCost}) của mặt hàng "${name}" không hợp lệ! Đơn giá không được âm.`, { id: `excel-cost-err-${rowIndex}` });
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          return;
+                        }
+
                         newItems.push({
                           ingredientId,
                           ingredientName: name,
                           code: found ? `SP${found.id.toString().padStart(6, "0")}` : "Mới",
-                          quantity: parseExcelNumber(
-                            row["Số lượng"] || row.Quantity || row.quantity || 1
-                          ),
+                          quantity: itemQty,
                           displayUnit,
                           baseUnit,
                           unitMultiplier,
-                          unitCost: parseExcelNumber(row["Đơn giá"] || row.Price || row.price || 0),
+                          unitCost: itemCost,
                           batchNo: batchVal,
                           expiryDate,
                           isNew,

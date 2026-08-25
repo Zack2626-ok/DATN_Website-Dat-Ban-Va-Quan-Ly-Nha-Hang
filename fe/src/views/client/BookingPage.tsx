@@ -276,12 +276,11 @@ export const BookingPage: React.FC = () => {
   const setField = (key: string, value: string) => {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      if (touched[key]) {
-        const fieldErrors = validateBookingForm(next);
-        setErrors((prevErr) => ({ ...prevErr, [key]: fieldErrors[key] }));
-      }
+      const fieldErrors = validateBookingForm(next);
+      setErrors((prevErr) => ({ ...prevErr, [key]: fieldErrors[key] }));
       return next;
     });
+    setTouched((prev) => ({ ...prev, [key]: true }));
   };
 
   const handleBlur = (key: string) => {

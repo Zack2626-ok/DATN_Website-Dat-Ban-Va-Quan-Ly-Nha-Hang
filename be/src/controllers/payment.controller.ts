@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 import type { Server as SocketIOServer } from "socket.io";
 import * as db from "../utils/db";
 import { sendError, sendSuccess } from "../utils/response";
 import {
   buildDynamicVietQrUrl,
   getBankQrConfiguration,
+  getBankWebhookSecret,
   isBankTransferDemoModeEnabled,
   normalizeBankTransferWebhook,
   verifyBankWebhookSignature,
@@ -35,6 +36,8 @@ const publishCompletedBankTransfer = async (
   }
 
   socketServer?.to(`invoice_${reconciliation.invoiceId}`).emit("payment:success", {
+    message: "Thanh toán thành công và đã trừ kho!",
+    invoice_id: reconciliation.invoiceId,
     invoiceId: reconciliation.invoiceId,
     amount: reconciliation.amount,
     paymentReference,
@@ -110,7 +113,7 @@ export const simulateBankTransferPayment = async (req: Request, res: Response): 
       sendError(res, "Mã QR đã hết hạn, vui lòng tạo lại.", 409);
       return;
     }
-    if (reconciliation.status === "amount_mismatch") {
+    if (reconciliation.status === "underpaid" || reconciliation.status === "amount_mismatch") {
       sendError(res, "Số tiền mô phỏng không khớp với hóa đơn.", 409);
       return;
     }
@@ -123,17 +126,59 @@ export const simulateBankTransferPayment = async (req: Request, res: Response): 
   }
 };
 
-/** Xác thực webhook ngân hàng và chốt hóa đơn đúng một lần. */
+/**
+ * Route Mô phỏng "Sandbox" (POST /api/v1/payments/simulate-webhook)
+ * Tự băm chữ ký HMAC chuẩn bằng Secret Key ở Backend và gọi vào Webhook xử lý thực tế.
+ */
+export const simulateBankTransferWebhook = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { payment_reference, paymentReference: altReference, amount, received_amount, simulate_hack, simulateHack } = req.body;
+    const targetRef = String(payment_reference || altReference || "").trim();
+
+    if (!targetRef) {
+      sendError(res, "Thiếu mã đối soát payment_reference", 400);
+      return;
+    }
+
+    const isHackSimulation = Boolean(simulate_hack || simulateHack);
+    const secretKey = getBankWebhookSecret();
+    const fakeBankPayload = {
+      bank_transaction_id: "FTX" + Date.now(),
+      payment_reference: targetRef,
+      received_amount: received_amount !== undefined ? Number(received_amount) : Number(amount || 0),
+      transaction_date: new Date().toISOString(),
+    };
+
+    const payloadBuffer = Buffer.from(JSON.stringify(fakeBankPayload));
+    const computedSignature = isHackSimulation
+      ? "invalid_hacker_signature_12345"
+      : createHmac("sha256", secretKey).update(payloadBuffer).digest("hex");
+
+    req.body = fakeBankPayload;
+    (req as RawBodyRequest).rawBody = payloadBuffer;
+    req.headers["x-api-signature"] = computedSignature;
+
+    await processBankTransferWebhook(req, res);
+  } catch (error) {
+    console.error("simulateBankTransferWebhook error:", error);
+    sendError(res, "Mô phỏng thất bại: " + (error instanceof Error ? error.message : String(error)), 500);
+  }
+};
+
+/** Route Webhook Thực tế (POST /api/v1/payments/webhook) - Xác thực chữ ký & chốt hóa đơn. */
 export const processBankTransferWebhook = async (req: Request, res: Response): Promise<void> => {
   try {
     const rawBodyRequest = req as RawBodyRequest;
     const rawPayload = rawBodyRequest.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
-    const signature = req.header("x-bank-signature")
-      ?? req.header("x-signature")
-      ?? req.header("signature");
+    const signature = (
+      req.header("x-api-signature") ??
+      req.header("x-bank-signature") ??
+      req.header("x-signature") ??
+      req.header("signature")
+    );
 
     if (!verifyBankWebhookSignature(rawPayload, signature)) {
-      sendError(res, "Chữ ký webhook không hợp lệ", 401);
+      res.status(401).json({ success: false, message: "Chữ ký không hợp lệ!" });
       return;
     }
 
@@ -149,26 +194,38 @@ export const processBankTransferWebhook = async (req: Request, res: Response): P
       bankTransactionId: webhookData.bankTransactionId,
       webhookPayload: webhookData.rawPayload,
     });
+
     if (reconciliation.status === "not_found") {
-      sendError(res, "Không tìm thấy phiên thanh toán", 404);
+      sendError(res, "Không tìm thấy phiên thanh toán!", 404);
       return;
     }
 
     if (reconciliation.status === "expired") {
-      sendError(res, "Phiên thanh toán đã hết hạn", 409);
+      sendError(res, "Phiên thanh toán đã hết hạn!", 409);
       return;
     }
 
-    if (reconciliation.status === "amount_mismatch") {
-      sendError(res, "Số tiền nhận được không khớp hóa đơn", 400);
+    if (reconciliation.status === "underpaid" || reconciliation.status === "amount_mismatch") {
+      const socketServer = req.app.get("io") as SocketIOServer | undefined;
+      if (reconciliation.invoiceId) {
+        socketServer?.to(`invoice_${reconciliation.invoiceId}`).emit("payment:failed", {
+          message: "Chuyển khoản thiếu tiền!",
+          invoice_id: reconciliation.invoiceId,
+          receivedAmount: reconciliation.receivedAmount,
+          requiredAmount: reconciliation.amount,
+        });
+      }
+      sendError(res, "Chuyển khoản thiếu tiền! Giữ trạng thái chờ.", 400);
       return;
     }
 
     await publishCompletedBankTransfer(req, reconciliation, webhookData.paymentReference);
 
-    sendSuccess(res, reconciliation, reconciliation.status === "completed"
-      ? "Đã đối soát chuyển khoản thành công"
-      : "Webhook đã được xử lý trước đó");
+    res.status(200).json({
+      success: true,
+      message: "Xử lý Webhook thành công!",
+      data: reconciliation,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Không thể xử lý webhook chuyển khoản";
     sendError(res, message, 500);

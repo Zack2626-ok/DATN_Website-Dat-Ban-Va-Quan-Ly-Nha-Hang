@@ -392,6 +392,7 @@ export const BookingListPage: React.FC = () => {
     socket.on("booking:claimed", handleRealtimeUpdate);
     socket.on("table:booking_checked_in", handleRealtimeUpdate);
     socket.on("booking:created", (data: any) => {
+      setCurrentPage(1);
       fetchData();
       getTablesV1()
         .then((t) => setAllTables(t || []))
@@ -406,12 +407,14 @@ export const BookingListPage: React.FC = () => {
       });
     });
     socket.on("booking:new", () => {
+      setCurrentPage(1);
       fetchData();
       getTablesV1()
         .then((t) => setAllTables(t || []))
         .catch(() => {});
     });
     socket.on("new_booking", () => {
+      setCurrentPage(1);
       fetchData();
       getTablesV1()
         .then((t) => setAllTables(t || []))
@@ -491,7 +494,10 @@ export const BookingListPage: React.FC = () => {
       if (priorityA !== priorityB) {
         return priorityA - priorityB;
       }
-      return (a.start_time || "").localeCompare(b.start_time || "");
+      // Xếp theo NGÀY GIỜ ĐẾN (start_time) GIẢM DẦN chuẩn xác (26/8 -> 20/8 -> 16/8 -> 9/8)
+      const timeCompare = (b.start_time || "").localeCompare(a.start_time || "");
+      if (timeCompare !== 0) return timeCompare;
+      return b.id - a.id;
     });
   }, [bookings, searchTerm, filterStatus]);
 
