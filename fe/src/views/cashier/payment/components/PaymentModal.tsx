@@ -10,6 +10,9 @@ import {
   QrCode,
   Copy,
   Check,
+  Wrench,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Modal } from "../../../../components/Modal";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
@@ -18,6 +21,7 @@ import { crmService, type Voucher, type Customer } from "../../../../services/cr
 import {
   initiateBankTransferPayment,
   simulateBankTransferPayment,
+  simulateWebhookPayment,
   type BankTransferPaymentSession,
 } from "../../../../services/bankTransferPaymentService";
 
@@ -62,6 +66,7 @@ export const PaymentModal: React.FC<Props> = ({
   const [creatingBankTransfer, setCreatingBankTransfer] = useState(false);
   const [simulatingBankTransfer, setSimulatingBankTransfer] = useState(false);
   const [bankTransferError, setBankTransferError] = useState<string | null>(null);
+  const [showSandboxTools, setShowSandboxTools] = useState(false);
   const isBankTransfer = paymentMethod === "transfer";
 
   const [suggestedVouchers, setSuggestedVouchers] = useState<Voucher[]>([]);
@@ -193,22 +198,64 @@ export const PaymentModal: React.FC<Props> = ({
     }
   };
 
-  /** Hoàn tất phiên QR bằng luồng giả lập tiền về khi backend bật demo local. */
-  const handleSimulateBankTransfer = async (): Promise<void> => {
-    if (!bankTransferSession?.demoModeEnabled) return;
-
+  /** 1. Mô phỏng chuyển ĐỦ tiền (Thành công 100%). */
+  const handleSimulateFullPayment = async (): Promise<void> => {
+    if (!bankTransferSession) return;
     setSimulatingBankTransfer(true);
     setBankTransferError(null);
     try {
-      const result = await simulateBankTransferPayment(bankTransferSession.paymentId);
+      const result = await simulateWebhookPayment(
+        bankTransferSession.paymentReference,
+        bankTransferSession.amount,
+      );
       if (["completed", "duplicate", "already_paid"].includes(result.status)) {
         onBankTransferDemoCompleted();
         return;
       }
-
       setBankTransferError("Không thể hoàn tất mô phỏng. Vui lòng tạo lại mã QR.");
     } catch (error) {
       setBankTransferError(error instanceof Error ? error.message : "Không thể mô phỏng tiền về.");
+    } finally {
+      setSimulatingBankTransfer(false);
+    }
+  };
+
+  /** 2. Mô phỏng chuyển THIẾU tiền (Chuyển 50%). */
+  const handleSimulateUnderpayment = async (): Promise<void> => {
+    if (!bankTransferSession) return;
+    setSimulatingBankTransfer(true);
+    setBankTransferError(null);
+    try {
+      const halfAmount = Math.round(bankTransferSession.amount / 2);
+      await simulateWebhookPayment(
+        bankTransferSession.paymentReference,
+        bankTransferSession.amount,
+        halfAmount,
+      );
+      setBankTransferError(`⚠️ Đã gửi Webhook báo chuyển thiếu tiền (${formatVnd(halfAmount)}đ / ${formatVnd(bankTransferSession.amount)}đ). Hệ thống giữ trạng thái chờ!`);
+    } catch (error) {
+      setBankTransferError(error instanceof Error ? error.message : "⚠️ Đã cảnh báo: Chuyển khoản thiếu tiền!");
+    } finally {
+      setSimulatingBankTransfer(false);
+    }
+  };
+
+  /** 3. Mô phỏng HACKER Giả mạo Webhook (Chữ ký HMAC sai). */
+  const handleSimulateHack = async (): Promise<void> => {
+    if (!bankTransferSession) return;
+    setSimulatingBankTransfer(true);
+    setBankTransferError(null);
+    try {
+      await simulateWebhookPayment(
+        bankTransferSession.paymentReference,
+        bankTransferSession.amount,
+        undefined,
+        true, // simulateHack = true
+      );
+      setBankTransferError("Hệ thống đã nhận tín hiệu.");
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Chữ ký không hợp lệ!";
+      setBankTransferError(`⛔ BỊ CHẶN BẢO MẬT (HTTP 401): ${msg}`);
     } finally {
       setSimulatingBankTransfer(false);
     }
@@ -428,17 +475,53 @@ export const PaymentModal: React.FC<Props> = ({
                     {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? "Đã copy!" : "Copy thông tin TK"}
                   </button>
                   {bankTransferSession.demoModeEnabled && (
-                    <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-center">
-                      <p className="text-[10px] font-bold text-amber-800">Chế độ demo — không cần chuyển tiền thật</p>
-                      <p className="mt-0.5 text-[9px] text-amber-700">Chỉ dùng để trình diễn luồng đối soát QR ở môi trường local.</p>
+                    <div className="w-full pt-1">
                       <button
                         type="button"
-                        onClick={handleSimulateBankTransfer}
-                        disabled={simulatingBankTransfer}
-                        className="mt-2 w-full rounded-md bg-amber-500 px-3 py-2 text-[10px] font-bold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => setShowSandboxTools((prev) => !prev)}
+                        className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100/90 hover:bg-slate-200/90 text-[10px] font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
                       >
-                        {simulatingBankTransfer ? "Đang mô phỏng tiền về..." : "Mô phỏng tiền đã về"}
+                        <span className="flex items-center gap-1.5">
+                          <Wrench size={12} className="text-amber-600" />
+                          <span>🛠️ DevTools Kiểm Thử Sandbox</span>
+                        </span>
+                        {showSandboxTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
+
+                      {showSandboxTools && (
+                        <div className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50/95 p-3 space-y-2 text-center shadow-xs animate-fade-in">
+                          <p className="text-[9px] text-amber-800 font-medium">Bấm chọn 1 trong 3 kịch bản dưới đây để trình diễn thời gian thực cho Hội Đồng / Thầy Cô:</p>
+                          
+                          <div className="flex flex-col gap-1.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleSimulateFullPayment}
+                              disabled={simulatingBankTransfer}
+                              className="w-full rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all hover:bg-emerald-700 active:scale-98 disabled:opacity-60 cursor-pointer shadow-xs flex items-center justify-center gap-1"
+                            >
+                              🟢 1. Mô phỏng Chuyển ĐỦ TIỀN (100% Đạt)
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleSimulateUnderpayment}
+                              disabled={simulatingBankTransfer}
+                              className="w-full rounded-lg bg-amber-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all hover:bg-amber-700 active:scale-98 disabled:opacity-60 cursor-pointer shadow-xs flex items-center justify-center gap-1"
+                            >
+                              🟡 2. Mô phỏng Chuyển THIẾU TIỀN (Gửi 50%)
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleSimulateHack}
+                              disabled={simulatingBankTransfer}
+                              className="w-full rounded-lg bg-rose-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all hover:bg-rose-700 active:scale-98 disabled:opacity-60 cursor-pointer shadow-xs flex items-center justify-center gap-1"
+                            >
+                              🔴 3. Mô phỏng HACKER Giả mạo (Chữ ký Sai)
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
