@@ -320,6 +320,17 @@ export const updateInventoryQuantity = async (req: Request, res: Response): Prom
     }
 
     const qty = Number(quantity);
+    if (isNaN(qty) || qty <= 0) {
+      sendError(res, "Số lượng nhập/xuất kho không hợp lệ! Số lượng phải là số lớn hơn 0.", 400);
+      return;
+    }
+
+    const cost = Number(unitCost || 0);
+    if (isNaN(cost) || cost < 0) {
+      sendError(res, "Đơn giá nhập kho không hợp lệ! Đơn giá không được là số âm.", 400);
+      return;
+    }
+
     const isDraft = status === "draft";
     const isCompleted = status === "completed";
     const cleanReason = (reasonOrSupplier || "").replace(/^\[LƯU TẠM\]\s*/g, "").replace(/^\[HOÀN THÀNH\]\s*/g, "").trim();
@@ -798,64 +809,174 @@ export const uploadExcel = async (req: Request, res: Response): Promise<void> =>
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const data = xlsx.utils.sheet_to_json(sheet);
+    const data = xlsx.utils.sheet_to_json(sheet) as any[];
 
     if (!data || data.length === 0) {
       sendError(res, "File Excel trống hoặc sai định dạng", 400);
       return;
     }
 
-    const createdBy = 1;
+    const createdBy = (req as any).user?.id || 1;
+    const validationErrors: string[] = [];
+    const validRows: Array<{
+      ingredientId: number;
+      quantity: number;
+      unitCost: number;
+      supplierName: string;
+      note: string;
+      expiryDate: string | null;
+    }> = [];
 
-    for (const row of data) {
-      const ingredientId = row["Mã nguyên liệu"] || row["Mã NL"] || row["ingredient_id"];
-      const quantity = parseFloat(row["Số lượng nhập"] || row["quantity"] || 0);
-      const unitCost = parseFloat(row["Đơn giá"] || row["unit_cost"] || 0);
-      const supplierName = row["Nhà cung cấp"] || row["supplier"] || "";
-      const note = row["Ghi chú"] || row["note"] || "Nhập từ file Excel";
-      let expiryDate = row["Hạn sử dụng"] || row["expiry_date"] || null;
-      if (expiryDate && typeof expiryDate === "number") {
-          // Xử lý ngày từ excel (nếu là số)
-          const date = new Date((expiryDate - (25567 + 2)) * 86400 * 1000);
-          expiryDate = date.toISOString().split('T')[0];
-      } else if (expiryDate && typeof expiryDate === "string") {
-          // Nếu định dạng dd/mm/yyyy
-          const parts = expiryDate.split("/");
-          if (parts.length === 3) expiryDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-      }
+    // Phase 1: Pre-validation of all rows in the Excel file
+    for (let index = 0; index < data.length; index++) {
+      const row = data[index];
+      const excelRowNumber = index + 2; // Row 1 is header in Excel
 
-      if (!ingredientId || isNaN(quantity) || quantity <= 0) {
+      const rawIngredient = row["Mã nguyên liệu"] ?? row["Mã NL"] ?? row["ingredient_id"] ?? row["Mã Nl"];
+      const rawQty = row["Số lượng nhập"] ?? row["quantity"] ?? row["Số lượng"];
+      const rawCost = row["Đơn giá"] ?? row["unit_cost"] ?? row["Giá nhập"];
+      const supplierName = String(row["Nhà cung cấp"] ?? row["supplier"] ?? "").trim();
+      const note = String(row["Ghi chú"] ?? row["note"] ?? "Nhập từ file Excel").trim();
+      const rawExp = row["Hạn sử dụng"] ?? row["expiry_date"] ?? row["HSD"];
+
+      // 1. Validate Ingredient ID
+      if (rawIngredient === undefined || rawIngredient === null || String(rawIngredient).trim() === "") {
+        validationErrors.push(`Dòng ${excelRowNumber}: Thiếu thông tin Mã nguyên liệu.`);
         continue;
       }
 
-      let supplierId = null;
-      if (supplierName && typeof supplierName === 'string' && supplierName.trim() !== '') {
-        const existingSupplier = await db.query(
-          "SELECT id FROM suppliers WHERE name = ?",
-          [supplierName.trim()]
-        );
+      const parsedIngredientId = Number(String(rawIngredient).trim());
+      if (isNaN(parsedIngredientId)) {
+        validationErrors.push(`Dòng ${excelRowNumber}: Mã nguyên liệu '${rawIngredient}' không phải là số hợp lệ.`);
+        continue;
+      }
 
-        if (existingSupplier && existingSupplier.length > 0) {
-          supplierId = existingSupplier[0].id;
-        } else {
-          const newSupplier = await db.query(
-            "INSERT INTO suppliers (name, total_debt) VALUES (?, 0)",
-            [supplierName.trim()]
-          );
-          supplierId = newSupplier.insertId;
+      // Check ingredient existence in DB
+      const existingIng = await db.query("SELECT id FROM ingredients WHERE id = ? AND is_deleted = 0", [parsedIngredientId]);
+      if (!existingIng || existingIng.length === 0) {
+        validationErrors.push(`Dòng ${excelRowNumber}: Không tìm thấy Mã nguyên liệu ID '${parsedIngredientId}' trong hệ thống.`);
+      }
+
+      // 2. Validate Quantity
+      let parsedQuantity = 0;
+      if (rawQty === undefined || rawQty === null || String(rawQty).trim() === "") {
+        validationErrors.push(`Dòng ${excelRowNumber}: Số lượng nhập không được để trống.`);
+      } else if (typeof rawQty === "string" && isNaN(Number(rawQty.trim()))) {
+        validationErrors.push(`Dòng ${excelRowNumber}: Số lượng nhập '${rawQty}' không hợp lệ (phải là dạng số).`);
+      } else {
+        parsedQuantity = parseFloat(String(rawQty));
+        if (isNaN(parsedQuantity) || parsedQuantity <= 0) {
+          validationErrors.push(`Dòng ${excelRowNumber}: Số lượng nhập (${parsedQuantity}) không hợp lệ! Số lượng phải là số lớn hơn 0.`);
         }
       }
 
-      await db.query(
-        "INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [ingredientId, `LOT-EXCEL-${Date.now()}-${Math.floor(Math.random()*1000)}`, quantity, quantity, unitCost, supplierId, expiryDate || null, note, createdBy]
-      );
+      // 3. Validate Unit Cost
+      let parsedUnitCost = 0;
+      if (rawCost !== undefined && rawCost !== null && String(rawCost).trim() !== "") {
+        if (typeof rawCost === "string" && isNaN(Number(rawCost.trim()))) {
+          validationErrors.push(`Dòng ${excelRowNumber}: Đơn giá '${rawCost}' không hợp lệ (phải là dạng số).`);
+        } else {
+          parsedUnitCost = parseFloat(String(rawCost));
+          if (isNaN(parsedUnitCost) || parsedUnitCost < 0) {
+            validationErrors.push(`Dòng ${excelRowNumber}: Đơn giá (${parsedUnitCost}) không hợp lệ! Đơn giá không được là số âm.`);
+          }
+        }
+      }
 
-      await db.query(
-        "UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?",
-        [quantity, ingredientId]
-      );
+      // 4. Validate Expiry Date
+      let expiryDateStr: string | null = null;
+      if (rawExp !== undefined && rawExp !== null && String(rawExp).trim() !== "") {
+        if (typeof rawExp === "number") {
+          const date = new Date((rawExp - (25567 + 2)) * 86400 * 1000);
+          if (!isNaN(date.getTime())) {
+            expiryDateStr = date.toISOString().split("T")[0];
+          }
+        } else if (typeof rawExp === "string") {
+          const trimmedExp = rawExp.trim();
+          if (trimmedExp.includes("/")) {
+            const parts = trimmedExp.split("/");
+            if (parts.length === 3) {
+              expiryDateStr = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+            }
+          } else {
+            expiryDateStr = trimmedExp;
+          }
+        }
+
+        if (!expiryDateStr || isNaN(new Date(expiryDateStr).getTime())) {
+          validationErrors.push(`Dòng ${excelRowNumber}: Hạn sử dụng '${rawExp}' không đúng định dạng ngày.`);
+        } else {
+          const expDate = new Date(expiryDateStr);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (expDate < today) {
+            validationErrors.push(`Dòng ${excelRowNumber}: Hạn sử dụng (${expiryDateStr}) đã ở trong quá khứ!`);
+          }
+        }
+      }
+
+      validRows.push({
+        ingredientId: parsedIngredientId,
+        quantity: parsedQuantity,
+        unitCost: parsedUnitCost,
+        supplierName,
+        note,
+        expiryDate: expiryDateStr,
+      });
     }
+
+    // Block import if any row is invalid
+    if (validationErrors.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `File Excel chứa ${validationErrors.length} lỗi dữ liệu! Đã hủy toàn bộ quá trình nhập kho.`,
+        errors: validationErrors,
+      });
+      return;
+    }
+
+    // Phase 2: Atomic Database Import inside a Transaction
+    await db.withTransaction(async (connection) => {
+      for (const item of validRows) {
+        let supplierId: number | null = null;
+        if (item.supplierName && item.supplierName.trim() !== "") {
+          const [existingSupplier] = await connection.query<any[]>(
+            "SELECT id FROM suppliers WHERE name = ?",
+            [item.supplierName.trim()]
+          );
+
+          if (existingSupplier && existingSupplier.length > 0) {
+            supplierId = existingSupplier[0].id;
+          } else {
+            const [newSupplier] = await connection.query<any>(
+              "INSERT INTO suppliers (name, total_debt) VALUES (?, 0)",
+              [item.supplierName.trim()]
+            );
+            supplierId = newSupplier.insertId;
+          }
+        }
+
+        await connection.query(
+          "INSERT INTO stock_in (ingredient_id, batch_code, quantity, remaining_quantity, unit_cost, supplier_id, expiry_date, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [
+            item.ingredientId,
+            `LOT-EXCEL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            item.quantity,
+            item.quantity,
+            item.unitCost,
+            supplierId,
+            item.expiryDate || null,
+            item.note,
+            createdBy,
+          ]
+        );
+
+        await connection.query(
+          "UPDATE ingredients SET current_stock = current_stock + ? WHERE id = ?",
+          [item.quantity, item.ingredientId]
+        );
+      }
+    });
 
     sendSuccess(res, null, "Tải file Excel và cập nhật kho thành công");
   } catch (error) {

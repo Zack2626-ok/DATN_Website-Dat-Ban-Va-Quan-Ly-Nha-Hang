@@ -1879,7 +1879,7 @@ export const AccountPage: React.FC = () => {
               )}
 
               {/* Deposit & Financial Info */}
-              <div className="bg-white border border-[#f0eae1] rounded-2xl p-4 space-y-3 shadow-2xs">
+              {/* <div className="bg-white border border-[#f0eae1] rounded-2xl p-4 space-y-3 shadow-2xs">
                 <div className="flex items-center gap-2">
                   <Award size={15} className="text-[#dfb05b]" />
                   <span className="text-[11px] uppercase font-black tracking-wider text-client-muted">Thông tin đặt cọc & thanh toán</span>
@@ -1905,7 +1905,7 @@ export const AccountPage: React.FC = () => {
                     </span>
                   </div>
                 </div>
-              </div>
+              </div> */}
 
               {/* Review Highlight if already Reviewed */}
               {detailModal.booking.is_reviewed ? (

@@ -47,10 +47,19 @@ export const buildDynamicVietQrUrl = (
 export const isBankTransferDemoModeEnabled = (): boolean =>
   process.env.DEMO_PAYMENT_MODE?.trim().toLowerCase() === "true";
 
+/** Get the configured webhook secret key from environment variables with fallback for local dev/testing. */
+export const getBankWebhookSecret = (): string => {
+  return (
+    process.env.PAYMENT_SECRET_KEY?.trim() ||
+    process.env.BANK_WEBHOOK_SECRET?.trim() ||
+    "super_secret_key"
+  );
+};
+
 /** Verify an HMAC-SHA256 signature in constant time before accepting a bank webhook. */
 export const verifyBankWebhookSignature = (rawPayload: Buffer, providedSignature: string | undefined): boolean => {
-  const secret = process.env.BANK_WEBHOOK_SECRET;
-  if (!secret || !providedSignature) return false;
+  if (!providedSignature) return false;
+  const secret = getBankWebhookSecret();
   const supplied = providedSignature.replace(/^sha256=/i, "").trim();
   const expected = createHmac("sha256", secret).update(rawPayload).digest("hex");
   const expectedBuffer = Buffer.from(expected, "utf8");

@@ -93,6 +93,12 @@ export const CashierPaymentPage: React.FC = () => {
       );
     };
 
+    /** Handles a failed or underpaid bank transfer emitted via webhook. */
+    const handleBankTransferFailed = (payload: { message?: string }): void => {
+      triggerRefresh();
+      toast.error(`⚠️ ${payload.message || "Chuyển khoản thất bại hoặc thiếu tiền!"}`, { duration: 6000 });
+    };
+
     const handlePaymentRequest = (data?: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string; isEarlyPayment?: boolean }) => {
       triggerRefresh();
       if (data) {
@@ -121,6 +127,7 @@ export const CashierPaymentPage: React.FC = () => {
     socket.on("invoice:updated", triggerRefresh);
     socket.on("invoice_refunded", triggerRefresh);
     socket.on("payment:success", handleBankTransferSuccess);
+    socket.on("payment:failed", handleBankTransferFailed);
 
     return () => {
       socket.off("connect");
@@ -136,6 +143,7 @@ export const CashierPaymentPage: React.FC = () => {
       socket.off("invoice:updated", triggerRefresh);
       socket.off("invoice_refunded", triggerRefresh);
       socket.off("payment:success", handleBankTransferSuccess);
+      socket.off("payment:failed", handleBankTransferFailed);
       if (paymentSocketRef.current === socket) paymentSocketRef.current = null;
       socket.disconnect();
       console.log("🔌 Disconnected Socket.io Client for Cashier Payment Page");

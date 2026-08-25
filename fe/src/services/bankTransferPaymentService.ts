@@ -56,3 +56,27 @@ export const simulateBankTransferPayment = async (
 
   return response.data.data;
 };
+
+/** Mô phỏng gửi webhook biến động số dư từ ngân hàng (chế độ Sandbox/Demo). */
+export const simulateWebhookPayment = async (
+  paymentReference: string,
+  amount: number,
+  receivedAmount?: number,
+  simulateHack?: boolean,
+): Promise<BankTransferDemoResult> => {
+  const response = await api.post<ApiResponse<BankTransferDemoResult>>(
+    "/v1/payments/simulate-webhook",
+    {
+      payment_reference: paymentReference,
+      amount,
+      received_amount: receivedAmount !== undefined ? receivedAmount : amount,
+      simulate_hack: Boolean(simulateHack),
+    },
+  );
+
+  if (!response.data.success) {
+    throw new Error(response.data.message || "Mô phỏng webhook thất bại.");
+  }
+
+  return response.data.data;
+};

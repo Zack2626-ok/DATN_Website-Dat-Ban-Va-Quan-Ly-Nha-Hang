@@ -11,6 +11,7 @@ import {
   initiateBankTransfer,
   processBankTransferWebhook,
   simulateBankTransferPayment,
+  simulateBankTransferWebhook,
 } from "../controllers/payment.controller";
 import { authStaff, checkRole } from "../middlewares/authMiddleware";
 
@@ -27,6 +28,7 @@ router.post(
   checkRole(["manager", "cashier", "admin"]),
   simulateBankTransferPayment,
 );
+router.post("/simulate-webhook", simulateBankTransferWebhook);
 router.post("/webhook", processBankTransferWebhook);
 router.get("/:id", getPaymentById);
 router.post("/", createPayment);

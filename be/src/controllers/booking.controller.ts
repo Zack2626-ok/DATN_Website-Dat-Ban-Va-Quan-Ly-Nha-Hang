@@ -147,33 +147,40 @@ export const createBookingHandler = async (req: Request, res: Response): Promise
     });
 
     // Giữ lại đầy đủ cụm bàn đã được phân bổ để trả về cho khách và đồng bộ các màn hình.
-    let bookingWithTableAssignments = booking;
+    const fullBooking = (await db.getBookingById(booking.id)) || booking;
+    const bookingWithTableAssignments = fullBooking;
 
-    // Send Confirmation Email to Customer & generate local preview URL
-    let emailPreviewUrl = null;
-    try {
-      const fullBooking = await db.getBookingById(booking.id);
-      if (fullBooking) {
-        bookingWithTableAssignments = fullBooking;
-        // Đồng bộ booking đã giữ cụm cho màn hình phục vụ và quản lý, không đổi trạng thái vật lý của bàn.
-        io.emit("booking:created", { booking: fullBooking });
+    // 1. Đồng bộ booking đã giữ cụm cho màn hình phục vụ và quản lý ngay lập tức
+    io.emit("booking:created", { booking: fullBooking });
 
-        // Gửi thông báo Telegram tới nhóm Waiter
+    // 2. Tạo URL preview email cục bộ
+    const fileName = `booking_receipt_${fullBooking.confirmation_code || fullBooking.id}_received.html`;
+    const localEmailUrl = `/uploads/emails/${fileName}`;
+
+    // 3. Trả về phản hồi HTTP ngay lập tức cho khách hàng (< 50ms)
+    sendSuccess(
+      res,
+      { ...bookingWithTableAssignments, email_preview_url: localEmailUrl },
+      "Tạo đặt bàn thành công",
+      201
+    );
+
+    // 4. Xử lý gửi Telegram & Email ngầm ở background (không chặn trải nghiệm người dùng)
+    (async () => {
+      try {
         notifyWaitersAboutBooking(fullBooking).catch((tgErr) => {
           console.error("⚠️ Lỗi khi gửi Telegram cho nhóm Waiter:", (tgErr as Error).message);
         });
 
-        emailPreviewUrl = await sendBookingConfirmationEmail({
+        await sendBookingConfirmationEmail({
           ...fullBooking,
           guest_email: targetEmail || fullBooking.guest_email || undefined,
           notification_type: BOOKING_EMAIL_NOTIFICATION.RECEIVED,
         });
+      } catch (emailErr) {
+        console.error("Lỗi khi gửi email xác nhận đặt bàn ngầm:", emailErr);
       }
-    } catch (emailErr) {
-      console.error("Lỗi khi gửi email xác nhận đặt bàn:", emailErr);
-    }
-
-    sendSuccess(res, { ...bookingWithTableAssignments, email_preview_url: emailPreviewUrl }, "Tạo đặt bàn thành công", 201);
+    })();
   } catch (error) {
     console.error("Lỗi khi tạo đơn đặt bàn (createBookingHandler):", error);
     const msg = (error as Error).message;
@@ -241,16 +248,9 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
     }
 
     const bId = Number(id);
-    let emailPreviewUrl: string | null = null;
-    if (status === BOOKING_STATUS.CONFIRMED) {
-      const fullBooking = await db.getBookingById(bId);
-      if (fullBooking) {
-        emailPreviewUrl = await sendBookingConfirmationEmail({
-          ...fullBooking,
-          notification_type: BOOKING_EMAIL_NOTIFICATION.CONFIRMED,
-        });
-      }
-    }
+    const fileName = `booking_receipt_${bId}_confirmed.html`;
+    const localEmailUrl = `/uploads/emails/${fileName}`;
+
     const ioApp = req.app.get("io");
     if (ioApp && bId) {
       if (status === "arrived" || status === "completed") {
@@ -270,7 +270,25 @@ export const updateBookingStatusHandler = async (req: Request, res: Response): P
       ioApp.emit("table:merge_resolved", { bookingId: bId });
     }
 
-    sendSuccess(res, { id, status, email_preview_url: emailPreviewUrl }, "Cập nhật trạng thái đặt bàn thành công");
+    // Trả về phản hồi ngay lập tức cho màn hình quản lý/phục vụ
+    sendSuccess(res, { id, status, email_preview_url: localEmailUrl }, "Cập nhật trạng thái đặt bàn thành công");
+
+    // Xử lý gửi email xác nhận ngầm ở background
+    if (status === BOOKING_STATUS.CONFIRMED) {
+      (async () => {
+        try {
+          const fullBooking = await db.getBookingById(bId);
+          if (fullBooking) {
+            await sendBookingConfirmationEmail({
+              ...fullBooking,
+              notification_type: BOOKING_EMAIL_NOTIFICATION.CONFIRMED,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Lỗi khi gửi email xác nhận ngầm:", emailErr);
+        }
+      })();
+    }
   } catch (error) {
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }

@@ -2655,7 +2655,7 @@ export const reconcileBankTransferPayment = async (
   input: BankTransferReconciliationInput,
 ): Promise<BankTransferReconciliationResult> => {
   return withTransaction(async (connection) => {
-    // This must remain the first lock in the transaction: it serializes duplicate webhooks.
+    // 1. Row Locking: Lock payment record for update to prevent race conditions & duplicate processing
     const [paymentRows] = await connection.query<BankTransferPaymentRow[]>(
       `SELECT id, invoice_id, amount, payment_reference, status, expires_at
        FROM payments
@@ -2665,6 +2665,8 @@ export const reconcileBankTransferPayment = async (
     );
     const payment = paymentRows[0];
     if (!payment) return { status: "not_found" };
+
+    // Idempotency: If already completed, exit early without reprocessing
     if (payment.status === "completed") {
       return {
         status: "duplicate",
@@ -2672,6 +2674,7 @@ export const reconcileBankTransferPayment = async (
         amount: Number(payment.amount),
       };
     }
+
     if (
       payment.status === "expired" ||
       !payment.expires_at ||
@@ -2683,10 +2686,12 @@ export const reconcileBankTransferPayment = async (
       );
       return { status: "expired", invoiceId: payment.invoice_id };
     }
-    if (Number(payment.amount) !== input.receivedAmount) {
+
+    // Underpayment Check: If customer paid less than required invoice amount
+    if (input.receivedAmount < Number(payment.amount)) {
       await connection.query(
         `UPDATE payments
-         SET status = 'failed', received_amount = ?, bank_transaction_id = ?, webhook_payload = ?
+         SET status = 'pending', received_amount = ?, bank_transaction_id = ?, webhook_payload = ?
          WHERE id = ?`,
         [
           input.receivedAmount,
@@ -2696,11 +2701,13 @@ export const reconcileBankTransferPayment = async (
         ],
       );
       return {
-        status: "amount_mismatch",
+        status: "underpaid",
         invoiceId: payment.invoice_id,
         amount: Number(payment.amount),
+        receivedAmount: input.receivedAmount,
       };
     }
+
     if (input.bankTransactionId) {
       const [duplicateTransactionRows] = await connection.query<
         BankTransferPaymentRow[]
@@ -2733,6 +2740,7 @@ export const reconcileBankTransferPayment = async (
       [invoice.order_id],
     );
 
+    // 2. Update payment, invoice, and order statuses
     await connection.query(
       `UPDATE payments
        SET status = 'completed', received_amount = ?, bank_transaction_id = ?,
@@ -2754,6 +2762,77 @@ export const reconcileBankTransferPayment = async (
       `UPDATE orders SET status = 'completed', closed_at = NOW() WHERE id = ?`,
       [invoice.order_id],
     );
+
+    // 3. BOM Inventory Deduction: Deduct raw ingredients for all items in this order
+    const [orderItems] = await connection.query<any[]>(
+      `SELECT menu_item_id, quantity FROM order_items WHERE order_id = ?`,
+      [invoice.order_id],
+    );
+
+    if (orderItems && orderItems.length > 0) {
+      for (const item of orderItems) {
+        const [recipes] = await connection.query<any[]>(
+          `SELECT ri.ingredient_id, ri.quantity as qty_per_item
+           FROM recipes r
+           JOIN recipe_items ri ON r.id = ri.recipe_id
+           WHERE r.menu_item_id = ?`,
+          [item.menu_item_id],
+        );
+
+        if (recipes && recipes.length > 0) {
+          for (const rec of recipes) {
+            const totalNeeded = Number(rec.qty_per_item) * Number(item.quantity);
+            if (totalNeeded <= 0) continue;
+
+            await connection.query(
+              `UPDATE ingredients SET current_stock = GREATEST(0, current_stock - ?) WHERE id = ?`,
+              [totalNeeded, rec.ingredient_id],
+            );
+
+            const [batches] = await connection.query<any[]>(
+              `SELECT id, remaining_quantity FROM stock_in
+               WHERE ingredient_id = ? AND remaining_quantity > 0
+               ORDER BY expiry_date ASC, created_at ASC`,
+              [rec.ingredient_id],
+            );
+
+            let remainingDeduct = totalNeeded;
+            for (const batch of batches) {
+              if (remainingDeduct <= 0) break;
+              const deductQty = Math.min(Number(batch.remaining_quantity), remainingDeduct);
+              await connection.query(
+                `UPDATE stock_in SET remaining_quantity = GREATEST(0, remaining_quantity - ?) WHERE id = ?`,
+                [deductQty, batch.id],
+              );
+              await connection.query(
+                `INSERT INTO stock_out (ingredient_id, stock_in_id, quantity, reason, note, created_by)
+                 VALUES (?, ?, ?, 'sale', ?, 1)`,
+                [
+                  rec.ingredient_id,
+                  batch.id,
+                  deductQty,
+                  `Xuất kho tự động khi thanh toán QR hóa đơn #${payment.invoice_id}`,
+                ],
+              );
+              remainingDeduct -= deductQty;
+            }
+
+            if (remainingDeduct > 0) {
+              await connection.query(
+                `INSERT INTO stock_out (ingredient_id, quantity, reason, note, created_by)
+                 VALUES (?, ?, 'sale', ?, 1)`,
+                [
+                  rec.ingredient_id,
+                  remainingDeduct,
+                  `Xuất kho tự động khi thanh toán QR hóa đơn #${payment.invoice_id} (không đủ lô)`,
+                ],
+              );
+            }
+          }
+        }
+      }
+    }
+
     return {
       status: "completed",
       invoiceId: payment.invoice_id,
@@ -4048,10 +4127,12 @@ export interface BankTransferReconciliationResult {
     | "expired"
     | "not_found"
     | "amount_mismatch"
+    | "underpaid"
     | "already_paid";
   invoiceId?: number;
   tableId?: number;
   amount?: number;
+  receivedAmount?: number;
 }
 
 export const createBooking = async (data: any): Promise<any> => {
