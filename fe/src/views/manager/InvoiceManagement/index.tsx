@@ -43,6 +43,7 @@ interface PaymentHistoryRecord {
   order_code?: string;
   amount: number;
   originalAmount?: number;
+  netAmount?: number;
   paymentMethod: string;
   status: string;
   has_refund?: boolean;
@@ -740,10 +741,11 @@ export const InvoiceManagement: React.FC = () => {
   const stats = useMemo(() => {
     if (activeTab === "history") {
       const completedList = payments.filter((p) => p.status === "completed");
-      const totalRev = completedList.reduce((sum, p) => sum + Number(p.amount), 0);
+      const totalRev = completedList.reduce((sum, p) => sum + Number(p.netAmount ?? (p.amount - (p.refunded_total || 0))), 0);
       const totalRefund = completedList.filter((p) => p.has_refund).reduce((sum, p) => sum + Number(p.refunded_total || 0), 0);
-      const transferRev = completedList.filter((p) => p.paymentMethod !== "cash").reduce((sum, p) => sum + Number(p.amount), 0);
-      const cashRev = completedList.filter((p) => p.paymentMethod === "cash").reduce((sum, p) => sum + Number(p.amount), 0);
+      const transferRev = completedList.filter((p) => p.paymentMethod !== "cash").reduce((sum, p) => sum + Number(p.netAmount ?? (p.amount - (p.refunded_total || 0))), 0);
+      const cashRev = completedList.filter((p) => p.paymentMethod === "cash").reduce((sum, p) => sum + Number(p.netAmount ?? (p.amount - (p.refunded_total || 0))), 0);
+      const cashRevOriginal = completedList.filter((p) => p.paymentMethod === "cash").reduce((sum, p) => sum + Number(p.amount), 0);
 
       return {
         count: completedList.length,
@@ -755,7 +757,7 @@ export const InvoiceManagement: React.FC = () => {
         card3Label: "Doanh thu Tiền mặt",
         card3Value: formatCurrency(cashRev),
         card4Label: "Tiền mặt Thực thu (Két)",
-        card4Value: formatCurrency(cashRev - totalRefund),
+        card4Value: formatCurrency(cashRevOriginal - totalRefund),
       };
     } else {
       const totalExp = filteredExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -952,7 +954,7 @@ export const InvoiceManagement: React.FC = () => {
         "Mã Hóa Đơn": p.order_code || p.id,
         "Khách Hàng": p.guest_name || "Khách vãng lai",
         "Bàn / Khu Vực": p.table_name || "Khách lẻ",
-        "Tổng Tiền": formatCurrency(p.amount),
+        "Tổng Tiền": formatCurrency(p.netAmount ?? (p.amount - (p.refunded_total || 0))),
         "Trạng Thái": "Đã thanh toán",
         "Phương Thức Thanh Toán": method,
         "Thời Gian Thanh Toán": formatDateTime(p.completedAt || p.createdAt)
@@ -1600,7 +1602,9 @@ export const InvoiceManagement: React.FC = () => {
                         </td>
                         <td className="px-3.5 py-3 whitespace-nowrap">{p.table_name || "Khách lẻ"}</td>
                         <td className="px-3.5 py-3 whitespace-nowrap">
-                          <span className="font-bold text-emerald-600">+{formatCurrency(p.amount)}</span>
+                          <span className="font-bold text-emerald-600">
+                            +{formatCurrency(p.netAmount ?? (p.amount - (p.refunded_total || 0)))}
+                          </span>
                         </td>
                         <td className="px-3.5 py-3 whitespace-nowrap">
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[10px] font-bold text-emerald-700 bg-emerald-50 border-emerald-200">
@@ -1899,6 +1903,18 @@ export const InvoiceManagement: React.FC = () => {
                   <span>TỔNG THANH TOÁN:</span>
                   <span className="text-emerald-600">
                     {formatCurrency(selectedInvoice.totalAmount)}
+                  </span>
+                </div>
+                {selectedInvoice.has_refund && selectedInvoice.refunded_total ? (
+                  <div className="flex justify-between text-red-650 font-bold">
+                    <span>Đã hoàn tiền món:</span>
+                    <span>-{formatCurrency(selectedInvoice.refunded_total)}</span>
+                  </div>
+                ) : null}
+                <div className="border-t border-slate-200 my-1 pt-1.5 flex justify-between font-black text-sm text-[#3E2016]">
+                  <span>THỰC THU SAU HOÀN:</span>
+                  <span className="text-emerald-600 font-bold">
+                    {formatCurrency(selectedInvoice.totalAmount - (selectedInvoice.refunded_total || 0))}
                   </span>
                 </div>
               </div>

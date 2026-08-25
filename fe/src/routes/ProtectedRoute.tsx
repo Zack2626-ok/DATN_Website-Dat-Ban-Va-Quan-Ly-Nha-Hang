@@ -1,4 +1,5 @@
 import React from "react";
+import { Navigate } from "react-router-dom";
 import { useAppSelector } from "../store/hooks";
 import type { UserRole } from "../interfaces/auth";
 
@@ -8,8 +9,8 @@ interface Props {
   requireCheckIn?: boolean;
 }
 
-export default function ProtectedRoute({ children }: Props) {
-  const { isLoading } = useAppSelector((state) => state.auth);
+export default function ProtectedRoute({ children, allowedRoles }: Props) {
+  const { user, isLoading } = useAppSelector((state) => state.auth);
 
   if (isLoading) {
     return (
@@ -21,17 +22,17 @@ export default function ProtectedRoute({ children }: Props) {
   }
 
   // Chưa đăng nhập → về trang đăng nhập nhân viên
-  // if (!user) {
-  //   return <Navigate to="/auth/login" replace />;
-  // }
+  if (!user) {
+    return <Navigate to="/auth/login" replace />;
+  }
 
-  // // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
-  // if (allowedRoles && allowedRoles.length > 0) {
-  //   const role = user.role ? (user.role.toLowerCase() as UserRole) : ("" as UserRole);
-  //   if (!allowedRoles.map((r) => r.toLowerCase()).includes(role)) {
-  //     return <Navigate to="/403" replace />;
-  //   }
-  // }
+  // Đã đăng nhập nhưng không đúng role → redirect về trang báo lỗi 403
+  if (allowedRoles && allowedRoles.length > 0) {
+    const role = user.role ? (user.role.toLowerCase() as UserRole) : ("" as UserRole);
+    if (!allowedRoles.map((r) => r.toLowerCase()).includes(role)) {
+      return <Navigate to="/403" replace />;
+    }
+  }
 
   return <>{children}</>;
 }

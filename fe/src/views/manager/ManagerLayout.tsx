@@ -130,15 +130,6 @@ export const ManagerLayout: React.FC = () => {
               <span>{bookingValidationEnabled ? "Giới hạn giờ: BẬT" : "Giới hạn giờ: TẮT"}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => navigate("/checkin")}
-              title="Chấm công vào hoặc ra"
-              className="hidden sm:flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-extrabold text-amber-700 transition-colors hover:bg-amber-100"
-            >
-              <Timer size={14} />
-              Chấm công
-            </button>
 
             {/* User Profile Card */}
             <div className="flex items-center gap-3 bg-white/90 backdrop-blur-md border border-white/80 rounded-full pl-3 pr-1.5 py-1.5 shadow-xs">

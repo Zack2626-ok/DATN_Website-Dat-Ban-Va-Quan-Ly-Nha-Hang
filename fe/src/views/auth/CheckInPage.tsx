@@ -61,6 +61,10 @@ export default function CheckInPage() {
   };
 
   useEffect(() => {
+    if (user && (user.role === "admin" || user.role === "manager")) {
+      redirectToWork(0);
+      return;
+    }
     const checkStatus = async () => {
       try {
         const status = await getAttendanceStatus();
