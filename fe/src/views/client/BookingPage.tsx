@@ -127,7 +127,6 @@ export const BookingPage: React.FC = () => {
     phone?: string;
     email?: string;
   }>({});
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const handlePayDeposit = async () => {
     if (!createdBooking?.id) return;
@@ -280,27 +279,15 @@ export const BookingPage: React.FC = () => {
       setErrors((prevErr) => ({ ...prevErr, [key]: fieldErrors[key] }));
       return next;
     });
-    setTouched((prev) => ({ ...prev, [key]: true }));
   };
 
-  const handleBlur = (key: string) => {
-    setTouched((prev) => ({ ...prev, [key]: true }));
+  const handleBlur = (_key: string) => {
     const formErrors = validateBookingForm();
     setErrors(formErrors);
   };
 
   const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Mark all fields as touched
-    setTouched({
-      date: true,
-      time: true,
-      guests: true,
-      name: true,
-      phone: true,
-      email: true,
-    });
 
     const formErrors = validateBookingForm();
     setErrors(formErrors);
