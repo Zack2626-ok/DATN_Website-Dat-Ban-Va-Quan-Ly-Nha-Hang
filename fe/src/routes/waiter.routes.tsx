@@ -4,7 +4,6 @@ import {
   WaiterLayout,
   WaiterTableMap,
   OrderPage,
-  OrderTableListPage,
   WaiterBookingListPage,
 } from "../views/waiter";
 
