@@ -106,6 +106,14 @@ export const CashierPaymentPage: React.FC = () => {
       }
     };
 
+    const handleSettingsUpdated = (info: any) => {
+      if (info) {
+        setRestaurantInfo(info);
+        restaurantInfoRef.current = info;
+      }
+      triggerRefresh();
+    };
+
     socket.on("table:status_changed", triggerRefresh);
     socket.on("table:transferred", triggerRefresh);
     socket.on("table:merged", triggerRefresh);
@@ -117,6 +125,8 @@ export const CashierPaymentPage: React.FC = () => {
     socket.on("payment:updated", triggerRefresh);
     socket.on("invoice:updated", triggerRefresh);
     socket.on("invoice_refunded", triggerRefresh);
+    socket.on("settings_updated", handleSettingsUpdated);
+    socket.on("restaurant_info_updated", handleSettingsUpdated);
     socket.on("payment:success", handleBankTransferSuccess);
     socket.on("payment:failed", handleBankTransferFailed);
 
@@ -133,6 +143,8 @@ export const CashierPaymentPage: React.FC = () => {
       socket.off("payment:updated", triggerRefresh);
       socket.off("invoice:updated", triggerRefresh);
       socket.off("invoice_refunded", triggerRefresh);
+      socket.off("settings_updated");
+      socket.off("restaurant_info_updated");
       socket.off("payment:success", handleBankTransferSuccess);
       socket.off("payment:failed", handleBankTransferFailed);
       if (paymentSocketRef.current === socket) paymentSocketRef.current = null;
