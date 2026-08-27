@@ -75,15 +75,17 @@ export const PaymentModal: React.FC<Props> = ({
   const [pointsToUse, setPointsToUse] = useState<number>(0);
 
   useEffect(() => {
-    getRestaurantInfo()
-      .then((info) => {
-        if (info) {
-          setVatRate(info.tax_rate ?? 8);
-        }
-        setResInfo(info);
-      })
-      .catch(() => {});
-  }, []);
+    if (isOpen) {
+      getRestaurantInfo()
+        .then((info) => {
+          if (info && info.tax_rate !== undefined) {
+            setVatRate(Number(info.tax_rate));
+          }
+          setResInfo(info);
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
