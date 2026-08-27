@@ -12,7 +12,6 @@ export const AccessDeniedPage: React.FC = () => {
     const role = user.role ? user.role.toLowerCase() : "";
     switch (role) {
       case "admin":
-        return "/admin";
       case "manager":
         return "/manager/dashboard";
       case "waiter":

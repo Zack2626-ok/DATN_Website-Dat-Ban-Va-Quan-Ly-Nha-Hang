@@ -6,7 +6,7 @@ import { clockInApi, clockOutApi, getAttendanceStatus } from "../../services/att
 import { CheckCircle2, Clock, LogOut, Timer } from "lucide-react";
 
 const roleRoutes: Record<string, string> = {
-  admin: "/admin",
+  admin: "/manager",
   manager: "/manager",
   waiter: "/waiter",
   cashier: "/cashier",
