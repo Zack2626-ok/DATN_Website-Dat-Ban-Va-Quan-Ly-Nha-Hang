@@ -145,15 +145,6 @@ export const isDbAvailable = (): boolean => dbAvailable;
 
 const MOCK_USERS: User[] = [
   {
-    id: "1",
-    full_name: "System Admin",
-    email: "admin@gmail.com",
-    password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa",
-    role_name: "admin",
-    phone: "0900000001",
-    createdAt: new Date().toISOString(),
-  },
-  {
     id: "2",
     full_name: "Restaurant Manager",
     email: "manager@gmail.com",
@@ -8029,7 +8020,7 @@ export const updateEvent = async (
 
 // ===== USER ROLE & WORKSPACE OPERATIONS =====
 export const getRoles = async (): Promise<any[]> => {
-  return query("SELECT * FROM roles ORDER BY id ASC");
+  return query("SELECT * FROM roles WHERE name != 'admin' ORDER BY id ASC");
 };
 
 export const getUsers = async (): Promise<any[]> => {
@@ -8037,7 +8028,7 @@ export const getUsers = async (): Promise<any[]> => {
     SELECT u.id, u.role_id, u.employee_code, u.full_name, u.email, u.phone, u.avatar_url, u.status, u.hourly_rate, u.is_deleted, u.created_at, r.name AS role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
-    WHERE u.is_deleted = 0
+    WHERE u.is_deleted = 0 AND r.name != 'admin' AND u.email != 'admin@gmail.com'
     ORDER BY u.created_at DESC
   `);
 };

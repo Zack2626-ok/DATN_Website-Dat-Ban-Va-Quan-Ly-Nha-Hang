@@ -1,7 +1,6 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ClientRoutes } from "./client.routes";
-import { AdminRoutes } from "./admin.routes";
 import { ManagerRoutes } from "./manager.routes";
 import { WaiterRoutes } from "./waiter.routes";
 import { CashierRoutes } from "./cashier.routes";
@@ -20,8 +19,10 @@ export const AppRoutes: React.FC = () => {
       {/* Check-in (chấm công) page — no ProtectedRoute wrapper needed */}
       <Route path="/checkin" element={<CheckInPage />} />
 
+      {/* Redirect /admin to /manager */}
+      <Route path="/admin/*" element={<Navigate to="/manager/dashboard" replace />} />
+
       {/* Staff Admin Workspace Routes for each Actor */}
-      {AdminRoutes()}
       {ManagerRoutes()}
       {WaiterRoutes()}
       {CashierRoutes()}

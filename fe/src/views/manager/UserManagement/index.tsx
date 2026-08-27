@@ -31,8 +31,16 @@ const UserManagement: React.FC = () => {
         userService.getUsers(),
         userService.getRoles(),
       ]);
-      setUsers(usersRes.data.filter((u) => !u.is_deleted));
-      setRoles(rolesRes.data);
+      setUsers(
+        usersRes.data.filter(
+          (u) =>
+            !u.is_deleted &&
+            u.role?.name !== "admin" &&
+            (u as any).role_name !== "admin" &&
+            u.email !== "admin@gmail.com"
+        )
+      );
+      setRoles(rolesRes.data.filter((r) => r.name !== "admin"));
     } catch (err) {
       console.error(err);
       alert("Không thể tải dữ liệu");

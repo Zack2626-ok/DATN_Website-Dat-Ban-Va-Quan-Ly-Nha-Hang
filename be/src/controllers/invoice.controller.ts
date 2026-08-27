@@ -102,46 +102,72 @@ export const getAllInvoices = async (req: Request, res: Response): Promise<void>
   try {
     const { status, search, dateFrom, dateTo } = req.query;
 
+    let systemTaxRate = 8;
+    try {
+      const resInfo = await db.getRestaurantInfo();
+      if (resInfo && resInfo.tax_rate !== undefined) {
+        systemTaxRate = Number(resInfo.tax_rate);
+      }
+    } catch {}
+
     let orders = await db.getAllResmanagerOrders();
     orders = assignOrderCodes(orders);
 
-    let invoices = orders.map((o: any) => ({
-      id: String(o.id),
-      order_code: o.order_code,
-      tableId: o.table_id ? String(o.table_id) : undefined,
-      tableName: o.table_name || undefined,
-      customerName: o.guest_name || o.customer_name || undefined,
-      customerPhone: o.guest_phone || o.customer_phone || undefined,
-      customerEmail: o.customer_email || undefined,
-      guestCount: o.guest_count || o.items?.length || 0,
-      staffName: o.staff_name || undefined,
-      items: (o.items || []).map((item: any) => ({
-        menuItemId: String(item.menu_item_id),
-        name: item.item_name || `Món #${item.menu_item_id}`,
-        price: Number(item.unit_price),
-        quantity: item.quantity,
-        status: item.status,
-      })),
-      totalAmount: o.totalAmount || 0,
-      depositAmount: Number(o.deposit_amount) || 0,
-      subtotal: o.subtotal !== undefined ? o.subtotal : o.totalAmount || 0,
-      tax: o.tax || 0,
-      discount: o.discount || 0,
-      vatRate: o.vatRate || 0,
-      status: (o.table_status === "pending_payment" || o.status === "pending_payment" || o.is_early_payment) ? "pending_payment" : o.status,
-      invoiceStatus:
-        o.status === "completed" || o.status === "paid"
-          ? "paid"
-          : o.status === "cancelled"
-            ? "cancelled"
-            : (o.status === "pending_payment" || o.table_status === "pending_payment" || o.is_early_payment)
-              ? "pending"
-              : "unpaid",
-      createdAt: o.created_at,
-      orderType: o.order_type,
-      paymentMethod: o.paymentMethod || undefined,
-      is_early_payment: !!o.is_early_payment,
-    }));
+    let invoices = orders.map((o: any) => {
+      const isPaid = o.status === "completed" || o.status === "paid";
+      const subtotal = o.subtotal !== undefined ? Number(o.subtotal) : Number(o.totalAmount || 0);
+      const vatRate = isPaid
+        ? Number(o.vatRate) || 0
+        : o.vatRate !== undefined && o.vatRate !== null
+          ? Number(o.vatRate)
+          : systemTaxRate;
+      const tax = isPaid ? Number(o.tax) || 0 : Math.round(subtotal * (vatRate / 100));
+
+      return {
+        id: String(o.id),
+        order_code: o.order_code,
+        tableId: o.table_id ? String(o.table_id) : undefined,
+        tableName: o.table_name || undefined,
+        customerName: o.guest_name || o.customer_name || undefined,
+        customerPhone: o.guest_phone || o.customer_phone || undefined,
+        customerEmail: o.customer_email || undefined,
+        guestCount: o.guest_count || o.items?.length || 0,
+        staffName: o.staff_name || undefined,
+        items: (o.items || []).map((item: any) => ({
+          menuItemId: String(item.menu_item_id),
+          name: item.item_name || `Món #${item.menu_item_id}`,
+          price: Number(item.unit_price),
+          quantity: item.quantity,
+          status: item.status,
+        })),
+        totalAmount: o.totalAmount || 0,
+        depositAmount: Number(o.deposit_amount) || 0,
+        subtotal,
+        tax,
+        discount: o.discount || 0,
+        vatRate,
+        status:
+          o.table_status === "pending_payment" ||
+          o.status === "pending_payment" ||
+          o.is_early_payment
+            ? "pending_payment"
+            : o.status,
+        invoiceStatus:
+          o.status === "completed" || o.status === "paid"
+            ? "paid"
+            : o.status === "cancelled"
+              ? "cancelled"
+              : o.status === "pending_payment" ||
+                  o.table_status === "pending_payment" ||
+                  o.is_early_payment
+                ? "pending"
+                : "unpaid",
+        createdAt: o.created_at,
+        orderType: o.order_type,
+        paymentMethod: o.paymentMethod || undefined,
+        is_early_payment: !!o.is_early_payment,
+      };
+    });
 
     // Nếu không có món nào (0 món) thì không đưa vào thu ngân
     invoices = invoices.filter((inv: any) => inv.items && inv.items.length > 0);

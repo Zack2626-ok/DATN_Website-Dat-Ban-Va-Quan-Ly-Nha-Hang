@@ -3,7 +3,6 @@ import {
   Building2,
   Clock,
   Percent,
-  Wallet,
   Landmark,
   Save,
   CheckCircle2,
@@ -11,14 +10,6 @@ import {
 } from "lucide-react";
 import { managerDashboardService } from "../../../services/managerDashboardService";
 import type { RestaurantInfo } from "../../../services/restaurantInfoService";
-
-const PAYMENT_METHOD_OPTIONS: { value: string; label: string }[] = [
-  { value: "cash", label: "Tiền mặt" },
-  { value: "bank_transfer", label: "Chuyển khoản" },
-  { value: "card", label: "Thẻ ngân hàng" },
-  { value: "momo", label: "Ví MoMo" },
-  { value: "vnpay", label: "Cổng VNPay" },
-];
 
 type SectionCardProps = {
   icon: React.ReactNode;
@@ -122,14 +113,14 @@ export const SystemSettingsPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-600">Cấu hình hệ thống</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Thông tin nhà hàng, giờ hoạt động, thuế/phí và cấu hình thanh toán
+            Thông tin nhà hàng, giờ hoạt động, thuế VAT và thông tin thanh toán
           </p>
         </div>
         <button
           type="button"
           onClick={handleSave}
           disabled={saving || !settings}
-          className="inline-flex items-center justify-center gap-2 self-start rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 sm:self-auto"
+          className="inline-flex items-center justify-center gap-2 self-start rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 sm:self-auto cursor-pointer"
         >
           <Save size={16} />
           {saving ? "Đang lưu..." : "Lưu cấu hình"}
@@ -164,39 +155,14 @@ export const SystemSettingsPage: React.FC = () => {
       </SectionCard>
 
       {/* Giờ hoạt động */}
-      <SectionCard icon={<Clock size={18} />} title="Giờ hoạt động" description="Khung giờ mở cửa và khung giờ khuyến mãi">
-        <Field label="Giờ mở cửa" value={settings?.opening_hours ?? ""} onChange={(v) => handleChange("opening_hours", v)} placeholder="VD: Thứ 2 - Chủ nhật: 10:00 - 22:00" full />
-        <Field label="Happy hour" value={settings?.happy_hour ?? ""} onChange={(v) => handleChange("happy_hour", v)} placeholder="VD: 15:00 - 17:00" />
+      <SectionCard icon={<Clock size={18} />} title="Giờ hoạt động" description="Khung giờ mở cửa và múi giờ hệ thống">
+        <Field label="Giờ mở cửa" value={settings?.opening_hours ?? ""} onChange={(v) => handleChange("opening_hours", v)} placeholder="VD: Thứ 2 - Chủ nhật: 10:00 - 22:00" />
         <Field label="Múi giờ" value={settings?.timezone ?? ""} onChange={(v) => handleChange("timezone", v)} placeholder="VD: Asia/Ho_Chi_Minh" />
       </SectionCard>
 
-      {/* Thuế & phí */}
-      <SectionCard icon={<Percent size={18} />} title="Thuế & phí dịch vụ" description="Áp dụng cho tất cả hóa đơn thanh toán">
+      {/* Thuế VAT */}
+      <SectionCard icon={<Percent size={18} />} title="Thuế VAT" description="Thuế suất VAT (%) áp dụng cho các đơn hàng và hóa đơn thanh toán">
         <Field label="VAT (%)" value={settings?.tax_rate ?? 0} onChange={(v) => handleChange("tax_rate", Number(v))} type="number" />
-        <Field label="Phí dịch vụ (%)" value={settings?.service_fee_rate ?? 0} onChange={(v) => handleChange("service_fee_rate", Number(v))} type="number" />
-      </SectionCard>
-
-      {/* Cấu hình thanh toán */}
-      <SectionCard icon={<Wallet size={18} />} title="Cấu hình thanh toán" description="Phương thức thanh toán mặc định được đề xuất tại quầy thu ngân">
-        <label className="flex flex-col gap-2 text-sm text-slate-700 md:col-span-2">
-          <span className="font-semibold">Phương thức thanh toán mặc định</span>
-          <div className="flex flex-wrap gap-2">
-            {PAYMENT_METHOD_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => handleChange("default_payment_method", opt.value)}
-                className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                  settings?.default_payment_method === opt.value
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </label>
       </SectionCard>
 
       {/* Thông tin ngân hàng nhận chuyển khoản */}

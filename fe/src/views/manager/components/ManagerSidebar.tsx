@@ -429,12 +429,12 @@ export const ManagerSidebar: React.FC = () => {
                 </span>
               </Link>
 
-              {/* Admin Settings */}
+              {/* Settings */}
               {canManageSystem && (
                 <Link
-                  to="/admin/settings"
+                  to="/manager/settings"
                   className={`group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 ${
-                    isRouteActive("/admin/settings")
+                    isRouteActive("/manager/settings")
                       ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
                       : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
                   }`}
@@ -444,15 +444,12 @@ export const ManagerSidebar: React.FC = () => {
                       size={18}
                       strokeWidth={1.5}
                       className={
-                        isRouteActive("/admin/settings")
+                        isRouteActive("/manager/settings")
                           ? "text-[#FFFFFF]"
                           : "text-[#1A1A1A]"
                       }
                     />
                     Cài đặt nhà hàng
-                  </span>
-                  <span className="rounded-full bg-[#FFFFFF] px-2 py-0.5 text-[10px] font-bold text-[#8A8A8A] border border-[#8A8A8A]/20">
-                    Admin
                   </span>
                 </Link>
               )}
