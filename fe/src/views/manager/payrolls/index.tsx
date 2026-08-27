@@ -349,11 +349,6 @@ const PayrollPage: React.FC = () => {
                    <td style="text-align: right; font-weight: 600;">${Number(p.total_hours).toFixed(2)} giờ × ${Number(p.hourly_rate).toLocaleString('vi-VN')} đ/giờ</td>
                    <td style="text-align: right; font-weight: 600;">${Math.round(Number(p.total_hours) * Number(p.hourly_rate)).toLocaleString('vi-VN')} đ</td>
                  </tr>
-                 <tr>
-                   <td>Thưởng làm việc ngày lễ Tết (lịch VN)</td>
-                   <td style="text-align: right; font-weight: 600;">Hệ số x3 cho giờ làm ngày lễ (cộng thêm x2)</td>
-                   <td style="text-align: right; font-weight: 600;">${Number(p.holiday_bonus || 0).toLocaleString('vi-VN')} đ</td>
-                 </tr>
                  <tr class="grand-total-row">
                    <td class="grand-total-label">Tổng cộng lương thực nhận</td>
                    <td style="text-align: right; color: #64748b;">-</td>
@@ -410,7 +405,6 @@ const PayrollPage: React.FC = () => {
       ["", "Tổng số giờ làm (h):", Number(p.total_hours), ""],
       ["", "Lương mỗi giờ (đ/h):", Number(p.hourly_rate), ""],
       ["", "Lương cơ bản theo giờ (đ):", Number(p.total_hours) * Number(p.hourly_rate), ""],
-      ["", "Thưởng ngày lễ Tết (đ):", Number(p.holiday_bonus || 0), ""],
       ["", "Tổng tiền lương thực nhận (đ):", Number(p.total_salary), ""],
       [""],
       ["", "III. XÁC NHẬN CHI TRẢ", "", ""],
@@ -431,7 +425,6 @@ const PayrollPage: React.FC = () => {
     if (worksheet["C13"]) worksheet["C13"].z = "#,##0\" đ\"";
     if (worksheet["C14"]) worksheet["C14"].z = "#,##0\" đ\"";
     if (worksheet["C15"]) worksheet["C15"].z = "#,##0\" đ\"";
-    if (worksheet["C16"]) worksheet["C16"].z = "#,##0\" đ\"";
 
     worksheet["!cols"] = [
       { wch: 4 },   // Column A (indent spacer)
@@ -464,7 +457,6 @@ const PayrollPage: React.FC = () => {
         "Chức vụ",
         "Số giờ làm (h)",
         "Lương / Giờ (đ)",
-        "Thưởng lễ Tết (đ)",
         "Tổng lương thực nhận (đ)",
         "Trạng thái",
         "Ngày thanh toán"
@@ -479,14 +471,12 @@ const PayrollPage: React.FC = () => {
       p.role_name.charAt(0).toUpperCase() + p.role_name.slice(1),
       Number(p.total_hours),
       Number(p.hourly_rate),
-      Number(p.holiday_bonus || 0),
       Number(p.total_salary),
       p.status === 'paid' ? 'Đã thanh toán' : 'Chờ thanh toán',
       p.paid_at ? new Date(p.paid_at).toLocaleDateString('vi-VN') : '-'
     ]);
 
     const totalHours = payrolls.reduce((sum, p) => sum + Number(p.total_hours), 0);
-    const totalHolidayBonus = payrolls.reduce((sum, p) => sum + Number(p.holiday_bonus || 0), 0);
     const totalSalary = payrolls.reduce((sum, p) => sum + Number(p.total_salary), 0);
 
     const totalRow = [
@@ -497,7 +487,6 @@ const PayrollPage: React.FC = () => {
       "",
       totalHours,
       "",
-      totalHolidayBonus,
       totalSalary,
       "",
       ""
@@ -531,19 +520,16 @@ const PayrollPage: React.FC = () => {
     for (let r = startRowIdx; r <= endRowIdx; r++) {
       const hoursCell = worksheet[`F${r}`];
       const rateCell = worksheet[`G${r}`];
-      const bonusCell = worksheet[`H${r}`];
-      const salaryCell = worksheet[`I${r}`];
+      const salaryCell = worksheet[`H${r}`];
 
       if (hoursCell) hoursCell.z = "0.00";
       if (rateCell) rateCell.z = "#,##0\" đ\"";
-      if (bonusCell) bonusCell.z = "#,##0\" đ\"";
       if (salaryCell) salaryCell.z = "#,##0\" đ\"";
     }
 
     const totalRowIdx = endRowIdx + 1;
     if (worksheet[`F${totalRowIdx}`]) worksheet[`F${totalRowIdx}`].z = "0.00";
     if (worksheet[`H${totalRowIdx}`]) worksheet[`H${totalRowIdx}`].z = "#,##0\" đ\"";
-    if (worksheet[`I${totalRowIdx}`]) worksheet[`I${totalRowIdx}`].z = "#,##0\" đ\"";
 
     worksheet["!cols"] = [
       { wch: 4 },   // Column A (indent spacer)
@@ -553,10 +539,9 @@ const PayrollPage: React.FC = () => {
       { wch: 15 },  // Column E: Chức vụ
       { wch: 18 },  // Column F: Số giờ làm
       { wch: 18 },  // Column G: Lương / Giờ
-      { wch: 18 },  // Column H: Thưởng lễ Tết
-      { wch: 25 },  // Column I: Tổng lương
-      { wch: 18 },  // Column J: Trạng thái
-      { wch: 18 }   // Column K: Ngày thanh toán
+      { wch: 25 },  // Column H: Tổng lương
+      { wch: 18 },  // Column I: Trạng thái
+      { wch: 18 }   // Column J: Ngày thanh toán
     ];
 
     XLSX.writeFile(workbook, `Bang_Luong_Tong_Hop_T${month}_${year}.xlsx`);
@@ -576,7 +561,6 @@ const PayrollPage: React.FC = () => {
     }
 
     const totalHours = payrolls.reduce((sum, p) => sum + Number(p.total_hours), 0);
-    const totalHolidayBonus = payrolls.reduce((sum, p) => sum + Number(p.holiday_bonus || 0), 0);
     const totalSalary = payrolls.reduce((sum, p) => sum + Number(p.total_salary), 0);
 
     const rowsHtml = payrolls.map((p, index) => `
@@ -587,7 +571,6 @@ const PayrollPage: React.FC = () => {
         <td style="text-transform: capitalize; padding: 10px 8px;">${p.role_name}</td>
         <td style="text-align: right; padding: 10px 8px;">${Number(p.total_hours).toFixed(2)}</td>
         <td style="text-align: right; padding: 10px 8px;">${Number(p.hourly_rate).toLocaleString('vi-VN')} đ</td>
-        <td style="text-align: right; padding: 10px 8px; color: #b45309; font-weight: 500;">${Number(p.holiday_bonus || 0).toLocaleString('vi-VN')} đ</td>
         <td style="text-align: right; font-weight: 700; padding: 10px 8px;">${Number(p.total_salary).toLocaleString('vi-VN')} đ</td>
       </tr>
     `).join("");
@@ -713,33 +696,16 @@ const PayrollPage: React.FC = () => {
                 padding: 0;
                 max-width: 100%;
               }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="payslip-container">
-            <div class="header-section">
-              <div>
-                <div class="brand-name">🍽️ RESMANAGER BISTRO</div>
-                <div class="brand-sub">Hệ thống quản lý nhà hàng thông minh</div>
-              </div>
-              <div class="document-title">
-                <h1>BẢNG TỔNG HỢP THANH TOÁN LƯƠNG NHÂN VIÊN</h1>
-                <p>Kỳ lương: Tháng ${month} / Năm ${year}</p>
-              </div>
-            </div>
-
             <table class="details-table">
               <thead>
                 <tr>
                   <th style="width: 5%;">STT</th>
                   <th style="width: 10%;">Mã NV</th>
-                  <th style="width: 20%; text-align: left;">Họ và Tên</th>
-                  <th style="width: 12%; text-align: left;">Chức Vụ</th>
-                  <th style="width: 13%; text-align: right;">Số Giờ Làm (h)</th>
-                  <th style="width: 13%; text-align: right;">Lương / Giờ</th>
-                  <th style="width: 13%; text-align: right;">Thưởng Lễ Tết</th>
-                  <th style="width: 14%; text-align: right;">Tổng Thực Nhận</th>
+                  <th style="width: 25%; text-align: left;">Họ và Tên</th>
+                  <th style="width: 15%; text-align: left;">Chức Vụ</th>
+                  <th style="width: 15%; text-align: right;">Số Giờ Làm (h)</th>
+                  <th style="width: 15%; text-align: right;">Lương / Giờ</th>
+                  <th style="width: 15%; text-align: right;">Tổng Thực Nhận</th>
                 </tr>
               </thead>
               <tbody>
@@ -748,7 +714,6 @@ const PayrollPage: React.FC = () => {
                   <td colspan="4" style="text-align: center; font-weight: 800;">TỔNG CỘNG LŨY KẾ</td>
                   <td style="text-align: right; font-weight: 800;">${totalHours.toFixed(2)}</td>
                   <td style="text-align: right; color: #64748b;">-</td>
-                  <td style="text-align: right; font-weight: 800; color: #b45309;">${totalHolidayBonus.toLocaleString('vi-VN')} đ</td>
                   <td style="text-align: right; font-weight: 800; color: #10b981;">${totalSalary.toLocaleString('vi-VN')} đ</td>
                 </tr>
               </tbody>
@@ -851,7 +816,6 @@ const PayrollPage: React.FC = () => {
                 <th className="px-6 py-4">Chức Vụ</th>
                 <th className="px-6 py-4 text-right">Số Giờ (h)</th>
                 <th className="px-6 py-4 text-right">Lương / Giờ</th>
-                <th className="px-6 py-4 text-right">Thưởng Lễ Tết</th>
                 <th className="px-6 py-4 text-right">Tổng Lương</th>
                 <th className="px-6 py-4 text-center">Trạng Thái</th>
                 <th className="px-6 py-4 text-center">Thao Tác</th>
@@ -860,13 +824,13 @@ const PayrollPage: React.FC = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                     Đang tải dữ liệu...
                   </td>
                 </tr>
               ) : payrolls.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                     Chưa có dữ liệu lương cho tháng này.
                   </td>
                 </tr>
@@ -874,7 +838,6 @@ const PayrollPage: React.FC = () => {
                 paginatedPayrolls.map((p) => {
                   const isPaid = p.status === "paid";
                   const displayHours = isPaid ? 0.0 : Number(p.total_hours || 0);
-                  const displayHolidayBonus = isPaid ? 0 : Number(p.holiday_bonus || 0);
                   const displaySalary = isPaid ? 0 : Number(p.total_salary || 0);
                   return (
                     <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
@@ -883,9 +846,6 @@ const PayrollPage: React.FC = () => {
                       <td className="px-6 py-4 text-sm text-gray-500 capitalize whitespace-nowrap">{p.role_name}</td>
                       <td className="px-6 py-4 text-sm text-right font-mono font-semibold whitespace-nowrap">{displayHours.toFixed(2)}</td>
                       <td className="px-6 py-4 text-sm text-right font-mono whitespace-nowrap">{Number(p.hourly_rate || 25000).toLocaleString('vi-VN')} đ</td>
-                      <td className="px-6 py-4 text-sm text-right text-amber-600 font-medium font-mono whitespace-nowrap">
-                        {displayHolidayBonus.toLocaleString('vi-VN')} đ
-                      </td>
                       <td className="px-6 py-4 font-semibold text-sm text-right text-gray-900 font-mono whitespace-nowrap">
                         {displaySalary.toLocaleString('vi-VN')} đ
                       </td>

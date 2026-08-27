@@ -225,9 +225,7 @@ const MenuManagement: React.FC = () => {
                   <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Giá bán
                   </th>
-                  <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
-                    Nhóm tùy chọn
-                  </th>
+
                   <th className="px-6 py-4 text-[11px] font-black text-[#8A8A8A] uppercase tracking-wider">
                     Trạm bếp
                   </th>
@@ -286,16 +284,7 @@ const MenuManagement: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Modifier Count */}
-                    <td className="px-6 py-3.5 whitespace-nowrap">
-                      {item.modifier_groups && item.modifier_groups.length > 0 ? (
-                        <span className="inline-flex items-center text-[11px] font-bold text-[#1A1A1A] bg-slate-100 px-3 py-1 rounded-full">
-                          {item.modifier_groups.length} tùy chọn
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-[#8A8A8A] italic">Không</span>
-                      )}
-                    </td>
+
 
                     {/* Kitchen Station */}
                     <td className="px-6 py-3.5 whitespace-nowrap">

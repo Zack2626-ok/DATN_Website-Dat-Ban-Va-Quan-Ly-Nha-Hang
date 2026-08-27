@@ -74,12 +74,6 @@ async function calculatePayrollInternal(month: number, year: number): Promise<vo
     `, [user.id, month, year]);
 
     if (existing.length > 0 && existing[0].status === "paid") {
-      // Khi đã thanh toán -> Reset số giờ làm và tổng lương về 0.0 theo yêu cầu
-      await db.query(`
-        UPDATE payrolls 
-        SET total_hours = 0, total_salary = 0 
-        WHERE id = ?
-      `, [existing[0].id]);
       continue;
     }
 
@@ -126,12 +120,11 @@ async function calculatePayrollInternal(month: number, year: number): Promise<vo
     }
 
     const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
-    const holidayHours = Math.round((holidayMinutes / 60) * 100) / 100;
     
-    // Thưởng ngày lễ: Thêm x2 lương (tổng cộng nhận x3 cho giờ làm ngày lễ)
-    const holidayBonus = Math.round(holidayHours * hourlyRate * 2);
+    // Thưởng ngày lễ: Đã bỏ theo yêu cầu
+    const holidayBonus = 0;
     const basicSalary = Math.round(totalHours * hourlyRate);
-    const totalSalary = basicSalary + holidayBonus;
+    const totalSalary = basicSalary;
 
     if (existing.length > 0) {
       // Nếu đã thanh toán rồi thì không tính lại
@@ -215,8 +208,8 @@ export const payrollController = {
       const { id } = req.params;
       await db.query(`
         UPDATE payrolls 
-        SET status = 'paid', paid_at = CURRENT_TIMESTAMP, total_hours = 0, total_salary = 0 
-        WHERE id = ?
+        SET status = 'paid', paid_at = CURRENT_TIMESTAMP 
+        WHERE id = ? AND status = 'pending'
       `, [id]);
       sendSuccess(res, null, "Cập nhật trạng thái thanh toán và reset giờ làm thành công!");
     } catch (error) {
