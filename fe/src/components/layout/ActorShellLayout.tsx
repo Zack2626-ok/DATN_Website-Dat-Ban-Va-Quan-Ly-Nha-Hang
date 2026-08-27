@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -59,6 +59,7 @@ const formatTime = (timeStr: string) => {
 };
 import { logoutAction } from "../../store/authSlice";
 import { getWaiterNotifications } from "../../services/waiterService";
+import { AppNotificationBanner, type AppNotification } from "../common/AppNotificationBanner";
 
 export interface NavLinkItem {
   to: string;
@@ -92,8 +93,17 @@ const WaiterNotificationBell: React.FC = () => {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 20000); // poll mỗi 20 giây
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchNotifications, 15000); // poll mỗi 15 giây
+
+    const handleKdsUpdate = () => {
+      fetchNotifications();
+    };
+
+    window.addEventListener("waiter_kds_updated", handleKdsUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("waiter_kds_updated", handleKdsUpdate);
+    };
   }, []);
 
   // Đóng dropdown khi click ra ngoài
@@ -118,6 +128,24 @@ const WaiterNotificationBell: React.FC = () => {
   const dismissAll = () =>
     setDismissed(new Set(notifications.map((n) => n.item_id)));
 
+  // Nhóm danh sách thông báo theo từng Bàn để dễ quan sát khi mang món ra
+  const groupedByTable = useMemo(() => {
+    const groups: { [key: string]: { tableName: string; tableId: number | null; orderId: number; items: any[] } } = {};
+    visible.forEach((item) => {
+      const key = `${item.table_id || 'no_table'}_${item.order_id}`;
+      if (!groups[key]) {
+        groups[key] = {
+          tableName: item.table_name ? `Bàn ${item.table_name}` : "Mang về / Tại quầy",
+          tableId: item.table_id,
+          orderId: item.order_id,
+          items: [],
+        };
+      }
+      groups[key].items.push(item);
+    });
+    return Object.values(groups);
+  }, [visible]);
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -132,20 +160,20 @@ const WaiterNotificationBell: React.FC = () => {
       >
         <Bell size={18} />
         {count > 0 && (
-          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-650 text-[9px] font-bold text-white px-1 shadow bg-red-600 animate-pulse">
+          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white px-1 shadow animate-pulse">
             {count > 9 ? "9+" : count}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-80 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute right-0 top-12 z-50 w-84 rounded-xl bg-white/95 backdrop-blur-xl border border-sky-100 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
             <div className="flex items-center gap-2">
               <UtensilsCrossed size={15} className="text-orange-500" />
               <span className="text-sm font-playfair font-bold text-sky-700 uppercase tracking-wider">
-                Món đã xong — cần mang ra
+                Món đã xong theo Bàn
               </span>
             </div>
             {count > 0 && (
@@ -158,9 +186,9 @@ const WaiterNotificationBell: React.FC = () => {
             )}
           </div>
 
-          {/* List */}
-          <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
-            {visible.length === 0 ? (
+          {/* List grouped by table */}
+          <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+            {groupedByTable.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center text-slate-500">
                 <CheckCircle
                   size={28}
@@ -169,46 +197,63 @@ const WaiterNotificationBell: React.FC = () => {
                 <p className="text-xs italic">Không có món nào cần mang ra</p>
               </div>
             ) : (
-              visible.map((n) => (
+              groupedByTable.map((group, idx) => (
                 <div
-                  key={n.item_id}
-                  className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-orange-50/40 hover:text-slate-900 transition-colors"
+                  key={idx}
+                  className="p-3.5 hover:bg-orange-50/30 transition-colors border-b border-slate-100 last:border-b-0"
                 >
-                  {/* Click vào phần text → điều hướng đến trang Order của bàn */}
-                  <Link
-                    to={
-                      n.table_id
-                        ? `/waiter/orders/${n.table_id}`
-                        : "/waiter/tables"
-                    }
-                    onClick={() => setOpen(false)}
-                    className="flex flex-1 items-start gap-3 min-w-0"
-                  >
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-50 text-orange-600 border border-orange-100">
-                      <UtensilsCrossed size={13} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-700 truncate">
-                        {n.item_name}
+                  <div className="flex items-start justify-between gap-2">
+                    <Link
+                      to={
+                        group.tableId
+                          ? `/waiter/orders/${group.tableId}`
+                          : "/waiter/tables"
+                      }
+                      onClick={() => setOpen(false)}
+                      className="flex-1 min-w-0 group cursor-pointer"
+                    >
+                      {/* Tiêu đề Bàn nổi bật */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-amber-500 text-white font-black text-xs px-2.5 py-0.5 rounded-md shadow-2xs group-hover:bg-amber-600 transition-colors">
+                          {group.tableName}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-400">
+                          Order #{group.orderId}
+                        </span>
+                      </div>
+
+                      {/* Danh sách các món nấu xong của bàn */}
+                      <div className="flex flex-col gap-1.5 pl-1">
+                        {group.items.map((item) => (
+                          <div
+                            key={item.item_id}
+                            className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                            <span className="truncate flex-1">{item.item_name}</span>
+                            <span className="font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] shrink-0">
+                              x{item.quantity}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <p className="text-[11px] text-amber-700 font-bold mt-2.5 flex items-center gap-1 group-hover:underline">
+                        <span>Nhấn để xem đơn bàn này</span>
+                        <span>→</span>
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {n.table_name
-                          ? `Bàn ${n.table_name}`
-                          : "Mang về / Tại quầy"}
-                        {" · "}Order #{n.order_id}
-                      </p>
-                      <p className="text-[10px] text-orange-600 font-medium mt-0.5">
-                        Nhấn để xem bàn →
-                      </p>
-                    </div>
-                  </Link>
-                  <button
-                    onClick={() => dismissOne(n.item_id)}
-                    className="shrink-0 rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-50 cursor-pointer"
-                    title="Bỏ qua"
-                  >
-                    <X size={13} />
-                  </button>
+                    </Link>
+
+                    <button
+                      onClick={() =>
+                        group.items.forEach((item) => dismissOne(item.item_id))
+                      }
+                      className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors mt-0.5"
+                      title="Đã phục vụ hết bàn này"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -218,7 +263,7 @@ const WaiterNotificationBell: React.FC = () => {
           {visible.length > 0 && (
             <div className="border-t border-slate-100 bg-slate-50/40 px-4 py-2.5 text-center">
               <p className="text-[10px] text-slate-400 font-medium">
-                Cập nhật tự động mỗi 20 giây
+                Tự động đồng bộ thời gian thực từ Bếp
               </p>
             </div>
           )}
@@ -299,6 +344,18 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
 
   // Real-time Booking Assignment Notification
   const [assignedNotification, setAssignedNotification] = useState<any>(null);
+
+  // Floating App Banner Notifications
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+
+  const addAppNotification = useCallback((n: Omit<AppNotification, "id">) => {
+    const id = Date.now().toString() + "_" + Math.random().toString(36).substring(2, 6);
+    setAppNotifications((prev) => [...prev, { ...n, id }]);
+  }, []);
+
+  const handleCloseNotification = useCallback((id: string) => {
+    setAppNotifications((prev) => prev.filter((item) => item.id !== id));
+  }, []);
 
   const getCurrentLoggedUser = useCallback(() => {
     if (user) return user;
@@ -468,8 +525,72 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
       }
     };
     window.addEventListener("storage", handleStorageEvent);
+    const handleKdsItemDone = (data: any) => {
+      window.dispatchEvent(new CustomEvent("waiter_kds_updated", { detail: data }));
+      const isChefRoute = location.pathname.startsWith("/chef") || actorRole === "chef";
+      const isForWaiter =
+        !isChefRoute &&
+        !location.pathname.startsWith("/cashier") &&
+        (location.pathname.startsWith("/waiter") || actorRole === "waiter" || displayRole === "waiter");
+
+      if (isForWaiter) {
+        const info = data?.itemInfo;
+        const title = info?.name ? `🍳 Món "${info.name}" đã nấu xong!` : "🍳 Món ăn đã hoàn thành!";
+        const message = info?.tableName
+          ? `Bàn ${info.tableName} (x${info.quantity || 1}) - Cần mang ra bàn.`
+          : "Món ăn đã sẵn sàng mang ra bàn.";
+        addAppNotification({
+          type: "food",
+          title,
+          message,
+          actionText: "Xem đơn bàn",
+          onAction: () => navigate(info?.tableId ? `/waiter/orders/${info.tableId}` : "/waiter/tables"),
+          autoCloseMs: 5000,
+        });
+        playBeepSound();
+      }
+    };
+    socket.on("kds:item_done", handleKdsItemDone);
+
+    const handleKdsUpdated = () => {
+      window.dispatchEvent(new CustomEvent("waiter_kds_updated"));
+    };
+    socket.on("kds_updated", handleKdsUpdated);
+
+    // Socket listener for generic notification (Cập nhật danh sách thông báo icon chuông cho Phục vụ)
+    const handleGenericNotification = (data: any) => {
+      if (!data) return;
+      if (data.role === "waiter") {
+        window.dispatchEvent(new CustomEvent("waiter_kds_updated"));
+      }
+    };
+    socket.on("notification:new", handleGenericNotification);
+
+    // Socket listener for Payment Request (chỉ hiển thị khi đang ở giao diện Thu ngân)
+    const handlePaymentRequestSocket = (data: any) => {
+      const isChefRoute = location.pathname.startsWith("/chef") || actorRole === "chef";
+      const isForCashier =
+        !isChefRoute &&
+        !location.pathname.startsWith("/waiter") &&
+        (location.pathname.startsWith("/cashier") || actorRole === "cashier" || displayRole === "cashier");
+
+      if (isForCashier) {
+        const tableLabel = data?.tableName || (data?.tableId ? `Bàn ${data.tableId}` : `Đơn #${data?.orderId || ""}`);
+        const typeText = data?.isEarlyPayment ? "thanh toán sớm" : "thanh toán";
+        toast.success(`💳 ${tableLabel} vừa gửi yêu cầu ${typeText} (${data?.waiterName || "Phục vụ"})!`, {
+          id: `payment_req_${data?.orderId || "latest"}`,
+          duration: 6000,
+        });
+        playBeepSound();
+      }
+    };
+    socket.on("payment:request", handlePaymentRequestSocket);
 
     return () => {
+      socket.off("kds:item_done", handleKdsItemDone);
+      socket.off("kds_updated", handleKdsUpdated);
+      socket.off("notification:new", handleGenericNotification);
+      socket.off("payment:request", handlePaymentRequestSocket);
       socket.disconnect();
       window.removeEventListener("booking_assigned_event", handleAssignedEvent);
       window.removeEventListener("storage", handleStorageEvent);
@@ -1266,6 +1387,12 @@ export const ActorShellLayout: React.FC<ActorShellLayoutProps> = ({
           </div>
         </div>
       )}
+
+      {/* Floating Application Notifications */}
+      <AppNotificationBanner
+        notifications={appNotifications}
+        onClose={handleCloseNotification}
+      />
     </div>
   );
 };

@@ -228,6 +228,33 @@ export const ChefKitchenQueue: React.FC = () => {
     };
   }, [dispatch, stationFilter]);
 
+  const handledNewAlertsRef = useRef<Set<string | number>>(new Set());
+  const handledChangeAlertsRef = useRef<Set<string | number>>(new Set());
+
+  // Auto-dismiss new order alerts after 6 seconds
+  useEffect(() => {
+    newAlerts.forEach((alert) => {
+      if (!handledNewAlertsRef.current.has(alert.id)) {
+        handledNewAlertsRef.current.add(alert.id);
+        setTimeout(() => {
+          dispatch(dismissNewAlert(alert.id));
+        }, 6000);
+      }
+    });
+  }, [newAlerts, dispatch]);
+
+  // Auto-dismiss change alerts after 6 seconds
+  useEffect(() => {
+    changeAlerts.forEach((alert) => {
+      if (!handledChangeAlertsRef.current.has(alert.id)) {
+        handledChangeAlertsRef.current.add(alert.id);
+        setTimeout(() => {
+          dispatch(dismissChangeAlert(alert.id));
+        }, 6000);
+      }
+    });
+  }, [changeAlerts, dispatch]);
+
   // Audio trigger on new active alerts
   useEffect(() => {
     const activeVoid = voidAlerts.filter((a) => !a.dismissed).length;
@@ -520,137 +547,142 @@ export const ChefKitchenQueue: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Void Alerts Banner */}
-      {groupedVoidAlerts.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {groupedVoidAlerts.map((group, index) => (
-            <div
-              key={index}
-              className="bg-rose-50 border border-rose-200 text-rose-700 p-3.5 rounded-xl flex items-center justify-between gap-4 animate-pulse shadow-sm"
-            >
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <div className="bg-rose-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
-                  <AlertCircle size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-black text-rose-800 flex items-center gap-2 flex-wrap">
-                    CẢNH BÁO HỦY MÓN - BÀN: <strong className="text-rose-900 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-rose-750">
-                    {group.items.map((item) => (
-                      <div key={item.id} className="flex flex-col bg-rose-100/40 px-2.5 py-1 rounded-lg border border-rose-200/50">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-extrabold text-rose-900">{item.name}</span>
-                          <span className="bg-rose-200 text-rose-950 px-1 py-0.2 rounded font-black text-[9px]">x{item.quantity}</span>
-                        </div>
-                        {item.voidReason && (
-                          <span className="text-[10px] text-rose-600 italic">Lý do: {item.voidReason}</span>
-                        )}
+      {/* 2. Floating Alerts Banners Container (Fixed Overlay - Non-disruptive Zero Layout Jump) */}
+      {(groupedVoidAlerts.length > 0 || groupedNewAlerts.length > 0 || groupedChangeAlerts.length > 0) && (
+        <div className="fixed top-20 right-6 z-50 flex flex-col gap-2.5 max-w-md w-full max-h-[75vh] overflow-y-auto pointer-events-auto transition-all duration-300 drop-shadow-xl">
+          {/* 2.0 Void Alerts Banner */}
+          {groupedVoidAlerts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {groupedVoidAlerts.map((group, index) => (
+                <div
+                  key={index}
+                  className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl flex items-center justify-between gap-4 shadow-md"
+                >
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="bg-rose-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
+                      <AlertCircle size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-black text-rose-800 flex items-center gap-2 flex-wrap">
+                        CẢNH BÁO HỦY MÓN - BÀN: <strong className="text-rose-900 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
                       </div>
-                    ))}
+                      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-rose-750">
+                        {group.items.map((item) => (
+                          <div key={item.id} className="flex flex-col bg-rose-100/40 px-2.5 py-1 rounded-lg border border-rose-200/50">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-rose-900">{item.name}</span>
+                              <span className="bg-rose-200 text-rose-950 px-1 py-0.2 rounded font-black text-[9px]">x{item.quantity}</span>
+                            </div>
+                            {item.voidReason && (
+                              <span className="text-[10px] text-rose-600 italic">Lý do: {item.voidReason}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      group.items.forEach((item) => {
+                        dispatch(dismissVoidAlert(item.id));
+                      });
+                    }}
+                    className="bg-rose-100 hover:bg-rose-200 text-rose-800 px-3 py-1.5 rounded-lg text-xs font-bold border border-rose-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
+                  >
+                    <X size={12} />
+                    Đã xem & Xác nhận ({group.items.length})
+                  </button>
                 </div>
-              </div>
-              <button
-                onClick={() => {
-                  group.items.forEach((item) => {
-                    dispatch(dismissVoidAlert(item.id));
-                  });
-                }}
-                className="bg-rose-100 hover:bg-rose-200 text-rose-800 px-3 py-1.5 rounded-lg text-xs font-bold border border-rose-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
-              >
-                <X size={12} />
-                Đã xem & Xác nhận ({group.items.length})
-              </button>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* 2.1 New Item Alerts Banner */}
-      {groupedNewAlerts.length > 0 && (
-        <div className="flex flex-col gap-2 mt-2">
-          {groupedNewAlerts.map((group, index) => (
-            <div
-              key={index}
-              className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3.5 rounded-xl flex items-center justify-between gap-4 animate-pulse shadow-sm"
-            >
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <div className="bg-emerald-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
-                  <Info size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-black text-emerald-800 flex items-center gap-2 flex-wrap">
-                    MÓN MỚI - BÀN: <strong className="text-emerald-900 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-emerald-750">
-                    {group.items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-1.5 bg-emerald-100/40 px-2.5 py-1 rounded-lg border border-emerald-200/50">
-                        <span className="font-extrabold text-emerald-900">{item.name}</span>
-                        <span className="bg-emerald-200 text-emerald-950 px-1 py-0.2 rounded font-black text-[9px]">x{item.quantity}</span>
-                        <span className="text-[10px] text-emerald-600 bg-emerald-100/60 px-1 py-0.2 rounded">({getStationLabel(item.kitchenStation)})</span>
+          {/* 2.1 New Item Alerts Banner (Tự đóng 6s) */}
+          {groupedNewAlerts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {groupedNewAlerts.map((group, index) => (
+                <div
+                  key={index}
+                  className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-3 rounded-xl flex items-center justify-between gap-4 shadow-md"
+                >
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="bg-emerald-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
+                      <Info size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-black text-emerald-800 flex items-center gap-2 flex-wrap">
+                        MÓN MỚI (Tự đóng 6s) - BÀN: <strong className="text-emerald-900 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
                       </div>
-                    ))}
+                      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-emerald-750">
+                        {group.items.map((item) => (
+                          <div key={item.id} className="flex items-center gap-1.5 bg-emerald-100/40 px-2.5 py-1 rounded-lg border border-emerald-200/50">
+                            <span className="font-extrabold text-emerald-900">{item.name}</span>
+                            <span className="bg-emerald-200 text-emerald-950 px-1 py-0.2 rounded font-black text-[9px]">x{item.quantity}</span>
+                            <span className="text-[10px] text-emerald-600 bg-emerald-100/60 px-1 py-0.2 rounded">({getStationLabel(item.kitchenStation)})</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      group.items.forEach((item) => {
+                        dispatch(dismissNewAlert(item.id));
+                      });
+                    }}
+                    className="bg-emerald-100 hover:bg-emerald-200 text-emerald-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
+                  >
+                    <X size={12} />
+                    Đã xem ({group.items.length})
+                  </button>
                 </div>
-              </div>
-              <button
-                onClick={() => {
-                  group.items.forEach((item) => {
-                    dispatch(dismissNewAlert(item.id));
-                  });
-                }}
-                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
-              >
-                <X size={12} />
-                Đã xem ({group.items.length})
-              </button>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* 2.2 Changed Item Alerts Banner */}
-      {groupedChangeAlerts.length > 0 && (
-        <div className="flex flex-col gap-2 mt-2">
-          {groupedChangeAlerts.map((group, index) => (
-            <div
-              key={index}
-              className="bg-amber-50 border border-amber-200 text-amber-700 p-3.5 rounded-xl flex items-center justify-between gap-4 animate-pulse shadow-sm"
-            >
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <div className="bg-amber-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
-                  <RefreshCcw size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-black text-amber-800 flex items-center gap-2 flex-wrap">
-                    THAY ĐỔI YÊU CẦU - BÀN: <strong className="text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-amber-750">
-                    {group.items.map((item) => (
-                      <div key={item.id} className="flex items-center gap-1.5 bg-amber-100/40 px-2.5 py-1 rounded-lg border border-amber-200/50">
-                        <span className="font-extrabold text-amber-900">{item.name}</span>
-                        <span className="text-[10px] text-amber-600 bg-amber-100/60 px-1 py-0.2 rounded font-semibold">
-                          {item.changeType === "quantity" ? "Số lượng" : "Ghi chú"}: {item.oldValue} ➔ <strong className="text-amber-750 bg-amber-100 px-1 rounded font-black">{item.newValue}</strong>
-                        </span>
+          {/* 2.2 Changed Item Alerts Banner (Tự đóng 3s) */}
+          {groupedChangeAlerts.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {groupedChangeAlerts.map((group, index) => (
+                <div
+                  key={index}
+                  className="bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded-xl flex items-center justify-between gap-4 shadow-md"
+                >
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="bg-amber-500 text-white p-1.5 rounded-lg shrink-0 mt-0.5">
+                      <RefreshCcw size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-black text-amber-800 flex items-center gap-2 flex-wrap">
+                        THAY ĐỔI YÊU CẦU (Tự đóng 3s) - BÀN: <strong className="text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded text-xs font-black">{group.tableName}</strong>
                       </div>
-                    ))}
+                      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-2 text-xs text-amber-750">
+                        {group.items.map((item) => (
+                          <div key={item.id} className="flex items-center gap-1.5 bg-amber-100/40 px-2.5 py-1 rounded-lg border border-amber-200/50">
+                            <span className="font-extrabold text-amber-900">{item.name}</span>
+                            <span className="text-[11px] font-bold text-amber-800">
+                              {item.changeType === "quantity" ? `Thay đổi số lượng: ${item.oldValue} ➔ ${item.newValue}` : `Ghi chú: ${item.newValue}`}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      group.items.forEach((item) => {
+                        dispatch(dismissChangeAlert(item.id));
+                      });
+                    }}
+                    className="bg-amber-100 hover:bg-amber-200 text-amber-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
+                  >
+                    <X size={12} />
+                    Đã xem ({group.items.length})
+                  </button>
                 </div>
-              </div>
-              <button
-                onClick={() => {
-                  group.items.forEach((item) => {
-                    dispatch(dismissChangeAlert(item.id));
-                  });
-                }}
-                className="bg-amber-100 hover:bg-amber-200 text-amber-850 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300 flex items-center gap-1 cursor-pointer transition-colors shrink-0 whitespace-nowrap self-center"
-              >
-                <X size={12} />
-                Đã xác nhận ({group.items.length})
-              </button>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
 
