@@ -75,6 +75,7 @@ interface KdsState {
   loading: boolean;
   error: string | null;
   stationFilter: "all" | "hot_kitchen" | "bar" | "cold_kitchen";
+  isInitialLoaded: boolean;
 }
 
 const initialState: KdsState = {
@@ -85,6 +86,7 @@ const initialState: KdsState = {
   loading: false,
   error: null,
   stationFilter: "all",
+  isInitialLoaded: false,
 };
 
 // Async Thunks
@@ -212,20 +214,15 @@ const kdsSlice = createSlice({
       .addCase(fetchKdsItems.fulfilled, (state, action) => {
         state.loading = false;
         const newItemsList = action.payload || [];
-        
-        // 1. So sánh để tìm món mới (chưa có trong state cũ)
-        // Chỉ tìm những món có createdAt gần đây (ví dụ < 2 phút) để tránh alert món cũ lúc mới load trang
         const now = Date.now();
-        const twoMinsAgo = now - 2 * 60 * 1000;
-        
-        if (state.items.length > 0) { // Đã load lần đầu xong
+
+        if (state.isInitialLoaded) {
           newItemsList.forEach((newItem: KdsItem) => {
             const oldItem = state.items.find((i) => i.id === newItem.id);
-            
-            // Check Món mới
-            if (!oldItem && new Date(newItem.createdAt).getTime() > twoMinsAgo) {
-              // Bỏ qua nếu đã có alert rồi hoặc đã dismissed
-              if (!state.newAlerts.some(a => a.id === newItem.id)) {
+
+            // Check Món mới được gửi xuống bếp
+            if (!oldItem) {
+              if (!state.newAlerts.some((a) => a.id === newItem.id)) {
                 state.newAlerts.push({
                   id: newItem.id,
                   orderId: newItem.orderId,
@@ -233,11 +230,11 @@ const kdsSlice = createSlice({
                   quantity: newItem.quantity,
                   tableName: newItem.tableName || "Mang về",
                   kitchenStation: newItem.kitchenStation,
-                  createdAt: new Date().toISOString()
+                  createdAt: new Date().toISOString(),
                 });
               }
             }
-            
+
             // Check Đổi món (Số lượng hoặc Ghi chú)
             if (oldItem && newItem.status !== "done" && newItem.status !== "served") {
               if (oldItem.quantity !== newItem.quantity) {
@@ -249,7 +246,7 @@ const kdsSlice = createSlice({
                   changeType: "quantity",
                   oldValue: oldItem.quantity,
                   newValue: newItem.quantity,
-                  createdAt: new Date().toISOString()
+                  createdAt: new Date().toISOString(),
                 });
               }
               if (oldItem.kitchenNote !== newItem.kitchenNote) {
@@ -261,13 +258,15 @@ const kdsSlice = createSlice({
                   changeType: "note",
                   oldValue: oldItem.kitchenNote || "(Không có)",
                   newValue: newItem.kitchenNote || "(Không có)",
-                  createdAt: new Date().toISOString()
+                  createdAt: new Date().toISOString(),
                 });
               }
             }
           });
+        } else {
+          state.isInitialLoaded = true;
         }
-        
+
         state.items = newItemsList;
       })
       .addCase(fetchKdsItems.rejected, (state, action) => {

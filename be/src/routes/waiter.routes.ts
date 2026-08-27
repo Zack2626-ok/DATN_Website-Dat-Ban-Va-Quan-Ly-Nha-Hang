@@ -7,6 +7,7 @@ import {
   createResmanagerOrderHandler,
   addOrderItemHandler,
   voidOrderItemHandler,
+  updateOrderItemQuantityHandler,
   sendItemsToKitchenHandler,
   holdOrderItemsHandler,
   getWaiterNotificationsHandler,
@@ -32,6 +33,7 @@ router.get("/orders/by-table/:tableId", getOrdersByTableHandler);
 router.get("/orders/:orderId/items", getOrderItemsHandler);
 router.post("/orders", authStaff, checkWalkInOpeningTimeMiddleware, createResmanagerOrderHandler);
 router.post("/orders/:orderId/items", addOrderItemHandler);
+router.patch("/orders/:orderId/items/:itemId/quantity", updateOrderItemQuantityHandler);
 router.patch("/orders/:orderId/items/:itemId/void", voidOrderItemHandler);
 router.patch("/orders/:orderId/items/:itemId/served", markItemServedHandler);
 router.post("/orders/:orderId/send-to-kitchen", sendItemsToKitchenHandler);

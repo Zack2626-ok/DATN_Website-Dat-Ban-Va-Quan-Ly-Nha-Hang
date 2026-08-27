@@ -43,6 +43,7 @@ import {
   deleteResmanagerTable,
   getTableBookingSchedule,
   checkInTableBooking,
+  unsplitTable,
   type ResmanagerTable,
 } from "../../../services/tableService";
 import type { BookingScheduleItem, BookingScheduleMode } from "../../../services/bookingService";
@@ -276,10 +277,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
 
   const activePrefilledData = activeAssignedBooking
     ? {
-        guestCount: Number(activeAssignedBooking.partySize || 30),
-        customerName: activeAssignedBooking.guestName || "",
-        customerPhone: activeAssignedBooking.guestPhone || "",
-      }
+      guestCount: Number(activeAssignedBooking.partySize || 30),
+      customerName: activeAssignedBooking.guestName || "",
+      customerPhone: activeAssignedBooking.guestPhone || "",
+    }
     : prefilledBookingData;
 
   // Auto-switch area tab when targetArea or activeAssignedBooking changes
@@ -289,7 +290,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     if (targetAreaName && areas.length > 0) {
       const match = areas.find(
         (a) => a.name.toLowerCase().trim().includes(targetAreaName.toLowerCase().trim()) ||
-               targetAreaName.toLowerCase().trim().includes(a.name.toLowerCase().trim())
+          targetAreaName.toLowerCase().trim().includes(a.name.toLowerCase().trim())
       );
       if (match) {
         setSelectedAreaId(match.id);
@@ -546,6 +547,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     () => tables.find((t) => t.id.toString() === selectedTableId?.toString()) || null,
     [tables, selectedTableId],
   );
+
+  const handleUnsplitTable = async () => {
+    if (!selectedTable) return;
+    try {
+      await unsplitTable(selectedTable.id);
+      toast.success(`✅ Đã hủy tách bàn ${selectedTable.name} trở về 1 bàn đơn duy nhất!`);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Không thể hủy tách bàn");
+    }
+  };
 
   const isSelectedTableInCluster = Boolean(
     selectedTable?.is_merged_primary
@@ -1051,7 +1063,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                       key={t.id}
                       onClick={() => {
                         setSelectedTableId(t.id);
-                        if (t.is_split) {
+                        if (t.is_split && t.status !== "empty" && t.status !== "cleaning") {
                           setIsSubOrderModalOpen(true);
                         } else if (activeAssignedBooking && t.status === "empty") {
                           setIsOpenTableModalOpen(true);
@@ -1093,7 +1105,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         )}
                       </div>
 
-                      {t.is_split && (t.split_labels?.length ?? 0) > 0 && (
+                      {t.is_split && t.status !== "empty" && t.status !== "cleaning" && (t.split_labels?.length ?? 0) > 0 && (
                         <span
                           className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-pink-300 bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700 shadow-xs animate-pulse"
                           title={`Đang tách bàn thành: ${t.split_labels?.join(", ")}`}
@@ -1193,25 +1205,24 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                       : selectedTable.is_group_seating_child
                         ? `Bàn đoàn của ${selectedTable.group_seating_into?.name ?? "bàn chính"}`
                         : selectedTable.status !== "empty"
-                        ? `Khách: ${selectedTable.guest_count || "?"}/${getTableClusterCapacity(selectedTable)} người`
-                        : `Sức chứa: ${getTableClusterCapacity(selectedTable)} khách`}
+                          ? `Khách: ${selectedTable.guest_count || "?"}/${getTableClusterCapacity(selectedTable)} người`
+                          : `Sức chứa: ${getTableClusterCapacity(selectedTable)} khách`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                      selectedTable.status === "serving" && selectedTable.is_early_paid
-                        ? "text-emerald-700 bg-emerald-50 border-emerald-300"
-                        : selectedTable.status === "serving" && selectedTable.is_early_payment
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold ${selectedTable.status === "serving" && selectedTable.is_early_paid
+                      ? "text-emerald-700 bg-emerald-50 border-emerald-300"
+                      : selectedTable.status === "serving" && selectedTable.is_early_payment
                         ? "text-amber-700 bg-amber-50 border-amber-300"
                         : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
-                    } bg-white border border-sky-100 shadow-2xs`}
+                      } bg-white border border-sky-100 shadow-2xs`}
                   >
                     {selectedTable.status === "serving" && selectedTable.is_early_paid
                       ? "Đang phục vụ (đã thanh toán)"
                       : selectedTable.status === "serving" && selectedTable.is_early_payment
-                      ? "Đang phục vụ (thanh toán sớm)"
-                      : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
+                        ? "Đang phục vụ (thanh toán sớm)"
+                        : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).label}
                   </span>
                   <button
                     type="button"
@@ -1232,7 +1243,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 </div>
               </div>
 
-              {selectedTable.is_split && (
+              {selectedTable.is_split && selectedTable.status !== "empty" && selectedTable.status !== "cleaning" && (
                 <div className="mx-5 mt-4 flex flex-col gap-2 rounded-xl border-2 border-pink-300 bg-pink-50 p-3.5 text-xs text-pink-900 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1246,13 +1257,22 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   <p className="text-[11px] text-pink-800">
                     Mỗi nhóm khách có order và hóa đơn riêng độc lập ({selectedTable.split_labels?.join(", ")}). Nhấn bên dưới để gọi món hoặc thanh toán từng nhóm:
                   </p>
-                  <button
-                    onClick={() => setIsSubOrderModalOpen(true)}
-                    className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer mt-1"
-                  >
-                    <Copy size={14} />
-                    Xem & Thao tác Sub-Orders ({selectedTable.split_labels?.join(", ") || "B04:1, B04:2"})
-                  </button>
+                  <div className="flex flex-col gap-2 mt-1">
+                    <button
+                      onClick={() => setIsSubOrderModalOpen(true)}
+                      className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                    >
+                      <Copy size={14} />
+                      Xem & Thao tác Sub-Orders ({selectedTable.split_labels?.join(", ") || "Sub-orders"})
+                    </button>
+                    <button
+                      onClick={handleUnsplitTable}
+                      className="w-full py-2 bg-white hover:bg-pink-100 text-pink-700 border border-pink-300 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw size={13} />
+                      Hủy tách bàn (Gộp về 1 bàn đơn)
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1704,7 +1724,6 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         </div>
       </div>
 
-      {/* Hướng dẫn cho Phục vụ */}
       <div className="bg-sky-50/50 border border-sky-100 rounded-xl p-4 flex items-start gap-3">
         <Info size={16} className="text-gray-400 mt-0.5 shrink-0" />
         <div className="text-xs text-slate-400 space-y-1">
@@ -1715,7 +1734,6 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
         </div>
       </div>
 
-      {/* ── MODALS ── */}
       <OpenTableModal
         isOpen={isOpenTableModalOpen}
         onClose={() => setIsOpenTableModalOpen(false)}
@@ -1844,11 +1862,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             type="button"
             onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.CURRENT)}
             disabled={loadingTableSchedule}
-            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
-              tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT
-                ? "bg-sky-600 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
+            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT
+              ? "bg-sky-600 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
           >
             Lịch đặt hiện tại
           </button>
@@ -1856,11 +1873,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             type="button"
             onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.HISTORY)}
             disabled={loadingTableSchedule}
-            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${
-              tableScheduleMode === TABLE_SCHEDULE_MODE.HISTORY
-                ? "bg-slate-700 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
+            className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${tableScheduleMode === TABLE_SCHEDULE_MODE.HISTORY
+              ? "bg-slate-700 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
           >
             Lịch sử đặt bàn
           </button>
@@ -2024,14 +2040,13 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                     <p className="font-bold text-gray-800">{item.item_name}</p>
                     <p className="text-gray-500">Số lượng: <span className="font-bold text-gray-700">{item.quantity}</span></p>
                   </div>
-                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${
-                    item.status === "cooking" ? "bg-amber-100 text-amber-800" :
+                  <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${item.status === "cooking" ? "bg-amber-100 text-amber-800" :
                     item.status === "done" ? "bg-emerald-100 text-emerald-800" :
-                    item.status === "waiting_kitchen" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"
-                  }`}>
+                      item.status === "waiting_kitchen" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"
+                    }`}>
                     {item.status === "cooking" ? "⏳ Đang nấu" :
-                     item.status === "done" ? "✅ Bếp đã nấu xong (chờ bưng ra)" :
-                     item.status === "waiting_kitchen" ? "📋 Đã gửi bếp" : "📋 Chờ gửi bếp"}
+                      item.status === "done" ? "✅ Bếp đã nấu xong (chờ bưng ra)" :
+                        item.status === "waiting_kitchen" ? "📋 Đã gửi bếp" : "📋 Chờ gửi bếp"}
                   </span>
                 </div>
               ))}
@@ -2129,11 +2144,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                       <button
                         onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
                         disabled={processingPaymentRequest || !hasCancellable}
-                        className={`w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm ${
-                          !hasCancellable
-                            ? "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
-                            : "bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
-                        }`}
+                        className={`w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm ${!hasCancellable
+                          ? "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                          : "bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
+                          }`}
                       >
                         {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
                         {hasCancellable

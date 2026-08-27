@@ -30,6 +30,10 @@ const getSuggestedTables = (sourceTable: ResmanagerTable, candidates: Resmanager
 );
 
 /** Xếp một đoàn đông khách trên nhiều bàn độc lập nhưng vẫn dùng chung một order và hóa đơn. */
+/**
+ * Modal xếp chỗ ngồi theo đoàn (Group Seating)
+ * Cho phép phân bổ các bàn phụ xung quanh bàn chính cho đoàn đông người
+ */
 export const GroupSeatingModal: React.FC<GroupSeatingModalProps> = ({
   isOpen,
   onClose,

@@ -16,7 +16,6 @@ import {
   Database,
   ChevronDown,
   Minus,
-  QrCode,
   Receipt,
   Boxes,
   Settings,
@@ -51,7 +50,6 @@ export const ManagerSidebar: React.FC = () => {
   const isOpsActive =
     location.pathname.startsWith("/manager/tables") ||
     location.pathname.startsWith("/manager/bookings") ||
-    location.pathname.startsWith("/manager/qrcodes") ||
     location.pathname.startsWith("/manager/shifts");
 
   const isManagementActive =
@@ -168,17 +166,6 @@ export const ManagerSidebar: React.FC = () => {
                       <span className="h-2 w-2 rounded-full bg-[#EC4899]" />
                     </Link>
 
-                    <Link
-                      to="/manager/qrcodes"
-                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-[14px] font-medium transition-all duration-150 ${
-                        isRouteActive("/manager/qrcodes")
-                          ? "bg-[#FFFFFF] text-[#1A1A1A] shadow-xs border border-slate-200/50"
-                          : "text-[#8A8A8A] hover:text-[#1A1A1A]"
-                      }`}
-                    >
-                      <QrCode size={16} strokeWidth={1.5} />
-                      Thiết lập QR Code
-                    </Link>
 
                     <Link
                       to="/manager/shifts"
@@ -442,12 +429,12 @@ export const ManagerSidebar: React.FC = () => {
                 </span>
               </Link>
 
-              {/* Admin Settings */}
+              {/* Settings */}
               {canManageSystem && (
                 <Link
-                  to="/admin/settings"
+                  to="/manager/settings"
                   className={`group flex items-center justify-between rounded-full px-4 py-2.5 text-[15px] font-medium transition-all duration-200 ${
-                    isRouteActive("/admin/settings")
+                    isRouteActive("/manager/settings")
                       ? "bg-[#1A1A1A] text-[#FFFFFF] shadow-md"
                       : "text-[#1A1A1A] hover:bg-[#FFFFFF]/60"
                   }`}
@@ -457,15 +444,12 @@ export const ManagerSidebar: React.FC = () => {
                       size={18}
                       strokeWidth={1.5}
                       className={
-                        isRouteActive("/admin/settings")
+                        isRouteActive("/manager/settings")
                           ? "text-[#FFFFFF]"
                           : "text-[#1A1A1A]"
                       }
                     />
                     Cài đặt nhà hàng
-                  </span>
-                  <span className="rounded-full bg-[#FFFFFF] px-2 py-0.5 text-[10px] font-bold text-[#8A8A8A] border border-[#8A8A8A]/20">
-                    Admin
                   </span>
                 </Link>
               )}

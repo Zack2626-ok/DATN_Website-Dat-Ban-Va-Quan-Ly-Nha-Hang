@@ -145,15 +145,6 @@ export const isDbAvailable = (): boolean => dbAvailable;
 
 const MOCK_USERS: User[] = [
   {
-    id: "1",
-    full_name: "System Admin",
-    email: "admin@gmail.com",
-    password: "$2b$10$XhEJ5WeSSOWqHdLJqOsYY.0JDp01.jVQYk7jXp4/MvE3iK57lgiTa",
-    role_name: "admin",
-    phone: "0900000001",
-    createdAt: new Date().toISOString(),
-  },
-  {
     id: "2",
     full_name: "Restaurant Manager",
     email: "manager@gmail.com",
@@ -5149,10 +5140,22 @@ export const getResmanagerTablesWithExtra = async (
         0,
       ) +
       groupChildren.reduce((total, table) => total + Number(table.capacity), 0);
-    const splits = await query(
-      "SELECT child_label FROM table_splits WHERE parent_table_id = ? AND status = 'active'",
-      [r.id],
-    );
+    let splits: any[] = [];
+    if (r.status !== "empty" && r.status !== "cleaning") {
+      splits = await query(
+        "SELECT child_label FROM table_splits WHERE parent_table_id = ? AND status = 'active'",
+        [r.id],
+      );
+    } else {
+      await query(
+        "UPDATE table_splits SET status = 'cancelled', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+        [r.id],
+      ).catch(() => {});
+      await query(
+        "UPDATE table_split_sessions SET status = 'completed', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+        [r.id],
+      ).catch(() => {});
+    }
 
     let preOrderedItems: any[] = [];
     if (r.active_order_id && r.active_order_type === "pre_order") {
@@ -7732,12 +7735,19 @@ export const holdResmanagerOrderItems = async (
 
 export const getWaiterDoneNotifications = async (): Promise<any[]> => {
   return query(`
-    SELECT oi.*, t.name AS table_name, m.name AS dish_name
+    SELECT 
+      oi.id AS item_id,
+      oi.order_id,
+      oi.quantity,
+      m.name AS item_name,
+      COALESCE(o.split_label, t.name) AS table_name,
+      o.table_id
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.id
-    JOIN tables t ON o.table_id = t.id
+    LEFT JOIN tables t ON o.table_id = t.id
     JOIN menu_items m ON oi.menu_item_id = m.id
     WHERE oi.status = 'done'
+    ORDER BY oi.updated_at DESC
   `);
 };
 
@@ -8010,7 +8020,7 @@ export const updateEvent = async (
 
 // ===== USER ROLE & WORKSPACE OPERATIONS =====
 export const getRoles = async (): Promise<any[]> => {
-  return query("SELECT * FROM roles ORDER BY id ASC");
+  return query("SELECT * FROM roles WHERE name != 'admin' ORDER BY id ASC");
 };
 
 export const getUsers = async (): Promise<any[]> => {
@@ -8018,7 +8028,7 @@ export const getUsers = async (): Promise<any[]> => {
     SELECT u.id, u.role_id, u.employee_code, u.full_name, u.email, u.phone, u.avatar_url, u.status, u.hourly_rate, u.is_deleted, u.created_at, r.name AS role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
-    WHERE u.is_deleted = 0
+    WHERE u.is_deleted = 0 AND r.name != 'admin' AND u.email != 'admin@gmail.com'
     ORDER BY u.created_at DESC
   `);
 };
@@ -9518,6 +9528,45 @@ export const completeSubOrderPayment = async (
 
     await connection.commit();
     return { isSplitOrder: true, sessionCompleted, tableReleased };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Reset a split table back to a single normal table */
+export const unsplitResmanagerTable = async (parentTableId: number): Promise<void> => {
+  await ensureResmanagerTablesSchema();
+  const pool = ensurePool();
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    await connection.query(
+      "UPDATE table_splits SET status = 'cancelled', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+      [parentTableId],
+    );
+    await connection.query(
+      "UPDATE table_split_sessions SET status = 'completed', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+      [parentTableId],
+    );
+
+    const [activeOrders] = await connection.query<any[]>(
+      "SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment')",
+      [parentTableId],
+    );
+
+    if (activeOrders.length === 0) {
+      await connection.query("UPDATE tables SET status = ? WHERE id = ?", [
+        TABLE_STATUS.EMPTY,
+        parentTableId,
+      ]);
+    }
+
+    await connection.commit();
   } catch (error) {
     await connection.rollback();
     throw error;

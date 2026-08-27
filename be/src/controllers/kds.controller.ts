@@ -7,7 +7,9 @@ import {
   recallKdsItemStatusInDb,
   getKdsVoidAlertsFromDb,
   getKdsHistoryFromDb,
-} from "../utils/kdsDb";import { reuseCancelledKdsItem } from "../utils/db";
+  getSingleKdsItemInfo,
+} from "../utils/kdsDb";
+import { reuseCancelledKdsItem } from "../utils/db";
 
 /**
  * GET /api/kds/items
@@ -38,11 +40,26 @@ export const updateKdsItemStatusHandler = async (req: Request, res: Response): P
       return;
     }
 
+    const itemInfoBefore = status === "done" ? await getSingleKdsItemInfo(id) : null;
     const success = await updateKdsItemStatusInDb(id, status);
     if (success) {
       io.emit("order_updated");
       io.emit("kds_updated");
       io.emit("table_updated");
+
+      if (status === "done") {
+        const itemInfo = itemInfoBefore || (await getSingleKdsItemInfo(id));
+        io.emit("kds:item_done", { id, status, itemInfo });
+        if (itemInfo) {
+          io.emit("notification:new", {
+            role: "waiter",
+            title: "Món ăn hoàn thành",
+            message: `Món "${itemInfo.name}" (x${itemInfo.quantity}) của Bàn ${itemInfo.tableName || "Mang về"} đã nấu xong!`,
+            itemInfo,
+          });
+        }
+      }
+
       sendSuccess(res, { id, status }, "Cập nhật trạng thái món ăn thành công!");
     } else {
       sendError(res, "Không tìm thấy hoặc không thể cập nhật món ăn!", 404);
@@ -71,6 +88,14 @@ export const updateKdsBatchStatusHandler = async (req: Request, res: Response): 
       return;
     }
 
+    const itemInfos: any[] = [];
+    if (status === "done") {
+      for (const id of itemIds) {
+        const info = await getSingleKdsItemInfo(id);
+        if (info) itemInfos.push({ id, ...info });
+      }
+    }
+
     let successCount = 0;
     for (const id of itemIds) {
       const success = await updateKdsItemStatusInDb(id, status);
@@ -81,6 +106,16 @@ export const updateKdsBatchStatusHandler = async (req: Request, res: Response): 
       io.emit("order_updated");
       io.emit("kds_updated");
       io.emit("table_updated");
+
+      if (status === "done") {
+        io.emit("kds:item_done", { itemIds, status, items: itemInfos });
+        io.emit("notification:new", {
+          role: "waiter",
+          title: "Món ăn hoàn thành",
+          message: `Có ${successCount} món ăn vừa chế biến xong!`,
+          items: itemInfos,
+        });
+      }
     }
 
     sendSuccess(

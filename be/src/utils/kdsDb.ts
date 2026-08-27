@@ -98,7 +98,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
      LEFT JOIN tables t ON o.table_id      = t.id
      LEFT JOIN table_areas ta ON t.area_id = ta.id
      LEFT JOIN users u  ON oi.created_by   = u.id
-     WHERE (oi.status IN ('pending', 'waiting_kitchen', 'cooking') 
+     WHERE (oi.status IN ('waiting_kitchen', 'cooking') 
         OR oi.status = 'done'
         OR (oi.status IN ('cancelled', 'voided') 
             AND (oi.chef_dismissed = 0 
@@ -145,7 +145,7 @@ export const getKdsItemsFromDb = async (station?: string): Promise<KdsItem[]> =>
 /**
  * Helper to fetch a single KdsItem's information before status change
  */
-const getSingleKdsItemInfo = async (id: string | number): Promise<any | null> => {
+export const getSingleKdsItemInfo = async (id: string | number): Promise<any | null> => {
   const rows = await query<any[]>(
     `SELECT
        oi.order_id    AS orderId,

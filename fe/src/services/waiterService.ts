@@ -1,5 +1,9 @@
 import api from "./axiosInstance";
 
+/**
+ * Service API phụ vụ các thao tác của nhân viên phục vụ (Waiter)
+ * Bao gồm: lấy thực đơn, danh mục, quản lý đơn gọi món và yêu cầu thanh toán
+ */
 export interface WaiterMenuItem {
   id: number;
   category_id: number;
@@ -149,4 +153,8 @@ export const requestPayment = async (orderId: number, note?: string, isEarlyPaym
 export const cancelPaymentRequest = async (orderId: number): Promise<{ orderId: number; status: string }> => {
   const response = await api.post(`/v1/waiter/orders/${orderId}/cancel-payment-request`);
   return response.data.data;
+};
+
+export const updateOrderItemQuantity = async (orderId: number, itemId: number, quantity: number): Promise<void> => {
+  await api.patch(`/v1/waiter/orders/${orderId}/items/${itemId}/quantity`, { quantity });
 };

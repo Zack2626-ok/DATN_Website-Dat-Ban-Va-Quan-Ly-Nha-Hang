@@ -18,6 +18,7 @@ import {
   markItemAsServed,
   cancelPaymentRequest,
   requestPayment,
+  updateOrderItemQuantity,
   type WaiterMenuItem,
   type WaiterCategory,
 } from "../../../services/waiterService";
@@ -65,6 +66,10 @@ const getCurrentUserId = (): number => {
   }
 };
 
+/**
+ * Trang gọi món (Order Page) cho nhân viên phục vụ tại bàn
+ * Hỗ trợ chọn danh mục, tìm kiếm món, quản lý giỏ gọi món, gửi bếp và yêu cầu thanh toán
+ */
 export const OrderPage: React.FC = () => {
   const { tableId } = useParams<{ tableId: string }>();
   const navigate = useNavigate();
@@ -145,7 +150,7 @@ export const OrderPage: React.FC = () => {
   const fetchOrderData = useCallback(async (showToast = false) => {
     if (!tableId) return;
     if (showToast) setRefreshing(true);
-    else setOrderLoading(true);
+    else if (orderItems.length === 0) setOrderLoading(true);
 
     try {
       getTablesV1()
@@ -194,12 +199,11 @@ export const OrderPage: React.FC = () => {
           name: i.item_name,
           price: Number(i.unit_price),
           quantity: i.quantity,
-          status: i.status as OrderItemStatus, // Lấy đúng status từ DB
+          status: i.status as OrderItemStatus,
           kitchenNote: i.kitchen_note,
           held: Boolean(i.is_held),
         })),
       );
-      // Cập nhật deposit_amount
       setTable((prev: any) => ({
         ...prev,
         deposit_amount: latest.deposit_amount || 0,
@@ -212,7 +216,7 @@ export const OrderPage: React.FC = () => {
       if (showToast) setRefreshing(false);
       else setOrderLoading(false);
     }
-  }, [tableId, queryOrderId]);
+  }, [tableId, queryOrderId, orderItems.length]);
 
   // Tải order hiện tại của bàn
   useEffect(() => {
@@ -361,12 +365,34 @@ export const OrderPage: React.FC = () => {
         ];
       });
 
-      toast.success(`Đã thêm ${qty} phần "${targetItem.name}" vào order`);
+      toast.success(`Đã thêm ${qty} phần "${targetItem.name}" vào order`, { id: "add_item_toast" });
       return true;
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || "Không thể thêm món. Vui lòng thử lại.";
-      toast.error(msg);
+      toast.error(msg, { id: "add_item_toast" });
       return false;
+    }
+  };
+
+  const handleQuantityChange = async (item: DisplayOrderItem, delta: number) => {
+    if (!orderId || isOrderLocked) return;
+    const newQty = item.quantity + delta;
+
+    // Cập nhật giao diện mượt mà 0ms ngay lập tức
+    if (newQty <= 0) {
+      setOrderItems((prev) => prev.filter((i) => i.id !== item.id));
+    } else {
+      setOrderItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
+      );
+    }
+
+    try {
+      await updateOrderItemQuantity(orderId, item.id, newQty);
+    } catch (err: any) {
+      // Hoàn tác nếu có lỗi từ server
+      fetchOrderData(false);
+      toast.error(err.response?.data?.message || "Không thể cập nhật số lượng", { id: "qty_toast" });
     }
   };
 
@@ -884,7 +910,31 @@ export const OrderPage: React.FC = () => {
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-base text-slate-700">{item.name}</p>
-                      <p className="text-sm text-slate-400 mt-0.5">×{item.quantity}</p>
+                      {item.status === "pending" ? (
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center border border-sky-200 rounded-lg bg-sky-50/50 p-0.5 shadow-2xs">
+                            <button
+                              disabled={isOrderLocked}
+                              onClick={() => handleQuantityChange(item, -1)}
+                              className="w-6 h-6 rounded-md bg-white hover:bg-sky-100 flex items-center justify-center font-black text-slate-700 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer text-sm"
+                              title="Giảm số lượng"
+                            >
+                              -
+                            </button>
+                            <span className="px-2.5 text-xs font-black text-blue-900">×{item.quantity}</span>
+                            <button
+                              disabled={isOrderLocked}
+                              onClick={() => handleQuantityChange(item, 1)}
+                              className="w-6 h-6 rounded-md bg-white hover:bg-sky-100 flex items-center justify-center font-black text-slate-700 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer text-sm"
+                              title="Tăng số lượng"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 mt-0.5">×{item.quantity}</p>
+                      )}
                       {constituents && (
                         <div className="mt-1.5 bg-blue-50/60 rounded-lg px-2.5 py-2 border border-blue-100/60">
                           <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 block mb-1">Gồm có:</span>

@@ -21,6 +21,10 @@ interface ProvisionalBillModalProps {
   startTime?: string | null;
 }
 
+/**
+ * Modal in phiếu tạm tính (Provisional Bill)
+ * Hiển thị hóa đơn tạm tính cho nhân viên phục vụ in ra đưa khách trước khi thanh toán
+ */
 export const ProvisionalBillModal: React.FC<ProvisionalBillModalProps> = ({
   isOpen,
   onClose,

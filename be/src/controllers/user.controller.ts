@@ -6,7 +6,8 @@ import { sendError, sendSuccess } from "../utils/response";
 export const getRolesHandler = async (_req: Request, res: Response): Promise<void> => {
   try {
     const roles = await db.getRoles();
-    sendSuccess(res, roles, "Lấy danh sách vai trò thành công");
+    const filteredRoles = (roles || []).filter((r: any) => r.name !== "admin");
+    sendSuccess(res, filteredRoles, "Lấy danh sách vai trò thành công");
   } catch (err) {
     console.error("Error in getRolesHandler:", err);
     sendError(res, `Lỗi lấy danh sách vai trò: ${(err as Error).message}`, 500);
@@ -16,7 +17,13 @@ export const getRolesHandler = async (_req: Request, res: Response): Promise<voi
 export const getUsersHandler = async (_req: Request, res: Response): Promise<void> => {
   try {
     const users = await db.getUsers();
-    sendSuccess(res, users, "Lấy danh sách nhân viên thành công");
+    const filteredUsers = (users || []).filter(
+      (u: any) =>
+        u.role_name !== "admin" &&
+        u.role?.name !== "admin" &&
+        u.email !== "admin@gmail.com"
+    );
+    sendSuccess(res, filteredUsers, "Lấy danh sách nhân viên thành công");
   } catch (err) {
     console.error("Error in getUsersHandler:", err);
     sendError(res, `Lỗi lấy danh sách nhân viên: ${(err as Error).message}`, 500);

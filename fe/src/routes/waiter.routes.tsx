@@ -4,7 +4,6 @@ import {
   WaiterLayout,
   WaiterTableMap,
   OrderPage,
-  OrderTableListPage,
   WaiterBookingListPage,
 } from "../views/waiter";
 
@@ -20,7 +19,7 @@ export const WaiterRoutes = () => (
     <Route index element={<Navigate to="/waiter/tables" replace />} />
     <Route path="tables" element={<WaiterTableMap />} />
     <Route path="bookings" element={<WaiterBookingListPage />} />
-    <Route path="orders" element={<OrderTableListPage />} />
+    <Route path="orders" element={<Navigate to="/waiter/tables" replace />} />
     <Route path="orders/:tableId" element={<OrderPage />} />
   </Route>
 );

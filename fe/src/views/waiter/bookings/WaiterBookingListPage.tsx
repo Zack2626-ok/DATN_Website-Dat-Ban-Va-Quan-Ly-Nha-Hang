@@ -73,6 +73,10 @@ const COMMON_CANCEL_REASONS = [
   "Yêu cầu khác từ phía khách",
 ];
 
+/**
+ * Trang danh sách đặt bàn (Waiter Booking List)
+ * Cho phép nhân viên phục vụ theo dõi lịch đặt bàn theo ngày, tiếp nhận khách và điều hướng mở bàn
+ */
 export const WaiterBookingListPage: React.FC = () => {
   const navigate = useNavigate();
   const todayYMD = useMemo(() => formatYMD(new Date()), []);

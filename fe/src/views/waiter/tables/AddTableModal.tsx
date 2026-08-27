@@ -9,6 +9,10 @@ interface AddTableModalProps {
   onConfirm: (data: { name: string; capacity: number; area_id: number }) => Promise<void>;
 }
 
+/**
+ * Modal thêm bàn ăn mới vào sơ đồ nhà hàng
+ * Cho phép nhập tên bàn, sức chứa và chọn khu vực tương ứng
+ */
 export const AddTableModal: React.FC<AddTableModalProps> = ({ isOpen, onClose, areas, onConfirm }) => {
   const [name, setName] = useState("");
   const [capacity, setCapacity] = useState(4);
