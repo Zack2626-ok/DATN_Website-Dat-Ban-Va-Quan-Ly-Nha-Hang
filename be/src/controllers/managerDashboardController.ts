@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as db from "../utils/db";
+import { io } from "../server";
 
 // ==================== 1. BÁO CÁO THỐNG KÊ (ANALYTICS) ====================
 
@@ -159,6 +160,12 @@ export const getSystemSettings = async (_req: Request, res: Response) => {
 export const updateSystemSettings = async (req: Request, res: Response) => {
   try {
     const updated = await db.updateRestaurantInfo(req.body);
+    try {
+      io.emit("restaurant_info_updated", updated);
+      io.emit("settings_updated", updated);
+      io.emit("invoice:updated");
+      io.emit("order_updated");
+    } catch {}
     return res.status(200).json({ success: true, data: updated, message: "Cập nhật cấu hình hệ thống thành công!" });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
