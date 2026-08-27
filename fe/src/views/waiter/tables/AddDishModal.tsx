@@ -10,6 +10,10 @@ interface AddDishModalProps {
   onAddItem: (item: WaiterMenuItem, quantity: number, note?: string) => Promise<void>;
 }
 
+/**
+ * Modal thêm món trực tiếp tại bàn cho nhân viên phục vụ
+ * Cho phép tìm kiếm món, lọc theo danh mục, chọn số lượng và ghi chú
+ */
 export const AddDishModal: React.FC<AddDishModalProps> = ({ isOpen, onClose, tableName, onAddItem }) => {
   const [menuItems, setMenuItems] = useState<WaiterMenuItem[]>([]);
   const [categories, setCategories] = useState<WaiterCategory[]>([]);

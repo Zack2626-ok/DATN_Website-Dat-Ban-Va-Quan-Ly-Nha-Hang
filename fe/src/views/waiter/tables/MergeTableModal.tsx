@@ -43,6 +43,10 @@ const getTableClusterCapacity = (table: ResmanagerTable): number => (
  * Gộp bàn — gộp nhiều bàn đang phục vụ vào bàn chính
  * Sau khi gộp: các bàn gộp sẽ chuyển sang "serving" và được mark là merged_child
  */
+/**
+ * Modal gộp bàn (Merge Tables)
+ * Cho phép nhân viên gộp các bàn liền kề hoặc chuyển đơn sang bàn chính
+ */
 export const MergeTableModal: React.FC<MergeTableModalProps> = ({
   isOpen,
   onClose,
