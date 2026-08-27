@@ -98,10 +98,25 @@ export const moveSplitItemsHandler = async (req: Request, res: Response): Promis
 
     req.app.get("io")?.emit("table:split-updated", { tableId, sourceChildOrderId: Number(source_child_order_id), targetChildOrderId: Number(target_child_order_id) });
 
-    sendSuccess(res, true, "Chuyển món giữa các nhóm thành công");
+    sendSuccess(res, {}, "Chuyển món giữa các nhóm thành công");
   } catch (error) {
-    const statusCode = error instanceof db.TableSplitValidationError ? 400 : 500;
-    sendError(res, (error as Error).message, statusCode);
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
+// Hủy tách bàn (Trở về bàn đơn) — DELETE /api/v1/tables/:id/split
+export const unsplitTableHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parentTableId = Number(req.params.id);
+    await db.unsplitResmanagerTable(parentTableId);
+
+    const io = req.app.get("io");
+    io?.emit("table:unsplit", { parentTableId });
+    io?.emit("table:status_changed", { tableId: parentTableId, status: "empty" });
+
+    sendSuccess(res, { parentTableId }, "Hủy tách bàn thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
 

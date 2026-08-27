@@ -43,6 +43,7 @@ import {
   deleteResmanagerTable,
   getTableBookingSchedule,
   checkInTableBooking,
+  unsplitTable,
   type ResmanagerTable,
 } from "../../../services/tableService";
 import type { BookingScheduleItem, BookingScheduleMode } from "../../../services/bookingService";
@@ -546,6 +547,17 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
     () => tables.find((t) => t.id.toString() === selectedTableId?.toString()) || null,
     [tables, selectedTableId],
   );
+
+  const handleUnsplitTable = async () => {
+    if (!selectedTable) return;
+    try {
+      await unsplitTable(selectedTable.id);
+      toast.success(`✅ Đã hủy tách bàn ${selectedTable.name} trở về 1 bàn đơn duy nhất!`);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Không thể hủy tách bàn");
+    }
+  };
 
   const isSelectedTableInCluster = Boolean(
     selectedTable?.is_merged_primary
@@ -1051,7 +1063,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                       key={t.id}
                       onClick={() => {
                         setSelectedTableId(t.id);
-                        if (t.is_split) {
+                        if (t.is_split && t.status !== "empty" && t.status !== "cleaning") {
                           setIsSubOrderModalOpen(true);
                         } else if (activeAssignedBooking && t.status === "empty") {
                           setIsOpenTableModalOpen(true);
@@ -1093,7 +1105,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         )}
                       </div>
 
-                      {t.is_split && (t.split_labels?.length ?? 0) > 0 && (
+                      {t.is_split && t.status !== "empty" && t.status !== "cleaning" && (t.split_labels?.length ?? 0) > 0 && (
                         <span
                           className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-pink-300 bg-pink-100 px-2 py-0.5 text-[9px] font-black text-pink-700 shadow-xs animate-pulse"
                           title={`Đang tách bàn thành: ${t.split_labels?.join(", ")}`}
@@ -1232,7 +1244,7 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 </div>
               </div>
 
-              {selectedTable.is_split && (
+              {selectedTable.is_split && selectedTable.status !== "empty" && selectedTable.status !== "cleaning" && (
                 <div className="mx-5 mt-4 flex flex-col gap-2 rounded-xl border-2 border-pink-300 bg-pink-50 p-3.5 text-xs text-pink-900 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1246,13 +1258,22 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                   <p className="text-[11px] text-pink-800">
                     Mỗi nhóm khách có order và hóa đơn riêng độc lập ({selectedTable.split_labels?.join(", ")}). Nhấn bên dưới để gọi món hoặc thanh toán từng nhóm:
                   </p>
-                  <button
-                    onClick={() => setIsSubOrderModalOpen(true)}
-                    className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer mt-1"
-                  >
-                    <Copy size={14} />
-                    Xem & Thao tác Sub-Orders ({selectedTable.split_labels?.join(", ") || "B04:1, B04:2"})
-                  </button>
+                  <div className="flex flex-col gap-2 mt-1">
+                    <button
+                      onClick={() => setIsSubOrderModalOpen(true)}
+                      className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                    >
+                      <Copy size={14} />
+                      Xem & Thao tác Sub-Orders ({selectedTable.split_labels?.join(", ") || "Sub-orders"})
+                    </button>
+                    <button
+                      onClick={handleUnsplitTable}
+                      className="w-full py-2 bg-white hover:bg-pink-100 text-pink-700 border border-pink-300 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw size={13} />
+                      Hủy tách bàn (Gộp về 1 bàn đơn)
+                    </button>
+                  </div>
                 </div>
               )}
 

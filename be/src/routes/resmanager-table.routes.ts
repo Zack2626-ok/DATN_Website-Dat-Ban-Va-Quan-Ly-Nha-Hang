@@ -13,6 +13,7 @@ import {
   arrangeGroupSeatingHandler,
   unmergeTableHandler,
   splitTableHandler,
+  unsplitTableHandler,
   getTableSplitsHandler,
   moveSplitItemsHandler,
   createResmanagerTableHandler,
@@ -70,6 +71,9 @@ router.get("/:id/splits", getTableSplitsHandler);
 
 // POST /api/v1/tables/:id/split
 router.post("/:id/split", splitTableHandler);
+
+// DELETE /api/v1/tables/:id/split - Hủy tách bàn
+router.delete("/:id/split", unsplitTableHandler);
 
 // POST /api/v1/tables/:id/split/items/move
 router.post("/:id/split/items/move", moveSplitItemsHandler);

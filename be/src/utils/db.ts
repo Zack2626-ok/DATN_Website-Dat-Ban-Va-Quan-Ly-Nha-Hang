@@ -5149,10 +5149,22 @@ export const getResmanagerTablesWithExtra = async (
         0,
       ) +
       groupChildren.reduce((total, table) => total + Number(table.capacity), 0);
-    const splits = await query(
-      "SELECT child_label FROM table_splits WHERE parent_table_id = ? AND status = 'active'",
-      [r.id],
-    );
+    let splits: any[] = [];
+    if (r.status !== "empty" && r.status !== "cleaning") {
+      splits = await query(
+        "SELECT child_label FROM table_splits WHERE parent_table_id = ? AND status = 'active'",
+        [r.id],
+      );
+    } else {
+      await query(
+        "UPDATE table_splits SET status = 'cancelled', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+        [r.id],
+      ).catch(() => {});
+      await query(
+        "UPDATE table_split_sessions SET status = 'completed', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+        [r.id],
+      ).catch(() => {});
+    }
 
     let preOrderedItems: any[] = [];
     if (r.active_order_id && r.active_order_type === "pre_order") {
@@ -9518,6 +9530,45 @@ export const completeSubOrderPayment = async (
 
     await connection.commit();
     return { isSplitOrder: true, sessionCompleted, tableReleased };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+/** Reset a split table back to a single normal table */
+export const unsplitResmanagerTable = async (parentTableId: number): Promise<void> => {
+  await ensureResmanagerTablesSchema();
+  const pool = ensurePool();
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    await connection.query(
+      "UPDATE table_splits SET status = 'cancelled', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+      [parentTableId],
+    );
+    await connection.query(
+      "UPDATE table_split_sessions SET status = 'completed', closed_at = NOW() WHERE parent_table_id = ? AND status = 'active'",
+      [parentTableId],
+    );
+
+    const [activeOrders] = await connection.query<any[]>(
+      "SELECT id FROM orders WHERE table_id = ? AND status IN ('open', 'serving', 'pending_payment')",
+      [parentTableId],
+    );
+
+    if (activeOrders.length === 0) {
+      await connection.query("UPDATE tables SET status = ? WHERE id = ?", [
+        TABLE_STATUS.EMPTY,
+        parentTableId,
+      ]);
+    }
+
+    await connection.commit();
   } catch (error) {
     await connection.rollback();
     throw error;

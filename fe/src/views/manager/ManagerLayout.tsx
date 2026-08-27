@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
-import { Bell, LogOut, Search, Timer, User, Clock } from "lucide-react";
+import { Outlet } from "react-router-dom";
+import { Bell, LogOut, Search, User, Clock } from "lucide-react";
 import { io } from "socket.io-client";
 import { toast } from "react-hot-toast";
 import { getBookingValidationStatus, updateBookingValidationStatus } from "../../services/systemService";
@@ -16,7 +16,6 @@ import { ManagerSidebar } from "./components/ManagerSidebar";
  */
 export const ManagerLayout: React.FC = () => {
   const dispatch = useAppDispatch();
-  const navigate = useNavigate();
   const { user } = useAppSelector((state) => state.auth);
   const searchQuery = useAppSelector((state) => state.ui.searchQuery);
   const displayRole = user?.role || "manager";

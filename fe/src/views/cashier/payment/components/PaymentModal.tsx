@@ -20,7 +20,6 @@ import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
 import { crmService, type Voucher, type Customer } from "../../../../services/crmService";
 import {
   initiateBankTransferPayment,
-  simulateBankTransferPayment,
   simulateWebhookPayment,
   type BankTransferPaymentSession,
 } from "../../../../services/bankTransferPaymentService";

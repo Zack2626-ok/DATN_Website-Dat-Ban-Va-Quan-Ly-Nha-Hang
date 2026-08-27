@@ -220,6 +220,10 @@ export const createTableSplit = async (
   return response.data.data;
 };
 
+export const unsplitTable = async (tableId: number): Promise<void> => {
+  await api.delete(`/v1/tables/${tableId}/split`);
+};
+
 export const openResmanagerTab = async (data: {
   guest_name: string;
   guest_phone?: string;
