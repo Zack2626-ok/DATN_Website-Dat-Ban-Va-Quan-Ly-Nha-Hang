@@ -10,7 +10,6 @@ import {
   PromotionManagement,
   BookingListPage,
   CRMManagement,
-  QRCodeSettings,
   InvoiceManagement,
   InventoryControl,
 } from "../views/manager";
@@ -35,7 +34,6 @@ export const ManagerRoutes = () => (
       <Route path="dashboard" element={<ManagerDashboard />} />
       <Route path="tables" element={<TableMapIndex />} />
       <Route path="bookings" element={<BookingListPage />} />
-      <Route path="qrcodes" element={<QRCodeSettings />} />
       <Route path="staff" element={<UserManagement />} />
       <Route path="menu" element={<MenuManagement />} />
       <Route path="inventory" element={<InventoryControl />} />
