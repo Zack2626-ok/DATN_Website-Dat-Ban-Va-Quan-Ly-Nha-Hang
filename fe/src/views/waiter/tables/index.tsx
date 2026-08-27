@@ -1212,10 +1212,10 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`px-2.5 py-1 rounded-full text-xs font-bold ${selectedTable.status === "serving" && selectedTable.is_early_paid
-                        ? "text-emerald-700 bg-emerald-50 border-emerald-300"
-                        : selectedTable.status === "serving" && selectedTable.is_early_payment
-                          ? "text-amber-700 bg-amber-50 border-amber-300"
-                          : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
+                      ? "text-emerald-700 bg-emerald-50 border-emerald-300"
+                      : selectedTable.status === "serving" && selectedTable.is_early_payment
+                        ? "text-amber-700 bg-amber-50 border-amber-300"
+                        : (STATUS_CONFIG[selectedTable.status] || STATUS_CONFIG.empty).text
                       } bg-white border border-sky-100 shadow-2xs`}
                   >
                     {selectedTable.status === "serving" && selectedTable.is_early_paid
@@ -1863,8 +1863,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.CURRENT)}
             disabled={loadingTableSchedule}
             className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${tableScheduleMode === TABLE_SCHEDULE_MODE.CURRENT
-                ? "bg-sky-600 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              ? "bg-sky-600 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
           >
             Lịch đặt hiện tại
@@ -1874,8 +1874,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
             onClick={() => void loadTableSchedule(TABLE_SCHEDULE_MODE.HISTORY)}
             disabled={loadingTableSchedule}
             className={`rounded-lg px-3 py-2 text-xs font-black transition-colors ${tableScheduleMode === TABLE_SCHEDULE_MODE.HISTORY
-                ? "bg-slate-700 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              ? "bg-slate-700 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
           >
             Lịch sử đặt bàn
@@ -2041,8 +2041,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                     <p className="text-gray-500">Số lượng: <span className="font-bold text-gray-700">{item.quantity}</span></p>
                   </div>
                   <span className={`px-2 py-1 rounded-md font-bold text-[10px] ${item.status === "cooking" ? "bg-amber-100 text-amber-800" :
-                      item.status === "done" ? "bg-emerald-100 text-emerald-800" :
-                        item.status === "waiting_kitchen" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"
+                    item.status === "done" ? "bg-emerald-100 text-emerald-800" :
+                      item.status === "waiting_kitchen" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-700"
                     }`}>
                     {item.status === "cooking" ? "⏳ Đang nấu" :
                       item.status === "done" ? "✅ Bếp đã nấu xong (chờ bưng ra)" :
@@ -2145,8 +2145,8 @@ export const WaiterTableMap: React.FC<WaiterTableMapProps> = ({ isManager = fals
                         onClick={handleVoidUnfinishedAndRequestPaymentFromTable}
                         disabled={processingPaymentRequest || !hasCancellable}
                         className={`w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm ${!hasCancellable
-                            ? "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
-                            : "bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
+                          ? "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+                          : "bg-rose-600 text-white hover:bg-rose-700 cursor-pointer"
                           }`}
                       >
                         {processingPaymentRequest ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
