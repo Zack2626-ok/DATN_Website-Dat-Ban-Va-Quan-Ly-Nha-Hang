@@ -66,6 +66,10 @@ const getCurrentUserId = (): number => {
   }
 };
 
+/**
+ * Trang gọi món (Order Page) cho nhân viên phục vụ tại bàn
+ * Hỗ trợ chọn danh mục, tìm kiếm món, quản lý giỏ gọi món, gửi bếp và yêu cầu thanh toán
+ */
 export const OrderPage: React.FC = () => {
   const { tableId } = useParams<{ tableId: string }>();
   const navigate = useNavigate();
