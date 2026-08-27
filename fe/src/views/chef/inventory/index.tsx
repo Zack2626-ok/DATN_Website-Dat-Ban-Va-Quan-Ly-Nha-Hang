@@ -77,8 +77,7 @@ export const InventoryControl: React.FC = () => {
   const [reduxIngredients, setReduxIngredients] = useState<any[]>([]);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
+  const [pageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
@@ -86,7 +85,6 @@ export const InventoryControl: React.FC = () => {
       .then((res) => {
         if (res && res.data) {
           setReduxIngredients(res.data);
-          setTotalItems(res.totalItems || 0);
           setTotalPages(res.totalPages || 1);
         } else {
           setReduxIngredients(res as any);
@@ -1929,7 +1927,7 @@ export const InventoryControl: React.FC = () => {
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
   const [importPage, setImportPage] = useState(1);
-  const [importPageSize, setImportPageSize] = useState(10);
+  const [importPageSize] = useState(10);
 
   const groupedImportSlips = useMemo(() => {
     const groups: { [key: string]: any } = {};
@@ -2695,25 +2693,7 @@ export const InventoryControl: React.FC = () => {
             </div>
 
             {/* Pagination UI */}
-            <div className="flex flex-col sm:flex-row items-center justify-between p-4 border border-slate-200 border-t-0 bg-white rounded-b-xl mb-4">
-              <div className="flex items-center gap-3 mb-4 sm:mb-0">
-                <span className="text-sm text-slate-600">Hiển thị</span>
-                <select
-                  className="border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-emerald-500"
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                </select>
-                <span className="text-sm text-slate-600">
-                  bản ghi - Hiển thị {filteredIngredients.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, totalItems)} trên tổng số {totalItems} bản ghi
-                </span>
-              </div>
+            <div className="flex items-center justify-center p-4 border border-slate-200 border-t-0 bg-white rounded-b-xl mb-4">
 
               <div className="flex items-center gap-2">
                 <button
@@ -3337,25 +3317,7 @@ export const InventoryControl: React.FC = () => {
             </div>
 
             {/* Pagination UI for Import Invoices */}
-            <div className="flex flex-col sm:flex-row items-center justify-between p-4 border border-slate-200 bg-white rounded-xl">
-              <div className="flex items-center gap-3 mb-4 sm:mb-0">
-                <span className="text-sm text-slate-600">Hiển thị</span>
-                <select
-                  className="border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
-                  value={importPageSize}
-                  onChange={(e) => {
-                    setImportPageSize(Number(e.target.value));
-                    setImportPage(1);
-                  }}
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                </select>
-                <span className="text-sm text-slate-600">
-                  hóa đơn - Hiển thị {groupedImportSlips.length > 0 ? (importPage - 1) * importPageSize + 1 : 0} - {Math.min(importPage * importPageSize, groupedImportSlips.length)} trên tổng số {groupedImportSlips.length} hóa đơn nhập
-                </span>
-              </div>
+            <div className="flex items-center justify-center p-4 border border-slate-200 bg-white rounded-xl">
 
               <div className="flex items-center gap-2">
                 <button

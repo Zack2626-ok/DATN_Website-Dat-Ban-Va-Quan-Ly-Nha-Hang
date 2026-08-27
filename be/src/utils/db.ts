@@ -8224,7 +8224,7 @@ export const redeemCustomerVoucher = async (
     throw new Error("Voucher không tồn tại hoặc đã bị khóa!");
   }
   const voucher = voucherRows[0];
-  const pointsReq = Number(voucher.points_required || 0);
+  const pointsReq = Number(voucher.points_cost || voucher.points_required || 0);
 
   if (
     voucher.expired_at &&

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, Save } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { MenuItem, Category } from "../../../../interfaces";
+import api from "../../../../services/axiosInstance";
 
 interface MenuDrawerProps {
   isOpen: boolean;
@@ -39,6 +40,42 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   
   // Field-specific validation errors for inline red text and outlines
   const [fieldErrors, setFieldErrors] = useState<any>({});
+
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formDataUpload = new FormData();
+    formDataUpload.append("image", file);
+
+    try {
+      setUploadingImage(true);
+      const res = await api.post("/upload", formDataUpload, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      const returnedUrl = res.data.data.imageUrl;
+      const filename = returnedUrl.replace(/^\/?uploads\//, "");
+      setFormData((prev) => ({ ...prev, image_url: filename }));
+      toast.success("Tải ảnh món ăn lên thành công!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Tải ảnh lên thất bại!");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const getImageUrl = (imagePath?: string) => {
+    if (!imagePath) return "";
+    if (imagePath.startsWith("http")) return imagePath;
+    const serverUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+    const cleanPath = imagePath.replace(/^\/?uploads\//, "");
+    return `${serverUrl}/uploads/${cleanPath}`;
+  };
 
   useEffect(() => {
     setValidationError(null);
@@ -264,23 +301,67 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </div>
             </div>
 
-            {/* Image URL */}
+            {/* Image Upload Area */}
             <div>
               <label className="block text-sm font-semibold text-slate-600 mb-1.5">
-                Đường dẫn ảnh món ăn
+                Ảnh món ăn
               </label>
-              <input
-                type="url"
-                value={formData.image_url}
-                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-shadow"
-                placeholder="https://example.com/image.jpg"
-              />
-              {formData.image_url && (
-                <div className="mt-2 relative rounded-lg overflow-hidden border border-sky-100 h-28 w-full bg-sky-50/50 flex items-center justify-center">
-                  <img src={formData.image_url} alt="Preview" className="h-full w-full object-cover" />
-                </div>
-              )}
+              
+              <div className="relative">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  id="dish-image-upload"
+                  className="hidden"
+                />
+                
+                {formData.image_url ? (
+                  // Image Preview with Hover Overlay to Change/Delete
+                  <div className="group relative rounded-2xl overflow-hidden border border-slate-200 h-40 w-full bg-slate-50 flex items-center justify-center shadow-xs">
+                    <img 
+                      src={getImageUrl(formData.image_url)} 
+                      alt="Preview" 
+                      className="h-full w-full object-cover group-hover:opacity-90 transition-opacity" 
+                    />
+                    {/* Hover Controls */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                      <label
+                        htmlFor="dish-image-upload"
+                        className="px-4 py-2 bg-white text-slate-700 rounded-full font-bold text-xs cursor-pointer hover:bg-slate-100 transition-all shadow-md active:scale-95"
+                      >
+                        Thay đổi ảnh
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, image_url: "" })}
+                        className="px-4 py-2 bg-rose-600 text-white rounded-full font-bold text-xs cursor-pointer hover:bg-rose-700 transition-all shadow-md active:scale-95 border-none"
+                      >
+                        Xóa ảnh
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // Empty Upload Area
+                  <label
+                    htmlFor="dish-image-upload"
+                    className="flex flex-col items-center justify-center border-2 border-dashed border-sky-200 hover:border-sky-500 rounded-2xl p-6 bg-slate-50 hover:bg-sky-50/20 transition-all cursor-pointer group h-40"
+                  >
+                    {uploadingImage ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-8 h-8 border-3 border-sky-600 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-bold text-sky-600 animate-pulse">Đang tải ảnh lên...</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 text-slate-500">
+                        <span className="text-3xl transition-transform group-hover:scale-110">📸</span>
+                        <span className="text-xs font-bold text-slate-700">Tải ảnh món ăn lên</span>
+                        <span className="text-[10px] text-slate-400 font-medium">Hỗ trợ JPG, PNG, WEBP</span>
+                      </div>
+                    )}
+                  </label>
+                )}
+              </div>
             </div>
 
             {/* Description */}

@@ -254,6 +254,7 @@ export const InvoiceManagement: React.FC = () => {
   // Expenses management state
   const [expenses, setExpenses] = useState<OperationalExpense[]>([]);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState<boolean>(false);
+  const [excelImportErrors, setExcelImportErrors] = useState<string[]>([]);
   const [expenseForm, setExpenseForm] = useState({
     id: "",
     category: "Điện" as OperationalExpense["category"],
@@ -540,7 +541,7 @@ export const InvoiceManagement: React.FC = () => {
 
   // Prevent background scrolling when a modal is open
   useEffect(() => {
-    const isAnyModalOpen = isDetailsOpen || isExpenseDetailsOpen || isExpenseModalOpen || isRefundOpen || calcBreakdownType !== null || isDeleteConfirmOpen || isDeleteHistoryOpen || isDeletedDetailOpen;
+    const isAnyModalOpen = isDetailsOpen || isExpenseDetailsOpen || isExpenseModalOpen || isRefundOpen || calcBreakdownType !== null || isDeleteConfirmOpen || isDeleteHistoryOpen || isDeletedDetailOpen || excelImportErrors.length > 0;
     if (isAnyModalOpen) {
       document.body.style.overflow = "hidden";
     } else {
@@ -549,7 +550,7 @@ export const InvoiceManagement: React.FC = () => {
     return () => {
       document.body.style.overflow = "";
     };
-  }, [isDetailsOpen, isExpenseDetailsOpen, isExpenseModalOpen, isRefundOpen, calcBreakdownType, isDeleteConfirmOpen, isDeleteHistoryOpen, isDeletedDetailOpen]);
+  }, [isDetailsOpen, isExpenseDetailsOpen, isExpenseModalOpen, isRefundOpen, calcBreakdownType, isDeleteConfirmOpen, isDeleteHistoryOpen, isDeletedDetailOpen, excelImportErrors]);
 
 
 
@@ -826,6 +827,10 @@ export const InvoiceManagement: React.FC = () => {
       toast.error("Ngày chi phí không được để trống");
       return;
     }
+    if (new Date(expenseForm.date).getTime() > new Date().getTime()) {
+      toast.error("Ngày chi phí không được vượt quá thời điểm hiện tại (không được ở tương lai)");
+      return;
+    }
 
     const finalPayee = payeeSelectOption === "Khác" ? customPayeeText.trim() : payeeSelectOption;
     if (!finalPayee) {
@@ -1024,14 +1029,8 @@ export const InvoiceManagement: React.FC = () => {
       ["Mã Chi Phí", "Hạng mục chi phí", "Đơn vị nhận (Đối tác)", "Số Tiền", "Ngày Chi", "Ghi Chú"]
     ];
 
-    const sampleRows = [
-      ["EXP-08-01", "Gas", "Đại lý Gas Bình Minh HCM", 1500000, "08/08/2026", "Thay bình Gas nấu bếp chính"],
-      ["EXP-08-02", "Điện", "Tổng Công ty Điện lực miền Nam (EVN)", 4500000, "05/08/2026", "Tiền điện kỳ tháng 08/2026"],
-      ["EXP-08-03", "Nước", "Công ty Cổ phần Cấp nước Chợ Lớn", 850000, "03/08/2026", "Tiền nước kỳ tháng 08/2026"],
-      ["EXP-08-04", "Internet", "Chi nhánh Tập đoàn Viễn thông Viettel", 350000, "01/08/2026", "Cước Internet cáp quang nhà hàng"]
-    ];
-
     const noteRows = [
+      [], // Blank row 2 for user to enter data
       [],
       ["DANH MỤC HẠNG MỤC CHI PHÍ VÀ ĐƠN VỊ ĐỐI TÁC HỢP LỆ TRÊN HỆ THỐNG:"],
       ["Hạng mục chi phí", "Đơn vị nhận (Đối tác) tương ứng"],
@@ -1046,13 +1045,11 @@ export const InvoiceManagement: React.FC = () => {
       ["HƯỚNG DẪN ĐIỀN DỮ LIỆU:"],
       ["1. Số Tiền: Nhập số nguyên dương (ví dụ: 1500000), không chứa ký hiệu tiền tệ (đ, VNĐ) hoặc dấu chấm phân cách."],
       ["2. Ngày Chi: Nhập theo định dạng ngày DD/MM/YYYY (ví dụ: 08/08/2026)."],
-      ["3. Mã Chi Phí: Không bắt buộc (nếu để trống hệ thống sẽ tự động tạo mã ngẫu nhiên dạng EXP-XXXXXX)."],
-      ["4. Để tránh lỗi trùng lặp, vui lòng không sử dụng lại nguyên văn các dòng dữ liệu mẫu (EXP-08-01 đến EXP-08-04) khi tải lên."]
+      ["3. Mã Chi Phí: Không bắt buộc (nếu để trống hệ thống sẽ tự động tạo mã ngẫu nhiên dạng EXP-XXXXXX)."]
     ];
 
     const aoaData = [
       ...headers,
-      ...sampleRows,
       ...noteRows
     ];
 
@@ -1068,12 +1065,6 @@ export const InvoiceManagement: React.FC = () => {
       { wch: 15 },
       { wch: 40 }
     ];
-
-    for (let r = 2; r <= 5; r++) {
-      if (worksheet[`D${r}`]) {
-        worksheet[`D${r}`].z = "#,##0";
-      }
-    }
 
     XLSX.writeFile(workbook, "Mau_Nhap_Chi_Phi_Van_Hanh.xlsx");
     toast.success("Đã tải về tệp Excel mẫu!");
@@ -1091,19 +1082,6 @@ export const InvoiceManagement: React.FC = () => {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data: any[] = XLSX.utils.sheet_to_json(ws);
-
-        const isSampleRow = (id: string, category: string, amount: number, payee: string) => {
-          const lowerId = id.toLowerCase().replace("#", "").trim();
-          if (["exp-08-01", "exp-08-02", "exp-08-03", "exp-08-04"].includes(lowerId)) {
-            return true;
-          }
-          const lowerPayee = payee.toLowerCase().trim();
-          if (category === "Gas" && amount === 1500000 && lowerPayee.includes("bình minh")) return true;
-          if (category === "Điện" && amount === 4500000 && lowerPayee.includes("evn")) return true;
-          if (category === "Nước" && amount === 850000 && lowerPayee.includes("chợ lớn")) return true;
-          if (category === "Internet" && amount === 350000 && lowerPayee.includes("viettel")) return true;
-          return false;
-        };
 
         const existingIdSet = new Set(expenses.map(exp => exp.id.toLowerCase()));
         
@@ -1123,7 +1101,6 @@ export const InvoiceManagement: React.FC = () => {
         const duplicateIdsWithSystem = new Set<string>();
         const duplicateContentsInExcel = new Set<string>();
         const duplicateContentsWithSystem = new Set<string>();
-        const sampleDataRowsFound = new Set<string>();
         const invalidAmountRows: string[] = [];
         const invalidDateRows: string[] = [];
         const missingFieldRows: string[] = [];
@@ -1134,7 +1111,21 @@ export const InvoiceManagement: React.FC = () => {
           const row = data[idx];
           const excelRowNumber = idx + 2; // Row 1 is header, data starts at Row 2
           
+          const idRawStr = String(row["Mã Chi Phí"] || row["Mã chi phí"] || row["mã chi phí"] || row["id"] || "");
           const categoryRaw = String(row["Hạng mục chi phí"] || row["Hạng mục"] || row["category"] || "").trim();
+          
+          // Dừng đọc file nếu chạm tới phần Hướng dẫn hoặc Danh mục mẫu ở cuối file
+          if (
+            idRawStr.includes("DANH MỤC") || 
+            idRawStr.includes("HƯỚNG DẪN") || 
+            idRawStr.includes("DANH MUC") ||
+            idRawStr.includes("HUONG DAN") ||
+            categoryRaw === "Hạng mục chi phí" ||
+            categoryRaw === "Hang muc chi phi"
+          ) {
+            break;
+          }
+
           const rawAmount = row["Số Tiền"] ?? row["Số tiền"] ?? row["amount"];
           const payeeRaw = String(row["Đơn vị nhận (Đối tác)"] || row["Đơn vị nhận"] || row["Đối tác"] || row["payee"] || "").trim();
           const note = String(row["Ghi Chú"] || row["Ghi chú"] || row["note"] || "").trim();
@@ -1174,13 +1165,10 @@ export const InvoiceManagement: React.FC = () => {
           // Validate định dạng ngày chi
           let finalDate = "";
           if (dateStr) {
+            let parsedDate: Date | null = null;
             if (typeof dateStr === "number") {
-              const d = new Date((dateStr - (25567 + 2)) * 86400 * 1000);
-              if (isNaN(d.getTime())) {
-                invalidDateRows.push(`Dòng ${excelRowNumber}: Ngày chi không hợp lệ`);
-                continue;
-              }
-              finalDate = d.toISOString().split("T")[0] + "T09:00:00";
+              // Excel serial number date
+              parsedDate = new Date((dateStr - (25567 + 2)) * 86400 * 1000);
             } else {
               const s = String(dateStr).trim();
               const parts = s.split("/");
@@ -1188,23 +1176,51 @@ export const InvoiceManagement: React.FC = () => {
                 const day = parseInt(parts[0], 10);
                 const month = parseInt(parts[1], 10);
                 const year = parseInt(parts[2], 10);
-                const d = new Date(year, month - 1, day);
-                if (isNaN(d.getTime()) || d.getDate() !== day || d.getMonth() !== month - 1) {
-                  invalidDateRows.push(`Dòng ${excelRowNumber}: Ngày chi '${s}' không hợp lệ`);
-                  continue;
+                parsedDate = new Date(year, month - 1, day);
+                if (isNaN(parsedDate.getTime()) || parsedDate.getDate() !== day || parsedDate.getMonth() !== month - 1) {
+                  parsedDate = null;
                 }
-                finalDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T09:00:00`;
               } else {
-                const d = new Date(s);
-                if (isNaN(d.getTime())) {
-                  invalidDateRows.push(`Dòng ${excelRowNumber}: Ngày chi '${s}' không hợp lệ (cần định dạng DD/MM/YYYY)`);
-                  continue;
-                }
-                finalDate = s.includes("T") ? s : `${s.split(" ")[0]}T09:00:00`;
+                parsedDate = new Date(s);
               }
             }
+
+            if (!parsedDate || isNaN(parsedDate.getTime())) {
+              invalidDateRows.push(`Dòng ${excelRowNumber}: Ngày chi không hợp lệ`);
+              continue;
+            }
+
+            // Nếu tệp Excel không ghi giờ cụ thể (giờ phút giây bằng 0), dùng giờ phút hiện tại
+            const now = new Date();
+            const hasNoTime = parsedDate.getHours() === 0 && parsedDate.getMinutes() === 0 && parsedDate.getSeconds() === 0;
+            if (hasNoTime) {
+              parsedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+            }
+
+            // Validate không được vượt quá thời gian hiện tại (ngày chi không được ở tương lai)
+            if (parsedDate.getTime() > now.getTime()) {
+              invalidDateRows.push(`Dòng ${excelRowNumber}: Ngày chi '${dateStr}' không được vượt quá ngày hiện tại (không được ở tương lai)`);
+              continue;
+            }
+
+            // Chuyển sang định dạng ISO local yyyy-mm-ddThh:mm:ss
+            const yyyy = parsedDate.getFullYear();
+            const mm = String(parsedDate.getMonth() + 1).padStart(2, "0");
+            const dd = String(parsedDate.getDate()).padStart(2, "0");
+            const hh = String(parsedDate.getHours()).padStart(2, "0");
+            const min = String(parsedDate.getMinutes()).padStart(2, "0");
+            const ss = String(parsedDate.getSeconds()).padStart(2, "0");
+            finalDate = `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
           } else {
-            finalDate = new Date().toISOString().split("T")[0] + "T09:00:00";
+            // Mặc định thời gian hiện tại nếu trống
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, "0");
+            const dd = String(now.getDate()).padStart(2, "0");
+            const hh = String(now.getHours()).padStart(2, "0");
+            const min = String(now.getMinutes()).padStart(2, "0");
+            const ss = String(now.getSeconds()).padStart(2, "0");
+            finalDate = `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
           }
 
           let expenseId = String(row["Mã Chi Phí"] || row["Mã chi phí"] || row["mã chi phí"] || row["id"] || "").trim();
@@ -1212,11 +1228,7 @@ export const InvoiceManagement: React.FC = () => {
             expenseId = expenseId.slice(1);
           }
 
-          // Kiểm tra xem dòng này có khớp với dữ liệu mẫu template không
-          if (isSampleRow(expenseId, category, amount, payee)) {
-            sampleDataRowsFound.add(`${category} - ${payee} (${amount.toLocaleString("vi-VN")} đ)`);
-            continue;
-          }
+
 
           // Validate trùng lặp ID
           if (expenseId) {
@@ -1246,7 +1258,24 @@ export const InvoiceManagement: React.FC = () => {
             duplicateContentsWithSystem.add(displayContent);
           }
 
-          const finalExpenseId = expenseId || `EXP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
+          let finalExpenseId = expenseId;
+          if (!finalExpenseId) {
+            const dateObj = new Date(finalDate);
+            const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+            const dd = String(dateObj.getDate()).padStart(2, "0");
+            const baseId = `EXP-${mm}-${dd}`;
+            
+            let candidateId = baseId;
+            let counter = 1;
+            const existingIdSetLower = new Set(expenses.map(e => e.id.toLowerCase()));
+            newExpensesList.forEach(e => existingIdSetLower.add(e.id.toLowerCase()));
+            
+            while (existingIdSetLower.has(candidateId.toLowerCase())) {
+              candidateId = `${baseId}-${String(counter).padStart(2, "0")}`;
+              counter++;
+            }
+            finalExpenseId = candidateId;
+          }
 
           newExpensesList.push({
             id: finalExpenseId,
@@ -1258,44 +1287,33 @@ export const InvoiceManagement: React.FC = () => {
           });
         }
 
-        if (
-          invalidAmountRows.length > 0 ||
-          invalidDateRows.length > 0 ||
-          missingFieldRows.length > 0 ||
-          sampleDataRowsFound.size > 0 ||
-          duplicateIdsInExcel.size > 0 ||
-          duplicateIdsWithSystem.size > 0 ||
-          duplicateContentsInExcel.size > 0 ||
-          duplicateContentsWithSystem.size > 0
-        ) {
-          let errorMsg = "";
-          
-          if (invalidAmountRows.length > 0) {
-            errorMsg += `⚠️ ${invalidAmountRows.join(". ")}. `;
-          }
-          if (invalidDateRows.length > 0) {
-            errorMsg += `⚠️ ${invalidDateRows.join(". ")}. `;
-          }
-          if (missingFieldRows.length > 0) {
-            errorMsg += `⚠️ ${missingFieldRows.join(". ")}. `;
-          }
-          if (sampleDataRowsFound.size > 0) {
-            errorMsg += `⚠️ Không được nhập dữ liệu mẫu từ tệp tin: ${Array.from(sampleDataRowsFound).join(", ")}. `;
-          }
-          if (duplicateIdsInExcel.size > 0) {
-            errorMsg += `⚠️ Mã chi phí bị trùng lặp trong file Excel: ${Array.from(duplicateIdsInExcel).map(id => `#${id}`).join(", ")}. `;
-          }
-          if (duplicateIdsWithSystem.size > 0) {
-            errorMsg += `⚠️ Mã chi phí đã tồn tại trên hệ thống: ${Array.from(duplicateIdsWithSystem).map(id => `#${id}`).join(", ")}. `;
-          }
-          if (duplicateContentsInExcel.size > 0) {
-            errorMsg += `⚠️ Chi phí bị lặp lại trong file Excel: ${Array.from(duplicateContentsInExcel).join("; ")}. `;
-          }
-          if (duplicateContentsWithSystem.size > 0) {
-            errorMsg += `⚠️ Chi phí đã có sẵn trên hệ thống (trùng khớp ngày, đối tác, số tiền): ${Array.from(duplicateContentsWithSystem).join("; ")}.`;
-          }
+        const allErrors: string[] = [];
+        
+        if (invalidAmountRows.length > 0) {
+          allErrors.push(...invalidAmountRows);
+        }
+        if (invalidDateRows.length > 0) {
+          allErrors.push(...invalidDateRows);
+        }
+        if (missingFieldRows.length > 0) {
+          allErrors.push(...missingFieldRows);
+        }
+        if (duplicateIdsInExcel.size > 0) {
+          allErrors.push(`Mã chi phí bị trùng lặp trong file Excel: ${Array.from(duplicateIdsInExcel).map(id => `#${id}`).join(", ")}`);
+        }
+        if (duplicateIdsWithSystem.size > 0) {
+          allErrors.push(`Mã chi phí đã tồn tại trên hệ thống: ${Array.from(duplicateIdsWithSystem).map(id => `#${id}`).join(", ")}`);
+        }
+        if (duplicateContentsInExcel.size > 0) {
+          allErrors.push(`Chi phí bị lặp lại trong file Excel: ${Array.from(duplicateContentsInExcel).join("; ")}`);
+        }
+        if (duplicateContentsWithSystem.size > 0) {
+          allErrors.push(`Chi phí đã có sẵn trên hệ thống (trùng khớp ngày, đối tác, số tiền): ${Array.from(duplicateContentsWithSystem).join("; ")}`);
+        }
 
-          toast.error(errorMsg, { duration: 8000 });
+        if (allErrors.length > 0) {
+          setExcelImportErrors(allErrors);
+          toast.error("Phát hiện lỗi trong tệp Excel!");
           if (expenseExcelInputRef.current) expenseExcelInputRef.current.value = "";
           return;
         }
@@ -2914,6 +2932,58 @@ export const InvoiceManagement: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Excel Import Errors Modal */}
+      {excelImportErrors.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl font-sans flex flex-col max-h-[80vh]">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-red-50 bg-red-50/50 px-6 py-4 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="text-red-600" size={20} />
+                <h3 className="text-base font-bold text-red-700">
+                  Phát hiện lỗi trong file Excel
+                </h3>
+              </div>
+              <button
+                onClick={() => setExcelImportErrors([])}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/60 hover:text-slate-500 transition-colors cursor-pointer border-none bg-transparent"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Error List Content */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1 text-xs font-semibold text-slate-600 animate-fade-in">
+              <p className="text-slate-500 font-medium">
+                Vui lòng kiểm tra và sửa lại các dòng lỗi sau đây trước khi nhập lại file Excel:
+              </p>
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1 scrollbar-thin">
+                {excelImportErrors.map((err, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-2 bg-red-50/50 border border-red-100 rounded-lg p-3 text-red-750 text-xs leading-relaxed"
+                  >
+                    <span className="mt-0.5 text-red-550 font-bold">⚠️</span>
+                    <span className="text-red-750 font-bold">{err}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end px-6 py-4 bg-slate-50/50 border-t border-slate-100 rounded-b-2xl flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setExcelImportErrors([])}
+                className="rounded-lg bg-slate-800 hover:bg-slate-700 px-5 py-2 text-xs font-bold text-white transition-colors shadow-md cursor-pointer active:scale-95 border-none"
+              >
+                Đóng & Sửa file
+              </button>
+            </div>
           </div>
         </div>
       )}

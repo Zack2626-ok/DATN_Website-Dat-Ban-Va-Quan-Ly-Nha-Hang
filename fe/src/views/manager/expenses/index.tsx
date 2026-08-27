@@ -33,8 +33,7 @@ const ExpensePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
+  const [pageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   
   const [showHistory, setShowHistory] = useState(false);
@@ -68,7 +67,6 @@ const ExpensePage: React.FC = () => {
         params: { month, year, page: currentPage, limit: pageSize }
       });
       setExpenses(res.data.data?.data || []);
-      setTotalItems(res.data.data?.totalItems || 0);
       setTotalPages(res.data.data?.totalPages || 1);
     } catch (error) {
       toast.error("Không thể tải danh sách chi phí");
@@ -446,25 +444,7 @@ const ExpensePage: React.FC = () => {
         </div>
         
         {/* Pagination UI */}
-        <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-slate-200 bg-slate-50 rounded-b-xl">
-          <div className="flex items-center gap-3 mb-4 sm:mb-0">
-            <span className="text-sm text-slate-600">Hiển thị</span>
-            <select
-              className="border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-emerald-500"
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-            >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-            </select>
-            <span className="text-sm text-slate-600">
-              bản ghi - Hiển thị {expenses.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} - {Math.min(currentPage * pageSize, totalItems)} trên tổng số {totalItems} bản ghi
-            </span>
-          </div>
+        <div className="flex items-center justify-center p-4 border-t border-slate-200 bg-slate-50 rounded-b-xl">
 
           <div className="flex items-center gap-2">
             <button
