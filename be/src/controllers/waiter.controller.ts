@@ -253,6 +253,45 @@ export const voidOrderItemHandler = async (req: Request, res: Response): Promise
   }
 };
 
+// Cập nhật số lượng món đang chờ gửi (status = 'pending')
+export const updateOrderItemQuantityHandler = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId, itemId } = req.params;
+    const { quantity } = req.body;
+
+    if (quantity === undefined || isNaN(Number(quantity))) {
+      sendError(res, "Số lượng không hợp lệ", 400);
+      return;
+    }
+
+    const qty = Number(quantity);
+    if (qty <= 0) {
+      const success = await db.voidResmanagerOrderItem(Number(itemId), "Waiter reduced quantity to 0");
+      req.app.get("io")?.emit("order:item_voided", { order_id: Number(orderId), item_id: Number(itemId) });
+      req.app.get("io")?.emit("order_updated", { orderId: Number(orderId) });
+      sendSuccess(res, { itemId, quantity: 0 }, "Đã xóa món khỏi order");
+      return;
+    }
+
+    const items = await db.query<any[]>("SELECT status FROM order_items WHERE id = ?", [Number(itemId)]);
+    if (!items || items.length === 0) {
+      sendError(res, "Không tìm thấy món ăn", 404);
+      return;
+    }
+
+    if (items[0].status !== "pending") {
+      sendError(res, "Chỉ có thể thay đổi số lượng món khi ở trạng thái 'Chờ gửi'!", 400);
+      return;
+    }
+
+    await db.query("UPDATE order_items SET quantity = ? WHERE id = ?", [qty, Number(itemId)]);
+    req.app.get("io")?.emit("order_updated", { orderId: Number(orderId) });
+    sendSuccess(res, { itemId: Number(itemId), quantity: qty }, "Cập nhật số lượng món thành công");
+  } catch (error) {
+    sendError(res, `Lỗi: ${(error as Error).message}`, 500);
+  }
+};
+
 // Gửi món xuống bếp
 export const sendItemsToKitchenHandler = async (req: Request, res: Response): Promise<void> => {
   try {

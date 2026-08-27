@@ -101,17 +101,8 @@ export const CashierPaymentPage: React.FC = () => {
 
     const handlePaymentRequest = (data?: { orderId?: number; tableName?: string; tableId?: number; waiterName?: string; isEarlyPayment?: boolean }) => {
       triggerRefresh();
-      if (data) {
-        const label = data.tableName || (data.tableId ? `bàn ${data.tableId}` : `đơn #${data.orderId || ""}`);
-        const typeText = data.isEarlyPayment ? "thanh toán sớm" : "thanh toán";
-        toast.success(`🛎️ ${label} vừa gửi yêu cầu ${typeText} (${data.waiterName || "phục vụ"})!`, {
-          duration: 6000,
-          icon: "💳",
-        });
-        showSuccess(`Có yêu cầu ${typeText} mới cho ${label}`);
-        if (data.orderId) {
-          dispatch(selectInvoice(String(data.orderId)));
-        }
+      if (data && data.orderId) {
+        dispatch(selectInvoice(String(data.orderId)));
       }
     };
 

@@ -7744,12 +7744,19 @@ export const holdResmanagerOrderItems = async (
 
 export const getWaiterDoneNotifications = async (): Promise<any[]> => {
   return query(`
-    SELECT oi.*, t.name AS table_name, m.name AS dish_name
+    SELECT 
+      oi.id AS item_id,
+      oi.order_id,
+      oi.quantity,
+      m.name AS item_name,
+      COALESCE(o.split_label, t.name) AS table_name,
+      o.table_id
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.id
-    JOIN tables t ON o.table_id = t.id
+    LEFT JOIN tables t ON o.table_id = t.id
     JOIN menu_items m ON oi.menu_item_id = m.id
     WHERE oi.status = 'done'
+    ORDER BY oi.updated_at DESC
   `);
 };
 
