@@ -25,7 +25,8 @@ interface SplitTableModalProps {
 }
 
 /**
- * Tách bàn vật lý thành các nhóm sub-orders độc lập (B04:1, B04:2...)
+ * Modal tách bàn (Split Table)
+ * Cho phép tách bàn vật lý thành các nhóm sub-orders độc lập (B04:1, B04:2...)
  * Bảo vệ món đang chế biến/đã phục vụ giữ nguyên ở nhóm 1 (B04:1)
  */
 export const SplitTableModal: React.FC<SplitTableModalProps> = ({
