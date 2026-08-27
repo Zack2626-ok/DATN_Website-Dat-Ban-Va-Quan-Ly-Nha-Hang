@@ -29,8 +29,9 @@ interface OpenTableModalProps {
 }
 
 /**
- * Collects the minimum information required to open a physical walk-in table.
- * Booking conflicts are validated by the server immediately before the order is created.
+ * Modal mở bàn phục vụ (Open Table)
+ * Thu thập thông tin số lượng khách, họ tên và số điện thoại khách hàng khi mở bàn
+ * Đồng thời hỗ trợ điền trước dữ liệu từ thông tin đặt bàn (prefilled booking data)
  */
 export const OpenTableModal: React.FC<OpenTableModalProps> = ({ isOpen, onClose, onConfirm, table, initialData }) => {
   const [guestCount, setGuestCount] = useState(DEFAULT_WALK_IN_GUESTS);

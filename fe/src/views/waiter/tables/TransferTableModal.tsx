@@ -27,7 +27,8 @@ const getTransferErrorMessage = (error: unknown): string => {
 };
 
 /**
- * Chuyển bàn — chuyển toàn bộ order sang bàn trống khác
+ * Modal chuyển bàn (Transfer Table)
+ * Chuyển toàn bộ order và trạng thái sang bàn trống khác trong nhà hàng
  */
 export const TransferTableModal: React.FC<TransferTableModalProps> = ({
   isOpen,

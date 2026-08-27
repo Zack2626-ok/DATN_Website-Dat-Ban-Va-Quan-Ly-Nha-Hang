@@ -13,6 +13,10 @@ interface SubOrderSelectionModalProps {
   tableName: string;
 }
 
+/**
+ * Modal quản lý và chọn Sub-orders cho các bàn đã tách
+ * Cho phép xem chi tiết từng nhóm khách, yêu cầu thanh toán từng phần hoặc vào gọi món
+ */
 export const SubOrderSelectionModal: React.FC<SubOrderSelectionModalProps> = ({
   isOpen,
   onClose,

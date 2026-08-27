@@ -1,5 +1,9 @@
 import api from "./axiosInstance";
 
+/**
+ * Service API phụ vụ các thao tác của nhân viên phục vụ (Waiter)
+ * Bao gồm: lấy thực đơn, danh mục, quản lý đơn gọi món và yêu cầu thanh toán
+ */
 export interface WaiterMenuItem {
   id: number;
   category_id: number;
