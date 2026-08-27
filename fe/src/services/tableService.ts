@@ -2,6 +2,10 @@ import api from "./axiosInstance";
 import type { TableArea } from "../interfaces/table.interface";
 import type { BookingScheduleItem, BookingScheduleMode } from "./bookingService";
 
+/**
+ * Service API quản lý bàn ăn, khu vực và các nghiệp vụ sơ đồ bàn
+ * Hỗ trợ chuyển bàn, gộp bàn, tách bàn và xếp chỗ đoàn khách
+ */
 export interface ResmanagerTable {
   id: number;
   area_id: number;
