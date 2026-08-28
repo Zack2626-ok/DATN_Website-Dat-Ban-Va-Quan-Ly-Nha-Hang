@@ -4460,7 +4460,7 @@ export const transferBookingItemsToOrder = async (
     const insertedIds: number[] = [];
     for (const item of items) {
       const insertResult = await query<any>(
-        `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status) VALUES (?, ?, ?, ?, 'waiting_kitchen')`,
+        `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status) VALUES (?, ?, ?, ?, 'pending')`,
         [orderId, item.menu_item_id, item.quantity, item.unit_price],
       );
       insertedIds.push(insertResult.insertId);
@@ -4682,7 +4682,7 @@ export const checkInScheduledBooking = async (
       for (const item of preOrderedItemRows) {
         const [insertResult] = await connection.query<mysql.ResultSetHeader>(
           `INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, status)
-           VALUES (?, ?, ?, ?, 'waiting_kitchen')`,
+           VALUES (?, ?, ?, ?, 'pending')`,
           [orderId, item.menu_item_id, item.quantity, item.unit_price],
         );
         insertedItemIds.push(insertResult.insertId);

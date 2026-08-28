@@ -196,26 +196,29 @@ export const getMyWorkSummary = async (req: Request, res: Response): Promise<voi
     const userObj = users[0];
 
     const paidRecords = await db.query<any[]>(
-      `SELECT paid_at FROM payrolls WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1`,
+      "SELECT paid_at FROM payrolls WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1",
       [empId]
     );
     const lastPaidAt = paidRecords.length > 0 && paidRecords[0].paid_at ? new Date(paidRecords[0].paid_at) : null;
 
-    let attendanceSql = `SELECT clock_in, clock_out FROM attendance WHERE employee_id = ?`;
-    const sqlParams: any[] = [empId];
-    if (lastPaidAt) {
-      attendanceSql += ` AND clock_in >= ?`;
-      sqlParams.push(lastPaidAt);
-    }
-    const records = await db.query<any[]>(attendanceSql, sqlParams);
+    const attendanceSql = `
+      SELECT clock_in, clock_out 
+      FROM attendance 
+      WHERE employee_id = ?
+        AND MONTH(clock_in) = MONTH(CURRENT_DATE())
+        AND YEAR(clock_in) = YEAR(CURRENT_DATE())
+    `;
+    const records = await db.query<any[]>(attendanceSql, [empId]);
 
     let totalMinutes = 0;
     const now = new Date();
 
     for (const rec of records) {
       if (!rec.clock_in) continue;
+      // Không cộng ca đang làm việc (chưa clock-out) vào tổng giờ làm
+      if (!rec.clock_out) continue;
       const inTime = new Date(rec.clock_in).getTime();
-      const outTime = rec.clock_out ? new Date(rec.clock_out).getTime() : now.getTime();
+      const outTime = new Date(rec.clock_out).getTime();
       const diffMins = (outTime - inTime) / (1000 * 60);
       if (diffMins > 0) {
         totalMinutes += diffMins;

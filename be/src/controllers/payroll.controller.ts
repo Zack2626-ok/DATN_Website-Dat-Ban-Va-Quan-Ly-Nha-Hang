@@ -82,36 +82,24 @@ async function calculatePayrollInternal(month: number, year: number): Promise<vo
       continue;
     }
 
-    // Lấy thời điểm thanh toán gần nhất (nếu có)
-    const paidRecords = await db.query<any[]>(
-      `SELECT paid_at FROM payrolls WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1`,
-      [user.id]
-    );
-    const lastPaidAt = paidRecords.length > 0 && paidRecords[0].paid_at ? new Date(paidRecords[0].paid_at) : null;
-
-    // 2. Tính tổng số phút làm việc trong tháng cho nhân viên này (bao gồm ca đang diễn ra clock_out IS NULL)
-    let attendanceSql = `
+    // 2. Tính tổng số phút làm việc trong tháng cho nhân viên này
+    const attendanceSql = `
       SELECT clock_in, clock_out 
       FROM attendance 
       WHERE employee_id = ? 
         AND MONTH(clock_in) = ? 
         AND YEAR(clock_in) = ?
     `;
-    const sqlParams: any[] = [user.id, month, year];
-
-    if (lastPaidAt) {
-      attendanceSql += ` AND clock_in >= ?`;
-      sqlParams.push(lastPaidAt);
-    }
-
-    const attendanceRecords = await db.query<any[]>(attendanceSql, sqlParams);
+    const attendanceRecords = await db.query<any[]>(attendanceSql, [user.id, month, year]);
 
     let totalMinutes = 0;
     let holidayMinutes = 0;
     for (const record of attendanceRecords) {
       if (!record.clock_in) continue;
+      // Không cộng ca đang làm việc (chưa clock-out) vào tổng giờ làm của tháng
+      if (!record.clock_out) continue;
       const inTime = new Date(record.clock_in).getTime();
-      const outTime = record.clock_out ? new Date(record.clock_out).getTime() : now.getTime();
+      const outTime = new Date(record.clock_out).getTime();
       const diffMin = (outTime - inTime) / (1000 * 60);
       if (diffMin > 0) {
         totalMinutes += diffMin;
