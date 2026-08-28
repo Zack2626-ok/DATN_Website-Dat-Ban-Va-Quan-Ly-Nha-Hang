@@ -473,6 +473,7 @@ const createDatabaseTables = async (): Promise<void> => {
       bank_account VARCHAR(30) DEFAULT '1234567890',
       bank_name VARCHAR(100) DEFAULT 'Ngân hàng TMCP Ngoại thương Việt Nam',
       bank_account_name VARCHAR(150) DEFAULT 'CONG TY TNHH RESMANAGER',
+      bank_qr_code VARCHAR(500) DEFAULT NULL,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -578,6 +579,16 @@ const runSchemaMigrations = async (): Promise<void> => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `).catch(() => {});
+
+    const qrCols = await query<any[]>(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'restaurant_info' AND COLUMN_NAME = 'bank_qr_code'"
+    ).catch(() => []);
+    if (qrCols.length === 0) {
+      await query(
+        "ALTER TABLE restaurant_info ADD COLUMN bank_qr_code VARCHAR(500) DEFAULT NULL"
+      ).catch(() => {});
+      console.log("✅ Migration: added restaurant_info.bank_qr_code");
+    }
 
     const cols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -9019,6 +9030,26 @@ export const getTodayAttendance = async (
   return rows[0] || null;
 };
 
+export const getActiveAttendance = async (
+  employeeId: number,
+): Promise<any | null> => {
+  if (!dbAvailable) {
+    const MOCK_ATTENDANCE_STORE: any[] =
+      (globalThis as any).__MOCK_ATTENDANCE || [];
+    (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
+    return (
+      MOCK_ATTENDANCE_STORE.find(
+        (a) => a.employee_id === employeeId && !a.clock_out,
+      ) || null
+    );
+  }
+  const rows = await query<any[]>(
+    "SELECT * FROM attendance WHERE employee_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
+    [employeeId],
+  );
+  return rows[0] || null;
+};
+
 export const clockInEmployee = async (
   employeeId: number,
   timing: AttendanceTimingInput = {},
@@ -9065,12 +9096,8 @@ export const clockOutEmployee = async (
     const MOCK_ATTENDANCE_STORE: any[] =
       (globalThis as any).__MOCK_ATTENDANCE || [];
     (globalThis as any).__MOCK_ATTENDANCE = MOCK_ATTENDANCE_STORE;
-    const today = new Date().toISOString().slice(0, 10);
     const record = MOCK_ATTENDANCE_STORE.find(
-      (a) =>
-        a.employee_id === employeeId &&
-        a.clock_in?.startsWith(today) &&
-        !a.clock_out,
+      (a) => a.employee_id === employeeId && !a.clock_out,
     );
     if (record) {
       record.clock_out = new Date().toISOString();
@@ -9080,12 +9107,15 @@ export const clockOutEmployee = async (
     }
     return null;
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const active = await getActiveAttendance(employeeId);
+  if (!active) return null;
+
   await query(
-    "UPDATE attendance SET clock_out = NOW(), is_early = ?, early_reason = ? WHERE employee_id = ? AND DATE(clock_in) = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1",
-    [timing.isEarly ? 1 : 0, timing.earlyReason ?? null, employeeId, today],
+    "UPDATE attendance SET clock_out = NOW(), is_early = ?, early_reason = ? WHERE id = ?",
+    [timing.isEarly ? 1 : 0, timing.earlyReason ?? null, active.id],
   );
-  return getTodayAttendance(employeeId);
+  const rows = await query<any[]>("SELECT * FROM attendance WHERE id = ?", [active.id]);
+  return rows[0] || null;
 };
 
 // ============================================================================
@@ -9946,6 +9976,7 @@ export const updateRestaurantInfo = async (data: any): Promise<any> => {
     "bank_account",
     "bank_name",
     "bank_account_name",
+    "bank_qr_code",
   ];
 
   for (const key of allowedKeys) {

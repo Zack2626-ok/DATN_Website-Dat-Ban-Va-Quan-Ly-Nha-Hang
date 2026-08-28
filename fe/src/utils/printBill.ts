@@ -128,8 +128,14 @@ export const printCashierInvoice = (
         qrLabel = "Quét mã VNPay để thanh toán";
         qrDetails = "Cổng thanh toán VNPay Sandbox";
       } else if (paymentMethod === "transfer" || paymentMethod === "bank_transfer" || !paymentMethod) {
-        // Default to bank transfer VietQR
-        qrUrl = `https://img.vietqr.io/image/${bankCode}-${bankAcc}-qr_only.png?amount=${Math.round(finalAmount)}&addInfo=${encodeURIComponent(desc)}`;
+        // Use custom bank QR code if uploaded, otherwise fallback to VietQR generator
+        if (restaurantInfo?.bank_qr_code) {
+          const serverUrl = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+          const cleanPath = restaurantInfo.bank_qr_code.replace(/^\/?uploads\//, "");
+          qrUrl = `${serverUrl}/uploads/${cleanPath}`;
+        } else {
+          qrUrl = `https://img.vietqr.io/image/${bankCode}-${bankAcc}-qr_only.png?amount=${Math.round(finalAmount)}&addInfo=${encodeURIComponent(desc)}`;
+        }
         qrLabel = "Quét mã VietQR để thanh toán";
         qrDetails = `${bankName}<br>STK: ${bankAcc} - ${bankAccName}`;
       }

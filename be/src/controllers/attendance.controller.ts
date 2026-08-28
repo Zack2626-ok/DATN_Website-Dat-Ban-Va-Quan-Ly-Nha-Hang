@@ -40,7 +40,7 @@ export const getMyAttendance = async (req: Request, res: Response): Promise<void
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const attendance = await db.getTodayAttendance(Number(userId));
+    const attendance = await db.getActiveAttendance(Number(userId));
     sendSuccess(res, attendance, "Lấy thông tin chấm công thành công.");
   } catch (error) {
     console.error("Error in getMyAttendance:", error);
@@ -55,7 +55,7 @@ export const clockIn = async (req: Request, res: Response): Promise<void> => {
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const existing = await db.getTodayAttendance(Number(userId));
+    const existing = await db.getActiveAttendance(Number(userId));
     if (existing && !existing.clock_out) {
       sendError(res, "Bạn đã chấm công vào rồi. Không thể chấm công lại.", 400);
       return;
@@ -80,7 +80,7 @@ export const clockOut = async (req: Request, res: Response): Promise<void> => {
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const existing = await db.getTodayAttendance(Number(userId));
+    const existing = await db.getActiveAttendance(Number(userId));
     if (!existing || existing.clock_out) {
       sendError(res, "Bạn chưa chấm công vào hoặc đã chấm công ra rồi.", 400);
       return;
@@ -106,7 +106,7 @@ export const clockInEmployeeByManager = async (req: Request, res: Response): Pro
       sendError(res, "Nhân viên không hợp lệ.", 400);
       return;
     }
-    const existing = await db.getTodayAttendance(employeeId);
+    const existing = await db.getActiveAttendance(employeeId);
     if (existing && !existing.clock_out) {
       sendError(res, "Nhân viên này đã chấm công vào.", 400);
       return;
@@ -132,7 +132,7 @@ export const clockOutEmployeeByManager = async (req: Request, res: Response): Pr
       sendError(res, "Nhân viên không hợp lệ.", 400);
       return;
     }
-    const existing = await db.getTodayAttendance(employeeId);
+    const existing = await db.getActiveAttendance(employeeId);
     if (!existing || existing.clock_out) {
       sendError(res, "Nhân viên chưa chấm công vào hoặc đã chấm công ra.", 400);
       return;
@@ -159,7 +159,7 @@ export const isCheckedInToday = async (req: Request, res: Response): Promise<voi
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const attendance = await db.getTodayAttendance(Number(userId));
+    const attendance = await db.getActiveAttendance(Number(userId));
     sendSuccess(res, {
       checkedIn: !!attendance && !attendance.clock_out,
       attendance,
