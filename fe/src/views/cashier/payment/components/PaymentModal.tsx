@@ -2,35 +2,33 @@ import React, { useState, useMemo, useEffect } from "react";
 import {
   CreditCard,
   Banknote,
-  ArrowRightLeft,
   Wallet,
   Receipt,
   Tag,
   BadgePercent,
   QrCode,
-  Copy,
-  Check,
   Wrench,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
 } from "lucide-react";
 import { Modal } from "../../../../components/Modal";
 import { getRestaurantInfo, type RestaurantInfo } from "../../../../services/restaurantInfoService";
 import type { Invoice, PaymentRequest } from "../../../../interfaces/invoice";
 import { crmService, type Voucher, type Customer } from "../../../../services/crmService";
 import {
-  initiateBankTransferPayment,
-  simulateWebhookPayment,
-  type BankTransferPaymentSession,
-} from "../../../../services/bankTransferPaymentService";
+  initiateVnPayPayment,
+  simulateVnPayPaymentSuccess,
+  type VnPaySessionResponse,
+} from "../../../../services/vnpayService";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   invoice: Invoice;
   onConfirm: (data: PaymentRequest) => void;
-  onBankTransferStarted: (session: BankTransferPaymentSession) => void;
-  onBankTransferDemoCompleted: () => void;
+  onBankTransferStarted?: (session: any) => void;
+  onBankTransferDemoCompleted?: () => void;
   loading: boolean;
 }
 
@@ -38,10 +36,9 @@ const formatVnd = (n: number) => Number(n).toLocaleString("vi-VN");
 
 const PAYMENT_METHODS = [
   { value: "cash" as const, label: "Tiền mặt", icon: Banknote, color: "bg-emerald-50 border-emerald-200 text-emerald-700" },
-  { value: "transfer" as const, label: "Chuyển khoản", icon: ArrowRightLeft, color: "bg-blue-50 border-blue-200 text-blue-700" },
+  { value: "vnpay" as const, label: "Cổng VNPay", icon: QrCode, color: "bg-sky-50 border-sky-200 text-sky-700" },
   { value: "card" as const, label: "Thẻ tín dụng", icon: CreditCard, color: "bg-violet-50 border-violet-200 text-violet-700" },
   { value: "momo" as const, label: "Ví MoMo", icon: Wallet, color: "bg-pink-50 border-pink-200 text-pink-700" },
-  { value: "vnpay" as const, label: "Cổng VNPay", icon: QrCode, color: "bg-sky-50 border-sky-200 text-sky-700" },
 ];
 
 export const PaymentModal: React.FC<Props> = ({
@@ -49,24 +46,21 @@ export const PaymentModal: React.FC<Props> = ({
   onClose,
   invoice,
   onConfirm,
-  onBankTransferStarted,
-  onBankTransferDemoCompleted,
   loading,
 }) => {
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "card" | "momo" | "vnpay">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "momo" | "vnpay">("cash");
   const [vatRate, setVatRate] = useState(8);
   const [serviceFeeRate] = useState(0);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucherAmount, setVoucherAmount] = useState(0);
   const [tipAmount] = useState(0);
   const [resInfo, setResInfo] = useState<RestaurantInfo | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [bankTransferSession, setBankTransferSession] = useState<BankTransferPaymentSession | null>(null);
-  const [creatingBankTransfer, setCreatingBankTransfer] = useState(false);
-  const [simulatingBankTransfer, setSimulatingBankTransfer] = useState(false);
-  const [bankTransferError, setBankTransferError] = useState<string | null>(null);
-  const [showSandboxTools, setShowSandboxTools] = useState(false);
-  const isBankTransfer = paymentMethod === "transfer";
+
+  const [vnpaySession, setVnpaySession] = useState<VnPaySessionResponse | null>(null);
+  const [loadingVnpay, setLoadingVnpay] = useState(false);
+  const [vnpayError, setVnpayError] = useState<string | null>(null);
+  const [simulatingVnpay, setSimulatingVnpay] = useState(false);
+  const [showVnpaySandboxTools, setShowVnpaySandboxTools] = useState(false);
 
   const [suggestedVouchers, setSuggestedVouchers] = useState<Voucher[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -93,9 +87,9 @@ export const PaymentModal: React.FC<Props> = ({
       setCustomerName(null);
       setMatchedCustomer(null);
       setPointsToUse(0);
-      setBankTransferSession(null);
-      setBankTransferError(null);
-      setSimulatingBankTransfer(false);
+      setVnpaySession(null);
+      setVnpayError(null);
+      setSimulatingVnpay(false);
       return;
     }
 
@@ -159,108 +153,60 @@ export const PaymentModal: React.FC<Props> = ({
     return { subtotal, vat, serviceFee, depositAmount, pointsDiscount, finalAmount };
   }, [invoice.subtotal, invoice.totalAmount, invoice.depositAmount, vatRate, serviceFeeRate, tipAmount, voucherAmount, pointsToUse]);
 
+  useEffect(() => {
+    if (paymentMethod === "vnpay" && isOpen) {
+      let isCancelled = false;
+      setLoadingVnpay(true);
+      setVnpayError(null);
+      initiateVnPayPayment({
+        orderId: invoice.id,
+        vatRate,
+        voucherCode: voucherCode || undefined,
+        voucherAmount: voucherAmount ? voucherAmount * 1000 : undefined,
+        pointsUsed: pointsToUse > 0 ? pointsToUse : undefined,
+      })
+        .then((session) => {
+          if (!isCancelled) setVnpaySession(session);
+        })
+        .catch((err) => {
+          if (!isCancelled) setVnpayError(err.message || "Không thể tạo mã VNPay.");
+        })
+        .finally(() => {
+          if (!isCancelled) setLoadingVnpay(false);
+        });
+
+      return () => {
+        isCancelled = true;
+      };
+    }
+  }, [paymentMethod, isOpen, invoice.id, vatRate, voucherCode, voucherAmount, pointsToUse, breakdown.finalAmount]);
+
+  const handleSimulateVnPaySuccess = async () => {
+    setSimulatingVnpay(true);
+    setVnpayError(null);
+    try {
+      await simulateVnPayPaymentSuccess({
+        orderId: invoice.id,
+        vatRate,
+        voucherCode: voucherCode || undefined,
+        voucherAmount: voucherAmount ? voucherAmount * 1000 : undefined,
+        pointsUsed: pointsToUse > 0 ? pointsToUse : undefined,
+      });
+      onClose();
+    } catch (err: any) {
+      setVnpayError(err.message || "Mô phỏng VNPay thất bại.");
+    } finally {
+      setSimulatingVnpay(false);
+    }
+  };
+
   const momoUrl = useMemo(() => {
     const amountVnd = Math.round(breakdown.finalAmount);
     const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
     return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`momo://pay?phone=${resInfo?.hotline || "028 3829 4000"}&amount=${amountVnd}&note=${desc}`)}`;
   }, [resInfo, breakdown.finalAmount, invoice.id]);
 
-  const vnpayUrl = useMemo(() => {
-    const amountVnd = Math.round(breakdown.finalAmount);
-    const desc = `Thanh toan HD${invoice.id.slice(-6)}`;
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=${amountVnd * 100}&vnp_TxnRef=${invoice.id.slice(-6)}&vnp_OrderInfo=${desc}`)}`;
-  }, [breakdown.finalAmount, invoice.id]);
 
-  /** Tạo QR động và đăng ký lắng nghe kết quả thanh toán của hóa đơn. */
-  const handleCreateBankTransfer = async (): Promise<void> => {
-    setCreatingBankTransfer(true);
-    setBankTransferError(null);
-    try {
-      const session = await initiateBankTransferPayment(invoice.id);
-      setBankTransferSession(session);
-      onBankTransferStarted(session);
-    } catch (error) {
-      setBankTransferError(error instanceof Error ? error.message : "Không thể tạo mã QR chuyển khoản.");
-    } finally {
-      setCreatingBankTransfer(false);
-    }
-  };
-
-  /** Sao chép chính xác thông tin của phiên QR đang chờ thanh toán. */
-  const copyBankInfo = async (): Promise<void> => {
-    if (!bankTransferSession) return;
-    const text = `Ngân hàng: ${bankTransferSession.bankCode}\nSố TK: ${bankTransferSession.accountNumber}\nChủ TK: ${bankTransferSession.accountName}\nSố tiền: ${formatVnd(bankTransferSession.amount)} vnđ\nNội dung: ${bankTransferSession.paymentReference}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setBankTransferError("Không thể sao chép thông tin tài khoản trên trình duyệt này.");
-    }
-  };
-
-  /** 1. Mô phỏng chuyển ĐỦ tiền (Thành công 100%). */
-  const handleSimulateFullPayment = async (): Promise<void> => {
-    if (!bankTransferSession) return;
-    setSimulatingBankTransfer(true);
-    setBankTransferError(null);
-    try {
-      const result = await simulateWebhookPayment(
-        bankTransferSession.paymentReference,
-        bankTransferSession.amount,
-      );
-      if (["completed", "duplicate", "already_paid"].includes(result.status)) {
-        onBankTransferDemoCompleted();
-        return;
-      }
-      setBankTransferError("Không thể hoàn tất mô phỏng. Vui lòng tạo lại mã QR.");
-    } catch (error) {
-      setBankTransferError(error instanceof Error ? error.message : "Không thể mô phỏng tiền về.");
-    } finally {
-      setSimulatingBankTransfer(false);
-    }
-  };
-
-  /** 2. Mô phỏng chuyển THIẾU tiền (Chuyển 50%). */
-  const handleSimulateUnderpayment = async (): Promise<void> => {
-    if (!bankTransferSession) return;
-    setSimulatingBankTransfer(true);
-    setBankTransferError(null);
-    try {
-      const halfAmount = Math.round(bankTransferSession.amount / 2);
-      await simulateWebhookPayment(
-        bankTransferSession.paymentReference,
-        bankTransferSession.amount,
-        halfAmount,
-      );
-      setBankTransferError(`⚠️ Đã gửi Webhook báo chuyển thiếu tiền (${formatVnd(halfAmount)}đ / ${formatVnd(bankTransferSession.amount)}đ). Hệ thống giữ trạng thái chờ!`);
-    } catch (error) {
-      setBankTransferError(error instanceof Error ? error.message : "⚠️ Đã cảnh báo: Chuyển khoản thiếu tiền!");
-    } finally {
-      setSimulatingBankTransfer(false);
-    }
-  };
-
-  /** 3. Mô phỏng HACKER Giả mạo Webhook (Chữ ký HMAC sai). */
-  const handleSimulateHack = async (): Promise<void> => {
-    if (!bankTransferSession) return;
-    setSimulatingBankTransfer(true);
-    setBankTransferError(null);
-    try {
-      await simulateWebhookPayment(
-        bankTransferSession.paymentReference,
-        bankTransferSession.amount,
-        undefined,
-        true, // simulateHack = true
-      );
-      setBankTransferError("Hệ thống đã nhận tín hiệu.");
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Chữ ký không hợp lệ!";
-      setBankTransferError(`⛔ BỊ CHẶN BẢO MẬT (HTTP 401): ${msg}`);
-    } finally {
-      setSimulatingBankTransfer(false);
-    }
-  };
 
   const handleConfirm = () => {
     onConfirm({
@@ -316,7 +262,6 @@ export const PaymentModal: React.FC<Props> = ({
               <input
                 type="text"
                 value={voucherCode}
-                disabled={isBankTransfer}
                 onChange={(e) => setVoucherCode(e.target.value)}
                 placeholder="Mã voucher"
                 className="flex-1 text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
@@ -325,7 +270,6 @@ export const PaymentModal: React.FC<Props> = ({
                 type="number"
                 min={0}
                 value={voucherAmount || ""}
-                disabled={isBankTransfer}
                 onChange={(e) => setVoucherAmount(Number(e.target.value) || 0)}
                 placeholder="Số tiền"
                 className="w-20 text-right text-[11px] border border-slate-200 rounded px-2 py-1 bg-slate-50 focus:outline-none focus:border-blue-400"
@@ -345,7 +289,7 @@ export const PaymentModal: React.FC<Props> = ({
                   <p className="text-[9px] text-slate-400 italic">Không có voucher phù hợp điều kiện.</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {suggestedVouchers.map((v) => {
+                    {suggestedVouchers.map((v: any) => {
                       const subtotal = invoice.subtotal !== undefined ? invoice.subtotal : invoice.totalAmount;
                       const discountVal = v.type === "percent"
                         ? Math.round(subtotal * (v.value / 100))
@@ -358,7 +302,6 @@ export const PaymentModal: React.FC<Props> = ({
                         <button
                           key={v.id}
                           type="button"
-                          disabled={isBankTransfer}
                           onClick={() => {
                             setVoucherCode(v.code);
                             setVoucherAmount(Math.round(discountVal / 1000));
@@ -395,7 +338,6 @@ export const PaymentModal: React.FC<Props> = ({
                     min={0}
                     max={matchedCustomer.loyalty_points}
                     value={pointsToUse || ""}
-                    disabled={isBankTransfer}
                     onChange={(e) => {
                       const val = Number(e.target.value) || 0;
                       setPointsToUse(Math.min(val, matchedCustomer.loyalty_points));
@@ -411,11 +353,6 @@ export const PaymentModal: React.FC<Props> = ({
                 </div>
               </div>
             </div>
-          )}
-          {isBankTransfer && (
-            <p className="rounded-lg bg-blue-50 px-3 py-2 text-[10px] font-medium text-blue-700">
-              QR chuyển khoản dùng đúng tổng tiền hóa đơn; voucher và điểm tích lũy không được áp dụng ở bước này.
-            </p>
           )}
 
           {/* Final total */}
@@ -437,12 +374,6 @@ export const PaymentModal: React.FC<Props> = ({
                   key={pm.value}
                   onClick={() => {
                     setPaymentMethod(pm.value);
-                    setBankTransferError(null);
-                    if (pm.value === "transfer") {
-                      setVoucherCode("");
-                      setVoucherAmount(0);
-                      setPointsToUse(0);
-                    }
                   }}
                   className={`p-2.5 rounded-xl border-2 flex flex-col items-center gap-1.5 cursor-pointer transition-all ${
                     isSelected ? `${pm.color} border-current shadow-sm` : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
@@ -454,84 +385,6 @@ export const PaymentModal: React.FC<Props> = ({
               );
             })}
           </div>
-
-          {/* VietQR when transfer selected */}
-          {paymentMethod === "transfer" && (
-            <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-3 flex flex-col items-center gap-2 animate-fade-in">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-700">
-                <QrCode size={14} />
-                VietQR động — chờ ngân hàng xác nhận
-              </div>
-              {bankTransferSession ? (
-                <>
-                  <img src={bankTransferSession.qrUrl} alt="VietQR động" className="w-48 h-48 rounded-lg border border-blue-200 bg-white" />
-                  <div className="w-full text-[10px] text-slate-600 space-y-0.5">
-                    <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{bankTransferSession.bankCode}</span></div>
-                    <div className="flex justify-between"><span>Số TK:</span><span className="font-bold">{bankTransferSession.accountNumber}</span></div>
-                    <div className="flex justify-between"><span>Nội dung:</span><span className="font-bold break-all text-right">{bankTransferSession.paymentReference}</span></div>
-                    <div className="flex justify-between"><span>Số tiền:</span><span className="font-bold text-blue-700">{formatVnd(bankTransferSession.amount)} vnđ</span></div>
-                  </div>
-                  <p className="text-[10px] text-slate-500 text-center">QR hết hạn lúc {new Date(bankTransferSession.expiresAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}. Hóa đơn sẽ tự chốt khi tiền về.</p>
-                  <button type="button" onClick={copyBankInfo} className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:text-blue-800 cursor-pointer">
-                    {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? "Đã copy!" : "Copy thông tin TK"}
-                  </button>
-                  {bankTransferSession.demoModeEnabled && (
-                    <div className="w-full pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setShowSandboxTools((prev) => !prev)}
-                        className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100/90 hover:bg-slate-200/90 text-[10px] font-bold text-slate-700 transition-all cursor-pointer shadow-2xs"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <Wrench size={12} className="text-amber-600" />
-                          <span>🛠️ DevTools Kiểm Thử Sandbox</span>
-                        </span>
-                        {showSandboxTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
-
-                      {showSandboxTools && (
-                        <div className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50/95 p-3 space-y-2 text-center shadow-xs animate-fade-in">
-                          <p className="text-[9px] text-amber-800 font-medium">Bấm chọn 1 trong 3 kịch bản dưới đây để trình diễn thời gian thực cho Hội Đồng / Thầy Cô:</p>
-                          
-                          <div className="flex flex-col gap-1.5 pt-1">
-                            <button
-                              type="button"
-                              onClick={handleSimulateFullPayment}
-                              disabled={simulatingBankTransfer}
-                              className="w-full rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all hover:bg-emerald-700 active:scale-98 disabled:opacity-60 cursor-pointer shadow-xs flex items-center justify-center gap-1"
-                            >
-                              🟢 1. Mô phỏng Chuyển ĐỦ TIỀN (100% Đạt)
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={handleSimulateUnderpayment}
-                              disabled={simulatingBankTransfer}
-                              className="w-full rounded-lg bg-amber-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all hover:bg-amber-700 active:scale-98 disabled:opacity-60 cursor-pointer shadow-xs flex items-center justify-center gap-1"
-                            >
-                              🟡 2. Mô phỏng Chuyển THIẾU TIỀN (Gửi 50%)
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={handleSimulateHack}
-                              disabled={simulatingBankTransfer}
-                              className="w-full rounded-lg bg-rose-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all hover:bg-rose-700 active:scale-98 disabled:opacity-60 cursor-pointer shadow-xs flex items-center justify-center gap-1"
-                            >
-                              🔴 3. Mô phỏng HACKER Giả mạo (Chữ ký Sai)
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-[10px] text-slate-600 text-center">Tạo QR để khóa số tiền và nội dung chuyển khoản. Hệ thống không tự xác nhận khi chưa nhận webhook ngân hàng.</p>
-              )}
-              {bankTransferError && <p className="text-[10px] text-red-600 text-center">{bankTransferError}</p>}
-            </div>
-          )}
 
           {/* MoMo QR when momo selected */}
           {paymentMethod === "momo" && (
@@ -565,21 +418,75 @@ export const PaymentModal: React.FC<Props> = ({
                 <QrCode size={14} />
                 Quét mã VNPay để thanh toán
               </div>
-              <img
-                src={vnpayUrl}
-                alt="VNPay QR"
-                className="w-48 h-48 rounded-lg border border-sky-200 bg-white"
-              />
-              <div className="w-full text-[10px] text-slate-600 space-y-0.5">
-                <div className="flex justify-between">
-                  <span>Cổng thanh toán:</span>
-                  <span className="font-bold">VNPay Sandbox Gateway</span>
+              {loadingVnpay ? (
+                <div className="w-48 h-48 rounded-lg border border-sky-200 bg-white flex flex-col items-center justify-center text-xs text-sky-600 gap-2">
+                  <div className="w-6 h-6 border-2 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Đang tạo QR VNPay...</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Đơn vị thụ hưởng:</span>
-                  <span className="font-bold">{resInfo?.name || "ResManager"}</span>
-                </div>
-              </div>
+              ) : vnpaySession ? (
+                <>
+                  <img
+                    src={vnpaySession.qrUrl}
+                    alt="VNPay QR"
+                    className="w-48 h-48 rounded-lg border border-sky-200 bg-white"
+                  />
+                  <div className="w-full text-[10px] text-slate-600 space-y-0.5">
+                    <div className="flex justify-between">
+                      <span>Cổng thanh toán:</span>
+                      <span className="font-bold text-sky-700">VNPay Sandbox Gateway</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Số tiền thanh toán:</span>
+                      <span className="font-black text-sky-700">{formatVnd(vnpaySession.amount)} vnđ</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Mã tham chiếu:</span>
+                      <span className="font-mono text-slate-500 font-bold">{vnpaySession.txnRef}</span>
+                    </div>
+                  </div>
+
+                  <a
+                    href={vnpaySession.paymentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-1.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all shadow-xs cursor-pointer"
+                  >
+                    <span>Mở trang thanh toán VNPay Sandbox</span>
+                    <ExternalLink size={12} />
+                  </a>
+
+                  {/* DevTools Simulation for VNPay */}
+                  <div className="w-full pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowVnpaySandboxTools((prev: boolean) => !prev)}
+                      className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-100/80 hover:bg-sky-200/80 text-[10px] font-bold text-sky-800 transition-all cursor-pointer shadow-2xs"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Wrench size={12} className="text-sky-600" />
+                        <span>🛠️ DevTools VNPay Sandbox</span>
+                      </span>
+                      {showVnpaySandboxTools ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {showVnpaySandboxTools && (
+                      <div className="mt-2 w-full rounded-xl border border-sky-200 bg-sky-50 p-2.5 space-y-2 text-center shadow-xs animate-fade-in">
+                        <p className="text-[9px] text-sky-800 font-medium">Bấm bên dưới để mô phỏng VNPay nhận tiền thành công ngay lập tức:</p>
+                        <button
+                          type="button"
+                          onClick={handleSimulateVnPaySuccess}
+                          disabled={simulatingVnpay}
+                          className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all active:scale-98 disabled:opacity-60 cursor-pointer shadow-xs flex items-center justify-center gap-1"
+                        >
+                          🟢 Mô phỏng VNPay thanh toán 100% thành công
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-[10px] text-red-500">{vnpayError || "Không thể tải QR VNPay."}</p>
+              )}
             </div>
           )}
 
@@ -601,18 +508,16 @@ export const PaymentModal: React.FC<Props> = ({
 
           {/* Confirm button */}
           <button
-            onClick={paymentMethod === "transfer" ? handleCreateBankTransfer : handleConfirm}
-            disabled={loading || creatingBankTransfer || (paymentMethod === "transfer" && Boolean(bankTransferSession))}
+            onClick={handleConfirm}
+            disabled={loading}
             className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
           >
-            {paymentMethod === "transfer" && bankTransferSession ? (
-              "Đang chờ ngân hàng xác nhận"
-            ) : loading || creatingBankTransfer ? (
+            {loading ? (
               "Đang xử lý..."
             ) : (
               <>
                 <CreditCard size={16} />
-                {paymentMethod === "transfer" ? "Tạo QR chuyển khoản" : `Xác nhận thanh toán ${formatVnd(breakdown.finalAmount)} vnđ`}
+                Xác nhận thanh toán {formatVnd(breakdown.finalAmount)} vnđ
               </>
             )}
           </button>

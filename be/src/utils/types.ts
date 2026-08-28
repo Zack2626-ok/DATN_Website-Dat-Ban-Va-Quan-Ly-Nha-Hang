@@ -83,7 +83,7 @@ export interface Payment {
   id: string;
   orderId: string;
   amount: number;
-  paymentMethod: "cash" | "card" | "transfer" | "wallet";
+  paymentMethod: "cash" | "card" | "transfer" | "wallet" | "vnpay";
   status: "pending" | "completed" | "failed" | "refunded";
   discountAmount?: number;
   discountReason?: string;

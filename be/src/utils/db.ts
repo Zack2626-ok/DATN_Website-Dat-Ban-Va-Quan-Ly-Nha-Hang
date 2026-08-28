@@ -1225,6 +1225,74 @@ const runSchemaMigrations = async (): Promise<void> => {
       "✅ Migration: recalculated all customer member_level with new tier thresholds",
     );
 
+    // Migration: Tự động cập nhật trạng thái đơn đặt bàn thành 'completed' và đồng bộ điểm tích lũy cho các đơn đã thanh toán
+    try {
+      await query(`
+        UPDATE bookings b
+        JOIN orders o ON (o.booking_id = b.id OR (o.table_id = b.table_id AND o.table_id IS NOT NULL))
+        SET b.status = 'completed', b.updated_at = NOW()
+        WHERE o.status IN ('completed', 'paid') AND b.status IN ('confirmed', 'serving')
+      `);
+
+      await query(`
+        UPDATE orders o
+        JOIN bookings b ON (o.booking_id = b.id OR (o.table_id = b.table_id AND o.table_id IS NOT NULL))
+        SET o.customer_id = b.customer_id
+        WHERE o.customer_id IS NULL AND b.customer_id IS NOT NULL
+      `);
+
+      await query(`
+        UPDATE orders o
+        JOIN customers c ON ((o.customer_phone = c.phone AND c.phone IS NOT NULL AND c.phone != '') OR (o.customer_email = c.email AND c.email IS NOT NULL AND c.email != ''))
+        SET o.customer_id = c.id
+        WHERE o.customer_id IS NULL AND c.is_deleted = 0
+      `);
+
+      const paidOrders = await query<any[]>(
+        "SELECT o.id AS order_id, o.customer_id, o.total_amount, i.id AS invoice_id, i.total FROM orders o LEFT JOIN invoices i ON i.order_id = o.id WHERE o.status IN ('completed', 'paid') AND o.customer_id IS NOT NULL"
+      );
+
+      for (const po of paidOrders) {
+        const amount = Number(po.total || po.total_amount || 0);
+        const points = Math.floor(amount / 1000);
+        const invId = po.invoice_id || po.order_id;
+        if (points > 0 && po.customer_id) {
+          const tx = await query<any[]>(
+            "SELECT id FROM loyalty_transactions WHERE customer_id = ? AND ref_invoice_id = ? AND type = 'earn' LIMIT 1",
+            [po.customer_id, invId]
+          );
+          if (!tx || tx.length === 0) {
+            await query(
+              `INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note, created_at)
+               VALUES (?, ?, 'earn', ?, ?, NOW())`,
+              [
+                po.customer_id,
+                points,
+                invId,
+                `Tích điểm từ hóa đơn thanh toán #${invId} số tiền ${amount.toLocaleString("vi-VN")} đ`
+              ]
+            );
+
+            const cust = await query<any[]>("SELECT loyalty_points FROM customers WHERE id = ?", [po.customer_id]);
+            if (cust && cust.length > 0) {
+              const currentPts = Number(cust[0].loyalty_points || 0);
+              const newPts = currentPts + points;
+              const getTierLevel = (pts: number) => {
+                if (pts >= 20000) return "vip";
+                if (pts >= 8000) return "gold";
+                if (pts >= 2000) return "silver";
+                return "bronze";
+              };
+              await query("UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?", [newPts, getTierLevel(newPts), po.customer_id]);
+            }
+          }
+        }
+      }
+      console.log("✅ Migration: synced completed booking statuses and customer loyalty points");
+    } catch (syncErr: any) {
+      console.warn("Sync completed bookings/loyalty failed:", syncErr.message);
+    }
+
     // Migration: Add batch_code, expiry_date, remaining_quantity, is_credit, due_date to stock_in
     const stockInCols = await query<any[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -8634,6 +8702,138 @@ export const createBookingReview = async (data: {
     new_points: newPoints,
     member_level: memberLevel,
   };
+};
+
+export const finalizeOrderBookingAndLoyaltyPoints = async (
+  orderId: number,
+  finalAmount: number,
+): Promise<void> => {
+  try {
+    const orderRows = await query<any[]>("SELECT * FROM orders WHERE id = ?", [
+      orderId,
+    ]);
+    if (!orderRows || orderRows.length === 0) return;
+    const order = orderRows[0];
+
+    if (order.booking_id) {
+      await query(
+        "UPDATE bookings SET status = 'completed', updated_at = NOW() WHERE id = ?",
+        [order.booking_id],
+      );
+    }
+    if (order.table_id) {
+      await query(
+        "UPDATE bookings SET status = 'completed', updated_at = NOW() WHERE table_id = ? AND status IN ('confirmed', 'serving')",
+        [order.table_id],
+      );
+    }
+
+    let targetCustomerId = order.customer_id ? Number(order.customer_id) : null;
+    if (!targetCustomerId && order.booking_id) {
+      const bRows = await query<any[]>(
+        "SELECT customer_id, guest_phone, guest_email FROM bookings WHERE id = ?",
+        [order.booking_id],
+      );
+      if (bRows && bRows.length > 0) {
+        targetCustomerId = bRows[0].customer_id
+          ? Number(bRows[0].customer_id)
+          : null;
+        if (
+          !targetCustomerId &&
+          (bRows[0].guest_phone || bRows[0].guest_email)
+        ) {
+          const cRows = await query<any[]>(
+            "SELECT id FROM customers WHERE is_deleted = 0 AND ((phone = ? AND phone IS NOT NULL AND phone != '') OR (email = ? AND email IS NOT NULL AND email != '')) LIMIT 1",
+            [bRows[0].guest_phone || "", bRows[0].guest_email || ""],
+          );
+          if (cRows && cRows.length > 0)
+            targetCustomerId = Number(cRows[0].id);
+        }
+      }
+    }
+    if (!targetCustomerId && order.table_id) {
+      const bTableRows = await query<any[]>(
+        "SELECT customer_id, guest_phone, guest_email FROM bookings WHERE table_id = ? ORDER BY id DESC LIMIT 1",
+        [order.table_id],
+      );
+      if (bTableRows && bTableRows.length > 0) {
+        targetCustomerId = bTableRows[0].customer_id
+          ? Number(bTableRows[0].customer_id)
+          : null;
+        if (
+          !targetCustomerId &&
+          (bTableRows[0].guest_phone || bTableRows[0].guest_email)
+        ) {
+          const cRows = await query<any[]>(
+            "SELECT id FROM customers WHERE is_deleted = 0 AND ((phone = ? AND phone IS NOT NULL AND phone != '') OR (email = ? AND email IS NOT NULL AND email != '')) LIMIT 1",
+            [bTableRows[0].guest_phone || "", bTableRows[0].guest_email || ""],
+          );
+          if (cRows && cRows.length > 0)
+            targetCustomerId = Number(cRows[0].id);
+        }
+      }
+    }
+
+    if (targetCustomerId) {
+      await query("UPDATE orders SET customer_id = ? WHERE id = ?", [
+        targetCustomerId,
+        orderId,
+      ]);
+      await query(
+        "UPDATE bookings SET customer_id = ? WHERE (id = ? OR table_id = ?) AND customer_id IS NULL",
+        [targetCustomerId, order.booking_id || 0, order.table_id || 0],
+      );
+
+      const pointsToEarn = Math.floor(finalAmount / 1000);
+      if (pointsToEarn > 0) {
+        const invRows = await query<any[]>(
+          "SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+          [orderId],
+        );
+        const invoiceId = invRows && invRows.length > 0 ? invRows[0].id : orderId;
+
+        const existingTx = await query<any[]>(
+          "SELECT id FROM loyalty_transactions WHERE customer_id = ? AND ref_invoice_id = ? AND type = 'earn' LIMIT 1",
+          [targetCustomerId, invoiceId],
+        );
+        if (!existingTx || existingTx.length === 0) {
+          await query(
+            `INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note, created_at)
+             VALUES (?, ?, 'earn', ?, ?, NOW())`,
+            [
+              targetCustomerId,
+              pointsToEarn,
+              invoiceId,
+              `Tích điểm từ hóa đơn thanh toán #${invoiceId} số tiền ${finalAmount.toLocaleString("vi-VN")} đ`,
+            ],
+          );
+
+          const customer = await query<any[]>(
+            "SELECT loyalty_points FROM customers WHERE id = ? AND is_deleted = 0",
+            [targetCustomerId],
+          );
+          if (customer && customer.length > 0) {
+            const currentPoints = Number(customer[0].loyalty_points || 0);
+            const newPoints = currentPoints + pointsToEarn;
+            const getTierLevel = (pts: number) => {
+              if (pts >= 20000) return "vip";
+              if (pts >= 8000) return "gold";
+              if (pts >= 2000) return "silver";
+              return "bronze";
+            };
+            const newLevel = getTierLevel(newPoints);
+
+            await query(
+              "UPDATE customers SET loyalty_points = ?, member_level = ? WHERE id = ?",
+              [newPoints, newLevel, targetCustomerId],
+            );
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[finalizeOrderBookingAndLoyaltyPoints] Error:", err.message);
+  }
 };
 
 export const createCustomerEventContract = async (data: any): Promise<any> => {

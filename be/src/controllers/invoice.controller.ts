@@ -457,40 +457,8 @@ export const processPayment = async (req: Request, res: Response): Promise<void>
       }
     }
 
-    // Tích điểm loyalty nếu có khách hàng thành viên liên kết
-    if (order.customer_id) {
-      try {
-        const invRows = await db.query(
-          "SELECT id FROM invoices WHERE order_id = ? ORDER BY id DESC LIMIT 1",
-          [id]
-        );
-        const invoiceId = invRows && invRows.length > 0 ? invRows[0].id : null;
-        if (invoiceId) {
-          // Trừ điểm tích lũy nếu có sử dụng
-          if (pointsToUse > 0) {
-            await db.query(
-              "UPDATE customers SET loyalty_points = GREATEST(0, loyalty_points - ?) WHERE id = ?",
-              [pointsToUse, order.customer_id]
-            );
-            await db.query(
-              "INSERT INTO loyalty_transactions (customer_id, points, type, ref_invoice_id, note) VALUES (?, ?, 'redeem', ?, ?)",
-              [order.customer_id, pointsToUse, invoiceId, `Quy đổi ${pointsToUse} điểm để giảm ${pointsDiscount}đ cho đơn #${invoiceId}`]
-            );
-          }
-          // Đánh dấu voucher đã sử dụng nếu có
-          if (customerVoucherRecordId) {
-            await db.query(
-              "UPDATE customer_vouchers SET is_used = 1, used_at = NOW() WHERE id = ?",
-              [customerVoucherRecordId]
-            );
-          }
-          // Tích điểm mới từ số tiền khách phải thanh toán (finalAmount)
-          await addLoyaltyPoints(Number(order.customer_id), finalAmount, invoiceId);
-        }
-      } catch (errLoyalty: any) {
-        console.warn("[processPayment] Loyalty points processing failed:", errLoyalty.message);
-      }
-    }
+    // Tự động chuyển trạng thái đơn đặt bàn (booking) liên kết sang 'completed' và tích điểm loyalty cho khách
+    await db.finalizeOrderBookingAndLoyaltyPoints(Number(id), finalAmount);
 
     const updatedOrder = { ...order, status: "completed" };
     req.app.get("io")?.emit("payment:updated", {
