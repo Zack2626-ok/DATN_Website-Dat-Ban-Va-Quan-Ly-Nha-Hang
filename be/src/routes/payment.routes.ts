@@ -12,6 +12,9 @@ import {
   processBankTransferWebhook,
   simulateBankTransferPayment,
   simulateBankTransferWebhook,
+  createVnPayUrl,
+  handleVnPayReturn,
+  simulateVnPayPayment,
 } from "../controllers/payment.controller";
 import { authStaff, checkRole } from "../middlewares/authMiddleware";
 
@@ -21,6 +24,13 @@ router.get("/", getAllPayments);
 router.get("/statistics", getPaymentStatistics);
 router.get("/order/:orderId", getPaymentsByOrderId);
 router.get("/details/:orderId", getPaymentDetails);
+
+// VNPay Sandbox Routes
+router.post("/vnpay/create-url", authStaff, checkRole(["manager", "cashier", "admin"]), createVnPayUrl);
+router.get("/vnpay/return", handleVnPayReturn);
+router.get("/vnpay/ipn", handleVnPayReturn);
+router.post("/vnpay/simulate", authStaff, checkRole(["manager", "cashier", "admin"]), simulateVnPayPayment);
+
 router.post("/bank-transfer/initiate", authStaff, checkRole(["manager", "cashier", "admin"]), initiateBankTransfer);
 router.post(
   "/bank-transfer/:paymentId/simulate",
