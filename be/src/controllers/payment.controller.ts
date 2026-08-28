@@ -11,6 +11,7 @@ import {
   normalizeBankTransferWebhook,
   verifyBankWebhookSignature,
 } from "../services/bankTransferPayment.service";
+import { buildVnPayPaymentUrl, verifyVnPayReturn } from "../services/vnpay.service";
 import type { BankTransferReconciliationResult } from "../utils/db";
 
 interface InitiateBankTransferBody {
@@ -425,3 +426,253 @@ export const applyDiscount = async (req: Request, res: Response): Promise<void> 
     sendError(res, `Lỗi: ${(error as Error).message}`, 500);
   }
 };
+
+/**
+ * Tạo URL & Mã QR thanh toán VNPay Sandbox
+ */
+export const createVnPayUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId: rawOrderId, invoiceId: rawInvoiceId, vatRate, voucherCode, voucherAmount, pointsUsed } = req.body;
+    const orderId = Number(rawOrderId || rawInvoiceId);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      sendError(res, "Mã hóa đơn không hợp lệ", 400);
+      return;
+    }
+
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => Number(o.id) === orderId);
+    if (!order) {
+      sendError(res, "Không tìm thấy hóa đơn", 404);
+      return;
+    }
+
+    const subtotal = Number(order.total_amount || order.subtotal || 0);
+    const taxRate = vatRate !== undefined ? Number(vatRate) : 8;
+    const vat = Math.round(subtotal * (taxRate / 100));
+    const voucher = Number(voucherAmount || 0);
+    const pointsToUse = Number(pointsUsed || 0);
+    const pointsDiscount = pointsToUse * 100;
+
+    // Không trừ tiền cọc theo yêu cầu người dùng
+    const finalAmount = Math.max(0, subtotal + vat - voucher - pointsDiscount);
+
+    const host = req.get("host") || "localhost:5000";
+    const protocol = req.protocol || "http";
+    const returnUrl = `${protocol}://${host}/api/v1/payments/vnpay/return`;
+
+    const { paymentUrl, txnRef } = buildVnPayPaymentUrl({
+      orderId,
+      amount: finalAmount,
+      orderInfo: `Thanh toan HD #${orderId}`,
+      returnUrl,
+    });
+
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`;
+
+    sendSuccess(res, {
+      paymentUrl,
+      qrUrl,
+      txnRef,
+      amount: finalAmount,
+      orderId,
+    }, "Tạo mã thanh toán VNPay thành công");
+  } catch (error) {
+    console.error("Error creating VNPay URL:", error);
+    sendError(res, `Lỗi tạo link VNPay: ${(error as Error).message}`, 500);
+  }
+};
+
+/**
+ * Xử lý Return Callback từ cổng VNPay Sandbox sau khi quét mã
+ */
+export const handleVnPayReturn = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const verifyResult = verifyVnPayReturn(req.query);
+    const { vnp_TxnRef, vnp_ResponseCode, vnp_Amount } = req.query;
+
+    if (!verifyResult.isVerified) {
+      res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><title>Thanh toán VNPay thất bại</title></head>
+        <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #fff5f5; color: #991b1b;">
+          <h2>❌ Chữ ký VNPay không hợp lệ!</h2>
+          <p>Giao dịch của bạn bị từ chối do không vượt qua bước kiểm tra bảo mật.</p>
+        </body>
+        </html>
+      `);
+      return;
+    }
+
+    if (vnp_ResponseCode !== "00") {
+      res.status(200).send(`
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><title>Thanh toán VNPay hủy/thất bại</title></head>
+        <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #fffbeb; color: #92400e;">
+          <h2>⚠️ Thanh toán chưa hoàn tất</h2>
+          <p>Giao dịch VNPay bị hủy hoặc không thành công (Mã lỗi: ${vnp_ResponseCode}).</p>
+          <script>setTimeout(function() { window.close(); }, 3000);</script>
+        </body>
+        </html>
+      `);
+      return;
+    }
+
+    const txnRefStr = String(vnp_TxnRef || "");
+    const match = txnRefStr.match(/^INV(\d+)_/);
+    const orderId = match ? Number(match[1]) : null;
+
+    if (orderId) {
+      const paidAmount = Number(vnp_Amount) / 100;
+      await db.createPayment({
+        orderId: String(orderId),
+        amount: paidAmount,
+        paymentMethod: "vnpay",
+        status: "completed",
+        discountAmount: 0,
+        discountReason: "Thanh toán VNPay Sandbox",
+        completedAt: new Date().toISOString(),
+      });
+
+      await db.updateOrderStatus(String(orderId), "completed");
+      await db.finalizeOrderBookingAndLoyaltyPoints(orderId, paidAmount);
+
+      const orders = await db.getAllResmanagerOrders();
+      const order = orders.find((o: any) => Number(o.id) === orderId);
+      if (order && order.table_id) {
+        const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+        const ioServer = req.app.get("io");
+        ioServer?.emit("table:merge_resolved", { releasedTableIds });
+        ioServer?.emit("table:released", { tableId: Number(order.table_id) });
+        releasedTableIds.forEach((tId: number) => {
+          ioServer?.emit("table:status_changed", { tableId: tId, status: "cleaning" });
+        });
+      }
+
+      const ioServer = req.app.get("io");
+      ioServer?.emit("payment:success", {
+        message: "Thanh toán VNPay thành công!",
+        invoiceId: orderId,
+        amount: paidAmount,
+        paymentReference: txnRefStr,
+        paidAt: new Date().toISOString(),
+      });
+      ioServer?.emit("payment:updated", { orderId, status: "completed", paymentMethod: "vnpay" });
+      ioServer?.emit("invoice:updated", { orderId, status: "completed" });
+    }
+
+    res.status(200).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Thanh toán VNPay thành công</title>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 50px; background: #f0fdf4; color: #166534; }
+          .card { background: white; max-width: 480px; margin: 0 auto; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+          .icon { font-size: 60px; margin-bottom: 10px; }
+          .btn { display: inline-block; margin-top: 20px; padding: 10px 24px; background: #166534; color: white; border-radius: 10px; text-decoration: none; font-weight: bold; cursor: pointer; border: none; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">✅</div>
+          <h2>THANH TOÁN VNPAY THÀNH CÔNG!</h2>
+          <p>Mã hóa đơn: <strong>#${orderId}</strong></p>
+          <p>Số tiền đã thanh toán: <strong>${(Number(vnp_Amount) / 100).toLocaleString("vi-VN")} đ</strong></p>
+          <p style="font-size: 13px; color: #666; margin-top: 15px;">Hệ thống nhà hàng đã tự động nhận thông báo & cập nhật trạng thái hóa đơn.</p>
+          <button class="btn" onclick="window.close()">Đóng cửa sổ này</button>
+        </div>
+        <script>
+          setTimeout(function() { window.close(); }, 4000);
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error("Error handling VNPay return:", error);
+    sendError(res, `Lỗi xử lý callback VNPay: ${(error as Error).message}`, 500);
+  }
+};
+
+/**
+ * Mô phỏng thanh toán thành công VNPay Sandbox trong DevTools
+ */
+export const simulateVnPayPayment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId: rawOrderId, invoiceId: rawInvoiceId, vatRate, voucherCode, voucherAmount, pointsUsed } = req.body;
+    const orderId = Number(rawOrderId || rawInvoiceId);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      sendError(res, "Mã hóa đơn không hợp lệ", 400);
+      return;
+    }
+
+    const orders = await db.getAllResmanagerOrders();
+    const order = orders.find((o: any) => Number(o.id) === orderId);
+    if (!order) {
+      sendError(res, "Không tìm thấy hóa đơn", 404);
+      return;
+    }
+
+    const subtotal = Number(order.total_amount || order.subtotal || 0);
+    const taxRate = vatRate !== undefined ? Number(vatRate) : 8;
+    const vat = Math.round(subtotal * (taxRate / 100));
+    const voucher = Number(voucherAmount || 0);
+    const pointsToUse = Number(pointsUsed || 0);
+    const pointsDiscount = pointsToUse * 100;
+
+    const finalAmount = Math.max(0, subtotal + vat - voucher - pointsDiscount);
+
+    const payment = await db.createPayment({
+      orderId: String(orderId),
+      amount: finalAmount,
+      paymentMethod: "vnpay",
+      status: "completed",
+      discountAmount: voucher,
+      discountReason: voucherCode ? `Voucher VNPay: ${voucherCode}` : "VNPay Sandbox Demo",
+      notes: JSON.stringify({
+        subtotal,
+        vat,
+        voucher,
+        voucherCode,
+        pointsUsed: pointsToUse,
+        pointsDiscount,
+        finalAmount,
+      }),
+      completedAt: new Date().toISOString(),
+    });
+
+    await db.updateOrderStatus(String(orderId), "completed");
+    await db.finalizeOrderBookingAndLoyaltyPoints(orderId, finalAmount);
+
+    if (order.table_id) {
+      const releasedTableIds = await db.releaseMergedTableClusterAfterPayment(Number(order.table_id));
+      const ioServer = req.app.get("io");
+      ioServer?.emit("table:merge_resolved", { releasedTableIds });
+      ioServer?.emit("table:released", { tableId: Number(order.table_id) });
+      releasedTableIds.forEach((tId: number) => {
+        ioServer?.emit("table:status_changed", { tableId: tId, status: "cleaning" });
+      });
+    }
+
+    const ioServer = req.app.get("io");
+    ioServer?.emit("payment:success", {
+      message: "Thanh toán VNPay thành công!",
+      invoiceId: orderId,
+      amount: finalAmount,
+      paymentReference: `DEMO-VNPAY-${Date.now()}`,
+      paidAt: new Date().toISOString(),
+    });
+    ioServer?.emit("payment:updated", { orderId, status: "completed", paymentMethod: "vnpay" });
+    ioServer?.emit("invoice:updated", { orderId, status: "completed" });
+
+    sendSuccess(res, { payment, orderId, amount: finalAmount }, "Đã mô phỏng thanh toán VNPay thành công!");
+  } catch (error) {
+    console.error("Error simulating VNPay payment:", error);
+    sendError(res, `Lỗi mô phỏng VNPay: ${(error as Error).message}`, 500);
+  }
+};
+
