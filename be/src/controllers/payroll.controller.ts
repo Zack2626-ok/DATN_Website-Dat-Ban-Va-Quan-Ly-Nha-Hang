@@ -60,7 +60,12 @@ function getVietnameseHolidayName(date: Date): string | null {
 
 async function calculatePayrollInternal(month: number, year: number): Promise<void> {
   // 1. Lấy danh sách nhân viên active
-  const users = await db.query<any[]>(`SELECT id, COALESCE(hourly_rate, 25000) AS hourly_rate FROM users WHERE is_deleted = 0`);
+  const users = await db.query<any[]>(`
+    SELECT u.id, COALESCE(u.hourly_rate, 25000) AS hourly_rate 
+    FROM users u
+    LEFT JOIN roles r ON u.role_id = r.id
+    WHERE u.is_deleted = 0 AND (r.name IS NULL OR r.name NOT IN ('admin', 'manager'))
+  `);
 
   const now = new Date();
 
@@ -74,12 +79,6 @@ async function calculatePayrollInternal(month: number, year: number): Promise<vo
     `, [user.id, month, year]);
 
     if (existing.length > 0 && existing[0].status === "paid") {
-      // Khi đã thanh toán -> Reset số giờ làm và tổng lương về 0.0 theo yêu cầu
-      await db.query(`
-        UPDATE payrolls 
-        SET total_hours = 0, total_salary = 0 
-        WHERE id = ?
-      `, [existing[0].id]);
       continue;
     }
 
@@ -126,12 +125,11 @@ async function calculatePayrollInternal(month: number, year: number): Promise<vo
     }
 
     const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
-    const holidayHours = Math.round((holidayMinutes / 60) * 100) / 100;
     
-    // Thưởng ngày lễ: Thêm x2 lương (tổng cộng nhận x3 cho giờ làm ngày lễ)
-    const holidayBonus = Math.round(holidayHours * hourlyRate * 2);
+    // Thưởng ngày lễ: Đã bỏ theo yêu cầu
+    const holidayBonus = 0;
     const basicSalary = Math.round(totalHours * hourlyRate);
-    const totalSalary = basicSalary + holidayBonus;
+    const totalSalary = basicSalary;
 
     if (existing.length > 0) {
       // Nếu đã thanh toán rồi thì không tính lại
@@ -186,7 +184,9 @@ export const payrollController = {
       const countResult = await db.query(`
         SELECT COUNT(*) as total 
         FROM payrolls p 
-        WHERE p.month = ? AND p.year = ?
+        JOIN users u ON p.user_id = u.id
+        LEFT JOIN roles r ON u.role_id = r.id
+        WHERE p.month = ? AND p.year = ? AND (r.name IS NULL OR r.name NOT IN ('admin', 'manager'))
       `, [monthQuery, yearQuery]);
       const totalItems = countResult[0].total || 0;
       const totalPages = Math.ceil(totalItems / limit);
@@ -215,8 +215,8 @@ export const payrollController = {
       const { id } = req.params;
       await db.query(`
         UPDATE payrolls 
-        SET status = 'paid', paid_at = CURRENT_TIMESTAMP, total_hours = 0, total_salary = 0 
-        WHERE id = ?
+        SET status = 'paid', paid_at = CURRENT_TIMESTAMP 
+        WHERE id = ? AND status = 'pending'
       `, [id]);
       sendSuccess(res, null, "Cập nhật trạng thái thanh toán và reset giờ làm thành công!");
     } catch (error) {

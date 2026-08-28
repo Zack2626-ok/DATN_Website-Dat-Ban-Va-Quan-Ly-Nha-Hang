@@ -245,7 +245,7 @@ export const addLoyaltyPoints = async (
 
 export const getAllVouchers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const vouchers = await db.query("SELECT * FROM vouchers ORDER BY id DESC");
+    const vouchers = await db.query("SELECT *, points_cost AS points_required FROM vouchers ORDER BY id DESC");
     sendSuccess(res, vouchers, "Lấy danh sách vouchers thành công");
   } catch (error) {
     console.error("Error in getAllVouchers:", error);
@@ -255,7 +255,7 @@ export const getAllVouchers = async (req: Request, res: Response): Promise<void>
 
 export const createVoucher = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { code, type, value, min_order, max_uses, points_required = 0, expired_at, is_active = 1 } = req.body;
+    const { code, type, value, min_order, max_uses, points_required, points_cost, expired_at, is_active = 1 } = req.body;
     if (!code || !type || value === undefined) {
       sendError(res, "Thiếu thông tin voucher bắt buộc", 400);
       return;
@@ -271,9 +271,10 @@ export const createVoucher = async (req: Request, res: Response): Promise<void> 
     }
 
     const mysqlExpiredAt = toMySQLDateTime(expired_at);
+    const finalPointsCost = Number(points_cost !== undefined ? points_cost : (points_required || 0));
 
     const result = await db.query(
-      `INSERT INTO vouchers (code, type, value, min_order, max_uses, points_required, used_count, expired_at, is_active, created_at)
+      `INSERT INTO vouchers (code, type, value, min_order, max_uses, points_cost, used_count, expired_at, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())`,
       [
         uppercaseCode,
@@ -281,13 +282,13 @@ export const createVoucher = async (req: Request, res: Response): Promise<void> 
         Number(value),
         Number(min_order || 0),
         max_uses !== undefined && max_uses !== null ? Number(max_uses) : null,
-        Number(points_required || 0),
+        finalPointsCost,
         mysqlExpiredAt,
         Number(is_active)
       ]
     );
 
-    const newVouchers = await db.query("SELECT * FROM vouchers WHERE id = ?", [result.insertId]);
+    const newVouchers = await db.query("SELECT *, points_cost AS points_required FROM vouchers WHERE id = ?", [result.insertId]);
     sendSuccess(res, newVouchers[0], "Tạo voucher mới thành công", 201);
   } catch (error) {
     console.error("Error in createVoucher:", error);
@@ -298,7 +299,7 @@ export const createVoucher = async (req: Request, res: Response): Promise<void> 
 export const updateVoucher = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { code, type, value, min_order, max_uses, points_required = 0, expired_at, is_active } = req.body;
+    const { code, type, value, min_order, max_uses, points_required, points_cost, expired_at, is_active } = req.body;
 
     if (!code || !type || value === undefined) {
       sendError(res, "Thiếu thông tin voucher bắt buộc", 400);
@@ -318,10 +319,11 @@ export const updateVoucher = async (req: Request, res: Response): Promise<void> 
     }
 
     const mysqlExpiredAt = toMySQLDateTime(expired_at);
+    const finalPointsCost = Number(points_cost !== undefined ? points_cost : (points_required || 0));
 
     await db.query(
       `UPDATE vouchers 
-       SET code = ?, type = ?, value = ?, min_order = ?, max_uses = ?, points_required = ?, expired_at = ?, is_active = ?
+       SET code = ?, type = ?, value = ?, min_order = ?, max_uses = ?, points_cost = ?, expired_at = ?, is_active = ?
        WHERE id = ?`,
       [
         uppercaseCode,
@@ -329,14 +331,14 @@ export const updateVoucher = async (req: Request, res: Response): Promise<void> 
         Number(value),
         Number(min_order || 0),
         max_uses !== undefined && max_uses !== null ? Number(max_uses) : null,
-        Number(points_required || 0),
+        finalPointsCost,
         mysqlExpiredAt,
         Number(is_active),
         Number(id)
       ]
     );
 
-    const updated = await db.query("SELECT * FROM vouchers WHERE id = ?", [Number(id)]);
+    const updated = await db.query("SELECT *, points_cost AS points_required FROM vouchers WHERE id = ?", [Number(id)]);
     sendSuccess(res, updated[0], "Cập nhật voucher thành công");
   } catch (error) {
     console.error("Error in updateVoucher:", error);

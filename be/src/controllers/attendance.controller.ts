@@ -222,7 +222,7 @@ export const getMyWorkSummary = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    const totalHours = Math.round((totalMinutes / 60) * 10) / 10;
+    const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
     const hourlyRate = Number(userObj.hourly_rate) || 25000;
     const totalSalary = Math.round(totalHours * hourlyRate);
 

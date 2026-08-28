@@ -274,20 +274,22 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
           </div>
 
           {/* Hourly Rate */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-600 mb-1.5">
-              Lương theo giờ (VNĐ)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={formData.hourly_rate}
-              onChange={(e) => setFormData({ ...formData, hourly_rate: Number(e.target.value) })}
-              className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
-              placeholder="VD: 25000"
-              disabled={loading}
-            />
-          </div>
+          {roles.find((r) => r.id === formData.role_id)?.name !== "manager" && (
+            <div>
+              <label className="block text-sm font-semibold text-slate-600 mb-1.5">
+                Lương theo giờ (VNĐ)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.hourly_rate}
+                onChange={(e) => setFormData({ ...formData, hourly_rate: Number(e.target.value) })}
+                className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                placeholder="VD: 25000"
+                disabled={loading}
+              />
+            </div>
+          )}
 
           {/* Password */}
           <div>
@@ -315,7 +317,7 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
                   ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
                   : "border-sky-200 focus:ring-sky-500/20 focus:border-sky-500"
               }`}
-              placeholder={editingUser ? "Để trống nếu muốn giữ nguyên mật khẩu cũ" : "Nhập mật khẩu (tối thiểu 6 ký tự)"}
+              placeholder={editingUser ? "Nhập mật khẩu mới nếu muốn thay đổi" : "Nhập mật khẩu tài khoản"}
               disabled={loading}
             />
             {editingUser && !fieldErrors.password && (
@@ -333,7 +335,15 @@ export const UserDrawer: React.FC<UserDrawerProps> = ({
             </label>
             <select
               value={formData.role_id}
-              onChange={(e) => setFormData({ ...formData, role_id: Number(e.target.value) })}
+              onChange={(e) => {
+                const roleId = Number(e.target.value);
+                const roleName = roles.find((r) => r.id === roleId)?.name;
+                setFormData({
+                  ...formData,
+                  role_id: roleId,
+                  hourly_rate: roleName === "manager" ? 0 : formData.hourly_rate
+                });
+              }}
               className="w-full px-4 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 bg-white transition-shadow shadow-2xs outline-none"
               disabled={loading}
             >
