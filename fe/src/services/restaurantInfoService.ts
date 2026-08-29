@@ -18,6 +18,8 @@ export interface RestaurantInfo {
   bank_account: string;
   bank_name: string;
   bank_account_name: string;
+  online_booking_hours?: string;
+  walk_in_hours?: string;
 }
 
 export const getRestaurantInfo = async (): Promise<RestaurantInfo> => {

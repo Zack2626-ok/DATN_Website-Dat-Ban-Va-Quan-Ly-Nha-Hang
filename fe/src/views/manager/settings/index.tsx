@@ -155,9 +155,11 @@ export const SystemSettingsPage: React.FC = () => {
       </SectionCard>
 
       {/* Giờ hoạt động */}
-      <SectionCard icon={<Clock size={18} />} title="Giờ hoạt động" description="Khung giờ mở cửa và múi giờ hệ thống">
+      <SectionCard icon={<Clock size={18} />} title="Giờ hoạt động" description="Khung giờ mở cửa, nhận khách và múi giờ hệ thống">
         <Field label="Giờ mở cửa" value={settings?.opening_hours ?? ""} onChange={(v) => handleChange("opening_hours", v)} placeholder="VD: Thứ 2 - Chủ nhật: 10:00 - 22:00" />
         <Field label="Múi giờ" value={settings?.timezone ?? ""} onChange={(v) => handleChange("timezone", v)} placeholder="VD: Asia/Ho_Chi_Minh" />
+        <Field label="Khách online" value={settings?.online_booking_hours ?? ""} onChange={(v) => handleChange("online_booking_hours", v)} placeholder="VD: 10:00 – 13:45 và 17:00 – 20:30" />
+        <Field label="Khách trực tiếp" value={settings?.walk_in_hours ?? ""} onChange={(v) => handleChange("walk_in_hours", v)} placeholder="VD: 10:00 – 14:00 và 17:00 – 21:00" />
       </SectionCard>
 
       {/* Thuế VAT */}

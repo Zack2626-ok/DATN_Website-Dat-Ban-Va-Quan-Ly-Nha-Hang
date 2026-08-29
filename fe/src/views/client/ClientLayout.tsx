@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Outlet, Link, NavLink } from "react-router-dom";
-import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed } from "lucide-react";
+import { Menu, X, Phone, Mail, MapPin, Clock, UtensilsCrossed, User, Sparkles, ChevronRight } from "lucide-react";
 import { AIChatWidget } from "../../components/client/AIChatWidget";
 
 const navLinks = [
@@ -27,66 +27,120 @@ export const ClientLayout: React.FC = () => {
     }
   }
 
-  const navClass = ({ isActive }: { isActive: boolean }) =>
-    `text-sm font-semibold tracking-wide transition-colors relative py-1 ${
-      isActive
-        ? "text-client-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-client-primary after:rounded-full"
-        : "text-client-muted hover:text-client-primary"
-    }`;
-
   return (
     <div className="flex min-h-screen flex-col bg-client-bg text-client-text font-sans">
       {/* Navbar */}
-      <header className="sticky top-0 z-40 border-b border-client-accent bg-client-bg/95 backdrop-blur-md shadow-xs">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-client-primary text-white shadow-md">
+      <header className="sticky top-0 z-40 border-b border-client-accent/80 bg-client-bg/95 backdrop-blur-md shadow-xs transition-all duration-300">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6 lg:px-8">
+          <Link to="/" className="flex items-center gap-2.5 group">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-client-primary text-white shadow-md transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
               <UtensilsCrossed size={18} />
             </span>
-            <span className="text-xl font-bold tracking-tight font-display text-client-primary">Restro</span>
+            <span className="text-xl font-bold tracking-tight font-display text-client-primary group-hover:text-[#881814] transition-colors">
+              Restro
+            </span>
           </Link>
 
-          <nav className="hidden items-center gap-8 md:flex">
+          {/* Animated Navigation Bar (Image 2) */}
+          <nav className="hidden items-center gap-7 md:flex">
             {navLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} end={link.end} className={navClass}>
-                {link.label}
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.end}
+                className={({ isActive }) =>
+                  `group relative py-2 px-1 text-sm font-semibold tracking-wide transition-all duration-300 flex items-center ${
+                    isActive
+                      ? "text-client-primary font-bold"
+                      : "text-slate-600 hover:text-client-primary hover:-translate-y-0.5"
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span>{link.label}</span>
+                    <span
+                      className={`absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-gradient-to-r from-client-primary via-amber-500 to-client-primary transition-all duration-300 transform origin-center ${
+                        isActive
+                          ? "scale-x-100 opacity-100 shadow-[0_2px_8px_rgba(167,45,30,0.35)]"
+                          : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-80"
+                      }`}
+                    />
+                  </>
+                )}
               </NavLink>
             ))}
             {customerToken && (
-              <NavLink to="/account" className={navClass}>
-                Tài khoản
+              <NavLink
+                to="/account"
+                className={({ isActive }) =>
+                  `group relative py-2 px-1 text-sm font-semibold tracking-wide transition-all duration-300 flex items-center ${
+                    isActive
+                      ? "text-client-primary font-bold"
+                      : "text-slate-600 hover:text-client-primary hover:-translate-y-0.5"
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span>Tài khoản</span>
+                    <span
+                      className={`absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-gradient-to-r from-client-primary via-amber-500 to-client-primary transition-all duration-300 transform origin-center ${
+                        isActive
+                          ? "scale-x-100 opacity-100 shadow-[0_2px_8px_rgba(167,45,30,0.35)]"
+                          : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-80"
+                      }`}
+                    />
+                  </>
+                )}
               </NavLink>
             )}
           </nav>
 
+          {/* Action Buttons & Luxury Greeting (Image 1) */}
           <div className="hidden items-center gap-3 md:flex">
             {customerToken ? (
               <Link
                 to="/account"
-                className="rounded-lg border border-client-primary/30 px-4 py-2 text-sm font-semibold text-client-primary hover:bg-client-primary/5 transition-colors"
+                className="group relative inline-flex items-center gap-2.5 rounded-full border border-amber-200/90 bg-white/90 px-3.5 py-1.5 shadow-2xs transition-all duration-300 hover:border-client-primary/50 hover:bg-white hover:shadow-md hover:-translate-y-0.5 active:scale-95"
               >
-                Xin chào, {customerName}
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-tr from-client-primary to-[#c73224] text-white shadow-xs font-bold text-xs ring-2 ring-amber-200/60 transition-transform duration-300 group-hover:rotate-6">
+                  {customerName ? customerName.charAt(0).toUpperCase() : <User size={13} />}
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider leading-none">
+                    Xin chào
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 group-hover:text-client-primary transition-colors leading-tight max-w-[130px] truncate">
+                    {customerName}
+                  </span>
+                </div>
+                <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-50 text-amber-600 transition-colors group-hover:bg-client-primary/10 group-hover:text-client-primary">
+                  <Sparkles size={10} className="animate-pulse" />
+                </span>
               </Link>
             ) : (
               <Link
                 to="/customer/login"
-                className="rounded-lg border border-client-primary/30 px-4 py-2 text-sm font-semibold text-client-primary hover:bg-client-primary/5 transition-colors"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs transition-all duration-300 hover:border-client-primary/40 hover:bg-white hover:text-client-primary hover:shadow-xs hover:-translate-y-0.5"
               >
-                Đăng nhập
+                <User size={13} className="text-slate-400 group-hover:text-client-primary" />
+                <span>Đăng nhập</span>
               </Link>
             )}
             <Link
               to="/booking"
-              className="rounded-lg bg-client-primary px-4 py-2 text-sm font-bold text-white shadow-md hover:bg-client-primary-hover hover:shadow-lg transition-all transform hover:-translate-y-0.5"
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-client-primary to-[#8e1d16] px-4 py-2 text-xs font-bold text-white shadow-md shadow-client-primary/20 hover:shadow-lg hover:shadow-client-primary/30 transition-all duration-300 transform hover:-translate-y-0.5 active:scale-95"
             >
-              Đặt bàn ngay
+              <span>Đặt bàn ngay</span>
+              <ChevronRight size={13} />
             </Link>
           </div>
 
           <button
             type="button"
             onClick={() => setMobileOpen((v) => !v)}
-            className="rounded-lg p-2 text-client-muted hover:bg-client-accent md:hidden"
+            className="rounded-xl p-2 text-client-muted hover:bg-client-accent md:hidden transition-colors"
             aria-label="Mở menu"
           >
             {mobileOpen ? <X size={22} /> : <Menu size={22} />}
