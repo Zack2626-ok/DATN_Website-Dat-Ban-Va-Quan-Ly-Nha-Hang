@@ -49,10 +49,9 @@ export const ClientLayout: React.FC = () => {
                 to={link.to}
                 end={link.end}
                 className={({ isActive }) =>
-                  `group relative py-2 px-1 text-sm font-semibold tracking-wide transition-all duration-300 flex items-center ${
-                    isActive
-                      ? "text-client-primary font-bold"
-                      : "text-slate-600 hover:text-client-primary hover:-translate-y-0.5"
+                  `group relative py-2 px-1 text-sm font-semibold tracking-wide transition-all duration-300 flex items-center ${isActive
+                    ? "text-client-primary font-bold"
+                    : "text-slate-600 hover:text-client-primary hover:-translate-y-0.5"
                   }`
                 }
               >
@@ -60,11 +59,10 @@ export const ClientLayout: React.FC = () => {
                   <>
                     <span>{link.label}</span>
                     <span
-                      className={`absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-gradient-to-r from-client-primary via-amber-500 to-client-primary transition-all duration-300 transform origin-center ${
-                        isActive
-                          ? "scale-x-100 opacity-100 shadow-[0_2px_8px_rgba(167,45,30,0.35)]"
-                          : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-80"
-                      }`}
+                      className={`absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-gradient-to-r from-client-primary via-amber-500 to-client-primary transition-all duration-300 transform origin-center ${isActive
+                        ? "scale-x-100 opacity-100 shadow-[0_2px_8px_rgba(167,45,30,0.35)]"
+                        : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-80"
+                        }`}
                     />
                   </>
                 )}
@@ -74,10 +72,9 @@ export const ClientLayout: React.FC = () => {
               <NavLink
                 to="/account"
                 className={({ isActive }) =>
-                  `group relative py-2 px-1 text-sm font-semibold tracking-wide transition-all duration-300 flex items-center ${
-                    isActive
-                      ? "text-client-primary font-bold"
-                      : "text-slate-600 hover:text-client-primary hover:-translate-y-0.5"
+                  `group relative py-2 px-1 text-sm font-semibold tracking-wide transition-all duration-300 flex items-center ${isActive
+                    ? "text-client-primary font-bold"
+                    : "text-slate-600 hover:text-client-primary hover:-translate-y-0.5"
                   }`
                 }
               >
@@ -85,11 +82,10 @@ export const ClientLayout: React.FC = () => {
                   <>
                     <span>Tài khoản</span>
                     <span
-                      className={`absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-gradient-to-r from-client-primary via-amber-500 to-client-primary transition-all duration-300 transform origin-center ${
-                        isActive
-                          ? "scale-x-100 opacity-100 shadow-[0_2px_8px_rgba(167,45,30,0.35)]"
-                          : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-80"
-                      }`}
+                      className={`absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-gradient-to-r from-client-primary via-amber-500 to-client-primary transition-all duration-300 transform origin-center ${isActive
+                        ? "scale-x-100 opacity-100 shadow-[0_2px_8px_rgba(167,45,30,0.35)]"
+                        : "scale-x-0 opacity-0 group-hover:scale-x-100 group-hover:opacity-80"
+                        }`}
                     />
                   </>
                 )}
@@ -157,8 +153,7 @@ export const ClientLayout: React.FC = () => {
                   end={link.end}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm font-semibold ${
-                      isActive ? "bg-client-primary/10 text-client-primary" : "text-client-muted hover:bg-client-accent"
+                    `rounded-lg px-3 py-2.5 text-sm font-semibold ${isActive ? "bg-client-primary/10 text-client-primary" : "text-client-muted hover:bg-client-accent"
                     }`
                   }
                 >
@@ -170,8 +165,7 @@ export const ClientLayout: React.FC = () => {
                   to="/account"
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `rounded-lg px-3 py-2.5 text-sm font-semibold ${
-                      isActive ? "bg-client-primary/10 text-client-primary" : "text-client-muted hover:bg-client-accent"
+                    `rounded-lg px-3 py-2.5 text-sm font-semibold ${isActive ? "bg-client-primary/10 text-client-primary" : "text-client-muted hover:bg-client-accent"
                     }`
                   }
                 >
