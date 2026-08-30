@@ -474,6 +474,8 @@ const createDatabaseTables = async (): Promise<void> => {
       bank_name VARCHAR(100) DEFAULT 'Ngân hàng TMCP Ngoại thương Việt Nam',
       bank_account_name VARCHAR(150) DEFAULT 'CONG TY TNHH RESMANAGER',
       bank_qr_code VARCHAR(500) DEFAULT NULL,
+      online_booking_hours VARCHAR(150) DEFAULT '10:00 – 13:45 và 17:00 – 20:30',
+      walk_in_hours VARCHAR(150) DEFAULT '10:00 – 14:00 và 17:00 – 21:00',
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -506,6 +508,7 @@ export const initDb = async (): Promise<boolean> => {
   conn.release();
   console.log(`🚀 Connected to MySQL ${host}:${port}/${database}`);
   await createDatabaseTables();
+  await ensureRestaurantInfoColumns();
   await runSchemaMigrations();
   console.log("✅ MySQL tables verified/created successfully.");
 
@@ -1635,6 +1638,20 @@ const runSchemaMigrations = async (): Promise<void> => {
       console.log(
         "✅ Migration: updated loyalty_transactions.type ENUM to include 'refund'",
       );
+    }
+
+    // Migration: Add online_booking_hours and walk_in_hours to restaurant_info
+    const restCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'restaurant_info' AND COLUMN_NAME = 'online_booking_hours'`,
+    ).catch(() => []);
+    if (restCols && restCols.length === 0) {
+      await query(`
+        ALTER TABLE restaurant_info
+        ADD COLUMN online_booking_hours VARCHAR(150) NOT NULL DEFAULT '10:00 – 13:45 và 17:00 – 20:30',
+        ADD COLUMN walk_in_hours VARCHAR(150) NOT NULL DEFAULT '10:00 – 14:00 và 17:00 – 21:00'
+      `).catch(() => {});
+      console.log("✅ Migration: added online_booking_hours & walk_in_hours to restaurant_info");
     }
   } catch (err) {
     console.warn("Schema migration skipped:", (err as Error).message);
@@ -9951,10 +9968,44 @@ export const getRestaurantInfo = async (): Promise<any> => {
     bank_account: "1234567890",
     bank_name: "Ngân hàng TMCP Ngoại thương Việt Nam",
     bank_account_name: "CONG TY TNHH RESMANAGER",
+    online_booking_hours: "10:00 – 13:45 và 17:00 – 20:30",
+    walk_in_hours: "10:00 – 14:00 và 17:00 – 21:00",
   };
 };
 
+export const ensureRestaurantInfoColumns = async (): Promise<void> => {
+  try {
+    const restCols = await query<any[]>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'restaurant_info'`,
+    ).catch(() => []);
+    const colSet = new Set((restCols || []).map((c: any) => c.COLUMN_NAME));
+
+    if (!colSet.has("bank_code")) {
+      await query(`ALTER TABLE restaurant_info ADD COLUMN bank_code VARCHAR(20) DEFAULT 'VCB'`).catch(() => {});
+    }
+    if (!colSet.has("bank_account")) {
+      await query(`ALTER TABLE restaurant_info ADD COLUMN bank_account VARCHAR(30) DEFAULT '1234567890'`).catch(() => {});
+    }
+    if (!colSet.has("bank_name")) {
+      await query(`ALTER TABLE restaurant_info ADD COLUMN bank_name VARCHAR(100) DEFAULT 'Ngân hàng TMCP Ngoại thương Việt Nam'`).catch(() => {});
+    }
+    if (!colSet.has("bank_account_name")) {
+      await query(`ALTER TABLE restaurant_info ADD COLUMN bank_account_name VARCHAR(150) DEFAULT 'CONG TY TNHH RESMANAGER'`).catch(() => {});
+    }
+    if (!colSet.has("online_booking_hours")) {
+      await query(`ALTER TABLE restaurant_info ADD COLUMN online_booking_hours VARCHAR(150) DEFAULT '10:00 – 13:45 và 17:00 – 20:30'`).catch(() => {});
+    }
+    if (!colSet.has("walk_in_hours")) {
+      await query(`ALTER TABLE restaurant_info ADD COLUMN walk_in_hours VARCHAR(150) DEFAULT '10:00 – 14:00 và 17:00 – 21:00'`).catch(() => {});
+    }
+  } catch (err: any) {
+    console.warn("Failed to ensure restaurant_info columns:", err.message);
+  }
+};
+
 export const updateRestaurantInfo = async (data: any): Promise<any> => {
+  await ensureRestaurantInfoColumns();
   const existing = await getRestaurantInfo();
   const fields: string[] = [];
   const values: any[] = [];
@@ -9977,6 +10028,8 @@ export const updateRestaurantInfo = async (data: any): Promise<any> => {
     "bank_name",
     "bank_account_name",
     "bank_qr_code",
+    "online_booking_hours",
+    "walk_in_hours",
   ];
 
   for (const key of allowedKeys) {

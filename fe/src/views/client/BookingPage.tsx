@@ -39,6 +39,7 @@ import {
   PUBLIC_BOOKING_HOURS,
 } from "../../constants/booking";
 import { getBookingValidationStatus } from "../../services/systemService";
+import { showClientToast } from "../../utils/luxuryToast";
 
 /** Formats ISO date to friendly Vietnamese weekday and date */
 const getFormattedVietnameseDate = (dateStr: string): string => {
@@ -134,10 +135,10 @@ export const BookingPage: React.FC = () => {
     try {
       const updated = await payBookingDeposit(createdBooking.id);
       setCreatedBooking(updated);
-      toast.success("🎉 Mô phỏng thanh toán tiền cọc thành công!");
+      showClientToast.success("Xác nhận tiền cọc thành công!", "Nhà hàng đã ghi nhận khoản thanh toán tiền cọc của quý khách.");
       setShowPaymentModal(false);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Không thể thực hiện thanh toán tiền cọc lúc này.");
+      showClientToast.error("Thanh toán tiền cọc chưa thành công", err.response?.data?.message || "Không thể thực hiện thanh toán tiền cọc lúc này.");
     } finally {
       setPayingDeposit(false);
     }
@@ -329,16 +330,22 @@ export const BookingPage: React.FC = () => {
 
       setCreatedBooking(bookingResult);
       setStep(4);
-      toast.success("Yêu cầu đặt bàn đã được ghi nhận thành công.");
+      showClientToast.success(
+        "Đặt bàn thành công!",
+        `Mã đặt bàn #${bookingResult.confirmation_code || ""} đã được tiếp nhận. Nhà hàng hân hạnh đón tiếp quý khách!`
+      );
     } catch (err: any) {
       const errMsg: string =
         err.response?.data?.message ||
         err.response?.data?.error ||
         (err.message === "Network Error" || err.code === "ERR_NETWORK"
-          ? "Không thể kết nối tới Server Backend. Vui lòng bật server Backend (npm run dev trong thư mục be)."
+          ? "Không thể kết nối tới Server Backend. Vui lòng thử lại sau."
           : err.message) ||
         "";
-      toast.error(errMsg || "Đặt bàn thất bại. Vui lòng thử lại.");
+      showClientToast.error(
+        "Đặt bàn chưa thành công",
+        errMsg || "Vui lòng kiểm tra lại thông tin và thử lại."
+      );
     } finally {
       setSubmitting(false);
     }
