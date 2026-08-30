@@ -20,6 +20,9 @@ export const AttendanceHistoryTab: React.FC<AttendanceHistoryTabProps> = ({ atte
   const filteredAttendance = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return attendance.filter((record) => {
+      // Loại bỏ admin và manager khỏi lịch sử làm việc
+      if (record.employee_role === "manager" || record.employee_role === "admin") return false;
+
       if (!record.clock_out) return false;
       if (!normalizedQuery) return true;
       return record.employee_name?.toLowerCase().includes(normalizedQuery)
@@ -107,7 +110,13 @@ export const AttendanceHistoryTab: React.FC<AttendanceHistoryTabProps> = ({ atte
                   <td className="px-5 py-4 font-mono text-slate-500">
                     {record.clock_out ? formatDateTime(record.clock_out).time : <span className="font-sans text-orange-600">Đang làm việc</span>}
                   </td>
-                  <td className="px-5 py-4 text-right font-mono font-bold text-slate-600">{formatDuration(record.clock_in, record.clock_out)}</td>
+                  <td className="px-5 py-4 text-right font-mono font-bold text-slate-600">
+                    {record.clock_out ? (
+                      formatDuration(record.clock_in, record.clock_out)
+                    ) : (
+                      <span className="font-sans text-orange-600">Đang làm việc</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

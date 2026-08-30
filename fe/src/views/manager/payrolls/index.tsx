@@ -837,8 +837,8 @@ const PayrollPage: React.FC = () => {
               ) : (
                 paginatedPayrolls.map((p) => {
                   const isPaid = p.status === "paid";
-                  const displayHours = isPaid ? 0.0 : Number(p.total_hours || 0);
-                  const displaySalary = isPaid ? 0 : Number(p.total_salary || 0);
+                  const displayHours = Number(p.total_hours || 0);
+                  const displaySalary = Number(p.total_salary || 0);
                   return (
                     <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                       <td className="px-6 py-4 text-sm font-medium whitespace-nowrap">{p.employee_code || `NV${String(p.user_id).padStart(3, "0")}`}</td>

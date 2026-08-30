@@ -40,7 +40,7 @@ export const getMyAttendance = async (req: Request, res: Response): Promise<void
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const attendance = await db.getTodayAttendance(Number(userId));
+    const attendance = await db.getActiveAttendance(Number(userId));
     sendSuccess(res, attendance, "Lấy thông tin chấm công thành công.");
   } catch (error) {
     console.error("Error in getMyAttendance:", error);
@@ -55,7 +55,7 @@ export const clockIn = async (req: Request, res: Response): Promise<void> => {
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const existing = await db.getTodayAttendance(Number(userId));
+    const existing = await db.getActiveAttendance(Number(userId));
     if (existing && !existing.clock_out) {
       sendError(res, "Bạn đã chấm công vào rồi. Không thể chấm công lại.", 400);
       return;
@@ -80,7 +80,7 @@ export const clockOut = async (req: Request, res: Response): Promise<void> => {
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const existing = await db.getTodayAttendance(Number(userId));
+    const existing = await db.getActiveAttendance(Number(userId));
     if (!existing || existing.clock_out) {
       sendError(res, "Bạn chưa chấm công vào hoặc đã chấm công ra rồi.", 400);
       return;
@@ -106,7 +106,7 @@ export const clockInEmployeeByManager = async (req: Request, res: Response): Pro
       sendError(res, "Nhân viên không hợp lệ.", 400);
       return;
     }
-    const existing = await db.getTodayAttendance(employeeId);
+    const existing = await db.getActiveAttendance(employeeId);
     if (existing && !existing.clock_out) {
       sendError(res, "Nhân viên này đã chấm công vào.", 400);
       return;
@@ -132,7 +132,7 @@ export const clockOutEmployeeByManager = async (req: Request, res: Response): Pr
       sendError(res, "Nhân viên không hợp lệ.", 400);
       return;
     }
-    const existing = await db.getTodayAttendance(employeeId);
+    const existing = await db.getActiveAttendance(employeeId);
     if (!existing || existing.clock_out) {
       sendError(res, "Nhân viên chưa chấm công vào hoặc đã chấm công ra.", 400);
       return;
@@ -159,7 +159,7 @@ export const isCheckedInToday = async (req: Request, res: Response): Promise<voi
       sendError(res, "Không tìm thấy thông tin nhân viên.", 401);
       return;
     }
-    const attendance = await db.getTodayAttendance(Number(userId));
+    const attendance = await db.getActiveAttendance(Number(userId));
     sendSuccess(res, {
       checkedIn: !!attendance && !attendance.clock_out,
       attendance,
@@ -196,26 +196,29 @@ export const getMyWorkSummary = async (req: Request, res: Response): Promise<voi
     const userObj = users[0];
 
     const paidRecords = await db.query<any[]>(
-      `SELECT paid_at FROM payrolls WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1`,
+      "SELECT paid_at FROM payrolls WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1",
       [empId]
     );
     const lastPaidAt = paidRecords.length > 0 && paidRecords[0].paid_at ? new Date(paidRecords[0].paid_at) : null;
 
-    let attendanceSql = `SELECT clock_in, clock_out FROM attendance WHERE employee_id = ?`;
-    const sqlParams: any[] = [empId];
-    if (lastPaidAt) {
-      attendanceSql += ` AND clock_in >= ?`;
-      sqlParams.push(lastPaidAt);
-    }
-    const records = await db.query<any[]>(attendanceSql, sqlParams);
+    const attendanceSql = `
+      SELECT clock_in, clock_out 
+      FROM attendance 
+      WHERE employee_id = ?
+        AND MONTH(clock_in) = MONTH(CURRENT_DATE())
+        AND YEAR(clock_in) = YEAR(CURRENT_DATE())
+    `;
+    const records = await db.query<any[]>(attendanceSql, [empId]);
 
     let totalMinutes = 0;
     const now = new Date();
 
     for (const rec of records) {
       if (!rec.clock_in) continue;
+      // Không cộng ca đang làm việc (chưa clock-out) vào tổng giờ làm
+      if (!rec.clock_out) continue;
       const inTime = new Date(rec.clock_in).getTime();
-      const outTime = rec.clock_out ? new Date(rec.clock_out).getTime() : now.getTime();
+      const outTime = new Date(rec.clock_out).getTime();
       const diffMins = (outTime - inTime) / (1000 * 60);
       if (diffMins > 0) {
         totalMinutes += diffMins;

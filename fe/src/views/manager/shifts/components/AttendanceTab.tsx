@@ -42,6 +42,9 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
   };
 
   const filtered = getCurrentAttendance().filter((a) => {
+    // Loại bỏ admin và manager khỏi danh sách hiển thị chấm công
+    if (a.employee_role === "manager" || a.employee_role === "admin") return false;
+    
     const nameMatch = a.employee_name?.toLowerCase().includes(query.toLowerCase());
     const roleMatch = a.employee_role?.toLowerCase().includes(query.toLowerCase());
     return nameMatch || roleMatch;
@@ -70,7 +73,20 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
   };
 
   const formatDateTime = (dtStr: string) => {
-    return dtStr.replace("T", " ");
+    if (!dtStr) return "";
+    try {
+      const date = new Date(dtStr);
+      if (isNaN(date.getTime())) return dtStr.replace("T", " ");
+      const hh = String(date.getHours()).padStart(2, "0");
+      const mm = String(date.getMinutes()).padStart(2, "0");
+      const ss = String(date.getSeconds()).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const y = date.getFullYear();
+      return `${hh}:${mm}:${ss} ${d}/${m}/${y}`;
+    } catch {
+      return dtStr.replace("T", " ");
+    }
   };
 
   /** Identifies a server response that requires a discipline explanation. */
@@ -157,7 +173,13 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
                         )}
                       </td>
                       <td className="px-5 py-4 text-right font-bold text-slate-600 font-mono">
-                        {calculateHours(row.clock_in, row.clock_out)}
+                        {row.clock_out ? (
+                          calculateHours(row.clock_in, row.clock_out)
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[9px] font-bold text-orange-600 border border-orange-200 font-sans">
+                            Đang làm việc
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -190,11 +212,13 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
               className="w-full rounded-lg border border-sky-100 px-3 py-2 text-xs focus:border-sky-500 focus:outline-none bg-white"
             >
               <option value="">-- Chọn nhân sự --</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.full_name} ({emp.role_name})
-                </option>
-              ))}
+              {employees
+                .filter((emp) => emp.role_name !== "manager" && emp.role_name !== "admin")
+                .map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.full_name} ({emp.role_name})
+                  </option>
+                ))}
             </select>
           </div>
 
